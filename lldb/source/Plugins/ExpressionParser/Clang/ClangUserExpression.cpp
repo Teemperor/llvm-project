@@ -421,7 +421,7 @@ void ClangUserExpression::UpdateLanguageForExpr(
 
     if (!source_code->GetText(m_transformed_text, m_expr_lang,
                               m_in_static_method, exe_ctx,
-                              !m_ctx_obj, {"std"})) {
+                              !m_ctx_obj, modules_to_import)) {
       diagnostic_manager.PutString(eDiagnosticSeverityError,
                                    "couldn't construct expression body");
       return;
