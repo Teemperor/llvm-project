@@ -439,6 +439,35 @@ void ClangUserExpression::UpdateLanguageForExpr(
   }
 }
 
+std::vector<std::string> ClangUserExpression::GetModulesToImport(ExecutionContext &exe_ctx) {
+
+  Target *target = exe_ctx.GetTargetPtr();
+  if (!target || !target->GetEnableImportStdModule())
+    return {};
+  StackFrame *frame = exe_ctx.GetFramePtr();
+  if (!frame)
+    return {};
+  Block *block = frame->GetFrameBlock();
+  if (!block)
+    return {};
+
+  SymbolContext sc;
+  block->CalculateSymbolContext(&sc);
+  if (!sc.comp_unit)
+    return {};
+
+  m_include_directories = sc.comp_unit->GetModuleIncludes();
+  std::vector<CompileUnit::ModulePath> modules = sc.comp_unit->GetImportedModules();
+
+  // Only check if we import 'std' or any of it's submodules.
+  for (CompileUnit::ModulePath path : modules) {
+    if (!path.empty() && path.front() == ConstString("std")) {
+      return {"std"};
+    }
+  }
+  return {};
+}
+
 bool ClangUserExpression::PrepareForParsing(
     DiagnosticManager &diagnostic_manager, ExecutionContext &exe_ctx) {
   InstallContext(exe_ctx);
@@ -461,25 +490,7 @@ bool ClangUserExpression::PrepareForParsing(
 
   SetupDeclVendor(exe_ctx, m_target);
 
-  std::vector<std::string> modules_to_include;
-  if (StackFrame *frame = exe_ctx.GetFramePtr()) {
-    if (Block *block = frame->GetFrameBlock()) {
-      SymbolContext sc;
-      block->CalculateSymbolContext(&sc);
-      if (sc.comp_unit) {
-        m_include_directories = sc.comp_unit->GetModuleIncludes();
-        std::vector<CompileUnit::ModulePath> modules = sc.comp_unit->GetImportedModules();
-
-        for (CompileUnit::ModulePath path : modules) {
-          if (!path.empty() && path.front() == ConstString("std")) {
-            modules_to_include = {"std"};
-            break;
-          }
-        }
-      }
-    }
-  }
-
+  std::vector<std::string> modules_to_include = GetModulesToImport(exe_ctx);
   UpdateLanguageForExpr(diagnostic_manager, exe_ctx, modules_to_include);
   return true;
 }

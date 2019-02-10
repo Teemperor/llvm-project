@@ -444,6 +444,22 @@ ClangExpressionParser::ClangExpressionParser(
     if (process_sp)
       lang_opts.ObjC =
           process_sp->GetLanguageRuntime(lldb::eLanguageTypeObjC) != nullptr;
+
+    if (target_sp && target_sp->GetEnableImportStdModule()) {
+      llvm::errs() << "FSDFSDF\n";
+      lang_opts.Modules = true;
+      // for @import statements.
+      lang_opts.ObjC = true;
+      lang_opts.GNUMode = true;
+      lang_opts.GNUKeywords = true;
+      lang_opts.DoubleSquareBracketAttributes = true;
+      lang_opts.CPlusPlus11 = true;
+      lang_opts.ImplicitModules = true;
+      lang_opts.ModulesLocalVisibility = false;
+
+      SetupClangModules(m_compiler.get(), m_include_directories);
+    }
+
     break;
   case lldb::eLanguageTypeObjC_plus_plus:
   case lldb::eLanguageTypeUnknown:
@@ -453,20 +469,6 @@ ClangExpressionParser::ClangExpressionParser(
     lang_opts.CPlusPlus11 = true;
     m_compiler->getHeaderSearchOpts().UseLibcxx = true;
     break;
-  }
-
-  if (target_sp->GetEnableImportStdModule()) {
-    lang_opts.Modules = true;
-    lang_opts.ObjC = true;
-    lang_opts.CPlusPlus = true;
-    lang_opts.GNUMode = true;
-    lang_opts.GNUKeywords = true;
-    lang_opts.DoubleSquareBracketAttributes = true;
-    lang_opts.CPlusPlus11 = true;
-    lang_opts.ImplicitModules = true;
-    lang_opts.ModulesLocalVisibility = false;
-
-    SetupClangModules(m_compiler.get(), m_include_directories);
   }
 
   lang_opts.Bool = true;
@@ -931,8 +933,10 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
   std::unique_ptr<clang::ASTConsumer> Consumer;
   if (ast_transformer) {
     Consumer.reset(new ASTConsumerForwarder(ast_transformer));
-  } else {
+  } else if (m_code_generator) {
     Consumer.reset(new ASTConsumerForwarder(m_code_generator.get()));
+  } else {
+    Consumer.reset(new ASTConsumer());
   }
 
   clang::ASTContext &ast_context = m_compiler->getASTContext();
@@ -940,18 +944,20 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
   m_compiler->setSema(new Sema(m_compiler->getPreprocessor(), ast_context,
                                *Consumer, TU_Complete, completion_consumer));
   m_compiler->setASTConsumer(std::move(Consumer));
-  m_compiler->createModuleManager();
+
+  if (ast_context.getLangOpts().Modules)
+    m_compiler->createModuleManager();
 
   ClangExpressionDeclMap *decl_map = type_system_helper->DeclMap();
   if (decl_map) {
     decl_map->InstallCodeGenerator(&m_compiler->getASTConsumer());
 
-    auto module_wrapper =
-        new ExternalASTSourceWrapper(ast_context.getExternalSource());
-
     clang::ExternalASTSource *ast_source = decl_map->CreateProxy();
 
-    if (module_wrapper) {
+    if (ast_context.getExternalSource()) {
+        auto module_wrapper =
+            new ExternalASTSourceWrapper(ast_context.getExternalSource());
+
         auto ast_source_wrapper = new ExternalASTSourceWrapper(ast_source);
 
         auto multiplexer = new SemaSourceWithPriorities(*module_wrapper,
@@ -964,10 +970,13 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
     decl_map->InstallASTContext(ast_context, m_compiler->getFileManager());
   }
 
-  assert(m_compiler->getASTContext().getExternalSource() &&
-         "Sema doesn't know about the ASTReader for modules?");
-  assert(m_compiler->getSema().getExternalSource() &&
-         "Sema doesn't know about the ASTReader for modules?");
+
+  if (ast_context.getLangOpts().Modules) {
+    assert(m_compiler->getASTContext().getExternalSource() &&
+           "Sema doesn't know about the ASTReader for modules?");
+    assert(m_compiler->getSema().getExternalSource() &&
+           "Sema doesn't know about the ASTReader for modules?");
+  }
 
   {
     llvm::CrashRecoveryContextCleanupRegistrar<Sema> CleanupSema(

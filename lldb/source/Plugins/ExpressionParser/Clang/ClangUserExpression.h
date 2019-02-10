@@ -180,8 +180,10 @@ private:
                     lldb::addr_t struct_address,
                     DiagnosticManager &diagnostic_manager) override;
 
+  std::vector<std::string> GetModulesToImport(ExecutionContext &exe_ctx);
   void UpdateLanguageForExpr(DiagnosticManager &diagnostic_manager,
-                             ExecutionContext &exe_ctx, std::vector<std::string> modules_to_import);
+                             ExecutionContext &exe_ctx,
+                             std::vector<std::string> modules_to_import);
   bool SetupPersistentState(DiagnosticManager &diagnostic_manager,
                                    ExecutionContext &exe_ctx);
   bool PrepareForParsing(DiagnosticManager &diagnostic_manager,
