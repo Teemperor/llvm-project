@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <cctype>
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTDiagnostic.h"
 #include "clang/AST/ExternalASTSource.h"
@@ -32,13 +33,8 @@
 #include "clang/Rewrite/Core/Rewriter.h"
 #include "clang/Rewrite/Frontend/FrontendActions.h"
 #include "clang/Sema/CodeCompleteConsumer.h"
-#include "clang/Sema/Lookup.h"
-#include "clang/Sema/MultiplexExternalSemaSource.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaConsumer.h"
-#include <cctype>
-#include <clang/Driver/Driver.h>
-#include <clang/Driver/ToolChain.h>
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
@@ -81,10 +77,7 @@
 #include "lldb/Expression/IRInterpreter.h"
 #include "lldb/Host/File.h"
 #include "lldb/Host/HostInfo.h"
-#include "lldb/Symbol/Block.h"
 #include "lldb/Symbol/ClangASTContext.h"
-#include "lldb/Symbol/CompileUnit.h"
-#include "lldb/Symbol/LineTable.h"
 #include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Language.h"
