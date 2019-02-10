@@ -288,7 +288,6 @@ ClangExpressionParser::ClangExpressionParser(
                 __FUNCTION__, __FILE__, __LINE__);
     return;
   }
-  import_std_module = target_sp->GetEnableImportStdModule();
 
   // 1. Create a new compiler instance.
   m_compiler.reset(new CompilerInstance());
@@ -454,18 +453,20 @@ ClangExpressionParser::ClangExpressionParser(
     break;
   }
 
-  if (import_std_module)
-    SetupClangModules(m_compiler.get(), m_include_directories);
+  if (target_sp->GetEnableImportStdModule()) {
+    lang_opts.Modules = true;
+    lang_opts.ObjC = true;
+    lang_opts.CPlusPlus = true;
+    lang_opts.GNUMode = true;
+    lang_opts.GNUKeywords = true;
+    lang_opts.DoubleSquareBracketAttributes = true;
+    lang_opts.CPlusPlus11 = true;
+    lang_opts.ImplicitModules = true;
+    lang_opts.ModulesLocalVisibility = false;
 
-  lang_opts.Modules = true;
-  lang_opts.ObjC = true;
-  lang_opts.CPlusPlus = true;
-  lang_opts.GNUMode = true;
-  lang_opts.GNUKeywords = true;
-  lang_opts.DoubleSquareBracketAttributes = true;
-  lang_opts.CPlusPlus11 = true;
-  lang_opts.ImplicitModules = true;
-  lang_opts.ModulesLocalVisibility = false;
+    SetupClangModules(m_compiler.get(), m_include_directories);
+  }
+
   lang_opts.Bool = true;
   lang_opts.WChar = true;
   lang_opts.Blocks = true;
@@ -566,17 +567,6 @@ ClangExpressionParser::ClangExpressionParser(
 
   m_compiler->createASTContext();
   clang::ASTContext &ast_context = m_compiler->getASTContext();
-
-  /*ClangExpressionHelper *type_system_helper =
-      dyn_cast<ClangExpressionHelper>(m_expr.GetTypeSystemHelper());
-  ClangExpressionDeclMap *decl_map = type_system_helper->DeclMap();
-
-  if (decl_map) {
-    llvm::IntrusiveRefCntPtr<clang::ExternalASTSource> ast_source(
-        decl_map->CreateProxy());
-    decl_map->InstallASTContext(ast_context, m_compiler->getFileManager());
-    ast_context.setExternalSource(ast_source);
-  }*/
 
   m_ast_context.reset(
       new ClangASTContext(m_compiler->getTargetOpts().Triple.c_str()));
@@ -946,7 +936,7 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
   clang::ASTContext &ast_context = m_compiler->getASTContext();
 
   m_compiler->setSema(new Sema(m_compiler->getPreprocessor(), ast_context,
-                               *Consumer, TU_Complete, nullptr));
+                               *Consumer, TU_Complete, completion_consumer));
   m_compiler->setASTConsumer(std::move(Consumer));
   m_compiler->createModuleManager();
 
@@ -954,16 +944,21 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
   if (decl_map) {
     decl_map->InstallCodeGenerator(&m_compiler->getASTConsumer());
 
-    auto wrapper =
+    auto module_wrapper =
         new ExternalASTSourceWrapper(ast_context.getExternalSource());
 
     clang::ExternalASTSource *ast_source = decl_map->CreateProxy();
-    auto wrapper2 = new ExternalASTSourceWrapper(ast_source);
 
-    auto multiplexer = new SemaSourceWithPriorities(*wrapper, *wrapper2);
-    IntrusiveRefCntPtr<ExternalASTSource> Source(multiplexer);
-    ast_context.setExternalSource(Source);
+    if (module_wrapper) {
+        auto ast_source_wrapper = new ExternalASTSourceWrapper(ast_source);
 
+        auto multiplexer = new SemaSourceWithPriorities(*module_wrapper,
+                                                        *ast_source_wrapper);
+        IntrusiveRefCntPtr<ExternalASTSource> Source(multiplexer);
+        ast_context.setExternalSource(Source);
+    } else {
+        ast_context.setExternalSource(ast_source);
+    }
     decl_map->InstallASTContext(ast_context, m_compiler->getFileManager());
   }
 

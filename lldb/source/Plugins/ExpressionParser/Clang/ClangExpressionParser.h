@@ -196,7 +196,6 @@ private:
   std::unique_ptr<ClangASTContext> m_ast_context;
 
   std::vector<ConstString> m_include_directories;
-  bool import_std_module = false;
 };
 }
 
