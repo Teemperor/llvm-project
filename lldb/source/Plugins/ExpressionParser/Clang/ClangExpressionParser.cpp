@@ -437,6 +437,7 @@ ClangExpressionParser::ClangExpressionParser(
   case lldb::eLanguageTypeC_plus_plus_11:
   case lldb::eLanguageTypeC_plus_plus_14:
     lang_opts.CPlusPlus11 = true;
+    m_compiler->getHeaderSearchOpts().UseLibcxx = true;
     LLVM_FALLTHROUGH;
   case lldb::eLanguageTypeC_plus_plus_03:
     lang_opts.CPlusPlus = true;
@@ -450,6 +451,7 @@ ClangExpressionParser::ClangExpressionParser(
     lang_opts.ObjC = true;
     lang_opts.CPlusPlus = true;
     lang_opts.CPlusPlus11 = true;
+    m_compiler->getHeaderSearchOpts().UseLibcxx = true;
     break;
   }
 
