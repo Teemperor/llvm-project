@@ -439,7 +439,9 @@ protected:
                                                ///current module, imported by
                                                ///this
                                                ///< compile unit.
+  /// The include directories of the imported modules.
   std::vector<ConstString> m_module_includes;
+
   FileSpecList m_support_files; ///< Files associated with this compile unit's
                                 ///line table and declarations.
   std::unique_ptr<LineTable>

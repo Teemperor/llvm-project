@@ -223,6 +223,46 @@ private:
   std::shared_ptr<clang::TextDiagnosticBuffer> m_passthrough;
 };
 
+static void SetupClangModules(CompilerInstance* compiler,
+                              std::vector<ConstString> include_directories) {
+  for (ConstString dir : include_directories) {
+    compiler->getHeaderSearchOpts().AddPath(dir.AsCString(),
+                                              clang::frontend::IncludeDirGroup::System,
+                                              false, true);
+  }
+
+  {
+    llvm::SmallString<128> path;
+    auto props = ModuleList::GetGlobalModuleListProperties();
+    props.GetClangModulesCachePath().GetPath(path);
+    compiler->getHeaderSearchOpts().ModuleCachePath = path.str();
+  }
+
+  {
+    FileSpec clang_resource_dir = GetClangResourceDir();
+    std::string resource_dir = clang_resource_dir.GetPath();
+    if (FileSystem::Instance().IsDirectory(resource_dir)) {
+      compiler->getHeaderSearchOpts().ResourceDir = resource_dir;
+
+      compiler->getHeaderSearchOpts().AddPath(resource_dir + "/include",
+          clang::frontend::IncludeDirGroup::System, false, true);
+    }
+  }
+
+
+  compiler->getHeaderSearchOpts().ImplicitModuleMaps = true;
+
+  std::vector<std::string> system_include_directories;
+  Platform::GetHostPlatform()->GetSystemIncludeDirectoriesForLanguage(
+        lldb::LanguageType::eLanguageTypeC_plus_plus,
+        system_include_directories);
+
+  for (const std::string &include_dir : system_include_directories) {
+      compiler->getHeaderSearchOpts().AddPath(
+          include_dir, clang::frontend::IncludeDirGroup::System, false, true);
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Implementation of ClangExpressionParser
 //===----------------------------------------------------------------------===//
@@ -255,7 +295,7 @@ ClangExpressionParser::ClangExpressionParser(
                 __FUNCTION__, __FILE__, __LINE__);
     return;
   }
-  target_sp->GetEnableImportStdModule();
+  import_std_module = target_sp->GetEnableImportStdModule();
 
   // 1. Create a new compiler instance.
   m_compiler.reset(new CompilerInstance());
@@ -421,6 +461,9 @@ ClangExpressionParser::ClangExpressionParser(
     break;
   }
 
+  if (import_std_module)
+    SetupClangModules(m_compiler.get(), m_include_directories);
+
   lang_opts.Modules = true;
   lang_opts.ObjC = true;
   lang_opts.CPlusPlus = true;
@@ -430,45 +473,6 @@ ClangExpressionParser::ClangExpressionParser(
   lang_opts.CPlusPlus11 = true;
   lang_opts.ImplicitModules = true;
   lang_opts.ModulesLocalVisibility = false;
-
-  for (ConstString dir : m_include_directories) {
-    m_compiler->getHeaderSearchOpts().AddPath(dir.AsCString(),
-                                              clang::frontend::IncludeDirGroup::System,
-                                              false, true);
-  }
-
-  {
-    llvm::SmallString<128> path;
-    auto props = ModuleList::GetGlobalModuleListProperties();
-    props.GetClangModulesCachePath().GetPath(path);
-    llvm::errs() << "SDFDFSDF: " << path.str() << "\n";
-    m_compiler->getHeaderSearchOpts().ModuleCachePath = path.str();
-  }
-
-  {
-    FileSpec clang_resource_dir = GetClangResourceDir();
-    std::string resource_dir = clang_resource_dir.GetPath();
-    if (FileSystem::Instance().IsDirectory(resource_dir)) {
-      m_compiler->getHeaderSearchOpts().ResourceDir = resource_dir;
-
-      m_compiler->getHeaderSearchOpts().AddPath(resource_dir + "/include",
-          clang::frontend::IncludeDirGroup::System, false, true);
-    }
-  }
-
-
-  m_compiler->getHeaderSearchOpts().ImplicitModuleMaps = true;
-
-  std::vector<std::string> system_include_directories;
-  Platform::GetHostPlatform()->GetSystemIncludeDirectoriesForLanguage(
-        lldb::LanguageType::eLanguageTypeC_plus_plus,
-        system_include_directories);
-
-  for (const std::string &include_dir : system_include_directories) {
-      m_compiler->getHeaderSearchOpts().AddPath(
-          include_dir, clang::frontend::IncludeDirGroup::System, false, true);
-  }
-
   lang_opts.Bool = true;
   lang_opts.WChar = true;
   lang_opts.Blocks = true;
@@ -963,7 +967,7 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
     clang::ExternalASTSource *ast_source = decl_map->CreateProxy();
     auto wrapper2 = new ExternalASTSourceWrapper(ast_source);
 
-    auto multiplexer = new MyMultiplexExternalSemaSource(*wrapper, *wrapper2);
+    auto multiplexer = new SemaSourceWithPriorities(*wrapper, *wrapper2);
     IntrusiveRefCntPtr<ExternalASTSource> Source(multiplexer);
     ast_context.setExternalSource(Source);
 
@@ -979,8 +983,10 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
     llvm::CrashRecoveryContextCleanupRegistrar<Sema> CleanupSema(
         &m_compiler->getSema());
     ParseAST(m_compiler->getSema(), false, false);
-    m_compiler->setSema(nullptr);
   }
+  // Destroy the Sema. This is necessary because we want to emulate the
+  // original behavior of ParseAST (which also destroys the Sema after parsing).
+  m_compiler->setSema(nullptr);
 
   diag_buf->EndSourceFile();
 

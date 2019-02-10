@@ -36,6 +36,20 @@ public:
 
   const char *GetName() const { return m_name.c_str(); }
 
+  /// Generates the source code that will evaluate the expression.
+  ///
+  /// \param text output parameter containing the source code string.
+  /// \param wrapping_language If the expression is supossed to be wrapped,
+  ///        then this is the language that should be used for that.
+  /// \param static_method True iff the expression is valuated inside a static
+  ///        Objective-C method.
+  /// \param exe_ctx The execution context in which the expression will be
+  ///        evaluated.
+  /// \param add_locals True iff local variables should be injected into the
+  ///        expression source code.
+  /// \param modules A list of (C++) modules that the expression should import.
+  ///
+  /// \return true iff the source code was successfully generated.
   bool GetText(std::string &text, lldb::LanguageType wrapping_language,
                bool static_method, ExecutionContext &exe_ctx,
                bool add_locals, std::vector<std::string> modules) const;
