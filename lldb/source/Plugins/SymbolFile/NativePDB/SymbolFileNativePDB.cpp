@@ -1136,7 +1136,8 @@ bool SymbolFileNativePDB::ParseSupportFiles(CompileUnit &comp_unit,
 }
 
 bool SymbolFileNativePDB::ParseImportedModules(
-    const SymbolContext &sc, std::vector<ConstString> &imported_modules) {
+    const SymbolContext &sc, std::vector<ModulePath> &imported_modules,
+    std::vector<ConstString> &module_includes) {
   // PDB does not yet support module debug info
   return false;
 }

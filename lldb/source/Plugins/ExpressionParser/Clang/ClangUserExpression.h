@@ -181,7 +181,7 @@ private:
                     DiagnosticManager &diagnostic_manager) override;
 
   void UpdateLanguageForExpr(DiagnosticManager &diagnostic_manager,
-                             ExecutionContext &exe_ctx);
+                             ExecutionContext &exe_ctx, std::vector<std::string> modules_to_import);
   bool SetupPersistentState(DiagnosticManager &diagnostic_manager,
                                    ExecutionContext &exe_ctx);
   bool PrepareForParsing(DiagnosticManager &diagnostic_manager,
@@ -206,6 +206,8 @@ private:
 
   /// The language type of the current expression.
   lldb::LanguageType m_expr_lang = lldb::eLanguageTypeUnknown;
+  /// The include directories that should be used when parsing the expression.
+  std::vector<ConstString> m_include_directories;
 
   /// The absolute character position in the transformed source code where the
   /// user code (as typed by the user) starts. If the variable is empty, then we

@@ -263,6 +263,11 @@ bool PlatformLinux::CanDebugProcess() {
   }
 }
 
+void PlatformLinux::GetSystemIncludeDirectoriesForLanguage(LanguageType type,
+  std::vector<std::string> &Directories) {
+  Directories = {"/usr/include"};
+}
+
 // For local debugging, Linux will override the debug logic to use llgs-launch
 // rather than lldb-launch, llgs-attach.  This differs from current lldb-
 // launch, debugserver-attach approach on MacOSX.

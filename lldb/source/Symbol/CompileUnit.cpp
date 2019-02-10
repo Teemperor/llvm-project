@@ -386,21 +386,31 @@ bool CompileUnit::GetIsOptimized() {
   return m_is_optimized;
 }
 
-void CompileUnit::SetVariableList(VariableListSP &variables) {
-  m_variables = variables;
-}
-
-const std::vector<ConstString> &CompileUnit::GetImportedModules() {
+void CompileUnit::UpdateModules() {
   if (m_imported_modules.empty() &&
       m_flags.IsClear(flagsParsedImportedModules)) {
     m_flags.Set(flagsParsedImportedModules);
     if (SymbolVendor *symbol_vendor = GetModule()->GetSymbolVendor()) {
       SymbolContext sc;
       CalculateSymbolContext(&sc);
-      symbol_vendor->ParseImportedModules(sc, m_imported_modules);
+      symbol_vendor->ParseImportedModules(sc, m_imported_modules,
+                                          m_module_includes);
     }
   }
+}
+
+void CompileUnit::SetVariableList(VariableListSP &variables) {
+  m_variables = variables;
+}
+
+const std::vector<CompileUnit::ModulePath> &CompileUnit::GetImportedModules() {
+  UpdateModules();
   return m_imported_modules;
+}
+
+const std::vector<ConstString> &CompileUnit::GetModuleIncludes() {
+  UpdateModules();
+  return m_module_includes;
 }
 
 FileSpecList &CompileUnit::GetSupportFiles() {

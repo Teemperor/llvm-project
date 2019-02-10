@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <cctype>
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ASTDiagnostic.h"
 #include "clang/AST/ExternalASTSource.h"
@@ -33,11 +32,17 @@
 #include "clang/Rewrite/Core/Rewriter.h"
 #include "clang/Rewrite/Frontend/FrontendActions.h"
 #include "clang/Sema/CodeCompleteConsumer.h"
+#include "clang/Sema/Lookup.h"
+#include "clang/Sema/MultiplexExternalSemaSource.h"
 #include "clang/Sema/Sema.h"
 #include "clang/Sema/SemaConsumer.h"
+#include <cctype>
+#include <clang/Driver/Driver.h>
+#include <clang/Driver/ToolChain.h>
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ExecutionEngine/ExecutionEngine.h"
+#include "llvm/Support/CrashRecoveryContext.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/TargetSelect.h"
@@ -58,9 +63,11 @@
 #include "ClangDiagnostic.h"
 #include "ClangExpressionParser.h"
 
+#include "ASTConsumerUtils.h"
 #include "ClangASTSource.h"
 #include "ClangExpressionDeclMap.h"
 #include "ClangExpressionHelper.h"
+#include "ClangHost.h"
 #include "ClangModulesDeclVendor.h"
 #include "ClangPersistentVariables.h"
 #include "IRForTarget.h"
@@ -74,7 +81,10 @@
 #include "lldb/Expression/IRInterpreter.h"
 #include "lldb/Host/File.h"
 #include "lldb/Host/HostInfo.h"
+#include "lldb/Symbol/Block.h"
 #include "lldb/Symbol/ClangASTContext.h"
+#include "lldb/Symbol/CompileUnit.h"
+#include "lldb/Symbol/LineTable.h"
 #include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Language.h"
@@ -217,11 +227,11 @@ private:
 // Implementation of ClangExpressionParser
 //===----------------------------------------------------------------------===//
 
-ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope,
-                                             Expression &expr,
-                                             bool generate_debug_info)
+ClangExpressionParser::ClangExpressionParser(
+    ExecutionContextScope *exe_scope, Expression &expr,
+    bool generate_debug_info, std::vector<ConstString> include_directories)
     : ExpressionParser(exe_scope, expr, generate_debug_info), m_compiler(),
-      m_pp_callbacks(nullptr) {
+      m_pp_callbacks(nullptr), m_include_directories(include_directories) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
 
   // We can't compile expressions without a target.  So if the exe_scope is
@@ -245,6 +255,7 @@ ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope,
                 __FUNCTION__, __FILE__, __LINE__);
     return;
   }
+  target_sp->GetEnableImportStdModule();
 
   // 1. Create a new compiler instance.
   m_compiler.reset(new CompilerInstance());
@@ -394,7 +405,6 @@ ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope,
   case lldb::eLanguageTypeC_plus_plus_11:
   case lldb::eLanguageTypeC_plus_plus_14:
     lang_opts.CPlusPlus11 = true;
-    m_compiler->getHeaderSearchOpts().UseLibcxx = true;
     LLVM_FALLTHROUGH;
   case lldb::eLanguageTypeC_plus_plus_03:
     lang_opts.CPlusPlus = true;
@@ -408,8 +418,55 @@ ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope,
     lang_opts.ObjC = true;
     lang_opts.CPlusPlus = true;
     lang_opts.CPlusPlus11 = true;
-    m_compiler->getHeaderSearchOpts().UseLibcxx = true;
     break;
+  }
+
+  lang_opts.Modules = true;
+  lang_opts.ObjC = true;
+  lang_opts.CPlusPlus = true;
+  lang_opts.GNUMode = true;
+  lang_opts.GNUKeywords = true;
+  lang_opts.DoubleSquareBracketAttributes = true;
+  lang_opts.CPlusPlus11 = true;
+  lang_opts.ImplicitModules = true;
+  lang_opts.ModulesLocalVisibility = false;
+
+  for (ConstString dir : m_include_directories) {
+    m_compiler->getHeaderSearchOpts().AddPath(dir.AsCString(),
+                                              clang::frontend::IncludeDirGroup::System,
+                                              false, true);
+  }
+
+  {
+    llvm::SmallString<128> path;
+    auto props = ModuleList::GetGlobalModuleListProperties();
+    props.GetClangModulesCachePath().GetPath(path);
+    llvm::errs() << "SDFDFSDF: " << path.str() << "\n";
+    m_compiler->getHeaderSearchOpts().ModuleCachePath = path.str();
+  }
+
+  {
+    FileSpec clang_resource_dir = GetClangResourceDir();
+    std::string resource_dir = clang_resource_dir.GetPath();
+    if (FileSystem::Instance().IsDirectory(resource_dir)) {
+      m_compiler->getHeaderSearchOpts().ResourceDir = resource_dir;
+
+      m_compiler->getHeaderSearchOpts().AddPath(resource_dir + "/include",
+          clang::frontend::IncludeDirGroup::System, false, true);
+    }
+  }
+
+
+  m_compiler->getHeaderSearchOpts().ImplicitModuleMaps = true;
+
+  std::vector<std::string> system_include_directories;
+  Platform::GetHostPlatform()->GetSystemIncludeDirectoriesForLanguage(
+        lldb::LanguageType::eLanguageTypeC_plus_plus,
+        system_include_directories);
+
+  for (const std::string &include_dir : system_include_directories) {
+      m_compiler->getHeaderSearchOpts().AddPath(
+          include_dir, clang::frontend::IncludeDirGroup::System, false, true);
   }
 
   lang_opts.Bool = true;
@@ -513,7 +570,7 @@ ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope,
   m_compiler->createASTContext();
   clang::ASTContext &ast_context = m_compiler->getASTContext();
 
-  ClangExpressionHelper *type_system_helper =
+  /*ClangExpressionHelper *type_system_helper =
       dyn_cast<ClangExpressionHelper>(m_expr.GetTypeSystemHelper());
   ClangExpressionDeclMap *decl_map = type_system_helper->DeclMap();
 
@@ -522,7 +579,7 @@ ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope,
         decl_map->CreateProxy());
     decl_map->InstallASTContext(ast_context, m_compiler->getFileManager());
     ast_context.setExternalSource(ast_source);
-  }
+  }*/
 
   m_ast_context.reset(
       new ClangASTContext(m_compiler->getTargetOpts().Triple.c_str()));
@@ -865,12 +922,6 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
   ClangExpressionHelper *type_system_helper =
       dyn_cast<ClangExpressionHelper>(m_expr.GetTypeSystemHelper());
 
-  ASTConsumer *ast_transformer =
-      type_system_helper->ASTTransformer(m_code_generator.get());
-
-  if (ClangExpressionDeclMap *decl_map = type_system_helper->DeclMap())
-    decl_map->InstallCodeGenerator(m_code_generator.get());
-
   // If we want to parse for code completion, we need to attach our code
   // completion consumer to the Sema and specify a completion position.
   // While parsing the Sema will call this consumer with the provided
@@ -885,16 +936,50 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
     PP.SetCodeCompletionPoint(main_file, completion_line, completion_column);
   }
 
+  ASTConsumer *ast_transformer =
+      type_system_helper->ASTTransformer(m_code_generator.get());
+
+  std::unique_ptr<clang::ASTConsumer> Consumer;
   if (ast_transformer) {
-    ast_transformer->Initialize(m_compiler->getASTContext());
-    ParseAST(m_compiler->getPreprocessor(), ast_transformer,
-             m_compiler->getASTContext(), false, TU_Complete,
-             completion_consumer);
+    Consumer.reset(new ASTConsumerForwarder(ast_transformer));
   } else {
-    m_code_generator->Initialize(m_compiler->getASTContext());
-    ParseAST(m_compiler->getPreprocessor(), m_code_generator.get(),
-             m_compiler->getASTContext(), false, TU_Complete,
-             completion_consumer);
+    Consumer.reset(new ASTConsumerForwarder(m_code_generator.get()));
+  }
+
+  clang::ASTContext &ast_context = m_compiler->getASTContext();
+
+  m_compiler->setSema(new Sema(m_compiler->getPreprocessor(), ast_context,
+                               *Consumer, TU_Complete, nullptr));
+  m_compiler->setASTConsumer(std::move(Consumer));
+  m_compiler->createModuleManager();
+
+  ClangExpressionDeclMap *decl_map = type_system_helper->DeclMap();
+  if (decl_map) {
+    decl_map->InstallCodeGenerator(&m_compiler->getASTConsumer());
+
+    auto wrapper =
+        new ExternalASTSourceWrapper(ast_context.getExternalSource());
+
+    clang::ExternalASTSource *ast_source = decl_map->CreateProxy();
+    auto wrapper2 = new ExternalASTSourceWrapper(ast_source);
+
+    auto multiplexer = new MyMultiplexExternalSemaSource(*wrapper, *wrapper2);
+    IntrusiveRefCntPtr<ExternalASTSource> Source(multiplexer);
+    ast_context.setExternalSource(Source);
+
+    decl_map->InstallASTContext(ast_context, m_compiler->getFileManager());
+  }
+
+  assert(m_compiler->getASTContext().getExternalSource() &&
+         "Sema doesn't know about the ASTReader for modules?");
+  assert(m_compiler->getSema().getExternalSource() &&
+         "Sema doesn't know about the ASTReader for modules?");
+
+  {
+    llvm::CrashRecoveryContextCleanupRegistrar<Sema> CleanupSema(
+        &m_compiler->getSema());
+    ParseAST(m_compiler->getSema(), false, false);
+    m_compiler->setSema(nullptr);
   }
 
   diag_buf->EndSourceFile();

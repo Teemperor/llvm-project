@@ -133,9 +133,11 @@ public:
   virtual size_t ParseTypes(CompileUnit &comp_unit) = 0;
   virtual bool ParseIsOptimized(CompileUnit &comp_unit) { return false; }
 
+  typedef std::vector<lldb_private::ConstString> ModulePath;
   virtual bool
   ParseImportedModules(const SymbolContext &sc,
-                       std::vector<ConstString> &imported_modules) = 0;
+                       std::vector<ModulePath> &imported_modules,
+                       std::vector<ConstString> &module_includes) = 0;
   virtual size_t ParseBlocksRecursive(Function &func) = 0;
   virtual size_t ParseVariablesForContext(const SymbolContext &sc) = 0;
   virtual Type *ResolveTypeUID(lldb::user_id_t type_uid) = 0;

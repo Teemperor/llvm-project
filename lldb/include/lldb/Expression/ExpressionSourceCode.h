@@ -12,6 +12,7 @@
 #include "lldb/lldb-enumerations.h"
 
 #include <string>
+#include <vector>
 
 namespace lldb_private {
 
@@ -37,7 +38,7 @@ public:
 
   bool GetText(std::string &text, lldb::LanguageType wrapping_language,
                bool static_method, ExecutionContext &exe_ctx,
-               bool add_locals) const;
+               bool add_locals, std::vector<std::string> modules) const;
 
   // Given a string returned by GetText, find the beginning and end of the body
   // passed to CreateWrapped. Return true if the bounds could be found.  This

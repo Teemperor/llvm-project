@@ -287,7 +287,10 @@ bool ClangModulesDeclVendor::LanguageSupportsClangModules(
   switch (language) {
   default:
     return false;
-  // C++ and friends to be added
+  case lldb::LanguageType::eLanguageTypeC_plus_plus:
+  case lldb::LanguageType::eLanguageTypeC_plus_plus_03:
+  case lldb::LanguageType::eLanguageTypeC_plus_plus_11:
+  case lldb::LanguageType::eLanguageTypeC_plus_plus_14:
   case lldb::LanguageType::eLanguageTypeC:
   case lldb::LanguageType::eLanguageTypeC11:
   case lldb::LanguageType::eLanguageTypeC89:
@@ -300,20 +303,19 @@ bool ClangModulesDeclVendor::LanguageSupportsClangModules(
 bool ClangModulesDeclVendorImpl::AddModulesForCompileUnit(
     CompileUnit &cu, ClangModulesDeclVendor::ModuleVector &exported_modules,
     Stream &error_stream) {
-  if (LanguageSupportsClangModules(cu.GetLanguage())) {
-    std::vector<ConstString> imported_modules = cu.GetImportedModules();
-
-    for (ConstString imported_module : imported_modules) {
-      std::vector<ConstString> path;
-
-      path.push_back(imported_module);
-
-      if (!AddModule(path, &exported_modules, error_stream)) {
-        return false;
-      }
-    }
-
+  if (!LanguageSupportsClangModules(cu.GetLanguage()))
     return true;
+
+  auto imported_modules = cu.GetImportedModules();
+
+  for (CompileUnit::ModulePath imported_module : imported_modules) {
+    CompileUnit::ModulePath path;
+
+    path.push_back(imported_module.back());
+
+    if (!AddModule(path, &exported_modules, error_stream)) {
+      return false;
+    }
   }
 
   return true;

@@ -60,8 +60,10 @@ public:
 
   virtual size_t ParseTypes(CompileUnit &comp_unit);
 
+  typedef std::vector<lldb_private::ConstString> ModulePath;
   virtual bool ParseImportedModules(const SymbolContext &sc,
-                                    std::vector<ConstString> &imported_modules);
+                                    std::vector<ModulePath> &imported_modules,
+                                    std::vector<ConstString> &module_includes);
 
   virtual size_t ParseBlocksRecursive(Function &func);
 

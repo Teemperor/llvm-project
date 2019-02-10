@@ -218,7 +218,8 @@ bool SymbolFileSymtab::ParseSupportFiles(CompileUnit &comp_unit,
 }
 
 bool SymbolFileSymtab::ParseImportedModules(
-    const SymbolContext &sc, std::vector<ConstString> &imported_modules) {
+    const SymbolContext &sc, std::vector<ModulePath> &imported_modules,
+    std::vector<ConstString> &module_includes) {
   return false;
 }
 

@@ -257,6 +257,7 @@ public:
   //------------------------------------------------------------------
   FileSpecList &GetSupportFiles();
 
+  typedef std::vector<lldb_private::ConstString> ModulePath;
   //------------------------------------------------------------------
   /// Get the compile unit's imported module list.
   ///
@@ -266,7 +267,18 @@ public:
   /// @return
   ///     A list of imported module names.
   //------------------------------------------------------------------
-  const std::vector<ConstString> &GetImportedModules();
+  const std::vector<ModulePath> &GetImportedModules();
+
+  //------------------------------------------------------------------
+  /// Get the compile unit's imported module list.
+  ///
+  /// This reports all the imports that the compile unit made, including the
+  /// current module.
+  ///
+  /// @return
+  ///     A list of imported module names.
+  //------------------------------------------------------------------
+  const std::vector<ConstString> &GetModuleIncludes();
 
   //------------------------------------------------------------------
   /// Get the SymbolFile plug-in user data.
@@ -422,10 +434,12 @@ protected:
 
   /// Maps UIDs to functions.
   llvm::DenseMap<lldb::user_id_t, lldb::FunctionSP> m_functions_by_uid;
-  std::vector<ConstString> m_imported_modules; ///< All modules, including the
+
+  std::vector<ModulePath> m_imported_modules;  ///< All modules, including the
                                                ///current module, imported by
                                                ///this
                                                ///< compile unit.
+  std::vector<ConstString> m_module_includes;
   FileSpecList m_support_files; ///< Files associated with this compile unit's
                                 ///line table and declarations.
   std::unique_ptr<LineTable>
@@ -453,6 +467,8 @@ private:
     flagsParsedDebugMacros =
         (1u << 6) ///< Have we parsed the debug macros already?
   };
+
+  void UpdateModules();
 
   DISALLOW_COPY_AND_ASSIGN(CompileUnit);
 };

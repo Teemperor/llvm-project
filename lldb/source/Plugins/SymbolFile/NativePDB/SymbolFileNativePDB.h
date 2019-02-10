@@ -96,7 +96,8 @@ public:
 
   bool
   ParseImportedModules(const SymbolContext &sc,
-                       std::vector<ConstString> &imported_modules) override;
+                       std::vector<ModulePath> &imported_modules,
+                       std::vector<ConstString> &module_includes) override;
 
   size_t ParseBlocksRecursive(Function &func) override;
 

@@ -908,43 +908,59 @@ bool SymbolFileDWARF::ParseIsOptimized(CompileUnit &comp_unit) {
   return false;
 }
 
+static void BuildModulePath(DWARFDIE die, SymbolFile::ModulePath& path) {
+  if (die.Tag() == DW_TAG_module) {
+    if (const char *name = die.GetAttributeValueAsString(
+            DW_AT_name, nullptr)) {
+      DWARFDIE parent = die.GetParent();
+      if (parent.IsValid())
+        BuildModulePath(parent, path);
+      ConstString const_name(name);
+      path.push_back(const_name);
+    }
+  }
+}
+
 bool SymbolFileDWARF::ParseImportedModules(
     const lldb_private::SymbolContext &sc,
-    std::vector<lldb_private::ConstString> &imported_modules) {
+    std::vector<ModulePath> &imported_modules,
+    std::vector<lldb_private::ConstString> &module_includes) {
   ASSERT_MODULE_LOCK(this);
   assert(sc.comp_unit);
   DWARFUnit *dwarf_cu = GetDWARFCompileUnit(sc.comp_unit);
-  if (dwarf_cu) {
-    if (ClangModulesDeclVendor::LanguageSupportsClangModules(
-            sc.comp_unit->GetLanguage())) {
-      UpdateExternalModuleListIfNeeded();
+  if (!dwarf_cu)
+    return false;
+  if (!ClangModulesDeclVendor::LanguageSupportsClangModules(
+            sc.comp_unit->GetLanguage()))
+    return false;
+  UpdateExternalModuleListIfNeeded();
 
-      if (sc.comp_unit) {
-        const DWARFDIE die = dwarf_cu->DIE();
+  if (sc.comp_unit) {
+    const DWARFDIE die = dwarf_cu->DIE();
 
-        if (die) {
-          for (DWARFDIE child_die = die.GetFirstChild(); child_die;
-               child_die = child_die.GetSibling()) {
-            if (child_die.Tag() == DW_TAG_imported_declaration) {
-              if (DWARFDIE module_die =
-                      child_die.GetReferencedDIE(DW_AT_import)) {
-                if (module_die.Tag() == DW_TAG_module) {
-                  if (const char *name = module_die.GetAttributeValueAsString(
-                          DW_AT_name, nullptr)) {
-                    ConstString const_name(name);
-                    imported_modules.push_back(const_name);
-                  }
-                }
-              }
-            }
-          }
-        }
-      } else {
-        for (const auto &pair : m_external_type_modules) {
-          imported_modules.push_back(pair.first);
+    if (!die)
+      return false;
+    for (DWARFDIE child_die = die.GetFirstChild(); child_die;
+         child_die = child_die.GetSibling()) {
+      if (child_die.Tag() != DW_TAG_imported_declaration)
+        continue;
+      if (DWARFDIE module_die =
+              child_die.GetReferencedDIE(DW_AT_import)) {
+        if (module_die.Tag() != DW_TAG_module)
+          continue;
+        ModulePath path;
+        BuildModulePath(module_die, path);
+        imported_modules.push_back(path);
+        if (const char *inc = module_die.GetAttributeValueAsString(
+                DW_AT_LLVM_include_path, nullptr)) {
+          ConstString const_inc(inc);
+          module_includes.push_back(const_inc);
         }
       }
     }
+  } else {
+    for (const auto &pair : m_external_type_modules)
+      imported_modules.push_back({pair.first});
   }
   return false;
 }

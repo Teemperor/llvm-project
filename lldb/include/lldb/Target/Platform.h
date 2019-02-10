@@ -276,6 +276,10 @@ public:
 
   virtual bool SetRemoteWorkingDirectory(const FileSpec &working_dir);
 
+  virtual void GetSystemIncludeDirectoriesForLanguage(
+      lldb::LanguageType type, std::vector<std::string>& Directories) {
+  }
+
   virtual const char *GetUserName(uint32_t uid);
 
   virtual const char *GetGroupName(uint32_t gid);
