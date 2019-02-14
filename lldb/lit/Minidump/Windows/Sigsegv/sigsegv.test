@@ -1,6 +1,6 @@
 // RUN: cd %p/Inputs
 // RUN: env LLDB_USE_NATIVE_PDB_READER=1 \
-// RUN:   %lldb -c sigsegv.dmp -s sigsegv.lldbinit | FileCheck %s
+// RUN:   %lldb -x -c sigsegv.dmp -s sigsegv.lldbinit | FileCheck %s
 
 CHECK: * thread #1, stop reason = Exception 0xc0000005 encountered at address 0x7ff7a13110d9
 CHECK:   * frame #0: 0x00007ff7a13110d9 sigsegv.exe
