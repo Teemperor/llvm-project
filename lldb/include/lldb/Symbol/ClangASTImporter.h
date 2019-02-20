@@ -96,13 +96,16 @@ public:
   ClangASTImporter() : m_file_manager(clang::FileSystemOptions()) {}
 
   clang::QualType CopyType(clang::ASTContext *dst_ctx,
-                           clang::ASTContext *src_ctx, clang::QualType type);
+                           clang::ASTContext *src_ctx, clang::QualType type,
+                           clang::Sema *sema = nullptr);
 
   lldb::opaque_compiler_type_t CopyType(clang::ASTContext *dst_ctx,
                                         clang::ASTContext *src_ctx,
-                                        lldb::opaque_compiler_type_t type);
+                                        lldb::opaque_compiler_type_t type,
+                                        clang::Sema *sema = nullptr);
 
-  CompilerType CopyType(ClangASTContext &dst, const CompilerType &src_type);
+  CompilerType CopyType(ClangASTContext &dst, const CompilerType &src_type,
+                        clang::Sema *sema = nullptr);
 
   clang::Decl *CopyDecl(clang::ASTContext *dst_ctx, clang::ASTContext *src_ctx,
                         clang::Decl *decl);

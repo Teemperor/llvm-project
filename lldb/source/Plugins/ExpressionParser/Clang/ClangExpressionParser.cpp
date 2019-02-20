@@ -972,6 +972,8 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
     m_compiler->createModuleManager();
 
   ClangExpressionDeclMap *decl_map = type_system_helper->DeclMap();
+  decl_map->sema = &m_compiler->getSema();
+
   if (decl_map) {
     decl_map->InstallCodeGenerator(&m_compiler->getASTConsumer());
 

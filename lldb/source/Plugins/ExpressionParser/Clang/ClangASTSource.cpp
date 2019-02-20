@@ -2020,7 +2020,8 @@ CompilerType ClangASTSource::GuardedCopyType(const CompilerType &src_type) {
   if (m_ast_importer_sp) {
     copied_qual_type =
         m_ast_importer_sp->CopyType(m_ast_context, src_ast->getASTContext(),
-                                    ClangUtil::GetQualType(src_type));
+                                    ClangUtil::GetQualType(src_type),
+                                    sema);
   } else if (m_merger_up) {
     copied_qual_type =
         CopyTypeWithMerger(*src_ast->getASTContext(), *m_merger_up,
