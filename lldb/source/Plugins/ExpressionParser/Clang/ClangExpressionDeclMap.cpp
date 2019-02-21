@@ -1708,8 +1708,8 @@ void ClangExpressionDeclMap::AddOneVariable(NameSearchContext &context,
     return;
 
   if (const clang::Type *parser_type = parser_opaque_type.getTypePtr()) {
-    if (const TagType *tag_type = dyn_cast<TagType>(parser_type))
-      CompleteType(tag_type->getDecl());
+    //if (const TagType *tag_type = dyn_cast<TagType>(parser_type))
+    //  CompleteType(tag_type->getDecl());
     if (const ObjCObjectPointerType *objc_object_ptr_type =
             dyn_cast<ObjCObjectPointerType>(parser_type))
       CompleteType(objc_object_ptr_type->getInterfaceDecl());

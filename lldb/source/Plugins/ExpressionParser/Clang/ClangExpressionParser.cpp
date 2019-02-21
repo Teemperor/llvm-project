@@ -239,6 +239,10 @@ SetupModuleHeaderPaths(CompilerInstance *compiler,
 
   FileSpec clang_resource_dir = GetClangResourceDir();
   std::string resource_dir = clang_resource_dir.GetPath();
+
+  if (log)
+    log->Printf("Using resource dir: %s", resource_dir.c_str());
+
   if (FileSystem::Instance().IsDirectory(resource_dir)) {
     search_opts.ResourceDir = resource_dir;
     std::string resource_include = resource_dir + "/include";
