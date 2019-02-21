@@ -1912,11 +1912,33 @@ ClangASTContext::GetUniqueNamespaceDeclaration(const char *name,
         return namespace_decl;
     }
 
+    // Check if the namespace is one of the inline namespaces inside the
+    // 'std' namespace. Currently that is either '__1' for libc++ or
+    // '__cxx11' for stdlibc++.
+    StringRef name_ref = StringRef(name);
+    bool is_inline_name = (name_ref == "__1" || name_ref == "__cxx11");
+    bool is_inline = is_inline_name && decl_ctx->isStdNamespace();
+    llvm::errs() << "N:" << name << ":" << is_inline_name << ":" << is_inline << "\n";
+
     namespace_decl =
-        NamespaceDecl::Create(*ast, decl_ctx, false, SourceLocation(),
+        NamespaceDecl::Create(*ast, decl_ctx, is_inline, SourceLocation(),
                               SourceLocation(), &identifier_info, nullptr);
 
     decl_ctx->addDecl(namespace_decl);
+
+    // If we created an inline namespace, make it available in the lookup
+    // of the parent via an UsingDirectiveDecl.
+    if (namespace_decl->isInline()) {
+     auto  UD = UsingDirectiveDecl::Create(*ast, decl_ctx,
+                                      /* 'using' */ SourceLocation(),
+                                      /* 'namespace' */ SourceLocation(),
+                                      /* qualifier */ NestedNameSpecifierLoc(),
+                                      /* identifier */ SourceLocation(),
+                                      namespace_decl,
+                                      /* Ancestor */ decl_ctx);
+      UD->setImplicit();
+      decl_ctx->addDecl(UD);
+    }
   } else {
     if (decl_ctx == translation_unit_decl) {
       namespace_decl = translation_unit_decl->getAnonymousNamespace();
