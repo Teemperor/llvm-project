@@ -118,6 +118,74 @@ static clang::DeclContext *getEqualLocalContext(clang::Sema &sema,
   return sema.getASTContext().getTranslationUnitDecl();
 }
 
+llvm::Optional<Decl *> ClangASTImporter::TryGetStdDeclFromModule(clang::ASTContext *dst_ast, clang::ASTContext *src_ast, clang::Sema *sema,
+    Decl *d) {
+
+  RecordDecl *decl = dyn_cast<RecordDecl>(d);
+  if (!decl)
+    return {};
+
+  DeclContext *ctxt = decl->getDeclContext();
+  if (!ctxt->isStdNamespace())
+    return {};
+
+  MinionSP minion_sp(GetMinion(dst_ast, src_ast));
+
+  ClassTemplateSpecializationDecl *temp = dyn_cast<ClassTemplateSpecializationDecl>(decl);
+  if (!temp)
+    return {};
+
+  ClassTemplateDecl *temp_base = temp->getSpecializedTemplate();
+  if (!temp_base)
+    return {};
+
+  auto &foreign_args = temp->getTemplateInstantiationArgs();
+  llvm::SmallVector<TemplateArgument, 4> imported_args;
+
+  for (const TemplateArgument& T : foreign_args.asArray()) {
+    QualType our_type = minion_sp->Import(T.getAsType());
+    imported_args.push_back(TemplateArgument(our_type));
+  }
+
+  ClassTemplateDecl *new_class_template = nullptr;
+
+  auto &S = *sema;
+  auto lookup = do_lookup(S, decl->getName(), getEqualLocalContext(S, decl->getDeclContext()));
+  for (auto LD : *lookup) {
+    if ((new_class_template = dyn_cast<ClassTemplateDecl>(LD)))
+      break;
+  }
+  if (!new_class_template)
+    return {};
+
+  new_class_template->dumpColor();
+  // Find the class template specialization declaration that
+  // corresponds to these arguments.
+  void *InsertPos = nullptr;
+  ClassTemplateSpecializationDecl *found_decl
+    = new_class_template->findSpecialization(imported_args, InsertPos);
+  if (!found_decl) {
+    // This is the first time we have referenced this class template
+    // specialization. Create the canonical declaration and add it to
+    // the set of specializations.
+    found_decl = ClassTemplateSpecializationDecl::Create(*dst_ast,
+                          new_class_template->getTemplatedDecl()->getTagKind(),
+                                              new_class_template->getDeclContext(),
+                          new_class_template->getTemplatedDecl()->getLocation(),
+                                              new_class_template->getLocation(),
+                                                   new_class_template,
+                                                   imported_args, nullptr);
+    new_class_template->AddSpecialization(found_decl, InsertPos);
+    if (new_class_template->isOutOfLine())
+      found_decl->setLexicalDeclContext(new_class_template->getLexicalDeclContext());
+  }
+
+  if (found_decl) {
+    found_decl->dumpColor();
+    return found_decl;
+  }
+  return {};
+}
 
 clang::QualType ClangASTImporter::CopyType(clang::ASTContext *dst_ast,
                                            clang::ASTContext *src_ast,
@@ -129,58 +197,7 @@ clang::QualType ClangASTImporter::CopyType(clang::ASTContext *dst_ast,
 
   const clang::Type *t = type.getTypePtr();
   if (t->isRecordType()) {
-    TagDecl *td = const_cast<TagDecl*>(t->getAsTagDecl());
-    RecordDecl *rd = dyn_cast<RecordDecl>(td);
-    ClassTemplateSpecializationDecl *temp = dyn_cast<ClassTemplateSpecializationDecl>(rd);
-    ClassTemplateDecl *temp_base = temp->getSpecializedTemplate();
-    if (temp_base) {
-      //temp_base->dumpColor();
-
-      auto &foreign_args = temp->getTemplateInstantiationArgs();
-      llvm::SmallVector<TemplateArgument, 4> imported_args;
-
-      for (const TemplateArgument& T : foreign_args.asArray()) {
-        QualType our_type = minion_sp->Import(T.getAsType());
-        imported_args.push_back(TemplateArgument(our_type));
-      }
-
-      ClassTemplateDecl *new_class_template = nullptr;
-
-      auto &S = *sema;
-      auto lookup = do_lookup(S, rd->getName(), getEqualLocalContext(S, rd->getDeclContext()));
-      for (auto LD : *lookup) {
-        if ((new_class_template = dyn_cast<ClassTemplateDecl>(LD)))
-          break;
-      }
-      if (new_class_template) {
-        new_class_template->dumpColor();
-           // Find the class template specialization declaration that
-          // corresponds to these arguments.
-          void *InsertPos = nullptr;
-          ClassTemplateSpecializationDecl *Decl
-            = new_class_template->findSpecialization(imported_args, InsertPos);
-          if (!Decl) {
-            // This is the first time we have referenced this class template
-            // specialization. Create the canonical declaration and add it to
-            // the set of specializations.
-            Decl = ClassTemplateSpecializationDecl::Create(*dst_ast,
-                                  new_class_template->getTemplatedDecl()->getTagKind(),
-                                                      new_class_template->getDeclContext(),
-                                  new_class_template->getTemplatedDecl()->getLocation(),
-                                                      new_class_template->getLocation(),
-                                                           new_class_template,
-                                                           imported_args, nullptr);
-            new_class_template->AddSpecialization(Decl, InsertPos);
-            if (new_class_template->isOutOfLine())
-              Decl->setLexicalDeclContext(new_class_template->getLexicalDeclContext());
-          }
-
-          if (Decl) {
-            Decl->dumpColor();
-            //return Decl;
-          }
-      }
-    }
+    TryGetStdDeclFromModule(dst_ast, src_ast, sema, t->getAsTagDecl());
   }
 
   if (minion_sp)
@@ -221,12 +238,18 @@ CompilerType ClangASTImporter::CopyType(ClangASTContext &dst_ast,
 
 clang::Decl *ClangASTImporter::CopyDecl(clang::ASTContext *dst_ast,
                                         clang::ASTContext *src_ast,
-                                        clang::Decl *decl) {
+                                        clang::Decl *decl,
+                                        clang::Sema *sema) {
   MinionSP minion_sp;
 
   minion_sp = GetMinion(dst_ast, src_ast);
 
   if (minion_sp) {
+    auto std_decl = TryGetStdDeclFromModule(dst_ast, src_ast, sema, decl);
+    if (std_decl) {
+      return *std_decl;
+    }
+
     clang::Decl *result = minion_sp->Import(decl);
 
     if (!result) {
@@ -428,7 +451,7 @@ clang::Decl *ClangASTImporter::DeportDecl(clang::ASTContext *dst_ctx,
 
   minion_sp->InitDeportWorkQueues(&decls_to_deport, &decls_already_deported);
 
-  clang::Decl *result = CopyDecl(dst_ctx, src_ctx, decl);
+  clang::Decl *result = CopyDecl(dst_ctx, src_ctx, decl, nullptr);
 
   minion_sp->ExecuteDeportWorkQueues();
 

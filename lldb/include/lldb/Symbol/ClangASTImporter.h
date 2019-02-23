@@ -108,14 +108,15 @@ public:
                         clang::Sema *sema = nullptr);
 
   clang::Decl *CopyDecl(clang::ASTContext *dst_ctx, clang::ASTContext *src_ctx,
-                        clang::Decl *decl);
+                        clang::Decl *decl, clang::Sema *sema);
 
   lldb::opaque_compiler_type_t DeportType(clang::ASTContext *dst_ctx,
                                           clang::ASTContext *src_ctx,
                                           lldb::opaque_compiler_type_t type);
 
   clang::Decl *DeportDecl(clang::ASTContext *dst_ctx,
-                          clang::ASTContext *src_ctx, clang::Decl *decl);
+                          clang::ASTContext *src_ctx,
+                          clang::Decl *decl);
 
   void InsertRecordDecl(clang::RecordDecl *decl, const LayoutInfo &layout);
 
@@ -131,6 +132,8 @@ public:
   bool CanImport(const CompilerType &type);
 
   bool Import(const CompilerType &type);
+
+  llvm::Optional<clang::Decl *> TryGetStdDeclFromModule(clang::ASTContext *dst_ast, clang::ASTContext *src_ast, clang::Sema *sema, clang::Decl *decl);
 
   bool CompleteType(const CompilerType &compiler_type);
 

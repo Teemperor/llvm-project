@@ -518,6 +518,9 @@ void ClangASTSource::FindExternalLexicalDecls(
     llvm::function_ref<bool(Decl::Kind)> predicate,
     llvm::SmallVectorImpl<Decl *> &decls) {
 
+  if (decl_context->isStdNamespace())
+    return;
+
   if (HasMerger()) {
     if (auto *interface_decl = dyn_cast<ObjCInterfaceDecl>(decl_context)) {
       ObjCInterfaceDecl *complete_iface_decl =
@@ -1972,7 +1975,7 @@ clang::QualType ClangASTSource::CopyTypeWithMerger(
 clang::Decl *ClangASTSource::CopyDecl(Decl *src_decl) {
   clang::ASTContext &from_context = src_decl->getASTContext();
   if (m_ast_importer_sp) {
-    return m_ast_importer_sp->CopyDecl(m_ast_context, &from_context, src_decl);
+    return m_ast_importer_sp->CopyDecl(m_ast_context, &from_context, src_decl, sema);
   } else if (m_merger_up) {
     if (!m_merger_up->HasImporterForOrigin(from_context)) {
       lldbassert(0 && "Couldn't find the importer for a source context!");
