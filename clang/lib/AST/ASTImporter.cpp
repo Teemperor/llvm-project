@@ -2556,6 +2556,10 @@ ExpectedDecl ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
     assert(false);
   }
 
+  if (D->getName() == "vector") {
+    assert(false);
+  }
+
   // If this record has a definition in the translation unit we're coming from,
   // but this particular declaration is not that definition, import the
   // definition and map to that.

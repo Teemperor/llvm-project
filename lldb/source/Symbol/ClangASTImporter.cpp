@@ -125,13 +125,18 @@ llvm::Optional<Decl *> ClangASTImporter::TryGetStdDeclFromModule(clang::ASTConte
   if (!decl)
     return {};
 
+  llvm::errs() << "importing std decl\n";
+  llvm::errs() << decl->getQualifiedNameAsString() << "\n";
+  decl->dumpColor();
+
   DeclContext *ctxt = decl->getDeclContext();
   if (!ctxt->isStdNamespace())
     return {};
 
+  llvm::errs() << "in std\n";
   MinionSP minion_sp(GetMinion(dst_ast, src_ast));
 
-  ClassTemplateSpecializationDecl *temp = dyn_cast<ClassTemplateSpecializationDecl>(decl);
+  auto temp = dyn_cast<ClassTemplateSpecializationDecl>(decl);
   if (!temp)
     return {};
 
@@ -184,6 +189,7 @@ llvm::Optional<Decl *> ClangASTImporter::TryGetStdDeclFromModule(clang::ASTConte
     found_decl->dumpColor();
     return found_decl;
   }
+
   return {};
 }
 
@@ -197,7 +203,14 @@ clang::QualType ClangASTImporter::CopyType(clang::ASTContext *dst_ast,
 
   const clang::Type *t = type.getTypePtr();
   if (t->isRecordType()) {
-    TryGetStdDeclFromModule(dst_ast, src_ast, sema, t->getAsTagDecl());
+    auto r = TryGetStdDeclFromModule(dst_ast, src_ast, sema, t->getAsTagDecl());
+
+    if (r) {
+      auto rd = dyn_cast<RecordDecl>(*r);
+      rd->dumpColor();
+      const clang::Type *new_type = rd->getTypeForDecl();
+      return dst_ast->getQualifiedType(new_type, type.getLocalQualifiers());
+    }
   }
 
   if (minion_sp)
