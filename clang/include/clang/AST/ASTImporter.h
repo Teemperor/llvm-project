@@ -78,6 +78,11 @@ class TypeSourceInfo;
   // the different entries in a given redecl chain.
   llvm::SmallVector<Decl*, 2> getCanonicalForwardRedeclChain(Decl* D);
 
+  struct ChainedASTImporter {
+    virtual ~ChainedASTImporter() = default;
+    virtual llvm::Optional<Decl *> Import(Decl *FromD) = 0;
+  };
+
   /// Imports selected nodes from one AST context into another context,
   /// merging AST nodes where appropriate.
   class ASTImporter {
@@ -143,6 +148,8 @@ class TypeSourceInfo;
     void AddToLookupTable(Decl *ToD);
 
   public:
+
+    ChainedASTImporter* Chain = nullptr;
 
     /// \param ToContext The context we'll be importing into.
     ///

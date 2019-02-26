@@ -17,6 +17,8 @@
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "llvm/Support/raw_ostream.h"
+#include "clang/Sema/Sema.h"
+#include "clang/Sema/Lookup.h"
 
 #include <memory>
 
@@ -53,10 +55,191 @@ void ClangASTMetrics::DumpCounters(Log *log) {
   DumpCounters(log, local_counters);
 }
 
+static void makeScopes(clang::Sema &sema,
+                          clang::DeclContext *ctxt,
+                       std::vector<clang::Scope *> &result) {
+  if (auto parent = ctxt->getParent()) {
+    makeScopes(sema, parent, result);
+
+    clang::Scope *scope = new clang::Scope(result.back(), clang::Scope::DeclScope, sema.getDiagnostics());
+    scope->setEntity(ctxt);
+    result.push_back(scope);
+  } else
+    result.push_back(sema.TUScope);
+}
+
+static std::unique_ptr<clang::LookupResult> do_lookup(clang::Sema &sema,
+                                                      llvm::StringRef name,
+                                                      clang::DeclContext *ctxt) {
+  clang::IdentifierInfo &ident =
+      sema.getASTContext().Idents.get(name);
+
+  std::unique_ptr<clang::LookupResult> lookup_result;
+  lookup_result.reset(new clang::LookupResult(
+      sema, clang::DeclarationName(&ident),
+      clang::SourceLocation(), clang::Sema::LookupOrdinaryName));
+
+  std::vector<clang::Scope *> scopes;
+  makeScopes(sema, ctxt, scopes);
+  sema.LookupName(*lookup_result, scopes.back());
+  // TODO: free memory of scopes
+
+  return lookup_result;
+}
+
+static clang::DeclContext *getEqualLocalContext(clang::Sema &sema,
+                                                clang::DeclContext *foreign_ctxt) {
+
+  while (foreign_ctxt && foreign_ctxt->isInlineNamespace())
+    foreign_ctxt = foreign_ctxt->getParent();
+
+  if (!foreign_ctxt)
+    return sema.getASTContext().getTranslationUnitDecl();
+
+  clang::DeclContext *parent = getEqualLocalContext(sema, foreign_ctxt->getParent());
+
+  if (foreign_ctxt->isNamespace()) {
+    clang::NamedDecl *ns = llvm::dyn_cast<clang::NamedDecl>(foreign_ctxt);
+    llvm::StringRef ns_name = ns->getName();
+
+    auto lookup_result = do_lookup(sema, ns_name, parent);
+    for (clang::NamedDecl *named_decl : *lookup_result) {
+      if (named_decl->getName() != ns_name)
+        continue;
+      if (named_decl->getKind() != ns->getKind())
+        continue;
+
+      if (clang::DeclContext *DC = llvm::dyn_cast<clang::DeclContext>(named_decl))
+        return DC->getPrimaryContext();
+    }
+    llvm::errs() << "CANT " << ns->getNameAsString() << "\n";
+  }
+  return sema.getASTContext().getTranslationUnitDecl();
+}
+
+namespace {
+class StdTemplateSpecializer : public ChainedASTImporter {
+  ASTImporter &m_importer;
+  clang::Sema *m_sema;
+
+  bool isValid() const {
+    return m_sema != nullptr;
+  }
+
+public:
+  StdTemplateSpecializer(ASTImporter &importer, clang::Sema *sema)
+    : m_importer(importer), m_sema(sema) {
+    m_importer.Chain = this;
+  }
+
+  ~StdTemplateSpecializer() override {
+    m_importer.Chain = nullptr;
+  }
+
+  bool isStdNamespace(const DeclContext *ctxt) const {
+    if (!ctxt->isNamespace())
+      return false;
+
+    const auto *ND = cast<NamespaceDecl>(ctxt);
+    if (ND->isInline()) {
+      return isStdNamespace(ND->getParent());
+    }
+
+    const IdentifierInfo *II = ND->getIdentifier();
+    if (II) {
+      if (II->isStr("__cxx11") || II->isStr("__1"))
+        return isStdNamespace(ND->getParent());
+    }
+
+    if (!ctxt->getParent()->getRedeclContext()->isTranslationUnit())
+      return false;
+
+    return II && II->isStr("std");
+  }
+
+  llvm::Optional<Decl *> Import(Decl *d) override {
+      if (!isValid())
+        return {};
+
+      RecordDecl *decl = dyn_cast<RecordDecl>(d);
+      if (!decl)
+        return {};
+
+      //llvm::errs() << "importing std decl\n";
+      //llvm::errs() << decl->getQualifiedNameAsString() << "\n";
+      //decl->dumpColor();
+
+      DeclContext *ctxt = decl->getDeclContext();
+      if (!isStdNamespace(ctxt))
+        return {};
+
+      //llvm::errs() << "in std\n";
+
+      auto temp = dyn_cast<ClassTemplateSpecializationDecl>(decl);
+      if (!temp)
+        return {};
+
+      ClassTemplateDecl *temp_base = temp->getSpecializedTemplate();
+      if (!temp_base)
+        return {};
+
+      auto &foreign_args = temp->getTemplateInstantiationArgs();
+      llvm::SmallVector<TemplateArgument, 4> imported_args;
+
+      for (const TemplateArgument& T : foreign_args.asArray()) {
+        QualType our_type = m_importer.Import(T.getAsType());
+        imported_args.push_back(TemplateArgument(our_type));
+      }
+
+      ClassTemplateDecl *new_class_template = nullptr;
+
+      auto lookup = do_lookup(*m_sema, decl->getName(), getEqualLocalContext(*m_sema, decl->getDeclContext()));
+      for (auto LD : *lookup) {
+        if ((new_class_template = dyn_cast<ClassTemplateDecl>(LD)))
+          break;
+      }
+      if (!new_class_template)
+        return {};
+
+      // Find the class template specialization declaration that
+      // corresponds to these arguments.
+      void *InsertPos = nullptr;
+      ClassTemplateSpecializationDecl *found_decl
+        = new_class_template->findSpecialization(imported_args, InsertPos);
+      if (!found_decl) {
+        // This is the first time we have referenced this class template
+        // specialization. Create the canonical declaration and add it to
+        // the set of specializations.
+        found_decl = ClassTemplateSpecializationDecl::Create(m_sema->getASTContext(),
+                              new_class_template->getTemplatedDecl()->getTagKind(),
+                                                  new_class_template->getDeclContext(),
+                              new_class_template->getTemplatedDecl()->getLocation(),
+                                                  new_class_template->getLocation(),
+                                                       new_class_template,
+                                                       imported_args, nullptr);
+        new_class_template->AddSpecialization(found_decl, InsertPos);
+        if (new_class_template->isOutOfLine())
+          found_decl->setLexicalDeclContext(new_class_template->getLexicalDeclContext());
+      }
+
+      if (found_decl) {
+        return found_decl;
+      }
+
+      return {};
+  }
+};
+}
+
 clang::QualType ClangASTImporter::CopyType(clang::ASTContext *dst_ast,
                                            clang::ASTContext *src_ast,
-                                           clang::QualType type) {
+                                           clang::QualType type,
+                                           clang::Sema *sema) {
+  using namespace clang;
+
   MinionSP minion_sp(GetMinion(dst_ast, src_ast));
+
+  StdTemplateSpecializer spec(*minion_sp, sema);
 
   if (minion_sp)
     return minion_sp->Import(type);
@@ -67,13 +250,15 @@ clang::QualType ClangASTImporter::CopyType(clang::ASTContext *dst_ast,
 lldb::opaque_compiler_type_t
 ClangASTImporter::CopyType(clang::ASTContext *dst_ast,
                            clang::ASTContext *src_ast,
-                           lldb::opaque_compiler_type_t type) {
-  return CopyType(dst_ast, src_ast, QualType::getFromOpaquePtr(type))
+                           lldb::opaque_compiler_type_t type,
+                           clang::Sema *sema) {
+  return CopyType(dst_ast, src_ast, QualType::getFromOpaquePtr(type), sema)
       .getAsOpaquePtr();
 }
 
 CompilerType ClangASTImporter::CopyType(ClangASTContext &dst_ast,
-                                        const CompilerType &src_type) {
+                                        const CompilerType &src_type,
+                                        clang::Sema *sema) {
   clang::ASTContext *dst_clang_ast = dst_ast.getASTContext();
   if (dst_clang_ast) {
     ClangASTContext *src_ast =
@@ -82,7 +267,7 @@ CompilerType ClangASTImporter::CopyType(ClangASTContext &dst_ast,
       clang::ASTContext *src_clang_ast = src_ast->getASTContext();
       if (src_clang_ast) {
         lldb::opaque_compiler_type_t dst_clang_type = CopyType(
-            dst_clang_ast, src_clang_ast, src_type.GetOpaqueQualType());
+            dst_clang_ast, src_clang_ast, src_type.GetOpaqueQualType(), sema);
 
         if (dst_clang_type)
           return CompilerType(&dst_ast, dst_clang_type);
@@ -94,10 +279,13 @@ CompilerType ClangASTImporter::CopyType(ClangASTContext &dst_ast,
 
 clang::Decl *ClangASTImporter::CopyDecl(clang::ASTContext *dst_ast,
                                         clang::ASTContext *src_ast,
-                                        clang::Decl *decl) {
+                                        clang::Decl *decl,
+                                        clang::Sema *sema) {
   MinionSP minion_sp;
 
   minion_sp = GetMinion(dst_ast, src_ast);
+
+  StdTemplateSpecializer spec(*minion_sp, sema);
 
   if (minion_sp) {
     clang::Decl *result = minion_sp->Import(decl);
@@ -301,7 +489,7 @@ clang::Decl *ClangASTImporter::DeportDecl(clang::ASTContext *dst_ctx,
 
   minion_sp->InitDeportWorkQueues(&decls_to_deport, &decls_already_deported);
 
-  clang::Decl *result = CopyDecl(dst_ctx, src_ctx, decl);
+  clang::Decl *result = CopyDecl(dst_ctx, src_ctx, decl, nullptr);
 
   minion_sp->ExecuteDeportWorkQueues();
 
@@ -852,7 +1040,7 @@ void ClangASTImporter::Minion::ExecuteDeportWorkQueues() {
 
     if (TagDecl *tag_decl = dyn_cast<TagDecl>(decl)) {
       if (TagDecl *original_tag_decl = dyn_cast<TagDecl>(original_decl)) {
-        if (original_tag_decl->isCompleteDefinition()) {
+        if (original_tag_decl->isCompleteDefinition() && !tag_decl->isCompleteDefinition()) {
           ImportDefinitionTo(tag_decl, original_tag_decl);
           tag_decl->setCompleteDefinition(true);
         }

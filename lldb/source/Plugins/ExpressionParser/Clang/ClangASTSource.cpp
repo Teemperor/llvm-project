@@ -649,8 +649,10 @@ void ClangASTSource::FindExternalLexicalDecls(
         copied_decl->setDeclContext(decl_context_non_const);
       }
 
-      if (!decl_context_non_const->containsDecl(copied_decl))
-        decl_context_non_const->addDeclInternal(copied_decl);
+      if (!decl_context_non_const->containsDecl(copied_decl)) {
+        if (copied_decl->getLexicalDeclContext() == decl_context_non_const)
+          decl_context_non_const->addDeclInternal(copied_decl);
+      }
     }
   }
 
@@ -1972,7 +1974,7 @@ clang::QualType ClangASTSource::CopyTypeWithMerger(
 clang::Decl *ClangASTSource::CopyDecl(Decl *src_decl) {
   clang::ASTContext &from_context = src_decl->getASTContext();
   if (m_ast_importer_sp) {
-    return m_ast_importer_sp->CopyDecl(m_ast_context, &from_context, src_decl);
+    return m_ast_importer_sp->CopyDecl(m_ast_context, &from_context, src_decl, sema);
   } else if (m_merger_up) {
     if (!m_merger_up->HasImporterForOrigin(from_context)) {
       lldbassert(0 && "Couldn't find the importer for a source context!");
@@ -2020,7 +2022,8 @@ CompilerType ClangASTSource::GuardedCopyType(const CompilerType &src_type) {
   if (m_ast_importer_sp) {
     copied_qual_type =
         m_ast_importer_sp->CopyType(m_ast_context, src_ast->getASTContext(),
-                                    ClangUtil::GetQualType(src_type));
+                                    ClangUtil::GetQualType(src_type),
+                                    sema);
   } else if (m_merger_up) {
     copied_qual_type =
         CopyTypeWithMerger(*src_ast->getASTContext(), *m_merger_up,

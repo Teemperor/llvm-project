@@ -1,4 +1,4 @@
-//===- ASTImporter.cpp - Importing ASTs from other Contexts ---------------===//
+﻿//===- ASTImporter.cpp - Importing ASTs from other Contexts ---------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -3097,8 +3097,16 @@ ExpectedDecl ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
         ToFunction, D, Importer.getToContext(), cast<CXXRecordDecl>(DC),
         ToInnerLocStart, NameInfo, T, TInfo,
         FromConstructor->isExplicit(),
-        D->isInlineSpecified(), D->isImplicit(), D->isConstexpr()))
+          D->isInlineSpecified(), D->isImplicit(), D->isConstexpr())) {
+
+      if (ToFunction->getQualifiedNameAsString() == "std::__1::tuple::tuple<_Tp...>") {
+        if (ToFunction->getNumParams() != 0) {
+          ToFunction->dumpColor();
+        }
+      }
+
       return ToFunction;
+    }
   } else if (CXXDestructorDecl *FromDtor = dyn_cast<CXXDestructorDecl>(D)) {
 
     auto Imp =
@@ -3180,6 +3188,9 @@ ExpectedDecl ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
     ToFunction->addDeclInternal(Param);
   }
   ToFunction->setParams(Parameters);
+  if (ToFunction->getNumParams() > 0) {
+    ToFunction->getParamDecl(0);
+  }
 
   // We need to complete creation of FunctionProtoTypeLoc manually with setting
   // params it refers to.
@@ -3222,7 +3233,8 @@ ExpectedDecl ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
   bool IsFriend = D->isInIdentifierNamespace(Decl::IDNS_OrdinaryFriend);
 
   // TODO Can we generalize this approach to other AST nodes as well?
-  if (D->getDeclContext()->containsDeclAndLoad(D))
+  if (D->getDeclContext()->containsDeclAndLoad(D) &&
+      !DC->containsDeclAndLoad(ToFunction))
     DC->addDeclInternal(ToFunction);
   if (DC != LexicalDC && D->getLexicalDeclContext()->containsDeclAndLoad(D))
     LexicalDC->addDeclInternal(ToFunction);
@@ -3245,6 +3257,12 @@ ExpectedDecl ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
     ExpectedDecl ToRedeclOrErr = import(*RedeclIt);
     if (!ToRedeclOrErr)
       return ToRedeclOrErr.takeError();
+  }
+
+  if (ToFunction->getQualifiedNameAsString() == "std::__1::tuple::tuple<_Tp...>") {
+    if (ToFunction->getNumParams() != 0) {
+      ToFunction->dumpColor();
+    }
   }
 
   return ToFunction;
@@ -7826,6 +7844,12 @@ TranslationUnitDecl *ASTImporter::GetFromTU(Decl *ToD) {
 Expected<Decl *> ASTImporter::Import_New(Decl *FromD) {
   if (!FromD)
     return nullptr;
+
+  if (Chain) {
+    llvm::Optional<Decl *> NewD = Chain->Import(FromD);
+    if (NewD)
+      return *NewD;
+  }
 
   ASTNodeImporter Importer(*this);
 

@@ -385,6 +385,8 @@ public:
   //------------------------------------------------------------------
   bool IgnoreName(const ConstString name, bool ignore_all_dollar_names);
 
+  clang::Sema *sema = nullptr;
+
 public:
   //------------------------------------------------------------------
   /// Copies a single Decl into the parser's AST context.
