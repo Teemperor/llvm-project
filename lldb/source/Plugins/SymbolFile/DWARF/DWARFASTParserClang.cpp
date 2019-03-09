@@ -3798,8 +3798,12 @@ DWARFASTParserClang::ResolveNamespaceDIE(const DWARFDIE &die) {
       const char *namespace_name = die.GetName();
       clang::DeclContext *containing_decl_ctx =
           GetClangDeclContextContainingDIE(die, nullptr);
+      bool is_inline =
+          die.GetAttributeValueAsUnsigned(DW_AT_export_symbols, 0) != 0;
+
       namespace_decl = m_ast.GetUniqueNamespaceDeclaration(namespace_name,
-                                                           containing_decl_ctx);
+                                                           containing_decl_ctx,
+                                                           is_inline);
       Log *log =
           nullptr; // (LogChannelDWARF::GetLogIfAll(DWARF_LOG_DEBUG_INFO));
       if (log) {
