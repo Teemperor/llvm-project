@@ -308,17 +308,84 @@ TypeFromUser ClangExpressionDeclMap::DeportType(ClangASTContext &target,
   }
 }
 
+static bool inStdNamespace(DeclContext *d) {
+  while (d && !d->isTranslationUnit()) {
+    if (d->isStdNamespace())
+      return true;
+    d = d->getParent();
+  }
+  return false;
+}
+
+static llvm::Optional<SplitQualType> isDesugarTarget(SplitQualType st) {
+  const clang::Type *t = st.Ty;
+  if (const TypedefType *tt = t->getAs<TypedefType>()) {
+    TypedefNameDecl *d = tt->getDecl();
+    if (!inStdNamespace(d->getDeclContext()))
+      return st;
+  }
+
+  if (auto pt = t->getAs<SubstTemplateTypeParmType>())
+    return st.getSingleStepDesugaredType();
+
+  return llvm::Optional<SplitQualType>();
+}
+
+static const SplitQualType desugarTo(SplitQualType original_st) {
+  SplitQualType st = original_st;
+  SplitQualType new_st = st.getSingleStepDesugaredType();
+
+  while (new_st != st) {
+    if (llvm::Optional<SplitQualType> s = isDesugarTarget(new_st))
+      return *s;
+
+    st = new_st;
+    new_st = st.getSingleStepDesugaredType();
+  }
+
+  return original_st;
+}
+
+static QualType desugarStdType(QualType type) {
+  SplitQualType st = type.getSplitUnqualifiedType();
+  st = desugarTo(st);
+  return QualType(st.Ty, st.Quals.getAsOpaqueValue());
+}
+
+static bool shouldDesugarStdType(QualType qtype) {
+  const clang::Type *t = qtype.getTypePtr();
+  if (const TypedefType *tt = t->getAs<TypedefType>()) {
+    TypedefNameDecl *d = tt->getDecl();
+    if (d->getName() != "size_type" && d->getName() != "value_type")
+      return false;
+
+    if (RecordDecl *rd = dyn_cast<RecordDecl>(d->getDeclContext())) {
+      if (rd->getName() != "vector" && rd->getName() != "__vector_base")
+        return false;
+      if (inStdNamespace(d->getDeclContext()))
+        return true;
+    }
+  }
+  return false;
+}
+
 bool ClangExpressionDeclMap::AddPersistentVariable(const NamedDecl *decl,
                                                    ConstString name,
-                                                   TypeFromParser parser_type,
+                                                   TypeFromParser parser_type2,
                                                    bool is_result,
                                                    bool is_lvalue) {
   assert(m_parser_vars.get());
 
   ClangASTContext *ast =
-      llvm::dyn_cast_or_null<ClangASTContext>(parser_type.GetTypeSystem());
+      llvm::dyn_cast_or_null<ClangASTContext>(parser_type2.GetTypeSystem());
   if (ast == nullptr)
     return false;
+
+  QualType qtype(QualType::getFromOpaquePtr(parser_type2.GetOpaqueQualType()));
+  if (shouldDesugarStdType(qtype))
+    qtype = desugarStdType(qtype);
+
+  TypeFromParser parser_type(CompilerType(ast->getASTContext(), qtype));
 
   if (m_parser_vars->m_materializer && is_result) {
     Status err;

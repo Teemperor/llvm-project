@@ -3222,7 +3222,8 @@ ExpectedDecl ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
   bool IsFriend = D->isInIdentifierNamespace(Decl::IDNS_OrdinaryFriend);
 
   // TODO Can we generalize this approach to other AST nodes as well?
-  if (D->getDeclContext()->containsDeclAndLoad(D))
+  if (D->getDeclContext()->containsDeclAndLoad(D) &&
+      !DC->containsDeclAndLoad(ToFunction))
     DC->addDeclInternal(ToFunction);
   if (DC != LexicalDC && D->getLexicalDeclContext()->containsDeclAndLoad(D))
     LexicalDC->addDeclInternal(ToFunction);
@@ -7826,6 +7827,12 @@ TranslationUnitDecl *ASTImporter::GetFromTU(Decl *ToD) {
 Expected<Decl *> ASTImporter::Import_New(Decl *FromD) {
   if (!FromD)
     return nullptr;
+
+  if (Chain) {
+    llvm::Optional<Decl *> NewD = Chain->Import(FromD);
+    if (NewD)
+      return *NewD;
+  }
 
   ASTNodeImporter Importer(*this);
 

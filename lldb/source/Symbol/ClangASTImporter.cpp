@@ -11,12 +11,15 @@
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/ClangExternalASTSourceCommon.h"
 #include "lldb/Symbol/ClangUtil.h"
+#include "lldb/Symbol/StdModuleHandler.h"
 #include "lldb/Utility/LLDBAssert.h"
 #include "lldb/Utility/Log.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
 #include "llvm/Support/raw_ostream.h"
+#include "clang/Sema/Sema.h"
+#include "clang/Sema/Lookup.h"
 
 #include <memory>
 
@@ -56,7 +59,11 @@ void ClangASTMetrics::DumpCounters(Log *log) {
 clang::QualType ClangASTImporter::CopyType(clang::ASTContext *dst_ast,
                                            clang::ASTContext *src_ast,
                                            clang::QualType type) {
+  using namespace clang;
+
   MinionSP minion_sp(GetMinion(dst_ast, src_ast));
+
+  StdTemplateSpecializer spec(*minion_sp, dst_ast);
 
   if (minion_sp)
     return minion_sp->Import(type);
@@ -98,6 +105,8 @@ clang::Decl *ClangASTImporter::CopyDecl(clang::ASTContext *dst_ast,
   MinionSP minion_sp;
 
   minion_sp = GetMinion(dst_ast, src_ast);
+
+  StdTemplateSpecializer spec(*minion_sp, dst_ast);
 
   if (minion_sp) {
     clang::Decl *result = minion_sp->Import(decl);
@@ -624,6 +633,8 @@ bool ClangASTImporter::CompleteAndFetchChildren(clang::QualType type) {
 
     MinionSP minion_sp(GetMinion(&tag_decl->getASTContext(), decl_origin.ctx));
 
+    StdTemplateSpecializer spec(*minion_sp, &tag_decl->getASTContext());
+
     TagDecl *origin_tag_decl = llvm::dyn_cast<TagDecl>(decl_origin.decl);
 
     for (Decl *origin_child_decl : origin_tag_decl->decls()) {
@@ -852,7 +863,7 @@ void ClangASTImporter::Minion::ExecuteDeportWorkQueues() {
 
     if (TagDecl *tag_decl = dyn_cast<TagDecl>(decl)) {
       if (TagDecl *original_tag_decl = dyn_cast<TagDecl>(original_decl)) {
-        if (original_tag_decl->isCompleteDefinition()) {
+        if (original_tag_decl->isCompleteDefinition() && !tag_decl->isCompleteDefinition()) {
           ImportDefinitionTo(tag_decl, original_tag_decl);
           tag_decl->setCompleteDefinition(true);
         }

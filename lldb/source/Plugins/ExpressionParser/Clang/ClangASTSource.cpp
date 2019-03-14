@@ -1,4 +1,4 @@
-//===-- ClangASTSource.cpp ---------------------------------------*- C++-*-===//
+﻿//===-- ClangASTSource.cpp ---------------------------------------*- C++-*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -649,8 +649,10 @@ void ClangASTSource::FindExternalLexicalDecls(
         copied_decl->setDeclContext(decl_context_non_const);
       }
 
-      if (!decl_context_non_const->containsDecl(copied_decl))
-        decl_context_non_const->addDeclInternal(copied_decl);
+      if (!decl_context_non_const->containsDecl(copied_decl)) {
+        if (copied_decl->getLexicalDeclContext() == decl_context_non_const)
+          decl_context_non_const->addDeclInternal(copied_decl);
+      }
     }
   }
 
@@ -761,6 +763,10 @@ void ClangASTSource::FindExternalVisibleDecls(NameSearchContext &context) {
     if (clang_namespace_decl)
       clang_namespace_decl->setHasExternalVisibleStorage();
   }
+}
+
+clang::Sema *ClangASTSource::getSema() {
+  return ClangASTContext::GetASTContext(m_ast_context)->getSema();
 }
 
 bool ClangASTSource::IgnoreName(const ConstString name,

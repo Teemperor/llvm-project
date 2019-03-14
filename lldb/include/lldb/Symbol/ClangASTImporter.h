@@ -99,7 +99,7 @@ public:
                        FileSystem::Instance().GetVirtualFileSystem()) {}
 
   clang::QualType CopyType(clang::ASTContext *dst_ctx,
-                           clang::ASTContext *src_ctx, clang::QualType type);
+                           clang::ASTContext *src_ctx, clang::QualType typer);
 
   lldb::opaque_compiler_type_t CopyType(clang::ASTContext *dst_ctx,
                                         clang::ASTContext *src_ctx,
@@ -115,7 +115,8 @@ public:
                                           lldb::opaque_compiler_type_t type);
 
   clang::Decl *DeportDecl(clang::ASTContext *dst_ctx,
-                          clang::ASTContext *src_ctx, clang::Decl *decl);
+                          clang::ASTContext *src_ctx,
+                          clang::Decl *decl);
 
   void InsertRecordDecl(clang::RecordDecl *decl, const LayoutInfo &layout);
 
