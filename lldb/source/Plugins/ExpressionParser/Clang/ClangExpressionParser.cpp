@@ -974,11 +974,12 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
                                *Consumer, TU_Complete, completion_consumer));
   m_compiler->setASTConsumer(std::move(Consumer));
 
-  if (ast_context.getLangOpts().Modules)
+  if (ast_context.getLangOpts().Modules) {
     m_compiler->createModuleManager();
+    m_ast_context->setSema(&m_compiler->getSema());
+  }
 
   ClangExpressionDeclMap *decl_map = type_system_helper->DeclMap();
-  m_ast_context->setSema(&m_compiler->getSema());
 
   if (decl_map) {
     decl_map->InstallCodeGenerator(&m_compiler->getASTConsumer());

@@ -46,7 +46,7 @@ public:
   typedef void (*CompleteObjCInterfaceDeclCallback)(void *baton,
                                                     clang::ObjCInterfaceDecl *);
 
-  clang::Sema *m_sema;
+  clang::Sema *m_sema = nullptr;
   void setSema(clang::Sema *s) {
     m_sema = s;
   }

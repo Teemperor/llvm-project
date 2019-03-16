@@ -1699,6 +1699,7 @@ static Error setTypedefNameForAnonDecl(TagDecl *From, TagDecl *To,
 
 Error ASTNodeImporter::ImportDefinition(
     RecordDecl *From, RecordDecl *To, ImportDefinitionKind Kind) {
+  llvm::errs() << "C:" << To->isCompleteDefinition() << "\n";
   if (To->getDefinition() || To->isBeingDefined()) {
     if (Kind == IDK_Everything)
       return ImportDeclContext(From, /*ForceImport=*/true);
@@ -1706,11 +1707,14 @@ Error ASTNodeImporter::ImportDefinition(
     return Error::success();
   }
 
+  llvm::errs() << "C:" << To->isCompleteDefinition() << "\n";
   To->startDefinition();
+  llvm::errs() << "C:" << To->isCompleteDefinition() << "\n";
 
   if (Error Err = setTypedefNameForAnonDecl(From, To, Importer))
     return Err;
 
+  llvm::errs() << "C:" << To->isCompleteDefinition() << "\n";
   // Add base classes.
   auto *ToCXX = dyn_cast<CXXRecordDecl>(To);
   auto *FromCXX = dyn_cast<CXXRecordDecl>(From);
@@ -1824,9 +1828,11 @@ Error ASTNodeImporter::ImportDefinition(
       ToCXX->setBases(Bases.data(), Bases.size());
   }
 
+  llvm::errs() << "C:" << To->isCompleteDefinition() << "\n";
   if (shouldForceImportDeclContext(Kind))
     if (Error Err = ImportDeclContext(From, /*ForceImport=*/true))
       return Err;
+  llvm::errs() << "C:" << To->isCompleteDefinition() << "\n";
 
   To->completeDefinition();
   return Error::success();

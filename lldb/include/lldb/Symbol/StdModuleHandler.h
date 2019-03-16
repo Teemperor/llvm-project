@@ -27,6 +27,9 @@ public:
   }
 
   llvm::Optional<clang::Decl *> Import(clang::Decl *d) override;
+  bool ImportDefinition(clang::Decl *d) override {
+    return Import(d).hasValue();
+  }
 };
 
 }

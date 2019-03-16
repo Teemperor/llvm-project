@@ -566,6 +566,7 @@ bool ClangASTImporter::CompleteTagDecl(clang::TagDecl *decl) {
 
   MinionSP minion_sp(GetMinion(&decl->getASTContext(), decl_origin.ctx));
 
+  StdTemplateSpecializer spec(*minion_sp, &decl->getASTContext());
   if (minion_sp)
     minion_sp->ImportDefinitionTo(decl, decl_origin.decl);
 

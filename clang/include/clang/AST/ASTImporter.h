@@ -81,6 +81,7 @@ class TypeSourceInfo;
   struct ChainedASTImporter {
     virtual ~ChainedASTImporter() = default;
     virtual llvm::Optional<Decl *> Import(Decl *FromD) = 0;
+    virtual bool ImportDefinition(Decl *FromD) = 0;
   };
 
   /// Imports selected nodes from one AST context into another context,

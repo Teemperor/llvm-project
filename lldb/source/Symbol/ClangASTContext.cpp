@@ -9868,6 +9868,9 @@ clang::ClassTemplateDecl *ClangASTContext::ParseClassTemplateDecl(
 }
 
 void ClangASTContext::CompleteTagDecl(void *baton, clang::TagDecl *decl) {
+  if (decl->isBeingDefined())
+    return;
+
   ClangASTContext *ast = (ClangASTContext *)baton;
   SymbolFile *sym_file = ast->GetSymbolFile();
   if (sym_file) {

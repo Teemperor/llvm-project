@@ -25,5 +25,6 @@ class TestVectorBasic(TestBase):
         # Activate importing of std module.
         self.runCmd("settings set target.import-std-module true")
 
-        # Calling some normal std functions that return non-template types.
-        self.expect("expr std::vector<int> a;", substrs=['(int) $0 = 3'])
+        self.expect("expr a.size()", substrs=['(size_t) $0 = 3'])
+        self.expect("expr a.front()", substrs=['(int) $0 = 3'])
+        self.expect("expr a.back()", substrs=['(int) $0 = 2'])
