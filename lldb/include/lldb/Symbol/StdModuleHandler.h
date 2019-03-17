@@ -15,7 +15,7 @@ namespace lldb_private {
 class StdTemplateSpecializer : public clang::ChainedASTImporter {
   clang::ASTImporter &m_importer;
   clang::Sema *m_sema;
-  const llvm::StringSet<> m_supported_templates;
+  llvm::StringSet<> m_supported_templates;
 
   bool isValid() const {
     return m_sema != nullptr;

@@ -369,7 +369,7 @@ static bool shouldDesugarStdType(QualType qtype) {
 
     if (RecordDecl *rd = dyn_cast<RecordDecl>(d->getDeclContext())) {
       if (!isOneOf(rd->getName(), {"vector", "__vector_base", "list", "deque",
-                                   "__deque_base"}))
+                                   "__deque_base", "shared_ptr"}))
         return false;
       if (inStdNamespace(d->getDeclContext()))
         return true;

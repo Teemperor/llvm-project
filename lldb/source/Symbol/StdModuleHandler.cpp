@@ -117,9 +117,18 @@ static llvm::Expected<DeclContext *> getEqualLocalDeclContext(Sema &sema,
 
 StdTemplateSpecializer::StdTemplateSpecializer(ASTImporter &importer,
                                                ASTContext *target)
-  : m_importer(importer), m_sema(ClangASTContext::GetASTContext(target)->getSema()),
-    m_supported_templates({"vector", "allocator", "list", "deque"}){
+  : m_importer(importer), m_sema(ClangASTContext::GetASTContext(target)->getSema()) {
   m_importer.Chain = this;
+  std::initializer_list<const char*> s = {"vector",
+                                          "list",
+                                          "deque",
+                                          // pointers
+                                          "shared_ptr",
+                                          "unique_ptr",
+                                          // utility
+                                          "allocator",
+                                         };
+  m_supported_templates.insert(s.begin(), s.end());
 }
 
 llvm::Optional<Decl *> StdTemplateSpecializer::tryInstantiateStdTemplate(Decl *d) {
