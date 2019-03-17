@@ -352,15 +352,24 @@ static QualType desugarStdType(QualType type) {
   return QualType(st.Ty, st.Quals.getAsOpaqueValue());
 }
 
+static bool isOneOf(llvm::StringRef s,
+                    std::initializer_list<const char *> options) {
+  for (const char * c : options)
+    if (s == c)
+      return true;
+  return false;
+}
+
 static bool shouldDesugarStdType(QualType qtype) {
   const clang::Type *t = qtype.getTypePtr();
   if (const TypedefType *tt = t->getAs<TypedefType>()) {
     TypedefNameDecl *d = tt->getDecl();
-    if (d->getName() != "size_type" && d->getName() != "value_type")
+    if (!isOneOf(d->getName(), {"size_type", "value_type"}))
       return false;
 
     if (RecordDecl *rd = dyn_cast<RecordDecl>(d->getDeclContext())) {
-      if (rd->getName() != "vector" && rd->getName() != "__vector_base")
+      if (!isOneOf(rd->getName(), {"vector", "__vector_base", "list", "deque",
+                                   "__deque_base"}))
         return false;
       if (inStdNamespace(d->getDeclContext()))
         return true;

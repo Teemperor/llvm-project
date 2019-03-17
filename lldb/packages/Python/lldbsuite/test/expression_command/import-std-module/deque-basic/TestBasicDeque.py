@@ -1,12 +1,12 @@
 """
-Test basic std::vector functionality.
+Test basic std::list functionality.
 """
 
 from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 from lldbsuite.test import lldbutil
 
-class TestVectorBasic(TestBase):
+class TestBasicDeque(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
@@ -26,20 +26,17 @@ class TestVectorBasic(TestBase):
 
         self.expect("expr a.size()", substrs=['(size_t) $0 = 3'])
         self.expect("expr a.front()", substrs=['(int) $1 = 3'])
-        self.expect("expr a[1]", substrs=['(int) $2 = 1'])
-        self.expect("expr a.back()", substrs=['(int) $3 = 2'])
+        self.expect("expr a.back()", substrs=['(int) $2 = 2'])
 
         self.expect("expr std::sort(a.begin(), a.end())")
-        self.expect("expr a.front()", substrs=['(int) $4 = 1'])
-        self.expect("expr a[1]", substrs=['(int) $5 = 2'])
-        self.expect("expr a.back()", substrs=['(int) $6 = 3'])
+        self.expect("expr a.front()", substrs=['(int) $3 = 1'])
+        self.expect("expr a.back()", substrs=['(int) $4 = 3'])
 
-        self.expect("expr a.front()", substrs=['(int) $7 = 1'])
-        self.expect("expr a[1]", substrs=['(int) $8 = 2'])
-        self.expect("expr a.back()", substrs=['(int) $9 = 3'])
+        self.expect("expr a.front()", substrs=['(int) $5 = 1'])
+        self.expect("expr a.back()", substrs=['(int) $6 = 3'])
 
         # FIXME: We shouldn't need to cast the result, but it seems LLDB can't
         # deduce the result type at the moment.
-        self.expect("expr (int)(*a.begin())", substrs=['(int) $10 = 1'])
-        self.expect("expr (int)(*a.rbegin())", substrs=['(int) $11 = 3'])
+        self.expect("expr (int)(*a.begin())", substrs=['(int) $7 = 1'])
+        self.expect("expr (int)(*a.rbegin())", substrs=['(int) $8 = 3'])
 
