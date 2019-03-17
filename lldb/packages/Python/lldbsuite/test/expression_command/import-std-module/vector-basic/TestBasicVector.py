@@ -22,7 +22,6 @@ class TestVectorBasic(TestBase):
         lldbutil.run_to_source_breakpoint(self,
             "// Set break point at this line.", lldb.SBFileSpec("main.cpp"))
 
-        # Activate importing of std module.
         self.runCmd("settings set target.import-std-module true")
 
         self.expect("expr a.size()", substrs=['(size_t) $0 = 3'])
@@ -30,8 +29,18 @@ class TestVectorBasic(TestBase):
         self.expect("expr a[1]", substrs=['(int) $2 = 1'])
         self.expect("expr a.back()", substrs=['(int) $3 = 2'])
 
-
         self.expect("expr std::sort(a.begin(), a.end())")
         self.expect("expr a.front()", substrs=['(int) $4 = 1'])
         self.expect("expr a[1]", substrs=['(int) $5 = 2'])
         self.expect("expr a.back()", substrs=['(int) $6 = 3'])
+
+        self.expect("expr std::sort(a.begin(), a.end())")
+        self.expect("expr a.front()", substrs=['(int) $7 = 1'])
+        self.expect("expr a[1]", substrs=['(int) $8 = 2'])
+        self.expect("expr a.back()", substrs=['(int) $9 = 3'])
+
+        # FIXME: We shouldn't need to cast the result, but it seems LLDB can't
+        # deduce the result type at the moment.
+        self.expect("expr (int)(*a.begin())", substrs=['(int) $10 = 1'])
+        self.expect("expr (int)(*a.rbegin())", substrs=['(int) $11 = 3'])
+

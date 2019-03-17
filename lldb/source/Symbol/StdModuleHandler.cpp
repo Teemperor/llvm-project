@@ -31,7 +31,7 @@ static void makeScopes(Sema &sema,
     result.push_back(sema.TUScope);
 }
 
-static std::unique_ptr<LookupResult> do_lookup(Sema &sema,
+static std::unique_ptr<LookupResult> buildLookupForCtxt(Sema &sema,
                                                       llvm::StringRef name,
                                                       DeclContext *ctxt) {
   IdentifierInfo &ident =
@@ -44,9 +44,12 @@ static std::unique_ptr<LookupResult> do_lookup(Sema &sema,
 
   std::vector<Scope *> scopes;
   makeScopes(sema, ctxt, scopes);
-  sema.LookupName(*lookup_result, scopes.back());
-  // TODO: free memory of scopes
 
+
+  sema.LookupName(*lookup_result, scopes.back());
+
+  // Delete all the allocated scopes beside the translation unit scope (which
+  // has depth 0.
   for (Scope *s : scopes)
     if (s->getDepth() != 0)
       delete s;
@@ -75,7 +78,7 @@ struct MissingDeclContext : public llvm::ErrorInfo<MissingDeclContext> {
 
 char MissingDeclContext::ID = 0;
 
-static llvm::Expected<DeclContext *> getEqualLocalContext(Sema &sema,
+static llvm::Expected<DeclContext *> getEqualLocalDeclContext(Sema &sema,
                                                 DeclContext *foreign_ctxt) {
 
   while (foreign_ctxt && foreign_ctxt->isInlineNamespace())
@@ -84,7 +87,7 @@ static llvm::Expected<DeclContext *> getEqualLocalContext(Sema &sema,
   if (!foreign_ctxt)
     return sema.getASTContext().getTranslationUnitDecl();
 
-  llvm::Expected<DeclContext *> parent = getEqualLocalContext(sema, foreign_ctxt->getParent());
+  llvm::Expected<DeclContext *> parent = getEqualLocalDeclContext(sema, foreign_ctxt->getParent());
   if (!parent)
     return parent;
 
@@ -92,7 +95,7 @@ static llvm::Expected<DeclContext *> getEqualLocalContext(Sema &sema,
     NamedDecl *ns = llvm::dyn_cast<NamedDecl>(foreign_ctxt);
     llvm::StringRef ns_name = ns->getName();
 
-    auto lookup_result = do_lookup(sema, ns_name, *parent);
+    auto lookup_result = buildLookupForCtxt(sema, ns_name, *parent);
     for (NamedDecl *named_decl : *lookup_result) {
       if (named_decl->getName() != ns_name)
         continue;
@@ -114,48 +117,58 @@ static llvm::Expected<DeclContext *> getEqualLocalContext(Sema &sema,
 
 StdTemplateSpecializer::StdTemplateSpecializer(ASTImporter &importer,
                                                ASTContext *target)
-  : m_importer(importer), m_sema(ClangASTContext::GetASTContext(target)->getSema()) {
+  : m_importer(importer), m_sema(ClangASTContext::GetASTContext(target)->getSema()),
+    m_supported_templates({"vector", "allocator"}){
   m_importer.Chain = this;
 }
 
-llvm::Optional<Decl *> StdTemplateSpecializer::Import(Decl *d) {
-  if (!isValid())
+llvm::Optional<Decl *> StdTemplateSpecializer::tryInstantiateStdTemplate(Decl *d) {
+  // If we don't have a template to instiantiate, then there is nothing to do.
+  auto td = dyn_cast<ClassTemplateSpecializationDecl>(d);
+  if (!td)
     return {};
 
-  auto *decl = dyn_cast<RecordDecl>(d);
-  if (!decl)
+  // We only care about templates in the std namespace.
+  if (!td->getDeclContext()->isStdNamespace())
     return {};
 
-  DeclContext *ctxt = decl->getDeclContext();
-  if (!ctxt->isStdNamespace())
+  if (m_supported_templates.find(td->getName()) == m_supported_templates.end())
     return {};
 
-  auto temp = llvm::dyn_cast<ClassTemplateSpecializationDecl>(decl);
-  if (!temp)
+  // Find the local DeclContext that corresponds to the DeclContext of our
+  // decl we want to import.
+  auto to_context = getEqualLocalDeclContext(*m_sema, td->getDeclContext());
+  if (!to_context) {
+    return {};
+  }
+
+  // Look up the template in our local context.
+  std::unique_ptr<LookupResult> lookup = buildLookupForCtxt(*m_sema,
+                                                            td->getName(),
+                                                            *to_context);
+
+  ClassTemplateDecl *new_class_template = nullptr;
+  for (auto LD : *lookup) {
+    if ((new_class_template = dyn_cast<ClassTemplateDecl>(LD)))
+      break;
+  }
+  if (!new_class_template)
     return {};
 
-  llvm::errs() << temp->getNameAsString() << "\n";
-  //assert(temp->getName() != "allocator");
-  if (temp->getName() != "vector" && temp->getName() != "allocator")
-    return {};
-
-  ClassTemplateDecl *temp_base = temp->getSpecializedTemplate();
-  if (!temp_base)
-    return {};
-
-  auto &foreign_args = temp->getTemplateInstantiationArgs();
+  // Import the foreign template arguments.
+  auto &foreign_args = td->getTemplateInstantiationArgs();
   llvm::SmallVector<TemplateArgument, 4> imported_args;
 
-  for (const TemplateArgument& T : foreign_args.asArray()) {
-    switch(T.getKind()) {
+  for (const TemplateArgument& arg : foreign_args.asArray()) {
+    switch(arg.getKind()) {
       case TemplateArgument::Type: {
-        QualType our_type = m_importer.Import(T.getAsType());
+        QualType our_type = m_importer.Import(arg.getAsType());
         imported_args.push_back(TemplateArgument(our_type));
         break;
       }
       case TemplateArgument::Integral: {
-        llvm::APSInt integral = T.getAsIntegral();
-        QualType our_type = m_importer.Import(T.getIntegralType());
+        llvm::APSInt integral = arg.getAsIntegral();
+        QualType our_type = m_importer.Import(arg.getIntegralType());
         imported_args.push_back(TemplateArgument(d->getASTContext(), integral,
                                                  our_type));
         break;
@@ -164,21 +177,6 @@ llvm::Optional<Decl *> StdTemplateSpecializer::Import(Decl *d) {
         return {};
     }
   }
-
-  ClassTemplateDecl *new_class_template = nullptr;
-
-  llvm::Expected<DeclContext *> context = getEqualLocalContext(*m_sema, decl->getDeclContext());
-  if (!context) {
-    return {};
-  }
-
-  auto lookup = do_lookup(*m_sema, decl->getName(), *context);
-  for (auto LD : *lookup) {
-    if ((new_class_template = dyn_cast<ClassTemplateDecl>(LD)))
-      break;
-  }
-  if (!new_class_template)
-    return {};
 
   // Find the class template specialization declaration that
   // corresponds to these arguments.
@@ -203,6 +201,15 @@ llvm::Optional<Decl *> StdTemplateSpecializer::Import(Decl *d) {
 
   if (found_decl)
     return found_decl;
+
+  return {};
+}
+
+llvm::Optional<Decl *> StdTemplateSpecializer::Import(Decl *d) {
+  if (!isValid())
+    return {};
+  if (auto result = tryInstantiateStdTemplate(d))
+    return result;
 
   return {};
 }
