@@ -23,6 +23,7 @@
 
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Symbol/CompilerDeclContext.h"
+#include "lldb/Symbol/StdModuleHandler.h"
 #include "lldb/lldb-types.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -234,7 +235,7 @@ private:
 
   typedef std::map<const clang::Decl *, DeclOrigin> OriginMap;
 
-  class Minion : public clang::ASTImporter {
+  class Minion : public clang::ASTImporter, public StdModuleHandler::Listener {
   public:
     Minion(ClangASTImporter &master, clang::ASTContext *target_ctx,
            clang::ASTContext *source_ctx)
@@ -266,6 +267,13 @@ private:
 
     clang::Decl *GetOriginalDecl(clang::Decl *To) override;
 
+    void importedDeclFromStdModule(clang::Decl *d) override;
+
+    /// Decls we should ignore when mapping decls back to their original
+    /// ASTContext. Used by the StdModuleHandler to mark declarations that
+    /// were created from the 'std' C++ module to prevent that the Importer
+    /// tries to sync them with the broken equivalent in the debug info AST.
+    std::set<clang::Decl *> m_decls_to_ignore;
     std::set<clang::NamedDecl *> *m_decls_to_deport;
     std::set<clang::NamedDecl *> *m_decls_already_deported;
     ClangASTImporter &m_master;

@@ -16,6 +16,8 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclObjC.h"
+#include "clang/Sema/Lookup.h"
+#include "clang/Sema/Sema.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <memory>
@@ -58,6 +60,8 @@ clang::QualType ClangASTImporter::CopyType(clang::ASTContext *dst_ast,
                                            clang::QualType type) {
   MinionSP minion_sp(GetMinion(dst_ast, src_ast));
 
+  StdModuleHandler spec(*minion_sp, minion_sp.get(), dst_ast);
+
   if (minion_sp)
     return minion_sp->Import(type);
 
@@ -98,6 +102,8 @@ clang::Decl *ClangASTImporter::CopyDecl(clang::ASTContext *dst_ast,
   MinionSP minion_sp;
 
   minion_sp = GetMinion(dst_ast, src_ast);
+
+  StdModuleHandler spec(*minion_sp, minion_sp.get(), dst_ast);
 
   if (minion_sp) {
     clang::Decl *result = minion_sp->Import(decl);
@@ -557,6 +563,7 @@ bool ClangASTImporter::CompleteTagDecl(clang::TagDecl *decl) {
 
   MinionSP minion_sp(GetMinion(&decl->getASTContext(), decl_origin.ctx));
 
+  StdModuleHandler spec(*minion_sp, minion_sp.get(), &decl->getASTContext());
   if (minion_sp)
     minion_sp->ImportDefinitionTo(decl, decl_origin.decl);
 
@@ -623,6 +630,9 @@ bool ClangASTImporter::CompleteAndFetchChildren(clang::QualType type) {
       return false;
 
     MinionSP minion_sp(GetMinion(&tag_decl->getASTContext(), decl_origin.ctx));
+
+    StdModuleHandler spec(*minion_sp, minion_sp.get(),
+                          &tag_decl->getASTContext());
 
     TagDecl *origin_tag_decl = llvm::dyn_cast<TagDecl>(decl_origin.decl);
 
@@ -943,6 +953,11 @@ clang::Decl *ClangASTImporter::Minion::Imported(clang::Decl *from,
 
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
 
+  // Some decls shouldn't be tracked here because they were not created by
+  // copying 'from' to 'to'. Just exit early for those.
+  if (m_decls_to_ignore.find(to) != m_decls_to_ignore.end())
+    return clang::ASTImporter::Imported(from, to);
+
   lldb::user_id_t user_id = LLDB_INVALID_UID;
   ClangASTMetadata *metadata = m_master.GetDeclMetadata(from);
   if (metadata)
@@ -1113,4 +1128,11 @@ clang::Decl *ClangASTImporter::Minion::GetOriginalDecl(clang::Decl *To) {
     return nullptr;
 
   return const_cast<clang::Decl *>(iter->second.decl);
+}
+
+void ClangASTImporter::Minion::importedDeclFromStdModule(Decl *d) {
+  // The StdModuleHandler is letting us know that it created this decl. Keep
+  // track of that decl for when we try to map it back to an ASTContext in
+  // Minion::Imported.
+  m_decls_to_ignore.insert(d);
 }
