@@ -316,11 +316,14 @@ class ASTImporterTestBase : public CompilerOptionSpecificTest {
     std::unique_ptr<ASTUnit> Unit;
     TranslationUnitDecl *TUDecl = nullptr;
     std::unique_ptr<ASTImporter> Importer;
-    TU(StringRef Code, StringRef FileName, ArgVector Args)
+    ImportStrategy *Strategy;
+    TU(StringRef Code, StringRef FileName, ArgVector Args,
+       ImportStrategy *Strategy = nullptr)
         : Code(Code), FileName(FileName),
           Unit(tooling::buildASTFromCodeWithArgs(this->Code, Args,
                                                  this->FileName)),
-          TUDecl(Unit->getASTContext().getTranslationUnitDecl()) {
+          TUDecl(Unit->getASTContext().getTranslationUnitDecl()),
+          Strategy(Strategy) {
       Unit->enableSourceFileDiagnostics();
     }
 
@@ -331,6 +334,7 @@ class ASTImporterTestBase : public CompilerOptionSpecificTest {
             new ASTImporter(ToAST->getASTContext(), ToAST->getFileManager(),
                             Unit->getASTContext(), Unit->getFileManager(),
                             false, &LookupTable));
+        Importer->setStrategy(Strategy);
       }
       assert(&ToAST->getASTContext() == &Importer->getToContext());
       createVirtualFileIfNeeded(ToAST, FileName, Code);
@@ -401,11 +405,12 @@ public:
   // Must not be called more than once within the same test.
   std::tuple<Decl *, Decl *>
   getImportedDecl(StringRef FromSrcCode, Language FromLang, StringRef ToSrcCode,
-                  Language ToLang, StringRef Identifier = DeclToImportID) {
+                  Language ToLang, StringRef Identifier = DeclToImportID,
+                  ImportStrategy *Strategy = nullptr) {
     ArgVector FromArgs = getArgVectorForLanguage(FromLang),
               ToArgs = getArgVectorForLanguage(ToLang);
 
-    FromTUs.emplace_back(FromSrcCode, InputFileName, FromArgs);
+    FromTUs.emplace_back(FromSrcCode, InputFileName, FromArgs, Strategy);
     TU &FromTU = FromTUs.back();
 
     assert(!ToAST);
@@ -453,6 +458,12 @@ public:
     assert(!ToAST);
     lazyInitToAST(ToLang, ToSrcCode, OutputFileName);
     return ToAST->getASTContext().getTranslationUnitDecl();
+  }
+
+  ASTImporter &getImporter(Decl *From, Language ToLang) {
+    lazyInitToAST(ToLang, "", OutputFileName);
+    TU *FromTU = findFromTU(From);
+    return *FromTU->Importer;
   }
 
   // Import the given Decl into the ToCtx.
@@ -542,6 +553,81 @@ TEST_P(CanonicalRedeclChain, ShouldBeSameForAllDeclInTheChain) {
 
   EXPECT_THAT(RedeclsD0, ::testing::ContainerEq(RedeclsD1));
   EXPECT_THAT(RedeclsD1, ::testing::ContainerEq(RedeclsD2));
+}
+
+namespace {
+class RedirectStrategy : public ImportStrategy {
+  llvm::Optional<Decl *> Import(ASTImporter &Importer, Decl *FromD) override {
+    auto *ND = dyn_cast<NamedDecl>(FromD);
+    if (!ND)
+      return {};
+    if (ND->getName() != "shouldNotBeImported")
+      return {};
+    for (Decl *D : Importer.getToContext().getTranslationUnitDecl()->decls())
+      if (auto ND = dyn_cast<NamedDecl>(D))
+        if (ND->getName() == "realDecl")
+          return ND;
+    return {};
+  }
+};
+} // namespace
+
+struct ImportStrategyTest : ASTImporterOptionSpecificTestBase {};
+
+// Test that the ImportStrategy can intercept an import call.
+TEST_P(ImportStrategyTest, InterceptImport) {
+  RedirectStrategy Strategy;
+  Decl *From, *To;
+  std::tie(From, To) = getImportedDecl("class shouldNotBeImported {};",
+                                       Lang_CXX, "class realDecl {};", Lang_CXX,
+                                       "shouldNotBeImported", &Strategy);
+  auto *Imported = cast<CXXRecordDecl>(To);
+  EXPECT_EQ(Imported->getQualifiedNameAsString(), "realDecl");
+
+  // Make sure the Strategy prevented the importing of the decl.
+  auto *ToTU = Imported->getTranslationUnitDecl();
+  auto Pattern = functionDecl(hasName("shouldNotBeImported"));
+  unsigned count =
+      DeclCounterWithPredicate<CXXRecordDecl>().match(ToTU, Pattern);
+  EXPECT_EQ(0U, count);
+}
+
+// Test that when we indirectly import a declaration the Strategy still works.
+// Also tests that the ImportStrategy allows the import process to continue when
+// we try to import a declaration that we ignore in the Strategy.
+TEST_P(ImportStrategyTest, InterceptIndirectImport) {
+  RedirectStrategy Strategy;
+  Decl *From, *To;
+  std::tie(From, To) =
+      getImportedDecl("class shouldNotBeImported {};"
+                      "class F { shouldNotBeImported f; };",
+                      Lang_CXX, "class realDecl {};", Lang_CXX, "F", &Strategy);
+
+  // Make sure the ImportStrategy prevented the importing of the decl.
+  auto *ToTU = To->getTranslationUnitDecl();
+  auto Pattern = functionDecl(hasName("shouldNotBeImported"));
+  unsigned count =
+      DeclCounterWithPredicate<CXXRecordDecl>().match(ToTU, Pattern);
+  EXPECT_EQ(0U, count);
+}
+
+namespace {
+class NoOpStrategy : public ImportStrategy {
+  llvm::Optional<Decl *> Import(ASTImporter &Importer, Decl *FromD) override {
+    return {};
+  }
+};
+} // namespace
+
+// Test a ImportStrategy that just does nothing.
+TEST_P(ImportStrategyTest, NoOpStrategy) {
+  NoOpStrategy Strategy;
+  Decl *From, *To;
+  std::tie(From, To) =
+      getImportedDecl("class declToImport {};", Lang_CXX, "class realDecl {};",
+                      Lang_CXX, DeclToImportID, &Strategy);
+  auto *Imported = cast<CXXRecordDecl>(To);
+  EXPECT_EQ(Imported->getQualifiedNameAsString(), "declToImport");
 }
 
 TEST_P(ImportExpr, ImportStringLiteral) {
@@ -5510,6 +5596,9 @@ INSTANTIATE_TEST_CASE_P(ParameterizedTests, ImportDecl,
                         DefaultTestValuesForRunOptions, );
 
 INSTANTIATE_TEST_CASE_P(ParameterizedTests, ASTImporterOptionSpecificTestBase,
+                        DefaultTestValuesForRunOptions, );
+
+INSTANTIATE_TEST_CASE_P(ParameterizedTests, ImportStrategyTest,
                         DefaultTestValuesForRunOptions, );
 
 INSTANTIATE_TEST_CASE_P(ParameterizedTests, ImportFunctions,

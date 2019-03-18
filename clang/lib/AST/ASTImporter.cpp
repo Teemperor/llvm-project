@@ -7837,6 +7837,21 @@ Expected<Decl *> ASTImporter::Import_New(Decl *FromD) {
     return ToD;
   }
 
+  // First check if our ImportStrategy wants to rewrite this import call.
+  if (Strategy) {
+    llvm::Optional<Decl *> NewD = Strategy->Import(*this, FromD);
+    // The strategy has found a decl for us and we pretend we successfully
+    // imported it.
+    if (NewD) {
+      // Update LookupTable and notify subclasses.
+      AddToLookupTable(*NewD);
+      Imported(FromD, *NewD);
+      // Update map of already imported decls.
+      MapImported(FromD, *NewD);
+      return *NewD;
+    }
+  }
+
   // Import the declaration.
   ExpectedDecl ToDOrErr = Importer.Visit(FromD);
   if (!ToDOrErr)

@@ -78,6 +78,20 @@ class TypeSourceInfo;
   // the different entries in a given redecl chain.
   llvm::SmallVector<Decl*, 2> getCanonicalForwardRedeclChain(Decl* D);
 
+  class ASTImporter;
+  /// Allows intercepting the import process of the ASTImporter.
+  struct ImportStrategy {
+    virtual ~ImportStrategy() = default;
+    /// Called from the ASTImporter before the given Decl is imported.
+    ///
+    /// If this method returns a Decl, the ASTImporter will abort the current
+    /// import step and treat the returned decl as if it was just imported.
+    /// If this method returns nothing, the ASTImporter continues to import the
+    /// given Decl on its own.
+    virtual llvm::Optional<Decl *> Import(ASTImporter &Importer,
+                                          Decl *FromD) = 0;
+  };
+
   /// Imports selected nodes from one AST context into another context,
   /// merging AST nodes where appropriate.
   class ASTImporter {
@@ -137,6 +151,10 @@ class TypeSourceInfo;
     /// (which we have already complained about).
     NonEquivalentDeclSet NonEquivalentDecls;
 
+    /// The Shim that should rewrite the import calls of this ASTImporter, or
+    /// a nullptr of this ASTImporter has no shim.
+    ImportStrategy *Strategy = nullptr;
+
     using FoundDeclsTy = SmallVector<NamedDecl *, 2>;
     FoundDeclsTy findDeclsInToCtx(DeclContext *DC, DeclarationName Name);
 
@@ -169,6 +187,10 @@ class TypeSourceInfo;
     /// Whether the importer will perform a minimal import, creating
     /// to-be-completed forward declarations when possible.
     bool isMinimalImport() const { return Minimal; }
+
+    ImportStrategy *getStrategy() { return Strategy; }
+
+    void setStrategy(ImportStrategy *S) { Strategy = S; }
 
     /// \brief Import the given object, returns the result.
     ///
