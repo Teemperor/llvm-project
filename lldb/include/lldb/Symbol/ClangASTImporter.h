@@ -23,6 +23,7 @@
 
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Symbol/CompilerDeclContext.h"
+#include "lldb/Symbol/StdModuleHandler.h"
 #include "lldb/lldb-types.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -243,6 +244,32 @@ private:
           m_decls_to_deport(nullptr), m_decls_already_deported(nullptr),
           m_master(master), m_source_ctx(source_ctx) {}
 
+    struct StdModuleScope {
+      StdModuleHandler m_handler;
+      Minion &m_minion;
+      bool m_valid = false;
+      StdModuleScope(Minion &minion, clang::ASTContext *dst_ctx)
+          : m_minion(minion) {
+        // If the minion doesn't have a StdModuleHandler yet, place one.
+        if (!minion.m_std_handler) {
+          m_handler = StdModuleHandler(minion, dst_ctx);
+          m_valid = true;
+          minion.m_std_handler = &m_handler;
+        }
+      }
+      ~StdModuleScope() {
+        if (m_valid) {
+          // Make sure no one messed with the handler we placed.
+          assert(m_minion.m_std_handler == &m_handler);
+          m_minion.m_std_handler = nullptr;
+        }
+      }
+    };
+
+  protected:
+    llvm::Expected<clang::Decl *> ImportInternal(clang::Decl *From) override;
+
+  public:
     // A call to "InitDeportWorkQueues" puts the minion into deport mode.
     // In deport mode, every copied Decl that could require completion is
     // recorded and placed into the decls_to_deport set.
@@ -266,10 +293,16 @@ private:
 
     clang::Decl *GetOriginalDecl(clang::Decl *To) override;
 
+    /// Decls we should ignore when mapping decls back to their original
+    /// ASTContext. Used by the StdModuleHandler to mark declarations that
+    /// were created from the 'std' C++ module to prevent that the Importer
+    /// tries to sync them with the broken equivalent in the debug info AST.
+    std::set<clang::Decl *> m_decls_to_ignore;
     std::set<clang::NamedDecl *> *m_decls_to_deport;
     std::set<clang::NamedDecl *> *m_decls_already_deported;
     ClangASTImporter &m_master;
     clang::ASTContext *m_source_ctx;
+    StdModuleHandler *m_std_handler = nullptr;
   };
 
   typedef std::shared_ptr<Minion> MinionSP;
