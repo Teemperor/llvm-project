@@ -7653,6 +7653,12 @@ void ASTImporter::AddToLookupTable(Decl *ToD) {
       LookupTable->add(ToND);
 }
 
+Expected<Decl *> ASTImporter::ImportInternal(Decl *FromD) {
+  // Import the decl using ASTNodeImporter.
+  ASTNodeImporter Importer(*this);
+  return Importer.Visit(FromD);
+}
+
 Expected<QualType> ASTImporter::Import_New(QualType FromT) {
   if (FromT.isNull())
     return QualType{};
@@ -7746,7 +7752,6 @@ Expected<Decl *> ASTImporter::Import_New(Decl *FromD) {
   if (!FromD)
     return nullptr;
 
-  ASTNodeImporter Importer(*this);
 
   // Check whether we've already imported this declaration.
   Decl *ToD = GetAlreadyImportedOrNull(FromD);
@@ -7757,7 +7762,7 @@ Expected<Decl *> ASTImporter::Import_New(Decl *FromD) {
   }
 
   // Import the declaration.
-  ExpectedDecl ToDOrErr = Importer.Visit(FromD);
+  ExpectedDecl ToDOrErr = ImportInternal(FromD);
   if (!ToDOrErr)
     return ToDOrErr;
   ToD = *ToDOrErr;
