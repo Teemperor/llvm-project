@@ -825,7 +825,7 @@ void ClangASTImporter::ForgetSource(clang::ASTContext *dst_ast,
 
 ClangASTImporter::MapCompleter::~MapCompleter() { return; }
 
-llvm::Expected<Decl *> ClangASTImporter::Minion::ImportInternal(Decl *From) {
+llvm::Optional<Decl *> ClangASTImporter::Minion::ImportInternal(Decl *From) {
   if (m_std_handler) {
     llvm::Optional<Decl *> D = m_std_handler->Import(From);
     if (D) {

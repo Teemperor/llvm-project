@@ -19,6 +19,10 @@ StdModuleHandler::StdModuleHandler(ASTImporter &importer, ASTContext *target)
     : m_importer(&importer),
       m_sema(ClangASTContext::GetASTContext(target)->getSema()) {
 
+  if (!m_sema) {
+    target->getTranslationUnitDecl()->dumpColor();
+  }
+
   std::initializer_list<const char *> supported_names = {
       // containers
       "vector",

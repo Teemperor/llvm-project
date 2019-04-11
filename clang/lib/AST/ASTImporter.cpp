@@ -250,10 +250,18 @@ namespace clang {
       //  ToD = nullptr;
       //  return true; // Already imported but with error.
       //}
+      FromD->dumpColor();
       ToD = cast_or_null<ToDeclT>(Importer.GetAlreadyImportedOrNull(FromD));
+      llvm::errs() << "ToD: " << (bool)ToD << "\n";
       if (ToD)
         return true; // Already imported.
-      ToD = CreateFun(std::forward<Args>(args)...);
+      if (Optional<Decl *> D = Importer.ImportInternal(FromD)) {
+        llvm::errs() << "Imported\n";
+        ToD->dumpColor();
+        ToD = cast_or_null<ToDeclT>(*D);
+      }
+      if (!ToD)
+        ToD = CreateFun(std::forward<Args>(args)...);
       // Keep track of imported Decls.
       Importer.MapImported(FromD, ToD);
       Importer.AddToLookupTable(ToD);
@@ -7653,10 +7661,8 @@ void ASTImporter::AddToLookupTable(Decl *ToD) {
       LookupTable->add(ToND);
 }
 
-Expected<Decl *> ASTImporter::ImportInternal(Decl *FromD) {
-  // Import the decl using ASTNodeImporter.
-  ASTNodeImporter Importer(*this);
-  return Importer.Visit(FromD);
+Optional<Decl *> ASTImporter::ImportInternal(Decl *FromD) {
+  return {};
 }
 
 Expected<QualType> ASTImporter::Import_New(QualType FromT) {
@@ -7762,7 +7768,8 @@ Expected<Decl *> ASTImporter::Import_New(Decl *FromD) {
   }
 
   // Import the declaration.
-  ExpectedDecl ToDOrErr = ImportInternal(FromD);
+  ASTNodeImporter Importer(*this);
+  ExpectedDecl ToDOrErr = Importer.Visit(FromD);
   if (!ToDOrErr)
     return ToDOrErr;
   ToD = *ToDOrErr;

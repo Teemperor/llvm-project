@@ -274,10 +274,9 @@ private:
       }
     };
 
-  protected:
-    llvm::Expected<clang::Decl *> ImportInternal(clang::Decl *From) override;
-
   public:
+    llvm::Optional<clang::Decl *> ImportInternal(clang::Decl *From) override;
+
     // A call to "InitDeportWorkQueues" puts the minion into deport mode.
     // In deport mode, every copied Decl that could require completion is
     // recorded and placed into the decls_to_deport set.
