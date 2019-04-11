@@ -590,8 +590,7 @@ struct RedirectingImporter : public ASTImporter {
   // ImporterConstructor that constructs this class.
   static ASTImporterOptionSpecificTestBase::ImporterConstructor Constructor;
 
-protected:
-  llvm::Expected<Decl *> ImportInternal(Decl *FromD) override {
+  llvm::Optional<Decl *> ImportInternal(Decl *FromD) override {
     auto *ND = dyn_cast<NamedDecl>(FromD);
     if (!ND)
       return ASTImporter::ImportInternal(FromD);

@@ -142,13 +142,11 @@ class TypeSourceInfo;
 
     void AddToLookupTable(Decl *ToD);
 
-  protected:
+  public:
     /// Can be overwritten by subclasses to implement their own import logic.
     /// The overwritten method should call this method if it didn't import the
     /// decl on its own.
-    virtual Expected<Decl *> ImportInternal(Decl *From);
-
-  public:
+    virtual Optional<Decl *> ImportInternal(Decl *From);
 
     /// \param ToContext The context we'll be importing into.
     ///
