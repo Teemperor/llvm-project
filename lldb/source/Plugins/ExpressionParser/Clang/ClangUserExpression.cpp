@@ -459,7 +459,11 @@ ClangUserExpression::GetModulesToImport(ExecutionContext &exe_ctx) {
     return {};
 
   Target *target = exe_ctx.GetTargetPtr();
-  if (!target || !target->GetEnableImportStdModule())
+  if (!target)
+    return {};
+
+  if (!target->GetEnableImportStdModule() &&
+      !target->GetEnableImportCxxModules())
     return {};
 
   StackFrame *frame = exe_ctx.GetFramePtr();
@@ -485,9 +489,22 @@ ClangUserExpression::GetModulesToImport(ExecutionContext &exe_ctx) {
   for (const SourceModule &m : sc.comp_unit->GetImportedModules())
     m_include_directories.push_back(m.search_path);
 
+  if (target->GetEnableImportCxxModules()) {
+    std::vector<std::string> result;
+    // Push all top level module names in our module list.
+    for (const SourceModule &m : sc.comp_unit->GetImportedModules())
+      if (!m.path.empty())
+        result.emplace_back(m.path.front().GetCString());
+
+    // Remove duplicates from the imported module list.
+    std::sort(result.begin(), result.end());
+    result.erase(std::unique(result.begin(), result.end()), result.end());
+
+    return result;
+  }
+
+  assert(target->GetEnableImportStdModule());
   // Check if we imported 'std' or any of its submodules.
-  // We currently don't support importing any other modules in the expression
-  // parser.
   for (const SourceModule &m : sc.comp_unit->GetImportedModules())
     if (!m.path.empty() && m.path.front() == ConstString("std"))
       return {"std"};
