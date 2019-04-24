@@ -164,13 +164,33 @@ static void AddMacros(const DebugMacros *dm, CompileUnit *comp_unit,
   }
 }
 
-static bool ExprBodyContainsVar(llvm::StringRef var, llvm::StringRef body) {
-  int from = 0;
-  while ((from = body.find(var, from)) != llvm::StringRef::npos) {
-    if ((from != 0 && clang::isIdentifierBody(body[from - 1])) ||
-        (from + var.size() != body.size() &&
-         clang::isIdentifierBody(body[from + var.size()]))) {
-      ++from;
+/// Checks if the expression body contains the given variable as a token.
+/// \param body The expression body.
+/// \param var The variable token we are looking for.
+/// \return True iff the expression body containes the variable as a token.
+static bool ExprBodyContainsVar(llvm::StringRef body, llvm::StringRef var) {
+  assert(var.find_if([](char c) { return !clang::isIdentifierBody(c); }) ==
+             llvm::StringRef::npos &&
+         "variable contains non-identifier chars?");
+
+  size_t start = 0;
+  // Iterate over all occurences of the variable string in our expression.
+  while ((start = body.find(var, start)) != llvm::StringRef::npos) {
+    // We found our variable name in the expression. Check that the token
+    // that contains our needle is equal to our variable and not just contains
+    // the character sequence by accident.
+    // Prevents situations where we for example inlcude the variable 'FOO' in an
+    // expression like 'FOObar + 1'.
+    bool has_characters_before =
+        start != 0 && clang::isIdentifierBody(body[start - 1]);
+    bool has_characters_after =
+        start + var.size() < body.size() &&
+        clang::isIdentifierBody(body[start + var.size()]);
+
+    // Our token just contained the variable name as a substring. Continue
+    // searching the rest of the expression.
+    if (has_characters_before || has_characters_after) {
+      ++start;
       continue;
     }
     return true;
@@ -188,7 +208,7 @@ static void AddLocalVariableDecls(const lldb::VariableListSP &var_list_sp,
     if (!var_name || var_name == "this" || var_name == ".block_descriptor")
       continue;
 
-    if (!expr.empty() && !ExprBodyContainsVar(var_name.AsCString(), expr))
+    if (!expr.empty() && !ExprBodyContainsVar(expr, var_name.GetStringRef()))
       continue;
 
     stream.Printf("using $__lldb_local_vars::%s;\n", var_name.AsCString());
