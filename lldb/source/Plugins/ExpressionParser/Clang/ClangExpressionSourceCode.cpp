@@ -8,6 +8,9 @@
 
 #include "ClangExpressionSourceCode.h"
 
+#include "clang/Basic/CharInfo.h"
+#include "llvm/ADT/StringRef.h"
+
 #include "Plugins/ExpressionParser/Clang/ClangModulesDeclVendor.h"
 #include "Plugins/ExpressionParser/Clang/ClangPersistentVariables.h"
 #include "lldb/Symbol/Block.h"
@@ -161,8 +164,23 @@ static void AddMacros(const DebugMacros *dm, CompileUnit *comp_unit,
   }
 }
 
+static bool ExprBodyContainsVar(llvm::StringRef var, llvm::StringRef body) {
+  int from = 0;
+  while ((from = body.find(var, from)) != llvm::StringRef::npos) {
+    if ((from != 0 && clang::isIdentifierBody(body[from - 1])) ||
+        (from + var.size() != body.size() &&
+         clang::isIdentifierBody(body[from + var.size()]))) {
+      ++from;
+      continue;
+    }
+    return true;
+  }
+  return false;
+}
+
 static void AddLocalVariableDecls(const lldb::VariableListSP &var_list_sp,
-                                  StreamString &stream) {
+                                  StreamString &stream,
+                                  const std::string &expr) {
   for (size_t i = 0; i < var_list_sp->GetSize(); i++) {
     lldb::VariableSP var_sp = var_list_sp->GetVariableAtIndex(i);
 
@@ -170,15 +188,17 @@ static void AddLocalVariableDecls(const lldb::VariableListSP &var_list_sp,
     if (!var_name || var_name == "this" || var_name == ".block_descriptor")
       continue;
 
+    if (!expr.empty() && !ExprBodyContainsVar(var_name.AsCString(), expr))
+      continue;
+
     stream.Printf("using $__lldb_local_vars::%s;\n", var_name.AsCString());
   }
 }
 
-bool ClangExpressionSourceCode::GetText(std::string &text,
-                                   lldb::LanguageType wrapping_language,
-                                   bool static_method,
-                                   ExecutionContext &exe_ctx, bool add_locals,
-                                   llvm::ArrayRef<std::string> modules) const {
+bool ClangExpressionSourceCode::GetText(
+    std::string &text, lldb::LanguageType wrapping_language, bool static_method,
+    ExecutionContext &exe_ctx, bool add_locals, bool force_add_all_locals,
+    llvm::ArrayRef<std::string> modules) const {
   const char *target_specific_defines = "typedef signed char BOOL;\n";
   std::string module_macros;
 
@@ -256,7 +276,8 @@ bool ClangExpressionSourceCode::GetText(std::string &text,
         if (target->GetInjectLocalVariables(&exe_ctx)) {
           lldb::VariableListSP var_list_sp =
               frame->GetInScopeVariableList(false, true);
-          AddLocalVariableDecls(var_list_sp, lldb_local_var_decls);
+          AddLocalVariableDecls(var_list_sp, lldb_local_var_decls,
+                                force_add_all_locals ? "" : m_body);
         }
       }
     }
