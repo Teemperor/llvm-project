@@ -117,6 +117,9 @@ public:
   bool ParseImportedModules(
       const lldb_private::SymbolContext &sc,
       std::vector<lldb_private::SourceModule> &imported_modules) override;
+  bool ParseUsedModules(
+      const lldb_private::SymbolContext &sc,
+      std::vector<lldb_private::SourceModule> &used_modules) override;
 
   size_t ParseBlocksRecursive(lldb_private::Function &func) override;
 
@@ -394,6 +397,11 @@ protected:
   void SetDebugMapModule(const lldb::ModuleSP &module_sp) {
     m_debug_map_module_wp = module_sp;
   }
+
+  bool ParseModules(
+      const lldb_private::SymbolContext &sc,
+      std::vector<lldb_private::SourceModule> &modules,
+      bool all_modules);
 
   SymbolFileDWARFDebugMap *GetDebugMapSymfile();
 

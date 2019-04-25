@@ -397,6 +397,19 @@ const std::vector<SourceModule> &CompileUnit::GetImportedModules() {
   return m_imported_modules;
 }
 
+const std::vector<SourceModule> &CompileUnit::GetUsedModules() {
+  if (m_used_modules.empty() &&
+      m_flags.IsClear(flagsParsedUsedModules)) {
+    m_flags.Set(flagsParsedUsedModules);
+    if (SymbolVendor *symbol_vendor = GetModule()->GetSymbolVendor()) {
+      SymbolContext sc;
+      CalculateSymbolContext(&sc);
+      symbol_vendor->ParseUsedModules(sc, m_used_modules);
+    }
+  }
+  return m_used_modules;
+}
+
 FileSpecList &CompileUnit::GetSupportFiles() {
   if (m_support_files.GetSize() == 0) {
     if (m_flags.IsClear(flagsParsedSupportFiles)) {

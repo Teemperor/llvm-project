@@ -480,19 +480,19 @@ ClangUserExpression::GetModulesToImport(ExecutionContext &exe_ctx) {
     return {};
 
   if (log) {
-    for (const SourceModule &m : sc.comp_unit->GetImportedModules()) {
+    for (const SourceModule &m : sc.comp_unit->GetUsedModules()) {
       LLDB_LOG(log, "Found module in compile unit: {0:$[.]} - include dir: {1}",
                   llvm::make_range(m.path.begin(), m.path.end()), m.search_path);
     }
   }
 
-  for (const SourceModule &m : sc.comp_unit->GetImportedModules())
+  for (const SourceModule &m : sc.comp_unit->GetUsedModules())
     m_include_directories.push_back(m.search_path);
 
   if (target->GetEnableImportCxxModules()) {
     std::vector<std::string> result;
     // Push all top level module names in our module list.
-    for (const SourceModule &m : sc.comp_unit->GetImportedModules())
+    for (const SourceModule &m : sc.comp_unit->GetUsedModules())
       if (!m.path.empty())
         result.emplace_back(m.path.front().GetCString());
 

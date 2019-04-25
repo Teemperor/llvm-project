@@ -896,10 +896,10 @@ bool SymbolFileDWARF::ParseIsOptimized(CompileUnit &comp_unit) {
   return false;
 }
 
-bool SymbolFileDWARF::ParseImportedModules(
+bool SymbolFileDWARF::ParseModules(
     const lldb_private::SymbolContext &sc,
-    std::vector<SourceModule> &imported_modules) {
-  ASSERT_MODULE_LOCK(this);
+    std::vector<SourceModule> &modules,
+    bool all_modules) {
   assert(sc.comp_unit);
   DWARFUnit *dwarf_cu = GetDWARFCompileUnit(sc.comp_unit);
   if (!dwarf_cu)
@@ -918,12 +918,20 @@ bool SymbolFileDWARF::ParseImportedModules(
 
   for (DWARFDIE child_die = die.GetFirstChild(); child_die;
        child_die = child_die.GetSibling()) {
-    if (child_die.Tag() != DW_TAG_imported_declaration)
-      continue;
+    DWARFDIE module_die;
+    if (all_modules) {
+      if (child_die.Tag() != DW_TAG_module)
+        continue;
+      module_die = child_die;
+    } else {
+      if (child_die.Tag() != DW_TAG_imported_declaration)
+        continue;
 
-    DWARFDIE module_die = child_die.GetReferencedDIE(DW_AT_import);
-    if (module_die.Tag() != DW_TAG_module)
-      continue;
+      module_die = child_die.GetReferencedDIE(DW_AT_import);
+      if (module_die.Tag() != DW_TAG_module)
+        continue;
+    }
+
 
     if (const char *name =
             module_die.GetAttributeValueAsString(DW_AT_name, nullptr)) {
@@ -945,10 +953,24 @@ bool SymbolFileDWARF::ParseImportedModules(
       if (const char *sysroot = module_die.GetAttributeValueAsString(
               DW_AT_LLVM_isysroot, nullptr))
         module.sysroot = ConstString(sysroot);
-      imported_modules.push_back(module);
+      modules.push_back(module);
     }
   }
   return true;
+}
+
+bool SymbolFileDWARF::ParseImportedModules(
+    const lldb_private::SymbolContext &sc,
+    std::vector<SourceModule> &imported_modules) {
+  ASSERT_MODULE_LOCK(this);
+  return ParseModules(sc, imported_modules, false);
+}
+
+bool SymbolFileDWARF::ParseUsedModules(
+    const lldb_private::SymbolContext &sc,
+    std::vector<SourceModule> &used_modules) {
+  ASSERT_MODULE_LOCK(this);
+  return ParseModules(sc, used_modules, true);
 }
 
 struct ParseDWARFLineTableCallbackInfo {

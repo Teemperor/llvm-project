@@ -187,6 +187,18 @@ bool SymbolVendor::ParseImportedModules(
   return false;
 }
 
+bool SymbolVendor::ParseUsedModules(const SymbolContext &sc,
+                                    std::vector<SourceModule> &used_modules) {
+  ModuleSP module_sp(GetModule());
+  if (module_sp) {
+    std::lock_guard<std::recursive_mutex> guard(module_sp->GetMutex());
+    if (m_sym_file_up)
+      return m_sym_file_up->ParseUsedModules(sc, used_modules);
+  }
+  return false;
+}
+
+
 size_t SymbolVendor::ParseBlocksRecursive(Function &func) {
   ModuleSP module_sp(GetModule());
   if (module_sp) {

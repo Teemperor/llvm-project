@@ -675,6 +675,15 @@ bool SymbolFileDWARFDebugMap::ParseImportedModules(
   return false;
 }
 
+bool SymbolFileDWARFDebugMap::ParseUsedModules(
+    const SymbolContext &sc, std::vector<SourceModule> &used_modules) {
+  SymbolFileDWARF *oso_dwarf = GetSymbolFile(sc);
+  if (oso_dwarf)
+    return oso_dwarf->ParseUsedModules(sc, used_modules);
+  return false;
+}
+
+
 size_t SymbolFileDWARFDebugMap::ParseBlocksRecursive(Function &func) {
   CompileUnit *comp_unit = func.GetCompileUnit();
   if (!comp_unit)
