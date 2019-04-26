@@ -162,6 +162,42 @@ static bool templateArgsAreSupported(ArrayRef<TemplateArgument> a) {
   return true;
 }
 
+template<typename T>
+llvm::Optional<Decl *> lookupDecl(Sema &sema, T *d) {
+  // Find the local DeclContext that corresponds to the DeclContext of our
+  // decl we want to import.
+  auto to_context = getEqualLocalDeclContext(sema, d->getDeclContext());
+  if (!to_context)
+    return {};
+
+  std::unique_ptr<LookupResult> lookup =
+      emulateLookupInCtxt(sema, d->getName(), *to_context);
+
+  T *new_class_template = nullptr;
+  for (auto LD : *lookup) {
+    if ((new_class_template = dyn_cast<T>(LD)))
+      break;
+  }
+  if (!new_class_template)
+    return {};
+  return new_class_template;
+}
+
+llvm::Optional<Decl *> StdModuleHandler::lookupGenericDecl(Decl *d) {
+  if (auto rd = dyn_cast<CXXRecordDecl>(d))
+    return lookupDecl(*m_sema, rd);
+
+  if (auto rd = dyn_cast<RecordDecl>(d))
+    return lookupDecl(*m_sema, rd);
+
+  if (auto td = dyn_cast<ClassTemplateDecl>(d))
+    return lookupDecl(*m_sema, td);
+
+  if (auto nd = dyn_cast<NamespaceDecl>(d))
+    return lookupDecl(*m_sema, nd);
+  return {};
+}
+
 llvm::Optional<Decl *> StdModuleHandler::tryInstantiateStdTemplate(Decl *d) {
   // If we don't have a template to instiantiate, then there is nothing to do.
   auto td = dyn_cast<ClassTemplateSpecializationDecl>(d);
@@ -261,6 +297,9 @@ llvm::Optional<Decl *> StdModuleHandler::tryInstantiateStdTemplate(Decl *d) {
 llvm::Optional<Decl *> StdModuleHandler::Import(Decl *d) {
   if (!isValid())
     return {};
+
+  if (auto result = lookupGenericDecl(d))
+    return result;
 
   return tryInstantiateStdTemplate(d);
 }

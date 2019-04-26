@@ -27,6 +27,8 @@ class StdModuleHandler {
   /// template names inside the 'std' namespace such as 'vector' or 'list'.
   llvm::StringSet<> m_supported_templates;
 
+  llvm::Optional<clang::Decl *> lookupGenericDecl(clang::Decl *d);
+
   /// Tries to manually instantiate the given foreign declaration in the target
   /// context (designated by m_sema).
   llvm::Optional<clang::Decl *> tryInstantiateStdTemplate(clang::Decl *d);

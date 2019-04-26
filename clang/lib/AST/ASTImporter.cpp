@@ -250,14 +250,14 @@ namespace clang {
       //  ToD = nullptr;
       //  return true; // Already imported but with error.
       //}
-      FromD->dumpColor();
       ToD = cast_or_null<ToDeclT>(Importer.GetAlreadyImportedOrNull(FromD));
       if (ToD)
         return true; // Already imported.
       if (Optional<Decl *> D = Importer.ImportInternal(FromD)) {
-        llvm::errs() << "Imported\n";
-        ToD->dumpColor();
-        ToD = cast_or_null<ToDeclT>(*D);
+        ToD = cast<ToDeclT>(*D);
+        Importer.MapImported(FromD, ToD);
+        Importer.AddToLookupTable(ToD);
+        return true;
       }
       if (!ToD)
         ToD = CreateFun(std::forward<Args>(args)...);
@@ -7764,13 +7764,6 @@ Expected<Decl *> ASTImporter::Import_New(Decl *FromD) {
     // If FromD has some updated flags after last import, apply it
     updateFlags(FromD, ToD);
     return ToD;
-  }
-
-  if (auto ND = dyn_cast<NamedDecl>(FromD)) {
-    if (ToContext.getLangOpts().Modules) {
-      llvm::errs() << "Import_New " << ND->getQualifiedNameAsString() << "\n";
-      ND->dumpColor();
-    }
   }
 
   // Import the declaration.
