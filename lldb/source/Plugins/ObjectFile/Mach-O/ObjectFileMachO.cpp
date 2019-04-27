@@ -5846,8 +5846,7 @@ llvm::VersionTuple ObjectFileMachO::GetMinimumOSVersion() {
   return *m_min_os_version;
 }
 
-uint32_t ObjectFileMachO::GetSDKVersion(uint32_t *versions,
-                                        uint32_t num_versions) {
+llvm::Optional<std::vector<uint32_t>> ObjectFileMachO::GetSDKVersion() {
   if (m_sdk_versions.empty()) {
     lldb::offset_t offset = MachHeaderSizeFromMagic(m_header.magic);
     bool success = false;
@@ -5931,19 +5930,10 @@ uint32_t ObjectFileMachO::GetSDKVersion(uint32_t *versions,
   // on to m_sdk_versions.  If we only have one value, it's
   // the sentinel value indicating that this object file
   // does not have a valid minimum os version #.
-  if (m_sdk_versions.size() > 1) {
-    if (versions != NULL && num_versions > 0) {
-      for (size_t i = 0; i < num_versions; ++i) {
-        if (i < m_sdk_versions.size())
-          versions[i] = m_sdk_versions[i];
-        else
-          versions[i] = 0;
-      }
-    }
-    return m_sdk_versions.size();
-  }
+  if (m_sdk_versions.size() > 1)
+    return m_sdk_versions;
   // Call the superclasses version that will empty out the data
-  return ObjectFile::GetSDKVersion(versions, num_versions);
+  return ObjectFile::GetSDKVersion();
 }
 
 bool ObjectFileMachO::GetIsDynamicLinkEditor() {

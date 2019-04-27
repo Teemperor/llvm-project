@@ -116,7 +116,7 @@ public:
 
   llvm::VersionTuple GetMinimumOSVersion() override;
 
-  uint32_t GetSDKVersion(uint32_t *versions, uint32_t num_versions) override;
+  llvm::Optional<std::vector<uint32_t>> GetSDKVersion() override;
 
   bool GetIsDynamicLinkEditor() override;
 
