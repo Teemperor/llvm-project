@@ -49,7 +49,8 @@ public:
   bool CanDebugProcess() override;
 
   std::vector<std::string>
-  GetSystemIncludeDirectories(lldb::LanguageType lang) override;
+  GetSystemIncludeDirectories(lldb::LanguageType lang,
+                              lldb_private::Target &target) override;
 
   lldb::ProcessSP DebugProcess(ProcessLaunchInfo &launch_info,
                                Debugger &debugger, Target *target,

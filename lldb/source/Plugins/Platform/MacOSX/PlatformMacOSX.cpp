@@ -226,6 +226,26 @@ ConstString PlatformMacOSX::GetSDKDirectory(lldb_private::Target &target) {
   return ConstString();
 }
 
+std::vector<std::string>
+PlatformMacOSX::GetSystemIncludeDirectories(LanguageType lang,
+                                            lldb_private::Target &target) {
+  std::string sys_root = GetSDKDirectory(target).AsCString("");
+  switch (lang) {
+  case lldb::eLanguageTypeC:
+  case lldb::eLanguageTypeC89:
+  case lldb::eLanguageTypeC99:
+  case lldb::eLanguageTypeC11:
+  case lldb::eLanguageTypeC_plus_plus:
+  case lldb::eLanguageTypeC_plus_plus_03:
+  case lldb::eLanguageTypeC_plus_plus_11:
+  case lldb::eLanguageTypeC_plus_plus_14:
+  case lldb::eLanguageTypeObjC_plus_plus:
+    return {sys_root + "/usr/include/"};
+  default:
+    return {};
+  }
+}
+
 Status PlatformMacOSX::GetSymbolFile(const FileSpec &platform_file,
                                      const UUID *uuid_ptr,
                                      FileSpec &local_file) {

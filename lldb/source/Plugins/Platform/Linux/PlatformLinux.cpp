@@ -261,7 +261,8 @@ bool PlatformLinux::CanDebugProcess() {
 }
 
 std::vector<std::string>
-PlatformLinux::GetSystemIncludeDirectories(lldb::LanguageType lang) {
+PlatformLinux::GetSystemIncludeDirectories(lldb::LanguageType lang,
+                                           lldb_private::Target &target) {
   std::string sys_root = GetSDKRootDirectory().AsCString("");
   switch (lang) {
   case lldb::eLanguageTypeC:

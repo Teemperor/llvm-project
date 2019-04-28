@@ -217,10 +217,9 @@ private:
   std::shared_ptr<clang::TextDiagnosticBuffer> m_passthrough;
 };
 
-static void
-SetupModuleHeaderPaths(CompilerInstance *compiler,
-                       std::vector<ConstString> include_directories,
-                       lldb::TargetSP target_sp) {
+static void SetupModuleHeaderPaths(CompilerInstance *compiler,
+                                   std::vector<ConstString> include_directories,
+                                   lldb_private::Target &target) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
 
   HeaderSearchOptions &search_opts = compiler->getHeaderSearchOpts();
@@ -249,8 +248,8 @@ SetupModuleHeaderPaths(CompilerInstance *compiler,
   search_opts.ImplicitModuleMaps = true;
 
   std::vector<std::string> system_include_directories =
-      target_sp->GetPlatform()->GetSystemIncludeDirectories(
-          lldb::eLanguageTypeC_plus_plus);
+      target.GetPlatform()->GetSystemIncludeDirectories(
+          lldb::eLanguageTypeC_plus_plus, target);
 
   for (const std::string &include_dir : system_include_directories) {
     search_opts.AddPath(include_dir, frontend::System, false, true);
@@ -512,8 +511,7 @@ ClangExpressionParser::ClangExpressionParser(
     lang_opts.DoubleSquareBracketAttributes = true;
     lang_opts.CPlusPlus11 = true;
 
-    SetupModuleHeaderPaths(m_compiler.get(), m_include_directories,
-                           target_sp);
+    SetupModuleHeaderPaths(m_compiler.get(), m_include_directories, *target_sp);
   }
 
   if (process_sp && lang_opts.ObjC) {

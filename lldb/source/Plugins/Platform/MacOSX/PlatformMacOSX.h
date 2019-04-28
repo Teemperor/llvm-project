@@ -69,6 +69,10 @@ public:
   lldb_private::ConstString
   GetSDKDirectory(lldb_private::Target &target) override;
 
+  std::vector<std::string>
+  GetSystemIncludeDirectories(lldb::LanguageType lang,
+                              lldb_private::Target &target) override;
+
   void
   AddClangModuleCompilationOptions(lldb_private::Target *target,
                                    std::vector<std::string> &options) override {
