@@ -25,6 +25,8 @@ CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
       "list",
       "forward_list",
       "deque",
+      "stack",
+      "queue",
       // pointers
       "shared_ptr",
       "unique_ptr",
