@@ -445,7 +445,11 @@ ClangUserExpression::GetModulesToImport(ExecutionContext &exe_ctx) {
     return {};
 
   Target *target = exe_ctx.GetTargetPtr();
-  if (!target || !target->GetEnableImportStdModule())
+  if (!target)
+    return {};
+
+  if (!target->GetEnableImportStdModule() &&
+      !target->GetEnableImportCxxModules())
     return {};
 
   StackFrame *frame = exe_ctx.GetFramePtr();
@@ -461,24 +465,37 @@ ClangUserExpression::GetModulesToImport(ExecutionContext &exe_ctx) {
   if (!sc.comp_unit)
     return {};
 
+  const std::vector<SourceModule> & module_list =
+      target->GetEnableImportCxxModules() ? sc.comp_unit->GetAllModules() : sc.comp_unit->GetImportedModules();
+
+
   if (log) {
-    for (const SourceModule &m : sc.comp_unit->GetImportedModules()) {
+    for (const SourceModule &m : module_list) {
       LLDB_LOG(log, "Found module in compile unit: {0:$[.]} - include dir: {1}",
                   llvm::make_range(m.path.begin(), m.path.end()), m.search_path);
     }
   }
 
-  for (const SourceModule &m : sc.comp_unit->GetImportedModules())
-    m_include_directories.push_back(m.search_path);
+  for (const SourceModule &m : module_list) {
+    if (m.search_path.GetLength())
+      m_include_directories.push_back(m.search_path);
+  }
 
-  // Check if we imported 'std' or any of its submodules.
-  // We currently don't support importing any other modules in the expression
-  // parser.
-  for (const SourceModule &m : sc.comp_unit->GetImportedModules())
-    if (!m.path.empty() && m.path.front() == "std")
-      return {"std"};
 
-  return {};
+  if (target->GetEnableImportStdModule()) {
+    // Check if we imported 'std' or any of its submodules.
+    for (const SourceModule &m : module_list)
+      if (!m.path.empty() && m.path.front() == "std")
+        return {"std"};
+    return {};
+  }
+
+  assert(target->GetEnableImportCxxModules());
+
+  std::vector<std::string> result;
+  for (const SourceModule &m : module_list)
+    result.push_back(m.path.front().GetCString());
+  return result;
 }
 
 bool ClangUserExpression::PrepareForParsing(

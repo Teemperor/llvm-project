@@ -22,6 +22,8 @@ class ImportCxxModuleMacros(TestBase):
         lldbutil.run_to_source_breakpoint(self,
             "// Set break point at this line.", lldb.SBFileSpec("main.cpp"))
 
+        self.runCmd("log enable lldb expr")
+
         # Activate importing of std module.
         self.runCmd("settings set target.import-c++-modules true")
         # Call our macro.

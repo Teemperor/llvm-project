@@ -948,6 +948,84 @@ bool SymbolFileDWARF::ParseImportedModules(
   return true;
 }
 
+
+bool SymbolFileDWARF::ParseAllModules(
+    const lldb_private::SymbolContext &sc,
+    std::vector<SourceModule> &imported_modules) {
+  ASSERT_MODULE_LOCK(this);
+  assert(sc.comp_unit);
+  DWARFUnit *dwarf_cu = GetDWARFCompileUnit(sc.comp_unit);
+  if (!dwarf_cu)
+    return false;
+  if (!ClangModulesDeclVendor::LanguageSupportsClangModules(
+          sc.comp_unit->GetLanguage()))
+    return false;
+  UpdateExternalModuleListIfNeeded();
+
+  for (auto &n : m_external_type_modules) {
+    ModuleSP m = n.second;
+
+    if (m->GetNumCompileUnits() == 0)
+      continue;
+    auto modules = m->GetCompileUnitAtIndex(0)->GetAllModules();
+
+    imported_modules.insert(imported_modules.end(), modules.begin(),
+                            modules.end());
+  }
+
+  if (!dwarf_cu)
+    return false;
+  if (!ClangModulesDeclVendor::LanguageSupportsClangModules(
+          sc.comp_unit->GetLanguage()))
+    return false;
+  UpdateExternalModuleListIfNeeded();
+
+  if (!sc.comp_unit)
+    return false;
+
+  const DWARFDIE die = dwarf_cu->DIE();
+  if (!die)
+    return false;
+
+  for (DWARFDIE child_die = die.GetFirstChild(); child_die;
+       child_die = child_die.GetSibling()) {
+
+    if (child_die.Tag() != DW_TAG_module)
+      continue;
+
+    DWARFDIE module_die = child_die;
+
+    llvm::StringRef modulemap = "module.modulemap";
+
+    if (const char *name =
+            module_die.GetAttributeValueAsString(DW_AT_name, nullptr)) {
+      if (name == modulemap)
+        continue;
+
+      SourceModule module;
+      module.path.push_back(ConstString(name));
+
+      DWARFDIE parent_die = module_die;
+      while ((parent_die = parent_die.GetParent())) {
+        if (parent_die.Tag() != DW_TAG_module)
+          break;
+        if (const char *name =
+                parent_die.GetAttributeValueAsString(DW_AT_name, nullptr))
+          module.path.push_back(ConstString(name));
+      }
+      std::reverse(module.path.begin(), module.path.end());
+      if (const char *include_path = module_die.GetAttributeValueAsString(
+              DW_AT_LLVM_include_path, nullptr))
+        module.search_path = ConstString(include_path);
+      if (const char *sysroot = module_die.GetAttributeValueAsString(
+              DW_AT_LLVM_isysroot, nullptr))
+        module.sysroot = ConstString(sysroot);
+      imported_modules.push_back(module);
+    }
+  }
+  return true;
+}
+
 struct ParseDWARFLineTableCallbackInfo {
   LineTable *line_table;
   std::unique_ptr<LineSequence> sequence_up;

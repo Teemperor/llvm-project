@@ -243,6 +243,15 @@ public:
   ///     A list of imported modules.
   const std::vector<SourceModule> &GetImportedModules();
 
+  /// Get the compile unit's imported module list.
+  ///
+  /// This reports all the imports that the compile unit made, including the
+  /// current module.
+  ///
+  /// \return
+  ///     A list of imported modules.
+  const std::vector<SourceModule> &GetAllModules();
+
   /// Get the SymbolFile plug-in user data.
   ///
   /// SymbolFile plug-ins can store user data to internal state or objects to
@@ -384,6 +393,9 @@ protected:
   /// All modules, including the current module, imported by this
   /// compile unit.
   std::vector<SourceModule> m_imported_modules;
+  /// All modules, including the current module, imported by this
+  /// compile unit.
+  std::vector<SourceModule> m_all_modules;
   /// Files associated with this compile unit's line table and
   /// declarations.
   FileSpecList m_support_files;
@@ -410,8 +422,10 @@ private:
     flagsParsedLanguage = (1u << 4), ///< Have we parsed the language already?
     flagsParsedImportedModules =
         (1u << 5), ///< Have we parsed the imported modules already?
+    flagsParsedAllModules =
+        (1u << 6), ///< Have we parsed all modules already?
     flagsParsedDebugMacros =
-        (1u << 6) ///< Have we parsed the debug macros already?
+        (1u << 7) ///< Have we parsed the debug macros already?
   };
 
   DISALLOW_COPY_AND_ASSIGN(CompileUnit);
