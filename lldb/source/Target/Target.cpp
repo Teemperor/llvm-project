@@ -3339,6 +3339,9 @@ static constexpr PropertyDefinition g_properties[] = {
     {"import-std-module", OptionValue::eTypeBoolean, false, false,
      nullptr, {},
      "Import the C++ std module to improve debugging STL containers."},
+    {"import-c++-modules", OptionValue::eTypeBoolean, false, false,
+     nullptr, {},
+     "Import the executable's C++ modules to improve debugging."},
     {"auto-apply-fixits", OptionValue::eTypeBoolean, false, true, nullptr,
      {}, "Automatically apply fix-it hints to expressions."},
     {"notify-about-fixits", OptionValue::eTypeBoolean, false, true, nullptr,
@@ -3478,6 +3481,7 @@ enum {
   ePropertyClangModuleSearchPaths,
   ePropertyAutoImportClangModules,
   ePropertyImportStdModule,
+  ePropertyImportCxxModules,
   ePropertyAutoApplyFixIts,
   ePropertyNotifyAboutFixIts,
   ePropertySaveObjects,
@@ -3907,6 +3911,12 @@ bool TargetProperties::GetEnableAutoImportClangModules() const {
 
 bool TargetProperties::GetEnableImportStdModule() const {
   const uint32_t idx = ePropertyImportStdModule;
+  return m_collection_sp->GetPropertyAtIndexAsBoolean(
+      nullptr, idx, g_properties[idx].default_uint_value != 0);
+}
+
+bool TargetProperties::GetEnableImportCxxModules() const {
+  const uint32_t idx = ePropertyImportCxxModules;
   return m_collection_sp->GetPropertyAtIndexAsBoolean(
       nullptr, idx, g_properties[idx].default_uint_value != 0);
 }
