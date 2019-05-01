@@ -125,6 +125,9 @@ public:
   virtual bool
   ParseImportedModules(const SymbolContext &sc,
                        std::vector<SourceModule> &imported_modules) = 0;
+  virtual bool ParseAllModules(const SymbolContext &sc,
+                               std::vector<SourceModule> &all_modules) = 0;
+
   virtual size_t ParseBlocksRecursive(Function &func) = 0;
   virtual size_t ParseVariablesForContext(const SymbolContext &sc) = 0;
   virtual Type *ResolveTypeUID(lldb::user_id_t type_uid) = 0;

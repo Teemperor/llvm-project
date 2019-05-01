@@ -20,6 +20,15 @@ struct SourceModule {
   std::vector<ConstString> path;
   ConstString search_path;
   ConstString sysroot;
+
+  bool operator<(const SourceModule &o) const {
+    return std::tie(path, search_path, sysroot) <
+           std::tie(o.path, o.search_path, o.sysroot);
+  }
+  bool operator==(const SourceModule &o) const {
+    return std::tie(path, search_path, sysroot) ==
+           std::tie(o.path, o.search_path, o.sysroot);
+  }
 };
 
 } // namespace lldb_private

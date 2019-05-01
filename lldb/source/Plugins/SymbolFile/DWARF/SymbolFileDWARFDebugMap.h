@@ -66,6 +66,9 @@ public:
   bool ParseImportedModules(
       const lldb_private::SymbolContext &sc,
       std::vector<lldb_private::SourceModule> &imported_modules) override;
+  bool ParseAllModules(
+      const lldb_private::SymbolContext &sc,
+      std::vector<lldb_private::SourceModule> &imported_modules) override;
   size_t ParseBlocksRecursive(lldb_private::Function &func) override;
   size_t
   ParseVariablesForContext(const lldb_private::SymbolContext &sc) override;
