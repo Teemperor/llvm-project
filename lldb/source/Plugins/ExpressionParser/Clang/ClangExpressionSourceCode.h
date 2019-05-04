@@ -60,6 +60,13 @@ public:
                                     lldb::LanguageType wrapping_language,
                                     size_t &start_loc, size_t &end_loc);
 
+  /// Returns the name of the macro that we placed directly before the
+  /// user expression in the source code. Used to signal the parser that it
+  /// is has started to parse the actual user expression.
+  static const char *GetExprStartMacroName() {
+    return "__LLDB_EXPR_START";
+  }
+
 protected:
   ClangExpressionSourceCode(const char *name, const char *prefix, const char *body,
                        bool wrap) :

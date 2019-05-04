@@ -363,10 +363,12 @@ bool ClangExpressionSourceCode::GetText(
                          "void                           \n"
                          "%s(void *$__lldb_arg)          \n"
                          "{                              \n"
+                         "#define %s                     \n"
                          "    %s;                        \n"
                          "%s"
                          "}                              \n",
                          module_imports.c_str(), m_name.c_str(),
+                         GetExprStartMacroName(),
                          lldb_local_var_decls.GetData(), tagged_body.c_str());
       break;
     case lldb::eLanguageTypeC_plus_plus:
@@ -374,10 +376,12 @@ bool ClangExpressionSourceCode::GetText(
                          "void                                   \n"
                          "$__lldb_class::%s(void *$__lldb_arg)   \n"
                          "{                                      \n"
+                         "#define %s                             \n"
                          "    %s;                                \n"
                          "%s"
                          "}                                      \n",
                          module_imports.c_str(), m_name.c_str(),
+                         GetExprStartMacroName(),
                          lldb_local_var_decls.GetData(), tagged_body.c_str());
       break;
     case lldb::eLanguageTypeObjC:
@@ -390,11 +394,13 @@ bool ClangExpressionSourceCode::GetText(
             "@implementation $__lldb_objc_class ($__lldb_category)   \n"
             "+(void)%s:(void *)$__lldb_arg                           \n"
             "{                                                       \n"
+            "#define %s                                             \n"
             "    %s;                                                 \n"
             "%s"
             "}                                                       \n"
             "@end                                                    \n",
             module_imports.c_str(), m_name.c_str(), m_name.c_str(),
+            GetExprStartMacroName(),
             lldb_local_var_decls.GetData(), tagged_body.c_str());
       } else {
         wrap_stream.Printf(
@@ -405,11 +411,13 @@ bool ClangExpressionSourceCode::GetText(
             "@implementation $__lldb_objc_class ($__lldb_category)  \n"
             "-(void)%s:(void *)$__lldb_arg                          \n"
             "{                                                      \n"
+            "#define %s                                             \n"
             "    %s;                                                \n"
             "%s"
             "}                                                      \n"
             "@end                                                   \n",
             module_imports.c_str(), m_name.c_str(), m_name.c_str(),
+            GetExprStartMacroName(),
             lldb_local_var_decls.GetData(), tagged_body.c_str());
       }
       break;
