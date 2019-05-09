@@ -61,6 +61,9 @@ public:
   ParseImportedModules(const SymbolContext &sc,
                        std::vector<SourceModule> &imported_modules);
 
+  virtual bool ParseAllUsedModules(const SymbolContext &sc,
+                                   std::vector<SourceModule> &all_modules);
+
   virtual size_t ParseBlocksRecursive(Function &func);
 
   virtual size_t ParseVariablesForContext(const SymbolContext &sc);

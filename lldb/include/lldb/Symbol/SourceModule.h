@@ -20,6 +20,18 @@ struct SourceModule {
   std::vector<ConstString> path;
   ConstString search_path;
   ConstString sysroot;
+
+  /// Comparison operator for two SourceModules. Only useful for imposing a
+  /// total order on list of SourceModules so that they can be std::sorted.
+  bool operator<(const SourceModule &o) const {
+    return std::tie(path, search_path, sysroot) <
+           std::tie(o.path, o.search_path, o.sysroot);
+  }
+
+  bool operator==(const SourceModule &o) const {
+    return std::tie(path, search_path, sysroot) ==
+           std::tie(o.path, o.search_path, o.sysroot);
+  }
 };
 
 } // namespace lldb_private

@@ -445,7 +445,11 @@ ClangUserExpression::GetModulesToImport(ExecutionContext &exe_ctx) {
     return {};
 
   Target *target = exe_ctx.GetTargetPtr();
-  if (!target || !target->GetEnableImportStdModule())
+  if (!target)
+    return {};
+
+  if (!target->GetEnableImportStdModule() &&
+      !target->GetEnableImportCxxModules())
     return {};
 
   StackFrame *frame = exe_ctx.GetFramePtr();
@@ -461,24 +465,47 @@ ClangUserExpression::GetModulesToImport(ExecutionContext &exe_ctx) {
   if (!sc.comp_unit)
     return {};
 
+  // Get the list of modules we need to to import. For the `std` module it's
+  // enough to search the list of directly imported modules, but for a general
+  // module import we need to get all used modules to reconstruct the relevant
+  // include directories.
+  const std::vector<SourceModule> &module_list =
+      target->GetEnableImportCxxModules() ? sc.comp_unit->GetAllUsedModules()
+                                          : sc.comp_unit->GetImportedModules();
+
   if (log) {
-    for (const SourceModule &m : sc.comp_unit->GetImportedModules()) {
+    for (const SourceModule &m : module_list) {
       LLDB_LOG(log, "Found module in compile unit: {0:$[.]} - include dir: {1}",
                   llvm::make_range(m.path.begin(), m.path.end()), m.search_path);
     }
   }
 
-  for (const SourceModule &m : sc.comp_unit->GetImportedModules())
-    m_include_directories.push_back(m.search_path);
+  // Build a list of include directories used by these modules.
+  for (const SourceModule &m : module_list) {
+    if (!m.search_path.IsEmpty())
+      m_include_directories.push_back(m.search_path);
+  }
 
-  // Check if we imported 'std' or any of its submodules.
-  // We currently don't support importing any other modules in the expression
-  // parser.
-  for (const SourceModule &m : sc.comp_unit->GetImportedModules())
-    if (!m.path.empty() && m.path.front() == "std")
-      return {"std"};
+  // If we only need the `std` module we can just iterate the list and check
+  // if `std` or any of its submodule was imported.
+  if (target->GetEnableImportStdModule()) {
+    // Check if we imported 'std' or any of its submodules.
+    for (const SourceModule &m : module_list)
+      if (!m.path.empty() && m.path.front() == "std")
+        return {"std"};
+    return {};
+  }
 
-  return {};
+  // If we want to import all C++ modules we have to
+  assert(target->GetEnableImportCxxModules());
+  std::vector<std::string> result;
+  for (const SourceModule &m : module_list)
+    result.push_back(m.path.front().GetCString());
+
+  // Filter out any duplicates as importing a module once is enough.
+  std::sort(result.begin(), result.end());
+  result.erase(std::unique(result.begin(), result.end()), result.end());
+  return result;
 }
 
 bool ClangUserExpression::PrepareForParsing(

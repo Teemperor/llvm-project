@@ -220,8 +220,10 @@ SetupModuleHeaderPaths(CompilerInstance *compiler,
 
   HeaderSearchOptions &search_opts = compiler->getHeaderSearchOpts();
 
+  std::set<ConstString> added_inc_dirs;
   for (ConstString dir : include_directories) {
-    search_opts.AddPath(dir.AsCString(), frontend::System, false, true);
+    search_opts.AddPath(dir.AsCString(), frontend::IncludeDirGroup::Angled,
+                        false, true);
     LLDB_LOG(log, "Added user include dir: {0}", dir);
   }
 

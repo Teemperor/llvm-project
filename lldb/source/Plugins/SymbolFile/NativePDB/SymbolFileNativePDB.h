@@ -92,6 +92,12 @@ public:
       const SymbolContext &sc,
       std::vector<lldb_private::SourceModule> &imported_modules) override;
 
+  bool ParseAllModules(
+      const SymbolContext &sc,
+      std::vector<lldb_private::SourceModule> &imported_modules) override {
+    return false;
+  }
+
   size_t ParseBlocksRecursive(Function &func) override;
 
   uint32_t FindGlobalVariables(ConstString name,

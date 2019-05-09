@@ -893,36 +893,46 @@ bool SymbolFileDWARF::ParseIsOptimized(CompileUnit &comp_unit) {
   return false;
 }
 
-bool SymbolFileDWARF::ParseImportedModules(
-    const lldb_private::SymbolContext &sc,
-    std::vector<SourceModule> &imported_modules) {
-  ASSERT_MODULE_LOCK(this);
-  assert(sc.comp_unit);
-  DWARFUnit *dwarf_cu = GetDWARFCompileUnit(sc.comp_unit);
-  if (!dwarf_cu)
-    return false;
-  if (!ClangModulesDeclVendor::LanguageSupportsClangModules(
-          sc.comp_unit->GetLanguage()))
-    return false;
-  UpdateExternalModuleListIfNeeded();
-
+/// Parses the modules in the given DWARFUnit.
+/// \param dwarf_cu The DWARFUnit that should be searched for modules.
+/// \param only_imported_modules True if only modules that are imported should
+///                              be parsed. False if all modules should be
+///                              parsed.
+/// \param modules A list of SourceModules found in the DWARFUnit.
+/// \return True iff no error occurred while parsing the modules.
+static bool ParseModules(DWARFUnit *dwarf_cu, bool only_imported_modules,
+                         std::vector<SourceModule> &modules) {
   const DWARFDIE die = dwarf_cu->DIE();
   if (!die)
     return false;
 
   for (DWARFDIE child_die = die.GetFirstChild(); child_die;
        child_die = child_die.GetSibling()) {
-    if (child_die.Tag() != DW_TAG_imported_declaration)
-      continue;
+    DWARFDIE module_die;
 
-    DWARFDIE module_die = child_die.GetReferencedDIE(DW_AT_import);
+    if (only_imported_modules) {
+      if (child_die.Tag() != DW_TAG_imported_declaration)
+        continue;
+
+      module_die = child_die.GetReferencedDIE(DW_AT_import);
+    } else
+      module_die = child_die;
+
     if (module_die.Tag() != DW_TAG_module)
       continue;
 
-    if (const char *name =
+    if (const char *name_str =
             module_die.GetAttributeValueAsString(DW_AT_name, nullptr)) {
+
+      ConstString name(name_str);
+
+      // Clang emits some modulemap files as module tags, so we have to
+      // filter them out here as they are not actual SourceModules.
+      if (name == "module.modulemap")
+        continue;
+
       SourceModule module;
-      module.path.push_back(ConstString(name));
+      module.path.push_back(name);
 
       DWARFDIE parent_die = module_die;
       while ((parent_die = parent_die.GetParent())) {
@@ -939,10 +949,57 @@ bool SymbolFileDWARF::ParseImportedModules(
       if (const char *sysroot = module_die.GetAttributeValueAsString(
               DW_AT_LLVM_isysroot, nullptr))
         module.sysroot = ConstString(sysroot);
-      imported_modules.push_back(module);
+      modules.push_back(module);
     }
   }
   return true;
+}
+
+bool SymbolFileDWARF::ParseImportedModules(
+    const lldb_private::SymbolContext &sc,
+    std::vector<SourceModule> &imported_modules) {
+  ASSERT_MODULE_LOCK(this);
+  assert(sc.comp_unit);
+
+  DWARFUnit *dwarf_cu = GetDWARFCompileUnit(sc.comp_unit);
+  if (!dwarf_cu)
+    return false;
+  if (!ClangModulesDeclVendor::LanguageSupportsClangModules(
+          sc.comp_unit->GetLanguage()))
+    return false;
+  UpdateExternalModuleListIfNeeded();
+
+  return ParseModules(dwarf_cu, /*only_imported*/ true, imported_modules);
+}
+
+bool SymbolFileDWARF::ParseAllModules(const lldb_private::SymbolContext &sc,
+                                      std::vector<SourceModule> &all_modules) {
+  ASSERT_MODULE_LOCK(this);
+  assert(sc.comp_unit);
+  DWARFUnit *dwarf_cu = GetDWARFCompileUnit(sc.comp_unit);
+  if (!dwarf_cu)
+    return false;
+  if (!ClangModulesDeclVendor::LanguageSupportsClangModules(
+          sc.comp_unit->GetLanguage()))
+    return false;
+  UpdateExternalModuleListIfNeeded();
+
+  // Recursively descend into the referenced modules and add their used
+  // modules to our list.
+  for (auto &n : m_external_type_modules) {
+    ModuleSP module = n.second;
+
+    // The first compile unit should contain all used modules.
+    if (module->GetNumCompileUnits() == 0)
+      continue;
+    CompUnitSP comp_unit = module->GetCompileUnitAtIndex(0);
+
+    const std::vector<SourceModule> &m = comp_unit->GetAllUsedModules();
+    all_modules.insert(all_modules.end(), m.begin(), m.end());
+  }
+
+  // Parse all used modules in the current compile unit.
+  return ParseModules(dwarf_cu, /*only_imported*/ false, all_modules);
 }
 
 struct ParseDWARFLineTableCallbackInfo {

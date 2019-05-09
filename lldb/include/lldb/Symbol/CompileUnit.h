@@ -243,6 +243,16 @@ public:
   ///     A list of imported modules.
   const std::vector<SourceModule> &GetImportedModules();
 
+  /// Get all modules used to compile this compile unit.
+  ///
+  /// This reports all modules used directly or indirectly by this compile unit.
+  /// For example, if this compile unit uses a module A which in turn uses a
+  /// module B, this function returns both A and B.
+  ///
+  /// \return
+  ///     A list of used modules.
+  const std::vector<SourceModule> &GetAllUsedModules();
+
   /// Get the SymbolFile plug-in user data.
   ///
   /// SymbolFile plug-ins can store user data to internal state or objects to
@@ -384,6 +394,9 @@ protected:
   /// All modules, including the current module, imported by this
   /// compile unit.
   std::vector<SourceModule> m_imported_modules;
+  /// All modules, including the current module, used directly or indirectly
+  /// by this compile unit.
+  std::vector<SourceModule> m_all_used_modules;
   /// Files associated with this compile unit's line table and
   /// declarations.
   FileSpecList m_support_files;
@@ -404,14 +417,15 @@ private:
     flagsParsedVariables =
         (1u << 1), ///< Have we already parsed globals and statics?
     flagsParsedSupportFiles = (1u << 2), ///< Have we already parsed the support
-                                         ///files for this compile unit?
+                                         /// files for this compile unit?
     flagsParsedLineTable =
         (1u << 3),                   ///< Have we parsed the line table already?
     flagsParsedLanguage = (1u << 4), ///< Have we parsed the language already?
     flagsParsedImportedModules =
         (1u << 5), ///< Have we parsed the imported modules already?
+    flagsParsedAllModules = (1u << 6), ///< Have we parsed all modules already?
     flagsParsedDebugMacros =
-        (1u << 6) ///< Have we parsed the debug macros already?
+        (1u << 7) ///< Have we parsed the debug macros already?
   };
 
   DISALLOW_COPY_AND_ASSIGN(CompileUnit);

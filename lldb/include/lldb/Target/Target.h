@@ -131,6 +131,8 @@ public:
 
   bool GetEnableImportStdModule() const;
 
+  bool GetEnableImportCxxModules() const;
+
   bool GetEnableAutoApplyFixIts() const;
 
   bool GetEnableNotifyAboutFixIts() const;
