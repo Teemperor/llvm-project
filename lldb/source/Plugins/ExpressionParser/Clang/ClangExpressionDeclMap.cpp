@@ -310,15 +310,19 @@ TypeFromUser ClangExpressionDeclMap::DeportType(ClangASTContext &target,
 
 bool ClangExpressionDeclMap::AddPersistentVariable(const NamedDecl *decl,
                                                    ConstString name,
-                                                   TypeFromParser parser_type,
+                                                   TypeFromParser parser_type2,
                                                    bool is_result,
                                                    bool is_lvalue) {
   assert(m_parser_vars.get());
 
   ClangASTContext *ast =
-      llvm::dyn_cast_or_null<ClangASTContext>(parser_type.GetTypeSystem());
+      llvm::dyn_cast_or_null<ClangASTContext>(parser_type2.GetTypeSystem());
   if (ast == nullptr)
     return false;
+
+  QualType qtype(QualType::getFromOpaquePtr(parser_type2.GetOpaqueQualType()));
+  qtype = qtype.getDesugaredType(*ast->getASTContext());
+  TypeFromParser parser_type(CompilerType(ast->getASTContext(), qtype));
 
   if (m_parser_vars->m_materializer && is_result) {
     Status err;

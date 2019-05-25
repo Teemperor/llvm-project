@@ -1,4 +1,4 @@
-//===-- DWARFASTParserClang.cpp ---------------------------------*- C++ -*-===//
+﻿//===-- DWARFASTParserClang.cpp ---------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -799,6 +799,7 @@ TypeSP DWARFASTParserClang::ParseTypeFromDWARF(const SymbolContext &sc,
           metadata.SetIsDynamicCXXType(dwarf->ClassOrStructIsVirtual(die));
 
           if (type_name_cstr && strchr(type_name_cstr, '<')) {
+            //llvm::errs() << "FFOOOOO" << decl.GetFile().GetCString() << ":" << decl.GetLine() << "\n";
             ClangASTContext::TemplateParameterInfos template_param_infos;
             if (ParseTemplateParameterInfos(die, template_param_infos)) {
               clang::ClassTemplateDecl *class_template_decl =
@@ -815,7 +816,7 @@ TypeSP DWARFASTParserClang::ParseTypeFromDWARF(const SymbolContext &sc,
                 }
                 return TypeSP();
               }
-                
+
               clang::ClassTemplateSpecializationDecl
                   *class_specialization_decl =
                       m_ast.CreateClassTemplateSpecializationDecl(

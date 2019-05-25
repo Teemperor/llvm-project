@@ -21,6 +21,7 @@ CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
 
   std::initializer_list<const char *> supported_names = {
       // containers
+      "array",
       "deque",
       "forward_list",
       "list",
@@ -33,6 +34,11 @@ CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
       "weak_ptr",
       // utility
       "allocator",
+      "map",
+      "set",
+      "unordered_map",
+      "unordered_set",
+      "pair",
   };
   m_supported_templates.insert(supported_names.begin(), supported_names.end());
 }
@@ -173,6 +179,40 @@ T *createDecl(ASTImporter &importer, Decl *from_d, Args &&... args) {
   return to_d;
 }
 
+template<typename T>
+Optional<clang::Decl *> lookupDecl(clang::Sema &sema,
+    clang::NamedDecl &nd, clang::DeclContext *to_context) {
+  std::unique_ptr<LookupResult> lookup = emulateLookupInCtxt(sema,
+      nd.getName(), to_context);
+
+  for (clang::Decl *LD : *lookup)
+    if (isa<T>(LD))
+      return {LD};
+
+  return {};
+}
+
+static Optional<clang::Decl *> loadRecordDecl(Sema &sema, Decl *d) {
+  auto to_context = getEqualLocalDeclContext(sema, d->getDeclContext());
+  if (!to_context)
+      return {};
+
+  auto nd = cast<NamedDecl>(d);
+
+  auto ld = lookupDecl<RecordDecl>(sema, *nd, *to_context);
+  return ld;
+}
+
+llvm::Optional<clang::Decl *> CxxModuleHandler::tryLoadingDecl(clang::Decl *d) {
+    switch(d->getKind()) {
+        case Decl::Kind::Record:
+        case Decl::Kind::CXXRecord:
+            return loadRecordDecl(*m_sema, d);
+        default:
+            return {};
+    }
+}
+
 llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
   // If we don't have a template to instiantiate, then there is nothing to do.
   auto td = dyn_cast<ClassTemplateSpecializationDecl>(d);
@@ -210,6 +250,7 @@ llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
   }
   if (!new_class_template)
     return {};
+  //llvm::errs() << "substituting " << td->getQualifiedNameAsString() << "\n";
 
   // Import the foreign template arguments.
   llvm::SmallVector<TemplateArgument, 4> imported_args;
@@ -275,6 +316,8 @@ llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
 llvm::Optional<Decl *> CxxModuleHandler::Import(Decl *d) {
   if (!isValid())
     return {};
+  if (auto ld = tryLoadingDecl(d))
+    return ld;
 
   return tryInstantiateStdTemplate(d);
 }
