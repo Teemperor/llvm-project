@@ -164,12 +164,19 @@ static void AddMacros(const DebugMacros *dm, CompileUnit *comp_unit,
   }
 }
 
+/// Returns true iff the character is part of an identifier according to LLDB.
+static bool IsLLDBIdentifier(char c) {
+  // We allow all characters Clang allows by default and '$' in identifiers.
+  return clang::isIdentifierBody(static_cast<unsigned char>(c),
+                                 /*allow dollar character*/ true);
+}
+
 /// Checks if the expression body contains the given variable as a token.
 /// \param body The expression body.
 /// \param var The variable token we are looking for.
 /// \return True iff the expression body containes the variable as a token.
 static bool ExprBodyContainsVar(llvm::StringRef body, llvm::StringRef var) {
-  assert(var.find_if([](char c) { return !clang::isIdentifierBody(c); }) ==
+  assert(var.find_if([](char c) { return !IsLLDBIdentifier(c); }) ==
              llvm::StringRef::npos &&
          "variable contains non-identifier chars?");
 
@@ -182,10 +189,9 @@ static bool ExprBodyContainsVar(llvm::StringRef body, llvm::StringRef var) {
     // Prevents situations where we for example inlcude the variable 'FOO' in an
     // expression like 'FOObar + 1'.
     bool has_characters_before =
-        start != 0 && clang::isIdentifierBody(body[start - 1]);
-    bool has_characters_after =
-        start + var.size() < body.size() &&
-        clang::isIdentifierBody(body[start + var.size()]);
+        start != 0 && IsLLDBIdentifier(body[start - 1]);
+    bool has_characters_after = start + var.size() < body.size() &&
+                                IsLLDBIdentifier(body[start + var.size()]);
 
     // Our token just contained the variable name as a substring. Continue
     // searching the rest of the expression.
