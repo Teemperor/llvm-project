@@ -170,6 +170,36 @@ function(lldb_append_link_flags target_name new_link_flags)
   set_target_properties(${target_name} PROPERTIES LINK_FLAGS ${new_link_flags})
 endfunction()
 
+function(lldb_tablegen)
+  # Syntax:
+  # lldb_tablegen output-file [tablegen-arg ...] SOURCE source-file
+  # [[TARGET cmake-target-name] [DEPENDS extra-dependency ...]]
+  #
+  # Generates a custom command for invoking tblgen as
+  #
+  # tblgen source-file -o=output-file tablegen-arg ...
+  #
+  # and, if cmake-target-name is provided, creates a custom target for
+  # executing the custom command depending on output-file. It is
+  # possible to list more files to depend after DEPENDS.
+
+  cmake_parse_arguments(LTG "" "SOURCE;TARGET" "" ${ARGN})
+
+  if( NOT LTG_SOURCE )
+    message(FATAL_ERROR "SOURCE source-file required by clang_tablegen")
+  endif()
+
+  set( LLVM_TARGET_DEFINITIONS ${LTG_SOURCE} )
+  tablegen(LLDB ${LTG_UNPARSED_ARGUMENTS})
+
+  if(LTG_TARGET)
+    add_public_tablegen_target(${LTG_TARGET})
+    set_target_properties( ${LTG_TARGET} PROPERTIES FOLDER "LLDB tablegenning")
+    set_property(GLOBAL APPEND PROPERTY LLDB_TABLEGEN_TARGETS ${LTG_TARGET})
+  endif()
+endfunction(lldb_tablegen)
+
+
 # For tools that depend on liblldb, account for varying directory structures in
 # which LLDB.framework can be used and distributed: In the build-tree we find it
 # by its absolute target path. This is only relevant for running the test suite.

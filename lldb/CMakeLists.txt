@@ -35,6 +35,7 @@ if (NOT LLDB_DISABLE_PYTHON)
 endif ()
 add_subdirectory(source)
 add_subdirectory(tools)
+add_subdirectory(utils/TableGen)
 add_subdirectory(docs)
 
 option(LLDB_INCLUDE_TESTS "Generate build targets for the LLDB unit tests." ${LLVM_INCLUDE_TESTS})
