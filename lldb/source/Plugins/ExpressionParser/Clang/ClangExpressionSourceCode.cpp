@@ -9,6 +9,8 @@
 #include "ClangExpressionSourceCode.h"
 
 #include "clang/Basic/CharInfo.h"
+#include "clang/Basic/SourceManager.h"
+#include "clang/Lex/Lexer.h"
 #include "llvm/ADT/StringRef.h"
 
 #include "Plugins/ExpressionParser/Clang/ClangModulesDeclVendor.h"
@@ -164,43 +166,67 @@ static void AddMacros(const DebugMacros *dm, CompileUnit *comp_unit,
   }
 }
 
-/// Returns true iff the character is part of an identifier according to LLDB.
-static bool IsLLDBIdentifier(char c) {
-  // We allow all characters Clang allows by default and '$' in identifiers.
-  return clang::isIdentifierBody(static_cast<unsigned char>(c),
-                                 /*allow dollar character*/ true);
-}
-
 /// Checks if the expression body contains the given variable as a token.
 /// \param body The expression body.
 /// \param var The variable token we are looking for.
 /// \return True iff the expression body containes the variable as a token.
-static bool ExprBodyContainsVar(llvm::StringRef body, llvm::StringRef var) {
-  assert(var.find_if([](char c) { return !IsLLDBIdentifier(c); }) ==
-             llvm::StringRef::npos &&
-         "variable contains non-identifier chars?");
+static bool ExprBodyContainsVar(std::string body, llvm::StringRef var) {
+  using namespace clang;
 
-  size_t start = 0;
-  // Iterate over all occurences of the variable string in our expression.
-  while ((start = body.find(var, start)) != llvm::StringRef::npos) {
-    // We found our variable name in the expression. Check that the token
-    // that contains our needle is equal to our variable and not just contains
-    // the character sequence by accident.
-    // Prevents situations where we for example inlcude the variable 'FOO' in an
-    // expression like 'FOObar + 1'.
-    bool has_characters_before =
-        start != 0 && IsLLDBIdentifier(body[start - 1]);
-    bool has_characters_after = start + var.size() < body.size() &&
-                                IsLLDBIdentifier(body[start + var.size()]);
+  std::replace(body.begin(), body.end(), '\n', ' ');
+  std::replace(body.begin(), body.end(), '\r', ' ');
 
-    // Our token just contained the variable name as a substring. Continue
-    // searching the rest of the expression.
-    if (has_characters_before || has_characters_after) {
-      ++start;
+  FileSystemOptions file_opts;
+  FileManager file_mgr(file_opts,
+                       FileSystem::Instance().GetVirtualFileSystem());
+
+  // Let's build the actual source code Clang needs and setup some utility
+  // objects.
+  llvm::IntrusiveRefCntPtr<DiagnosticIDs> diag_ids(new DiagnosticIDs());
+  llvm::IntrusiveRefCntPtr<DiagnosticOptions> diags_opts(
+                                                         new DiagnosticOptions());
+  DiagnosticsEngine diags(diag_ids, diags_opts);
+  clang::SourceManager SM(diags, file_mgr);
+  auto buf = llvm::MemoryBuffer::getMemBuffer(body);
+
+  FileID FID = SM.createFileID(clang::SourceManager::Unowned, buf.get());
+
+  // Let's just enable the latest ObjC and C++ which should get most tokens
+  // right.
+  LangOptions Opts;
+  Opts.ObjC = true;
+  Opts.DollarIdents = true;
+  // FIXME: This should probably set CPlusPlus, CPlusPlus11, ... too
+  Opts.CPlusPlus17 = true;
+  Opts.LineComment = true;
+
+  Lexer lex(FID, buf.get(), SM, Opts);
+
+  Token token;
+  bool exit = false;
+  while (!exit) {
+    // Returns true if this is the last token we get from the lexer.
+    exit = lex.LexFromRawLexer(token);
+
+    // Same as above but with the column number.
+    bool invalid = false;
+    unsigned start = SM.getSpellingColumnNumber(token.getLocation(), &invalid);
+    if (invalid)
       continue;
-    }
-    return true;
+    // Column numbers start at 1, but indexes in our string start at 0.
+    --start;
+
+    // Annotations don't have a length, so let's skip them.
+    if (token.isAnnotation())
+      continue;
+
+    // Extract the token string from our source code.
+    llvm::StringRef tok_str = body.substr(start, token.getLength());
+
+    if (tok_str == var)
+      return true;
   }
+
   return false;
 }
 
