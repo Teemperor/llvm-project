@@ -24,6 +24,7 @@
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExternalASTSource.h"
+#include "clang/AST/GenerationCounter.h"
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/RawCommentList.h"
@@ -573,6 +574,13 @@ public:
   IntrusiveRefCntPtr<ExternalASTSource> ExternalSource;
   ASTMutationListener *Listener = nullptr;
 
+  /// Generation counter for this AST, used by attached external AST sources to
+  /// signal and detect modifications to the AST.
+  ///
+  /// Counter must be increased when an external source added new redeclaration
+  /// for an existing decl.
+  GenerationCounter Generation;
+
   /// Container for either a single DynTypedNode or for an ArrayRef to
   /// DynTypedNode. For use with ParentMap.
   class DynTypedNodeList {
@@ -1094,6 +1102,9 @@ public:
   /// Retrieve a pointer to the AST mutation listener associated
   /// with this AST context, if any.
   ASTMutationListener *getASTMutationListener() const { return Listener; }
+
+  GenerationCounter &getGeneration() { return Generation; }
+  const GenerationCounter &getGeneration() const { return Generation; }
 
   void PrintStats() const;
   const SmallVectorImpl<Type *>& getTypes() const { return Types; }
@@ -3131,8 +3142,10 @@ typename clang::LazyGenerationalUpdatePtr<Owner, T, Update>::ValueType
   // Note, this is implemented here so that ExternalASTSource.h doesn't need to
   // include ASTContext.h. We explicitly instantiate it for all relevant types
   // in ASTContext.cpp.
-  if (auto *Source = Ctx.getExternalSource())
+  if (auto *Source = Ctx.getExternalSource()) {
+    Source->setGeneration(&Ctx.getGeneration());
     return new (Ctx) LazyData(Source, Value);
+  }
   return Value;
 }
 

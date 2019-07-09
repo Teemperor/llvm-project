@@ -16,6 +16,7 @@
 
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/DeclBase.h"
+#include "clang/AST/GenerationCounter.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/Module.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -62,13 +63,11 @@ class TagDecl;
 class ExternalASTSource : public RefCountedBase<ExternalASTSource> {
   friend class ExternalSemaSource;
 
-  /// Generation number for this external AST source. Must be increased
-  /// whenever we might have added new redeclarations for existing decls.
-  uint32_t CurrentGeneration = 0;
-
   /// Whether this AST source also provides information for
   /// semantic analysis.
   bool SemaSource = false;
+
+  const GenerationCounter *GenCounter = nullptr;
 
 public:
   ExternalASTSource() = default;
@@ -90,10 +89,9 @@ public:
     }
   };
 
-  /// Get the current generation of this AST source. This number
-  /// is incremented each time the AST source lazily extends an existing
-  /// entity.
-  uint32_t getGeneration() const { return CurrentGeneration; }
+  void setGeneration(const GenerationCounter *C) { GenCounter = C; }
+
+  const GenerationCounter *getGeneration() const { return GenCounter; }
 
   /// Resolve a declaration ID into a declaration, potentially
   /// building a new declaration.
@@ -334,9 +332,6 @@ protected:
   static DeclContextLookupResult
   SetNoExternalVisibleDeclsForName(const DeclContext *DC,
                                    DeclarationName Name);
-
-  /// Increment the current generation.
-  uint32_t incrementGeneration(ASTContext &C);
 };
 
 /// A lazy pointer to an AST node (of base type T) that resides
@@ -462,8 +457,10 @@ public:
   /// Get the value of this pointer, updating its owner if necessary.
   T get(Owner O) {
     if (auto *LazyVal = Value.template dyn_cast<LazyData *>()) {
-      if (LazyVal->LastGeneration != LazyVal->ExternalSource->getGeneration()) {
-        LazyVal->LastGeneration = LazyVal->ExternalSource->getGeneration();
+      if (LazyVal->LastGeneration !=
+          LazyVal->ExternalSource->getGeneration()->get()) {
+        LazyVal->LastGeneration =
+            LazyVal->ExternalSource->getGeneration()->get();
         (LazyVal->ExternalSource->*Update)(O);
       }
       return LazyVal->LastValue;
