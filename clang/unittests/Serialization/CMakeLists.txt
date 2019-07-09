@@ -6,6 +6,7 @@ set(LLVM_LINK_COMPONENTS
 
 add_clang_unittest(SerializationTests
   InMemoryModuleCacheTest.cpp
+  GenerationCounterTest.cpp
   )
 
 clang_target_link_libraries(SerializationTests

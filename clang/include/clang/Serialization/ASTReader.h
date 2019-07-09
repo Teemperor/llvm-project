@@ -1268,6 +1268,14 @@ private:
         : Mod(Mod), ImportedBy(ImportedBy), ImportLoc(ImportLoc) {}
   };
 
+     /// Get the generation of the ASTContext we read into.
+     /// Returns 0 if we don't read into an ASTContext and have no generations.
+     uint32_t getGeneration() const {
+         if (ContextObj)
+             return ContextObj->getGeneration().get();
+       return 0u;
+       }
+
   ASTReadResult ReadASTCore(StringRef FileName, ModuleKind Type,
                             SourceLocation ImportLoc, ModuleFile *ImportedBy,
                             SmallVectorImpl<ImportedModule> &Loaded,
