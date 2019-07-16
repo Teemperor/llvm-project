@@ -36,6 +36,7 @@ using namespace lldb_private;
 
 static constexpr OptionDefinition g_source_info_options[] = {
     // clang-format off
+//CMD:source info
   { LLDB_OPT_SET_ALL,                false, "count",    'c', OptionParser::eRequiredArgument, nullptr, {}, 0,                                         eArgTypeCount,               "The number of line entries to display." },
   { LLDB_OPT_SET_1 | LLDB_OPT_SET_2, false, "shlib",    's', OptionParser::eRequiredArgument, nullptr, {}, CommandCompletions::eModuleCompletion,     eArgTypeShlibName,           "Look up the source in the given module or shared library (can be specified more than once)." },
   { LLDB_OPT_SET_1,                  false, "file",     'f', OptionParser::eRequiredArgument, nullptr, {}, CommandCompletions::eSourceFileCompletion, eArgTypeFilename,            "The file from which to display source." },
@@ -646,6 +647,7 @@ protected:
 
 static constexpr OptionDefinition g_source_list_options[] = {
     // clang-format off
+//CMD:source list
   { LLDB_OPT_SET_ALL,                false, "count",            'c', OptionParser::eRequiredArgument, nullptr, {}, 0,                                         eArgTypeCount,               "The number of source lines to display." },
   { LLDB_OPT_SET_1 | LLDB_OPT_SET_2, false, "shlib",            's', OptionParser::eRequiredArgument, nullptr, {}, CommandCompletions::eModuleCompletion,     eArgTypeShlibName,           "Look up the source file in the given shared library." },
   { LLDB_OPT_SET_ALL,                false, "show-breakpoints", 'b', OptionParser::eNoArgument,       nullptr, {}, 0,                                         eArgTypeNone,                "Show the line table locations from the debug information that indicate valid places to set source level breakpoints." },

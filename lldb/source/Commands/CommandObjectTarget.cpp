@@ -145,12 +145,11 @@ static constexpr OptionEnumValueElement g_dependents_enumaration[] = {
      "Load dependents, even if the target is not an executable."}};
 
 static constexpr OptionDefinition g_dependents_options[] = {
-    {LLDB_OPT_SET_1, false, "no-dependents", 'd',
-     OptionParser::eOptionalArgument, nullptr,
-     OptionEnumValues(g_dependents_enumaration), 0, eArgTypeValue,
-     "Whether or not to load dependents when creating a target. If the option "
+//CMD:dependents
+    {LLDB_OPT_SET_1, false, "no-dependents", 'd', OptionParser::eOptionalArgument, nullptr, OptionEnumValues(g_dependents_enumaration), 0, eArgTypeValue, "Whether or not to load dependents when creating a target. If the option "
      "is not specified, the value is implicitly 'default'. If the option is "
-     "specified but without a value, the value is implicitly 'true'."}};
+     "specified but without a value, the value is implicitly 'true'."}
+};
 
 class OptionGroupDependents : public OptionGroup {
 public:
@@ -2971,6 +2970,7 @@ protected:
 
 static constexpr OptionDefinition g_target_modules_list_options[] = {
     // clang-format off
+//CMD:target modules list
   { LLDB_OPT_SET_1, false, "address",        'a', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeAddressOrExpression, "Display the image at this address." },
   { LLDB_OPT_SET_1, false, "arch",           'A', OptionParser::eOptionalArgument, nullptr, {}, 0, eArgTypeWidth,               "Display the architecture when listing images." },
   { LLDB_OPT_SET_1, false, "triple",         't', OptionParser::eOptionalArgument, nullptr, {}, 0, eArgTypeWidth,               "Display the triple when listing images." },
@@ -3335,6 +3335,7 @@ protected:
 
 static constexpr OptionDefinition g_target_modules_show_unwind_options[] = {
     // clang-format off
+//CMD:target modules show unwind
   { LLDB_OPT_SET_1, false, "name",    'n', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeFunctionName,        "Show unwind instructions for a function or symbol name." },
   { LLDB_OPT_SET_2, false, "address", 'a', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeAddressOrExpression, "Show unwind instructions for a function or symbol containing an address" }
     // clang-format on
@@ -3646,6 +3647,7 @@ protected:
 
 static constexpr OptionDefinition g_target_modules_lookup_options[] = {
     // clang-format off
+//CMD:target modules lookup
   { LLDB_OPT_SET_1,                                  true,  "address",    'a', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeAddressOrExpression, "Lookup an address in one or more target modules." },
   { LLDB_OPT_SET_1,                                  false, "offset",     'o', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeOffset,              "When looking up an address subtract <offset> from any addresses before doing the lookup." },
   /* FIXME: re-enable regex for types when the LookupTypeInModule actually uses the regex option: | LLDB_OPT_SET_6 */
@@ -4514,6 +4516,7 @@ private:
 
 static constexpr OptionDefinition g_target_stop_hook_add_options[] = {
     // clang-format off
+//CMD:target stop hook add
   { LLDB_OPT_SET_ALL, false, "one-liner",    'o', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeOneLiner,                                         "Add a command for the stop hook.  Can be specified more than once, and commands will be run in the order they appear." },
   { LLDB_OPT_SET_ALL, false, "shlib",        's', OptionParser::eRequiredArgument, nullptr, {}, CommandCompletions::eModuleCompletion, eArgTypeShlibName,    "Set the module within which the stop-hook is to be run." },
   { LLDB_OPT_SET_ALL, false, "thread-index", 'x', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeThreadIndex,                                      "The stop hook is run only for the thread whose index matches this argument." },

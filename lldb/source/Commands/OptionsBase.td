@@ -41,6 +41,7 @@
 //  - `OptionalArg`: Sets the argument type and marks it as optional.
 //  - `Arg`: Sets the argument type and marks it as required.
 //  - `EnumArg`: Sets the argument type to an enum and marks it as required.
+//  - `OptionalEnumArg`: Same as EnumArg but marks it as optional.
 // See argument_type field for more info.
 ////////////////////////////////////////////////////////////////////////////////
 // Field: validator
@@ -55,6 +56,13 @@
 //               Marks the option as required (see option_has_arg).
 //               Example: def foo : Option<"foo", "f">,
 //                          EnumArg<"SortOrder",
+//                          "OptionEnumValues(g_sort_option_enumeration)">;
+//  - `OptionalEnumArg`: Sets the argument type and assigns it a enum holding
+//               the valid values. The enum needs to be a variable in the
+//               including code.
+//               Marks the option as optional (see option_has_arg).
+//               Example: def foo : Option<"foo", "f">,
+//                          OptionalEnumArg<"SortOrder",
 //                          "OptionEnumValues(g_sort_option_enumeration)">;
 ////////////////////////////////////////////////////////////////////////////////
 // Field: completion_type
@@ -87,6 +95,13 @@
 //               Marks the option as required (see option_has_arg).
 //               Example: def foo : Option<"foo", "f">,
 //                          EnumArg<"SortOrder",
+//                          "OptionEnumValues(g_sort_option_enumeration)">;
+//  - `OptionalEnumArg`: Sets the argument type and assigns it a enum holding
+//               the valid values. The enum needs to be a variable in the
+//               including code.
+//               Marks the option as optional (see option_has_arg).
+//               Example: def foo : Option<"foo", "f">,
+//                          OptionalEnumArg<"SortOrder",
 //                          "OptionEnumValues(g_sort_option_enumeration)">;
 ////////////////////////////////////////////////////////////////////////////////
 // Field: usage_text
@@ -144,10 +159,17 @@ class Arg<string type> {
   string ArgType = type;
 }
 
-// Gives the option an required argument.
+// Gives the option an required enum argument.
 class EnumArg<string type, string enum> {
   string ArgType = type;
   string ArgEnum = enum;
+}
+
+// Gives the option an optional enum argument.
+class OptionalEnumArg<string type, string enum> {
+  string ArgType = type;
+  string ArgEnum = enum;
+  bit OptionalArg = 1;
 }
 
 // Sets the available completions for the given option.

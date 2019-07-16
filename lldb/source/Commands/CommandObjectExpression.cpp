@@ -49,6 +49,7 @@ static constexpr OptionEnumValues DescriptionVerbosityTypes() {
 
 static constexpr OptionDefinition g_expression_options[] = {
     // clang-format off
+//CMD:expression options
   {LLDB_OPT_SET_1 | LLDB_OPT_SET_2, false, "all-threads",           'a', OptionParser::eRequiredArgument, nullptr, {},                          0, eArgTypeBoolean,              "Should we run all threads if the execution doesn't complete on one thread."},
   {LLDB_OPT_SET_1 | LLDB_OPT_SET_2, false, "ignore-breakpoints",    'i', OptionParser::eRequiredArgument, nullptr, {},                          0, eArgTypeBoolean,              "Ignore breakpoint hits while running expressions"},
   {LLDB_OPT_SET_1 | LLDB_OPT_SET_2, false, "timeout",               't', OptionParser::eRequiredArgument, nullptr, {},                          0, eArgTypeUnsignedInteger,      "Timeout value (in microseconds) for running the expression."},

@@ -97,6 +97,7 @@ static bool WarnOnPotentialUnquotedUnsignedType(Args &command,
 
 static constexpr OptionDefinition g_type_summary_add_options[] = {
     // clang-format off
+//CMD:type summary add
   { LLDB_OPT_SET_ALL,                false, "category",        'w', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeName,           "Add this to the given category instead of the default one." },
   { LLDB_OPT_SET_ALL,                false, "cascade",         'C', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeBoolean,        "If true, cascade through typedef chains." },
   { LLDB_OPT_SET_ALL,                false, "no-value",        'v', OptionParser::eNoArgument,       nullptr, {}, 0, eArgTypeNone,           "Don't show the value, just show the summary, for this type." },
@@ -299,6 +300,7 @@ static const char *g_synth_addreader_instructions =
 
 static constexpr OptionDefinition g_type_synth_add_options[] = {
     // clang-format off
+//CMD:type synth add
   { LLDB_OPT_SET_ALL, false, "cascade",         'C', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeBoolean,     "If true, cascade through typedef chains." },
   { LLDB_OPT_SET_ALL, false, "skip-pointers",   'p', OptionParser::eNoArgument,       nullptr, {}, 0, eArgTypeNone,        "Don't use this format for pointers-to-type objects." },
   { LLDB_OPT_SET_ALL, false, "skip-references", 'r', OptionParser::eNoArgument,       nullptr, {}, 0, eArgTypeNone,        "Don't use this format for references-to-type objects." },
@@ -527,6 +529,7 @@ public:
 
 static constexpr OptionDefinition g_type_format_add_options[] = {
     // clang-format off
+//CMD:type format add
   { LLDB_OPT_SET_ALL, false, "category",        'w', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeName,    "Add this to the given category instead of the default one." },
   { LLDB_OPT_SET_ALL, false, "cascade",         'C', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeBoolean, "If true, cascade through typedef chains." },
   { LLDB_OPT_SET_ALL, false, "skip-pointers",   'p', OptionParser::eNoArgument,       nullptr, {}, 0, eArgTypeNone,    "Don't use this format for pointers-to-type objects." },
@@ -750,6 +753,7 @@ protected:
 
 static constexpr OptionDefinition g_type_formatter_delete_options[] = {
     // clang-format off
+//CMD:type formatter delete
   { LLDB_OPT_SET_1, false, "all",      'a', OptionParser::eNoArgument,       nullptr, {}, 0, eArgTypeNone,     "Delete from every category." },
   { LLDB_OPT_SET_2, false, "category", 'w', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeName,     "Delete from given category." },
   { LLDB_OPT_SET_3, false, "language", 'l', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeLanguage, "Delete from given language's category." }
@@ -892,6 +896,7 @@ protected:
 
 static constexpr OptionDefinition g_type_formatter_clear_options[] = {
     // clang-format off
+//CMD:type formatter clear
   { LLDB_OPT_SET_ALL, false, "all", 'a', OptionParser::eNoArgument, nullptr, {}, 0, eArgTypeNone, "Clear every category." }
     // clang-format on
 };
@@ -1006,6 +1011,7 @@ public:
 
 static constexpr OptionDefinition g_type_formatter_list_options[] = {
   // clang-format off
+//CMD:type formatter list
   {LLDB_OPT_SET_1, false, "category-regex", 'w', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeName,     "Only show categories matching this filter."},
   {LLDB_OPT_SET_2, false, "language",       'l', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeLanguage, "Only show the category for a specific language."}
   // clang-format on
@@ -1768,6 +1774,7 @@ protected:
 
 static constexpr OptionDefinition g_type_category_define_options[] = {
     // clang-format off
+//CMD:type category define
   { LLDB_OPT_SET_ALL, false, "enabled",  'e', OptionParser::eNoArgument,       nullptr, {}, 0, eArgTypeNone,     "If specified, this category will be created enabled." },
   { LLDB_OPT_SET_ALL, false, "language", 'l', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeLanguage, "Specify the language that this category is supported for." }
     // clang-format on
@@ -1873,6 +1880,7 @@ protected:
 
 static constexpr OptionDefinition g_type_category_enable_options[] = {
     // clang-format off
+//CMD:type category enable
   { LLDB_OPT_SET_ALL, false, "language", 'l', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeLanguage, "Enable the category for this language." },
     // clang-format on
 };
@@ -2456,6 +2464,7 @@ bool CommandObjectTypeSynthAdd::AddSynth(ConstString type_name,
 
 static constexpr OptionDefinition g_type_filter_add_options[] = {
     // clang-format off
+//CMD:type filter add
   { LLDB_OPT_SET_ALL, false, "cascade",         'C', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeBoolean,        "If true, cascade through typedef chains." },
   { LLDB_OPT_SET_ALL, false, "skip-pointers",   'p', OptionParser::eNoArgument,       nullptr, {}, 0, eArgTypeNone,           "Don't use this format for pointers-to-type objects." },
   { LLDB_OPT_SET_ALL, false, "skip-references", 'r', OptionParser::eNoArgument,       nullptr, {}, 0, eArgTypeNone,           "Don't use this format for references-to-type objects." },
@@ -2709,6 +2718,7 @@ protected:
 // "type lookup"
 static constexpr OptionDefinition g_type_lookup_options[] = {
     // clang-format off
+//CMD:type lookup
   { LLDB_OPT_SET_ALL, false, "show-help", 'h', OptionParser::eNoArgument,       nullptr, {}, 0, eArgTypeNone,     "Display available help for types" },
   { LLDB_OPT_SET_ALL, false, "language",  'l', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeLanguage, "Which language's types should the search scope be" }
     // clang-format on

@@ -45,6 +45,7 @@ static void AddBreakpointDescription(Stream *s, Breakpoint *bp,
 // Modifiable Breakpoint Options
 #pragma mark Modify::CommandOptions
 static constexpr OptionDefinition g_breakpoint_modify_options[] = {
+//CMD:breakpoint modify
     // clang-format off
   { LLDB_OPT_SET_1, false, "ignore-count", 'i', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeCount,       "Set the number of times this breakpoint is skipped before stopping." },
   { LLDB_OPT_SET_1, false, "one-shot",     'o', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeBoolean,     "The breakpoint is deleted the first time it stop causes a stop." },
@@ -194,6 +195,7 @@ public:
 };
 static constexpr OptionDefinition g_breakpoint_dummy_options[] = {
     // clang-format off
+//CMD:breakpoint dummy options
   { LLDB_OPT_SET_1, false, "dummy-breakpoints", 'D', OptionParser::eNoArgument, nullptr, {}, 0, eArgTypeNone, "Act on Dummy breakpoints - i.e. breakpoints set before a file is provided, "
   "which prime new targets." },
     // clang-format on
@@ -248,6 +250,7 @@ public:
 
 static constexpr OptionDefinition g_breakpoint_set_options[] = {
     // clang-format off
+  //CMD:breakpoint set
   { LLDB_OPT_NOT_10,               false, "shlib",                  's', OptionParser::eRequiredArgument, nullptr, {}, CommandCompletions::eModuleCompletion,     eArgTypeShlibName,           "Set the breakpoint only in this shared library.  Can repeat this option "
   "multiple times to specify multiple shared libraries." },
   { LLDB_OPT_SET_ALL,              false, "hardware",               'H', OptionParser::eNoArgument,       nullptr, {}, 0,                                         eArgTypeNone,                "Require the breakpoint to use hardware breakpoints." },
@@ -1406,6 +1409,7 @@ private:
 
 static constexpr OptionDefinition g_breakpoint_clear_options[] = {
     // clang-format off
+//CMD:breakpoint clear
   { LLDB_OPT_SET_1, false, "file", 'f', OptionParser::eRequiredArgument, nullptr, {}, CommandCompletions::eSourceFileCompletion, eArgTypeFilename, "Specify the breakpoint by source location in this particular file." },
   { LLDB_OPT_SET_1, true,  "line", 'l', OptionParser::eRequiredArgument, nullptr, {}, 0,                                         eArgTypeLineNum,  "Specify the breakpoint by source location at this particular line." }
     // clang-format on
@@ -1559,6 +1563,7 @@ private:
 // CommandObjectBreakpointDelete
 static constexpr OptionDefinition g_breakpoint_delete_options[] = {
     // clang-format off
+//CMD:breakpoint delete
   { LLDB_OPT_SET_1, false, "force",             'f', OptionParser::eNoArgument, nullptr, {}, 0, eArgTypeNone, "Delete all breakpoints without querying for confirmation." },
   { LLDB_OPT_SET_1, false, "dummy-breakpoints", 'D', OptionParser::eNoArgument, nullptr, {}, 0, eArgTypeNone, "Delete Dummy breakpoints - i.e. breakpoints set before a file is provided, which prime new targets." },
     // clang-format on
@@ -1714,6 +1719,7 @@ private:
 
 static constexpr OptionDefinition g_breakpoint_name_options[] = {
     // clang-format off
+//CMD:breakpoint name
   {LLDB_OPT_SET_1, false, "name",              'N', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeBreakpointName, "Specifies a breakpoint name to use."},
   {LLDB_OPT_SET_2, false, "breakpoint-id",     'B', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeBreakpointID,   "Specify a breakpoint ID to use."},
   {LLDB_OPT_SET_3, false, "dummy-breakpoints", 'D', OptionParser::eNoArgument,       nullptr, {}, 0, eArgTypeNone,           "Operate on Dummy breakpoints - i.e. breakpoints set before a file is provided, which prime new targets."},
@@ -1783,6 +1789,7 @@ public:
 
 static constexpr OptionDefinition g_breakpoint_access_options[] = {
     // clang-format off
+//CMD:breakpoint access
   {LLDB_OPT_SET_1,   false, "allow-list",    'L', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeBoolean, "Determines whether the breakpoint will show up in break list if not referred to explicitly."},
   {LLDB_OPT_SET_2,   false, "allow-disable", 'A', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeBoolean, "Determines whether the breakpoint can be disabled by name or when all breakpoints are disabled."},
   {LLDB_OPT_SET_3,   false, "allow-delete",  'D', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeBoolean, "Determines whether the breakpoint can be deleted by name or when all breakpoints are deleted."},
@@ -2248,6 +2255,7 @@ public:
 #pragma mark Read::CommandOptions
 static constexpr OptionDefinition g_breakpoint_read_options[] = {
     // clang-format off
+//CMD:breakpoint read
   {LLDB_OPT_SET_ALL, true,  "file",                   'f', OptionParser::eRequiredArgument, nullptr, {}, CommandCompletions::eDiskFileCompletion, eArgTypeFilename,       "The file from which to read the breakpoints." },
   {LLDB_OPT_SET_ALL, false, "breakpoint-name",        'N', OptionParser::eRequiredArgument, nullptr, {}, 0,                                       eArgTypeBreakpointName, "Only read in breakpoints with this name."},
     // clang-format on
@@ -2377,6 +2385,7 @@ private:
 #pragma mark Write::CommandOptions
 static constexpr OptionDefinition g_breakpoint_write_options[] = {
     // clang-format off
+//CMD:breakpoint write
   { LLDB_OPT_SET_ALL, true,  "file",  'f', OptionParser::eRequiredArgument, nullptr, {}, CommandCompletions::eDiskFileCompletion, eArgTypeFilename,    "The file into which to write the breakpoints." },
   { LLDB_OPT_SET_ALL, false, "append",'a', OptionParser::eNoArgument,       nullptr, {}, 0,                                       eArgTypeNone,        "Append to saved breakpoints file if it exists."},
     // clang-format on

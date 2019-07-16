@@ -32,6 +32,7 @@ using namespace lldb_private;
 
 static constexpr OptionDefinition g_disassemble_options[] = {
     // clang-format off
+//CMD:disassemble options
   { LLDB_OPT_SET_ALL, false, "bytes",         'b', OptionParser::eNoArgument,       nullptr, {}, 0,                                     eArgTypeNone,                "Show opcode bytes when disassembling." },
   { LLDB_OPT_SET_ALL, false, "context",       'C', OptionParser::eRequiredArgument, nullptr, {}, 0,                                     eArgTypeNumLines,            "Number of context lines of source to show." },
   { LLDB_OPT_SET_ALL, false, "mixed",         'm', OptionParser::eNoArgument,       nullptr, {}, 0,                                     eArgTypeNone,                "Enable mixed source and assembly display." },
@@ -41,13 +42,9 @@ static constexpr OptionDefinition g_disassemble_options[] = {
   "Currently the only valid options are default, and for Intel "
   "architectures, att and intel." },
   { LLDB_OPT_SET_ALL, false, "arch",          'A', OptionParser::eRequiredArgument, nullptr, {}, 0,                                     eArgTypeArchitecture,        "Specify the architecture to use from cross disassembly." },
-  { LLDB_OPT_SET_1 |
-  LLDB_OPT_SET_2,   true,  "start-address", 's', OptionParser::eRequiredArgument, nullptr, {}, 0,                                     eArgTypeAddressOrExpression, "Address at which to start disassembling." },
+  { LLDB_OPT_SET_1 | LLDB_OPT_SET_2,   true,  "start-address", 's', OptionParser::eRequiredArgument, nullptr, {}, 0,                                     eArgTypeAddressOrExpression, "Address at which to start disassembling." },
   { LLDB_OPT_SET_1,   false, "end-address",   'e', OptionParser::eRequiredArgument, nullptr, {}, 0,                                     eArgTypeAddressOrExpression, "Address at which to end disassembling." },
-  { LLDB_OPT_SET_2 |
-  LLDB_OPT_SET_3 |
-  LLDB_OPT_SET_4 |
-  LLDB_OPT_SET_5,   false, "count",         'c', OptionParser::eRequiredArgument, nullptr, {}, 0,                                     eArgTypeNumLines,            "Number of instructions to display." },
+  { LLDB_OPT_SET_2 | LLDB_OPT_SET_3 | LLDB_OPT_SET_4 | LLDB_OPT_SET_5,   false, "count",         'c', OptionParser::eRequiredArgument, nullptr, {}, 0,                                     eArgTypeNumLines,            "Number of instructions to display." },
   { LLDB_OPT_SET_3,   false, "name",          'n', OptionParser::eRequiredArgument, nullptr, {}, CommandCompletions::eSymbolCompletion, eArgTypeFunctionName,        "Disassemble entire contents of the given function name." },
   { LLDB_OPT_SET_4,   false, "frame",         'f', OptionParser::eNoArgument,       nullptr, {}, 0,                                     eArgTypeNone,                "Disassemble from the start of the current frame's function." },
   { LLDB_OPT_SET_5,   false, "pc",            'p', OptionParser::eNoArgument,       nullptr, {}, 0,                                     eArgTypeNone,                "Disassemble around the current pc." },
