@@ -45,20 +45,8 @@ static void AddBreakpointDescription(Stream *s, Breakpoint *bp,
 // Modifiable Breakpoint Options
 #pragma mark Modify::CommandOptions
 static constexpr OptionDefinition g_breakpoint_modify_options[] = {
-//CMD:breakpoint modify
-    // clang-format off
-  { LLDB_OPT_SET_1, false, "ignore-count", 'i', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeCount,       "Set the number of times this breakpoint is skipped before stopping." },
-  { LLDB_OPT_SET_1, false, "one-shot",     'o', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeBoolean,     "The breakpoint is deleted the first time it stop causes a stop." },
-  { LLDB_OPT_SET_1, false, "thread-index", 'x', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeThreadIndex, "The breakpoint stops only for the thread whose index matches this argument." },
-  { LLDB_OPT_SET_1, false, "thread-id",    't', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeThreadID,    "The breakpoint stops only for the thread whose TID matches this argument." },
-  { LLDB_OPT_SET_1, false, "thread-name",  'T', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeThreadName,  "The breakpoint stops only for the thread whose thread name matches this argument." },
-  { LLDB_OPT_SET_1, false, "queue-name",   'q', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeQueueName,   "The breakpoint stops only for threads in the queue whose name is given by this argument." },
-  { LLDB_OPT_SET_1, false, "condition",    'c', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeExpression,  "The breakpoint stops only if this condition expression evaluates to true." },
-  { LLDB_OPT_SET_1, false, "auto-continue",'G', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeBoolean,     "The breakpoint will auto-continue after running its commands." },
-  { LLDB_OPT_SET_2, false, "enable",       'e', OptionParser::eNoArgument,       nullptr, {}, 0, eArgTypeNone,        "Enable the breakpoint." },
-  { LLDB_OPT_SET_3, false, "disable",      'd', OptionParser::eNoArgument,       nullptr, {}, 0, eArgTypeNone,        "Disable the breakpoint." },
-  { LLDB_OPT_SET_4, false, "command",      'C', OptionParser::eRequiredArgument, nullptr, {}, 0, eArgTypeCommand,     "A command to run when the breakpoint is hit, can be provided more than once, the commands will get run in order left to right." },
-    // clang-format on
+#define LLDB_OPTIONS_breakpoint_modify
+#include "CommandOptions.inc"
 };
 class lldb_private::BreakpointOptionGroup : public OptionGroup
 {

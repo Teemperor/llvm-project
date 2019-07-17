@@ -472,7 +472,7 @@ const char *CommandObjectBreakpointCommandAdd::g_reader_instructions =
 
 static constexpr OptionDefinition g_breakpoint_delete_options[] = {
     // clang-format off
-//CMD:breakpoint delete
+//CMD:breakpoint command delete
   { LLDB_OPT_SET_1, false, "dummy-breakpoints", 'D', OptionParser::eNoArgument, nullptr, {}, 0, eArgTypeNone, "Delete commands from Dummy breakpoints - i.e. breakpoints set before a file is provided, which prime new targets." },
     // clang-format on
 };
