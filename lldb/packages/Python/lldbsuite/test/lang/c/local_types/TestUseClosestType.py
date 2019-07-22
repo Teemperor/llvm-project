@@ -23,7 +23,6 @@ class TestUseClosestType(TestBase):
 
     NO_DEBUG_INFO_TESTCASE = True
 
-    @expectedFailureAll(bugnumber="<rdar://problem/53262085>")
     def test_use_in_expr(self):
         """Use the shadowed type directly, see if we get a conflicting type definition."""
         self.build()
@@ -46,7 +45,6 @@ class TestUseClosestType(TestBase):
         """ Run to a breakpoint in main.c, check that an expression referring to Foo gets the
             local three int version.  Then run to a breakpoint in other.c and check that an
             expression referring to Foo gets the two char* version. """
-        
         (target, process, self.thread, bkpt) = lldbutil.run_to_source_breakpoint(self,
                                    "Set a breakpoint in main", self.main_source_file)
 
