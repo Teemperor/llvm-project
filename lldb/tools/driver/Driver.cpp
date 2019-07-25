@@ -472,7 +472,8 @@ std::string EscapeString(std::string arg) {
 }
 
 int Driver::MainLoop() {
-  if (::tcgetattr(STDIN_FILENO, &g_old_stdin_termios) == 0) {
+  if (getenv("LLDB_UNDER_CREDUCE") == nullptr &&
+      ::tcgetattr(STDIN_FILENO, &g_old_stdin_termios) == 0) {
     g_old_stdin_termios_is_valid = true;
     atexit(reset_stdin_termios);
   }

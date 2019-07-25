@@ -3215,10 +3215,10 @@ void ScriptInterpreterPythonImpl::InitializePrivate() {
   if (FileSpec file_spec = HostInfo::GetShlibDir())
     AddToSysPath(AddLocation::Beginning, file_spec.GetPath(false));
 
-  PyRun_SimpleString("sys.dont_write_bytecode = 1; import "
-                     "lldb.embedded_interpreter; from "
-                     "lldb.embedded_interpreter import run_python_interpreter; "
-                     "from lldb.embedded_interpreter import run_one_line");
+  //PyRun_SimpleString("sys.dont_write_bytecode = 1; import "
+  //                   "lldb.embedded_interpreter; from "
+  //                   "lldb.embedded_interpreter import run_python_interpreter; "
+  //                   "from lldb.embedded_interpreter import run_one_line");
 }
 
 void ScriptInterpreterPythonImpl::AddToSysPath(AddLocation location,

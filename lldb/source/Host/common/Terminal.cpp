@@ -106,6 +106,9 @@ void TerminalState::Clear() {
 // "save_process_group" is true, attempt to save the process group info for the
 // TTY.
 bool TerminalState::Save(int fd, bool save_process_group) {
+  if (getenv("LLDB_UNDER_CREDUCE"))
+    return false;
+
   m_tty.SetFileDescriptor(fd);
   if (m_tty.IsATerminal()) {
 #ifndef LLDB_DISABLE_POSIX
@@ -138,6 +141,9 @@ bool TerminalState::Save(int fd, bool save_process_group) {
 // Restore the state of the TTY using the cached values from a previous call to
 // Save().
 bool TerminalState::Restore() const {
+  if (getenv("LLDB_UNDER_CREDUCE"))
+    return false;
+
 #ifndef LLDB_DISABLE_POSIX
   if (IsValid()) {
     const int fd = m_tty.GetFileDescriptor();
