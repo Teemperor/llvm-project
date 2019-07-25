@@ -99,7 +99,7 @@ static Driver *g_driver = nullptr;
 static void reset_stdin_termios() {
   if (g_old_stdin_termios_is_valid) {
     g_old_stdin_termios_is_valid = false;
-    ::tcsetattr(STDIN_FILENO, TCSANOW, &g_old_stdin_termios);
+    //::tcsetattr(STDIN_FILENO, TCSANOW, &g_old_stdin_termios);
   }
 }
 
@@ -474,7 +474,7 @@ std::string EscapeString(std::string arg) {
 int Driver::MainLoop() {
   if (::tcgetattr(STDIN_FILENO, &g_old_stdin_termios) == 0) {
     g_old_stdin_termios_is_valid = true;
-    atexit(reset_stdin_termios);
+    //atexit(reset_stdin_termios);
   }
 
 #ifndef _MSC_VER
