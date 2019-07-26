@@ -24,8 +24,6 @@ struct OptionDefinition;
 struct Option {
   // The definition of the option that this refers to.
   const OptionDefinition *definition;
-  // if not NULL, set *flag to val when option found
-  int *flag;
   // if flag not NULL, value to set *flag to; else return value
   int val;
 };

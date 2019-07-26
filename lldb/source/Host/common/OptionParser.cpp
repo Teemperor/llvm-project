@@ -33,7 +33,6 @@ int OptionParser::Parse(llvm::MutableArrayRef<char *> argv,
   std::vector<option> opts;
   while (longopts->definition != nullptr) {
     option opt;
-    opt.flag = longopts->flag;
     opt.val = longopts->val;
     opt.name = longopts->definition->long_option;
     opt.has_arg = longopts->definition->option_has_arg;

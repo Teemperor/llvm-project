@@ -213,7 +213,6 @@ Option *Options::GetLongOptions() {
       const int short_opt = defs[i].short_option;
 
       m_getopt_table[i].definition = &defs[i];
-      m_getopt_table[i].flag = nullptr;
       m_getopt_table[i].val = short_opt;
 
       if (option_seen.find(short_opt) == option_seen.end()) {
@@ -245,7 +244,6 @@ Option *Options::GetLongOptions() {
     // getopt_long_only requires a NULL final entry in the table:
 
     m_getopt_table.back().definition = nullptr;
-    m_getopt_table.back().flag = nullptr;
     m_getopt_table.back().val = 0;
   }
 
@@ -982,19 +980,17 @@ static std::string BuildShortOptions(const Option *long_options) {
   sstr << ":";
 
   for (size_t i = 0; long_options[i].definition != nullptr; ++i) {
-    if (long_options[i].flag == nullptr) {
-      sstr << (char)long_options[i].val;
-      switch (long_options[i].definition->option_has_arg) {
-      default:
-      case OptionParser::eNoArgument:
-        break;
-      case OptionParser::eRequiredArgument:
-        sstr << ":";
-        break;
-      case OptionParser::eOptionalArgument:
-        sstr << "::";
-        break;
-      }
+    sstr << (char)long_options[i].val;
+    switch (long_options[i].definition->option_has_arg) {
+    default:
+    case OptionParser::eNoArgument:
+      break;
+    case OptionParser::eRequiredArgument:
+      sstr << ":";
+      break;
+    case OptionParser::eOptionalArgument:
+      sstr << "::";
+      break;
     }
   }
   return std::move(sstr.str());
@@ -1043,8 +1039,7 @@ llvm::Expected<Args> Options::ParseAlias(const Args &args,
 
     // Look up the long option index
     if (long_options_index == -1) {
-      for (int j = 0; long_options[j].definition || long_options[j].flag ||
-                      long_options[j].val;
+      for (int j = 0; long_options[j].definition || long_options[j].val;
            ++j) {
         if (long_options[j].val == val) {
           long_options_index = j;
@@ -1211,8 +1206,7 @@ OptionElementVector Options::ParseForCompletion(const Args &args,
 
     // Look up the long option index
     if (long_options_index == -1) {
-      for (int j = 0; long_options[j].definition || long_options[j].flag ||
-                      long_options[j].val;
+      for (int j = 0; long_options[j].definition || long_options[j].val;
            ++j) {
         if (long_options[j].val == val) {
           long_options_index = j;
@@ -1358,8 +1352,7 @@ llvm::Expected<Args> Options::Parse(const Args &args,
 
     // Lookup the long option index
     if (long_options_index == -1) {
-      for (int i = 0; long_options[i].definition || long_options[i].flag ||
-                      long_options[i].val;
+      for (int i = 0; long_options[i].definition || long_options[i].val;
            ++i) {
         if (long_options[i].val == val) {
           long_options_index = i;
