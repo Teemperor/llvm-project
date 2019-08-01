@@ -29,7 +29,9 @@
 
 using namespace lldb_private;
 
-const char *ClangExpressionSourceCode::g_expression_prefix = R"(
+const char *ClangExpressionSourceCode::g_expression_prefix =
+    R"(
+#line 1 "<lldb wrapper prefix>"
 #ifndef offsetof
 #define offsetof(t, d) __builtin_offsetof(t, d)
 #endif
@@ -67,8 +69,8 @@ extern "C"
 }
 )";
 
-static const char *c_start_marker = "    /*LLDB_BODY_START*/\n    ";
-static const char *c_end_marker = ";\n    /*LLDB_BODY_END*/\n";
+static const char *c_start_marker = "#line 1 \"<user expression>\"\n";
+static const char *c_end_marker = "\n;#line 1 \"<lldb wrapper suffix>\"\n";
 
 namespace {
 

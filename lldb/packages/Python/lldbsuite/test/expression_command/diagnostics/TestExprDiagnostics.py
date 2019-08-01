@@ -1,0 +1,81 @@
+"""
+Test the diagnostics emitted by our embeded Clang instance that parses expressions.
+"""
+
+import lldb
+from lldbsuite.test.lldbtest import *
+from lldbsuite.test import lldbutil
+
+class ExprDiagnosticsTestCase(TestBase):
+
+    mydir = TestBase.compute_mydir(__file__)
+
+    def setUp(self):
+        # Call super's setUp().
+        TestBase.setUp(self)
+
+        self.main_source = "main.cpp"
+        self.main_source_spec = lldb.SBFileSpec(self.main_source)
+
+    def test_source_and_caret_printing(self):
+        """Test that the source and caret positions LLDB prints are correct"""
+        self.build()
+
+        (target, process, thread, bkpt) = lldbutil.run_to_source_breakpoint(self,
+                                          '// Break here', self.main_source_spec)
+        frame = thread.GetFrameAtIndex(0)
+
+        # Test that source/caret are at the right position.
+        value = frame.EvaluateExpression("unknown_identifier")
+        self.assertFalse(value.GetError().Success())
+        # We should get a nice diagnostic with a caret pointing at the start of
+        # the identifier.
+        self.assertIn("\nunknown_identifier\n^\n", value.GetError().GetCString())
+        self.assertIn("<user expression>:1:1", value.GetError().GetCString())
+
+        # Same as above but with the identifier in the middle.
+        value = frame.EvaluateExpression("1 + unknown_identifier  ")
+        self.assertFalse(value.GetError().Success())
+        self.assertIn("\n1 + unknown_identifier", value.GetError().GetCString())
+        self.assertIn("\n    ^\n", value.GetError().GetCString())
+
+        # Multiline expressions.
+        value = frame.EvaluateExpression("int a = 0;\nfoobar +=1;\na")
+        self.assertFalse(value.GetError().Success())
+        # We should still get the right line information and caret position.
+        self.assertIn("\nfoobar +=1;\n^\n", value.GetError().GetCString())
+        # It's the second line of the user expression.
+        self.assertIn("<user expression>:2:1", value.GetError().GetCString())
+
+        # Top-level expressions.
+        top_level_opts = lldb.SBExpressionOptions();
+        top_level_opts.SetTopLevel(True)
+
+        value = frame.EvaluateExpression("void foo(unknown_type x) {}", top_level_opts)
+        self.assertFalse(value.GetError().Success())
+        self.assertIn("\nvoid foo(unknown_type x) {}\n         ^\n", value.GetError().GetCString())
+        # Top-level expressions might use a different wrapper code, but the file name should still
+        # be the same.
+        self.assertIn("<user expression>:1:10", value.GetError().GetCString())
+
+        # Multiline top-level expressions.
+        value = frame.EvaluateExpression("void x() {}\nvoid foo(unknown_type x) {}", top_level_opts)
+        self.assertFalse(value.GetError().Success())
+        self.assertIn("\nvoid foo(unknown_type x) {}\n         ^\n", value.GetError().GetCString())
+        self.assertIn("<user expression>:2:10", value.GetError().GetCString())
+
+        # Test that we render Clang's 'notes' correctly.
+        value = frame.EvaluateExpression("struct SFoo{}; struct SFoo { int x; };", top_level_opts)
+        self.assertFalse(value.GetError().Success())
+        self.assertIn("<user expression>:1:8: previous definition is here\nstruct SFoo{}; struct SFoo { int x; };\n       ^\n", value.GetError().GetCString())
+
+        # Declarations from the debug information currently have no debug information. It's not clear what
+        # we should do in this case, but we should at least not print anything that's wrong.
+        # In the future our declarations should have valid source locations.
+        value = frame.EvaluateExpression("struct FooBar { double x };", top_level_opts)
+        self.assertFalse(value.GetError().Success())
+        self.assertEqual("error: <user expression>:1:8: redefinition of 'FooBar'\nstruct FooBar { double x };\n       ^\n", value.GetError().GetCString())
+
+        value = frame.EvaluateExpression("foo(1, 2)")
+        self.assertFalse(value.GetError().Success())
+        self.assertEqual("error: <user expression>:1:1: no matching function for call to 'foo'\nfoo(1, 2)\n^~~\nnote: candidate function not viable: requires single argument 'x', but 2 arguments were provided\n\n", value.GetError().GetCString())
