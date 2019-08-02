@@ -71,8 +71,12 @@ static CXXRecordDecl *FindDeclaringClass(NamedDecl *D) {
     DC = cast<EnumDecl>(DC)->getDeclContext();
 
   CXXRecordDecl *DeclaringClass = cast<CXXRecordDecl>(DC);
-  while (DeclaringClass->isAnonymousStructOrUnion())
-    DeclaringClass = cast<CXXRecordDecl>(DeclaringClass->getDeclContext());
+  while (DeclaringClass->isAnonymousStructOrUnion()) {
+    if (auto C = dyn_cast<CXXRecordDecl>(DeclaringClass->getDeclContext()))
+      DeclaringClass = C;
+    else
+      break;
+  }
   return DeclaringClass;
 }
 
@@ -226,8 +230,12 @@ struct AccessTarget : public AccessedEntity {
   /// class containing the actual naming class.
   const CXXRecordDecl *getEffectiveNamingClass() const {
     const CXXRecordDecl *namingClass = getNamingClass();
-    while (namingClass->isAnonymousStructOrUnion())
-      namingClass = cast<CXXRecordDecl>(namingClass->getParent());
+    while (namingClass->isAnonymousStructOrUnion()) {
+      if (auto C = dyn_cast<CXXRecordDecl>(namingClass->getDeclContext()))
+        namingClass = C;
+      else
+        break;
+    }
     return namingClass->getCanonicalDecl();
   }
 
