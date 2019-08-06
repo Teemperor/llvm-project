@@ -175,6 +175,8 @@ T *createDecl(ASTImporter &importer, Decl *from_d, Args &&... args) {
 }
 
 llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
+  Log *log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS);
+
   // If we don't have a template to instiantiate, then there is nothing to do.
   auto td = dyn_cast<ClassTemplateSpecializationDecl>(d);
   if (!td)
@@ -197,8 +199,11 @@ llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
   // Find the local DeclContext that corresponds to the DeclContext of our
   // decl we want to import.
   auto to_context = getEqualLocalDeclContext(*m_sema, td->getDeclContext());
-  if (!to_context)
+  if (!to_context) {
+    LLDB_LOG_ERROR(log, to_context.takeError(),
+                   "Couldn't reconstruct local DeclContext: {0}");
     return {};
+  }
 
   // Look up the template in our local context.
   std::unique_ptr<LookupResult> lookup =
@@ -215,7 +220,6 @@ llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
   // Import the foreign template arguments.
   llvm::SmallVector<TemplateArgument, 4> imported_args;
 
-  Log *log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS);
 
   // If this logic is changed, also update templateArgsAreSupported.
   for (const TemplateArgument &arg : foreign_args.asArray()) {
