@@ -1190,6 +1190,30 @@ void ClangASTImporter::ASTImporterDelegate::Imported(clang::Decl *from,
       }
     }
   }
+
+  if (CXXRecordDecl *RD = dyn_cast<CXXRecordDecl>(to)) {
+    if (RD->isPolymorphic()) {
+
+      CompilerType void_clang_type = ClangASTContext::GetBasicType(&RD->getASTContext(), lldb::eBasicTypeVoid);
+      CompilerType void_ptr_clang_type = void_clang_type.GetPointerType();
+
+      CompilerType method_type = ClangASTContext::CreateFunctionType(&RD->getASTContext(), void_clang_type, &void_ptr_clang_type, 1, false, 0);
+
+      const bool is_virtual = true;
+      const bool is_static = false;
+      const bool is_inline = false;
+      const bool is_explicit = false;
+      const bool is_attr_used = true;
+      const bool is_artificial = false;
+
+      clang::CXXMethodDecl *key_func = ClangASTContext::GetASTContext(&RD->getASTContext())->AddMethodToCXXRecordType(RD, "$__lldb_key_function", nullptr,
+                                                                       method_type, lldb::eAccessPublic, is_virtual, is_static,
+                                                                       is_inline, is_explicit, is_attr_used, is_artificial);
+      clang::CompoundStmt *body = clang::CompoundStmt::Create(RD->getASTContext(), {}, clang::SourceLocation(), clang::SourceLocation());
+      key_func->setBody(body);
+      assert(!key_func->hasInlineBody());
+    }
+  }
 }
 
 clang::Decl *

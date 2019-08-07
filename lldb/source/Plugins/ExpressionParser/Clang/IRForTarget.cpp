@@ -1339,7 +1339,7 @@ bool IRForTarget::MaybeHandleVariable(Value *llvm_value_ptr) {
         LLDB_LOGF(log, "Found global variable \"%s\" without metadata",
                   global_variable->getName().str().c_str());
 
-      return false;
+      return true;
     }
 
     std::string name(named_decl->getName().str());

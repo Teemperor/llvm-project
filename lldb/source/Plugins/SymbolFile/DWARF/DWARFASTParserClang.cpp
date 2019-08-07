@@ -1386,6 +1386,30 @@ TypeSP DWARFASTParserClang::ParseTypeFromDWARF(const SymbolContext &sc,
                       if (attrs.accessibility == eAccessNone)
                         attrs.accessibility = eAccessPublic;
 
+                      static bool once = true;
+                      if (once) {
+                        once = false;
+
+                        CompilerType void_clang_type = ClangASTContext::GetBasicType(m_ast.getASTContext(), eBasicTypeVoid);
+                        CompilerType void_ptr_clang_type = void_clang_type.GetPointerType();
+
+                        CompilerType method_type = ClangASTContext::CreateFunctionType(m_ast.getASTContext(), void_clang_type, &void_ptr_clang_type, 1, false, 0);
+
+                        const bool is_virtual = true;
+                        const bool is_static = false;
+                        const bool is_inline = false;
+                        const bool is_explicit = false;
+                        const bool is_attr_used = true;
+                        const bool is_artificial = false;
+
+                        clang::CXXMethodDecl *key_func =  m_ast.AddMethodToCXXRecordType(class_opaque_type.GetOpaqueQualType(), "$__lldb_key_function", nullptr,
+                                                   method_type, lldb::eAccessPublic, is_virtual, is_static,
+                                                   is_inline, is_explicit, is_attr_used, is_artificial);
+                        clang::CompoundStmt *body = clang::CompoundStmt::Create(*m_ast.getASTContext(), {}, clang::SourceLocation(), clang::SourceLocation());
+                        key_func->setBody(body);
+                        assert(!key_func->hasInlineBody());
+                      }
+
                       clang::CXXMethodDecl *cxx_method_decl =
                           m_ast.AddMethodToCXXRecordType(
                               class_opaque_type.GetOpaqueQualType(),

@@ -1521,7 +1521,30 @@ CompilerType ClangASTContext::CreateRecordType(DeclContext *decl_ctx,
     if (decl_ctx)
       decl_ctx->addDecl(decl);
 
-    return CompilerType(ast, ast->getTagDeclType(decl));
+    CompilerType result(ast, ast->getTagDeclType(decl));
+
+    if (false) {
+
+      CompilerType void_clang_type = ClangASTContext::GetBasicType(ast, eBasicTypeVoid);
+      CompilerType void_ptr_clang_type = void_clang_type.GetPointerType();
+
+      CompilerType method_type = ClangASTContext::CreateFunctionType(ast, void_clang_type, &void_ptr_clang_type, 1, false, 0);
+
+      const bool is_virtual = true;
+      const bool is_static = false;
+      const bool is_inline = false;
+      const bool is_explicit = false;
+      const bool is_attr_used = true;
+      const bool is_artificial = false;
+
+
+      clang::CXXMethodDecl *key_func =  AddMethodToCXXRecordType(result.GetOpaqueQualType(), "$__lldb_key_function", nullptr,
+                                                                       method_type, lldb::eAccessPublic, is_virtual, is_static,
+                                                                       is_inline, is_explicit, is_attr_used, is_artificial);
+      key_func->dumpColor();
+    }
+
+    return result;
   }
   return CompilerType();
 }
@@ -8161,10 +8184,20 @@ clang::CXXMethodDecl *ClangASTContext::AddMethodToCXXRecordType(
 
   clang::QualType record_qual_type(GetCanonicalQualType(type));
 
-  clang::CXXRecordDecl *cxx_record_decl =
-      record_qual_type->getAsCXXRecordDecl();
+  clang::CXXRecordDecl *cxx_record_decl = record_qual_type->getAsCXXRecordDecl();
 
   if (cxx_record_decl == nullptr)
+    return nullptr;
+      return AddMethodToCXXRecordType(cxx_record_decl, name, mangled_name, method_clang_type, access, is_virtual, is_static, is_inline, is_explicit, is_attr_used, is_artificial);
+}
+
+clang::CXXMethodDecl *ClangASTContext::AddMethodToCXXRecordType(
+    clang::CXXRecordDecl *cxx_record_decl, const char *name, const char *mangled_name,
+    const CompilerType &method_clang_type, lldb::AccessType access,
+    bool is_virtual, bool is_static, bool is_inline, bool is_explicit,
+    bool is_attr_used, bool is_artificial) {
+  if (!method_clang_type.IsValid() || name == nullptr ||
+      name[0] == '\0')
     return nullptr;
 
   clang::QualType method_qual_type(ClangUtil::GetQualType(method_clang_type));
@@ -8197,12 +8230,13 @@ clang::CXXMethodDecl *ClangASTContext::AddMethodToCXXRecordType(
       nullptr /*expr*/, is_explicit
                             ? clang::ExplicitSpecKind::ResolvedTrue
                             : clang::ExplicitSpecKind::ResolvedFalse);
+  QualType type = QualType(cxx_record_decl->getTypeForDecl(), 0);
   if (name[0] == '~') {
     cxx_dtor_decl = clang::CXXDestructorDecl::Create(
         *getASTContext(), cxx_record_decl, clang::SourceLocation(),
         clang::DeclarationNameInfo(
             getASTContext()->DeclarationNames.getCXXDestructorName(
-                getASTContext()->getCanonicalType(record_qual_type)),
+                getASTContext()->getCanonicalType(type)),
             clang::SourceLocation()),
         method_qual_type, nullptr, is_inline, is_artificial);
     cxx_method_decl = cxx_dtor_decl;
@@ -8211,7 +8245,7 @@ clang::CXXMethodDecl *ClangASTContext::AddMethodToCXXRecordType(
         *getASTContext(), cxx_record_decl, clang::SourceLocation(),
         clang::DeclarationNameInfo(
             getASTContext()->DeclarationNames.getCXXConstructorName(
-                getASTContext()->getCanonicalType(record_qual_type)),
+                getASTContext()->getCanonicalType(type)),
             clang::SourceLocation()),
         method_qual_type,
         nullptr, // TypeSourceInfo *
@@ -8294,7 +8328,12 @@ clang::CXXMethodDecl *ClangASTContext::AddMethodToCXXRecordType(
 
   cxx_method_decl->setParams(llvm::ArrayRef<clang::ParmVarDecl *>(params));
 
-  cxx_record_decl->addDecl(cxx_method_decl);
+  if (llvm::StringRef(name) == "$__lldb_key_function") {
+    llvm::errs() << "Trying to set decl context\n";
+    cxx_record_decl->addDecl(cxx_method_decl);
+    cxx_method_decl->setLexicalDeclContext(getASTContext()->getTranslationUnitDecl());
+  } else
+    cxx_record_decl->addDecl(cxx_method_decl);
 
   // Sometimes the debug info will mention a constructor (default/copy/move),
   // destructor, or assignment operator (copy/move) but there won't be any
