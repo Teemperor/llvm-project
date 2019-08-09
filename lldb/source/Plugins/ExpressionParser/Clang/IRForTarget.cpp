@@ -186,8 +186,7 @@ bool IRForTarget::CreateResultVariable(llvm::Function &llvm_function) {
   }
 
   if (!found_result) {
-    if (log)
-      log->PutCString("Couldn't find result variable");
+    LLDB_LOG(log, "Couldn't find result variable");
 
     return true;
   }
@@ -197,8 +196,7 @@ bool IRForTarget::CreateResultVariable(llvm::Function &llvm_function) {
   Value *result_value = m_module->getNamedValue(result_name);
 
   if (!result_value) {
-    if (log)
-      log->PutCString("Result variable had no data");
+    LLDB_LOG(log, "Result variable had no data");
 
     m_error_stream.Format("Internal error [IRForTarget]: Result variable's "
                           "name ({0}) exists, but not its definition\n",
@@ -213,8 +211,7 @@ bool IRForTarget::CreateResultVariable(llvm::Function &llvm_function) {
   GlobalVariable *result_global = dyn_cast<GlobalVariable>(result_value);
 
   if (!result_global) {
-    if (log)
-      log->PutCString("Result variable isn't a GlobalVariable");
+    LLDB_LOG(log, "Result variable isn't a GlobalVariable");
 
     m_error_stream.Format("Internal error [IRForTarget]: Result variable ({0}) "
                           "is defined, but is not a global variable\n",
@@ -225,8 +222,7 @@ bool IRForTarget::CreateResultVariable(llvm::Function &llvm_function) {
 
   clang::NamedDecl *result_decl = DeclForGlobal(result_global);
   if (!result_decl) {
-    if (log)
-      log->PutCString("Result variable doesn't have a corresponding Decl");
+    LLDB_LOG(log, "Result variable doesn't have a corresponding Decl");
 
     m_error_stream.Format("Internal error [IRForTarget]: Result variable ({0}) "
                           "does not have a corresponding Clang entity\n",
@@ -246,8 +242,7 @@ bool IRForTarget::CreateResultVariable(llvm::Function &llvm_function) {
 
   clang::VarDecl *result_var = dyn_cast<clang::VarDecl>(result_decl);
   if (!result_var) {
-    if (log)
-      log->PutCString("Result variable Decl isn't a VarDecl");
+    LLDB_LOG(log, "Result variable Decl isn't a VarDecl");
 
     m_error_stream.Format("Internal error [IRForTarget]: Result variable "
                           "({0})'s corresponding Clang entity isn't a "
@@ -287,8 +282,7 @@ bool IRForTarget::CreateResultVariable(llvm::Function &llvm_function) {
           lldb_private::ClangASTContext::GetASTContext(
               &result_decl->getASTContext()));
     } else {
-      if (log)
-        log->PutCString("Expected result to have pointer type, but it did not");
+      LLDB_LOG(log, "Expected result to have pointer type, but it did not");
 
       m_error_stream.Format("Internal error [IRForTarget]: Lvalue result ({0}) "
                             "is not a pointer variable\n",
@@ -531,9 +525,7 @@ bool IRForTarget::RewriteObjCConstString(llvm::GlobalVariable *ns_str,
 
  if (!UnfoldConstant(ns_str, nullptr, CFSCWB_Caller, m_entry_instruction_finder,
                      m_error_stream)) {
-   if (log)
-     log->PutCString(
-         "Couldn't replace the NSString with the result of the call");
+   LLDB_LOG(log, "Couldn't replace the NSString with the result of the call");
 
    m_error_stream.Printf("error [IRForTarget internal]: Couldn't replace an "
                          "Objective-C constant string with a dynamic "
@@ -563,8 +555,7 @@ bool IRForTarget::RewriteObjCConstStrings() {
           dyn_cast<GlobalVariable>(nsstring_value);
 
       if (!nsstring_global) {
-        if (log)
-          log->PutCString("NSString variable is not a GlobalVariable");
+        LLDB_LOG(log, "NSString variable is not a GlobalVariable");
 
         m_error_stream.Printf("Internal error [IRForTarget]: An Objective-C "
                               "constant string is not a global variable\n");
@@ -573,8 +564,7 @@ bool IRForTarget::RewriteObjCConstStrings() {
       }
 
       if (!nsstring_global->hasInitializer()) {
-        if (log)
-          log->PutCString("NSString variable does not have an initializer");
+        LLDB_LOG(log, "NSString variable does not have an initializer");
 
         m_error_stream.Printf("Internal error [IRForTarget]: An Objective-C "
                               "constant string does not have an initializer\n");
@@ -586,9 +576,8 @@ bool IRForTarget::RewriteObjCConstStrings() {
           dyn_cast<ConstantStruct>(nsstring_global->getInitializer());
 
       if (!nsstring_struct) {
-        if (log)
-          log->PutCString(
-              "NSString variable's initializer is not a ConstantStruct");
+        LLDB_LOG(log,
+                 "NSString variable's initializer is not a ConstantStruct");
 
         m_error_stream.Printf("Internal error [IRForTarget]: An Objective-C "
                               "constant string is not a structure constant\n");
@@ -606,7 +595,7 @@ bool IRForTarget::RewriteObjCConstStrings() {
       // };
 
       if (nsstring_struct->getNumOperands() != 4) {
-        if (log)
+
           LLDB_LOGF(log,
                     "NSString variable's initializer structure has an "
                     "unexpected number of members.  Should be 4, is %d",
@@ -622,8 +611,7 @@ bool IRForTarget::RewriteObjCConstStrings() {
       Constant *nsstring_member = nsstring_struct->getOperand(2);
 
       if (!nsstring_member) {
-        if (log)
-          log->PutCString("NSString initializer's str element was empty");
+        LLDB_LOG(log, "NSString initializer's str element was empty");
 
         m_error_stream.Printf("Internal error [IRForTarget]: An Objective-C "
                               "constant string does not have a string "
@@ -635,9 +623,8 @@ bool IRForTarget::RewriteObjCConstStrings() {
       ConstantExpr *nsstring_expr = dyn_cast<ConstantExpr>(nsstring_member);
 
       if (!nsstring_expr) {
-        if (log)
-          log->PutCString(
-              "NSString initializer's str element is not a ConstantExpr");
+        LLDB_LOG(log,
+                 "NSString initializer's str element is not a ConstantExpr");
 
         m_error_stream.Printf("Internal error [IRForTarget]: An Objective-C "
                               "constant string's string initializer is not "
@@ -657,9 +644,8 @@ bool IRForTarget::RewriteObjCConstStrings() {
       }
 
       if (!cstr_global) {
-        if (log)
-          log->PutCString(
-              "NSString initializer's str element is not a GlobalVariable");
+        LLDB_LOG(log,
+                 "NSString initializer's str element is not a GlobalVariable");
 
         m_error_stream.Printf("Internal error [IRForTarget]: Unhandled"
                               "constant string initializer\n");
@@ -668,9 +654,8 @@ bool IRForTarget::RewriteObjCConstStrings() {
       }
 
       if (!cstr_global->hasInitializer()) {
-        if (log)
-          log->PutCString("NSString initializer's str element does not have an "
-                          "initializer");
+        LLDB_LOG(log, "NSString initializer's str element does not have an "
+                      "initializer");
 
         m_error_stream.Printf("Internal error [IRForTarget]: An Objective-C "
                               "constant string's string initializer doesn't "
@@ -712,21 +697,18 @@ bool IRForTarget::RewriteObjCConstStrings() {
       ConstantDataArray *cstr_array =
           dyn_cast<ConstantDataArray>(cstr_global->getInitializer());
 
-      if (log) {
-        if (cstr_array)
-          LLDB_LOG(log, "Found NSString constant {0}, which contains \"{1}\"",
-                   value_name, cstr_array->getAsString());
-        else
-          LLDB_LOG(log, "Found NSString constant {0}, which contains \"\"",
-                   value_name);
-      }
+      if (cstr_array)
+        LLDB_LOG(log, "Found NSString constant {0}, which contains \"{1}\"",
+                 value_name, cstr_array->getAsString());
+      else
+        LLDB_LOG(log, "Found NSString constant {0}, which contains \"\"",
+                 value_name);
 
       if (!cstr_array)
         cstr_global = nullptr;
 
       if (!RewriteObjCConstString(nsstring_global, cstr_global)) {
-        if (log)
-          log->PutCString("Error rewriting the constant string");
+        LLDB_LOG(log, "Error rewriting the constant string");
 
         // We don't print an error message here because RewriteObjCConstString
         // has done so for us.
@@ -743,9 +725,8 @@ bool IRForTarget::RewriteObjCConstStrings() {
       GlobalVariable *gv = dyn_cast<GlobalVariable>(value_symbol.second);
 
       if (!gv) {
-        if (log)
-          log->PutCString(
-              "__CFConstantStringClassReference is not a global variable");
+        LLDB_LOG(log,
+                 "__CFConstantStringClassReference is not a global variable");
 
         m_error_stream.Printf("Internal error [IRForTarget]: Found a "
                               "CFConstantStringClassReference, but it is not a "
@@ -833,9 +814,8 @@ bool IRForTarget::RewriteObjCSelector(Instruction *selector_load) {
 
   std::string omvn_initializer_string = omvn_initializer_array->getAsString();
 
-  if (log)
-    LLDB_LOGF(log, "Found Objective-C selector reference \"%s\"",
-              omvn_initializer_string.c_str());
+  LLDB_LOG(log, "Found Objective-C selector reference \"%s\"",
+           omvn_initializer_string.c_str());
 
   // Construct a call to sel_registerName
 
@@ -849,9 +829,7 @@ bool IRForTarget::RewriteObjCSelector(Instruction *selector_load) {
     if (sel_registerName_addr == LLDB_INVALID_ADDRESS || missing_weak)
       return false;
 
-    if (log)
-      LLDB_LOGF(log, "Found sel_registerName at 0x%" PRIx64,
-                sel_registerName_addr);
+    LLDB_LOG(log, "Found sel_registerName at 0x{0}", sel_registerName_addr);
 
     // Build the function type: struct objc_selector
     // *sel_registerName(uint8_t*)
@@ -919,9 +897,7 @@ bool IRForTarget::RewriteObjCSelectors(BasicBlock &basic_block) {
                             "static reference to an Objective-C selector to a "
                             "dynamic reference\n");
 
-      if (log)
-        log->PutCString(
-            "Couldn't rewrite a reference to an Objective-C selector");
+      LLDB_LOG(log, "Couldn't rewrite a reference to an Objective-C selector");
 
       return false;
     }
@@ -1537,9 +1513,8 @@ bool IRForTarget::ResolveExternals(Function &llvm_function) {
   for (GlobalVariable &global_var : m_module->globals()) {
     llvm::StringRef global_name = global_var.getName();
 
-    if (log)
-      LLDB_LOG(log, "Examining {0}, DeclForGlobalValue returns {1}",
-               global_name, static_cast<void *>(DeclForGlobal(&global_var)));
+    LLDB_LOG(log, "Examining {0}, DeclForGlobalValue returns {1}", global_name,
+             static_cast<void *>(DeclForGlobal(&global_var)));
 
     if (global_name.startswith("OBJC_IVAR")) {
       if (!HandleSymbol(&global_var)) {
@@ -1882,13 +1857,11 @@ bool IRForTarget::ReplaceVariables(Function &llvm_function) {
       return false;
     }
 
-    if (log)
-      LLDB_LOG(log, "  \"{0}\" (\"{1}\") placed at %" PRIu64, name,
-               decl->getNameAsString(), offset);
+    LLDB_LOG(log, "  \"{0}\" (\"{1}\") placed at {2}", name,
+             decl->getNameAsString(), offset);
 
     if (value) {
-      if (log)
-        LLDB_LOG(log, "    Replacing [{0}]", PrintValue(value));
+      LLDB_LOG(log, "    Replacing [{0}]", PrintValue(value));
 
       FunctionValueCache body_result_maker(
           [this, name, offset_type, offset, argument,
@@ -1937,9 +1910,8 @@ bool IRForTarget::ReplaceVariables(Function &llvm_function) {
         value->replaceAllUsesWith(
             body_result_maker.GetValue(instruction->getParent()->getParent()));
       } else {
-        if (log)
-          LLDB_LOG(log, "Unhandled non-constant type: \"{0}\"",
-                   PrintValue(value));
+        LLDB_LOG(log, "Unhandled non-constant type: \"{0}\"",
+                 PrintValue(value));
         return false;
       }
 
@@ -1948,9 +1920,8 @@ bool IRForTarget::ReplaceVariables(Function &llvm_function) {
     }
   }
 
-  if (log)
-    LLDB_LOG(log, "Total structure [align {0}, size {1}]", (int64_t)alignment,
-             (uint64_t)size);
+  LLDB_LOG(log, "Total structure [align {0}, size {1}]", (int64_t)alignment,
+           (uint64_t)size);
 
   return true;
 }
@@ -2002,8 +1973,7 @@ bool IRForTarget::runOnModule(Module &llvm_module) {
                             : m_module->getFunction(m_func_name.GetStringRef());
 
   if (!m_func_name.IsEmpty() && !main_function) {
-    if (log)
-      LLDB_LOG(log, "Couldn't find \"{0}()\" in the module", m_func_name);
+    LLDB_LOG(log, "Couldn't find \"{0}()\" in the module", m_func_name);
 
     m_error_stream.Format("Internal error [IRForTarget]: Couldn't find wrapper "
                           "'{0}' in the module",
@@ -2014,8 +1984,7 @@ bool IRForTarget::runOnModule(Module &llvm_module) {
 
   if (main_function) {
     if (!FixFunctionLinkage(*main_function)) {
-      if (log)
-        LLDB_LOGF(log, "Couldn't fix the linkage for the function");
+      LLDB_LOG(log, "Couldn't fix the linkage for the function");
 
       return false;
     }
@@ -2035,8 +2004,7 @@ bool IRForTarget::runOnModule(Module &llvm_module) {
 
   if (main_function) {
     if (!CreateResultVariable(*main_function)) {
-      if (log)
-        LLDB_LOGF(log, "CreateResultVariable() failed");
+      LLDB_LOG(log, "CreateResultVariable() failed");
 
       // CreateResultVariable() reports its own errors, so we don't do so here
 
@@ -2058,8 +2026,7 @@ bool IRForTarget::runOnModule(Module &llvm_module) {
   for (llvm::Function &function : *m_module) {
     for (BasicBlock &bb : function) {
       if (!RemoveGuards(bb)) {
-        if (log)
-          LLDB_LOGF(log, "RemoveGuards() failed");
+        LLDB_LOG(log, "RemoveGuards() failed");
 
         // RemoveGuards() reports its own errors, so we don't do so here
 
@@ -2067,8 +2034,7 @@ bool IRForTarget::runOnModule(Module &llvm_module) {
       }
 
       if (!RewritePersistentAllocs(bb)) {
-        if (log)
-          LLDB_LOGF(log, "RewritePersistentAllocs() failed");
+        LLDB_LOG(log, "RewritePersistentAllocs() failed");
 
         // RewritePersistentAllocs() reports its own errors, so we don't do so
         // here
@@ -2077,8 +2043,7 @@ bool IRForTarget::runOnModule(Module &llvm_module) {
       }
 
       if (!RemoveCXAAtExit(bb)) {
-        if (log)
-          LLDB_LOGF(log, "RemoveCXAAtExit() failed");
+        LLDB_LOG(log, "RemoveCXAAtExit() failed");
 
         // RemoveCXAAtExit() reports its own errors, so we don't do so here
 
@@ -2092,8 +2057,7 @@ bool IRForTarget::runOnModule(Module &llvm_module) {
   //
 
   if (!RewriteObjCConstStrings()) {
-    if (log)
-      LLDB_LOGF(log, "RewriteObjCConstStrings() failed");
+    LLDB_LOG(log, "RewriteObjCConstStrings() failed");
 
     // RewriteObjCConstStrings() reports its own errors, so we don't do so here
 
@@ -2103,8 +2067,7 @@ bool IRForTarget::runOnModule(Module &llvm_module) {
   for (llvm::Function &function : *m_module) {
     for (llvm::BasicBlock &bb : function) {
       if (!RewriteObjCSelectors(bb)) {
-        if (log)
-          LLDB_LOGF(log, "RewriteObjCSelectors() failed");
+        LLDB_LOG(log, "RewriteObjCSelectors() failed");
 
         // RewriteObjCSelectors() reports its own errors, so we don't do so
         // here
@@ -2113,8 +2076,7 @@ bool IRForTarget::runOnModule(Module &llvm_module) {
       }
 
       if (!RewriteObjCClassReferences(bb)) {
-        if (log)
-          LLDB_LOGF(log, "RewriteObjCClassReferences() failed");
+        LLDB_LOG(log, "RewriteObjCClassReferences() failed");
 
         // RewriteObjCClasses() reports its own errors, so we don't do so here
 
@@ -2126,8 +2088,7 @@ bool IRForTarget::runOnModule(Module &llvm_module) {
   for (llvm::Function &function : *m_module) {
     for (BasicBlock &bb : function) {
       if (!ResolveCalls(bb)) {
-        if (log)
-          LLDB_LOGF(log, "ResolveCalls() failed");
+        LLDB_LOG(log, "ResolveCalls() failed");
 
         // ResolveCalls() reports its own errors, so we don't do so here
 
@@ -2142,8 +2103,7 @@ bool IRForTarget::runOnModule(Module &llvm_module) {
 
   if (main_function) {
     if (!ResolveExternals(*main_function)) {
-      if (log)
-        LLDB_LOGF(log, "ResolveExternals() failed");
+      LLDB_LOG(log, "ResolveExternals() failed");
 
       // ResolveExternals() reports its own errors, so we don't do so here
 
@@ -2151,8 +2111,7 @@ bool IRForTarget::runOnModule(Module &llvm_module) {
     }
 
     if (!ReplaceVariables(*main_function)) {
-      if (log)
-        LLDB_LOGF(log, "ReplaceVariables() failed");
+      LLDB_LOG(log, "ReplaceVariables() failed");
 
       // ReplaceVariables() reports its own errors, so we don't do so here
 
