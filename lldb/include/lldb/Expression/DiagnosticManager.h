@@ -139,7 +139,8 @@ public:
   // "error: error text\n
   // warning: warning text\n
   // remark text\n"
-  std::string GetString(char separator = '\n');
+  std::string GetString(char separator = '\n',
+                        llvm::Optional<DiagnosticSeverity> severity_filter = llvm::Optional<DiagnosticSeverity>());
 
   void Dump(Log *log);
 

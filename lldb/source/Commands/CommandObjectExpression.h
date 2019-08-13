@@ -41,6 +41,7 @@ public:
     bool show_types;
     bool show_summary;
     bool debug;
+    bool warning;
     uint32_t timeout;
     bool try_all_threads;
     lldb::LanguageType language;

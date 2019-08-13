@@ -143,7 +143,7 @@ lldb::ExpressionResults UserExpression::Evaluate(
     llvm::StringRef expr, llvm::StringRef prefix,
     lldb::ValueObjectSP &result_valobj_sp, Status &error,
     std::string *fixed_expression, lldb::ModuleSP *jit_module_sp_ptr,
-    ValueObject *ctx_obj) {
+    ValueObject *ctx_obj, std::string *warnings) {
   Log *log(lldb_private::GetLogIfAnyCategoriesSet(LIBLLDB_LOG_EXPRESSIONS |
                                                   LIBLLDB_LOG_STEP));
 
@@ -273,6 +273,7 @@ lldb::ExpressionResults UserExpression::Evaluate(
       parse_success = fixed_expression_sp->Parse(
           fixed_diagnostic_manager, exe_ctx, execution_policy,
           keep_expression_in_memory, generate_debug_info);
+
       if (parse_success) {
         diagnostic_manager.Clear();
         user_expression_sp = fixed_expression_sp;
@@ -301,6 +302,8 @@ lldb::ExpressionResults UserExpression::Evaluate(
   }
 
   if (parse_success) {
+    *warnings = diagnostic_manager.GetString('\n', eDiagnosticSeverityWarning);
+
     // If a pointer to a lldb::ModuleSP was passed in, return the JIT'ed module
     // if one was created
     if (jit_module_sp_ptr)

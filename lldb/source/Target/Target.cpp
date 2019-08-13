@@ -2340,11 +2340,10 @@ Target *Target::GetTargetFromContexts(const ExecutionContext *exe_ctx_ptr,
   return target;
 }
 
-ExpressionResults Target::EvaluateExpression(
-    llvm::StringRef expr, ExecutionContextScope *exe_scope,
+ExpressionResults Target::EvaluateExpression(llvm::StringRef expr, ExecutionContextScope *exe_scope,
     lldb::ValueObjectSP &result_valobj_sp,
     const EvaluateExpressionOptions &options, std::string *fixed_expression,
-    ValueObject *ctx_obj) {
+    ValueObject *ctx_obj, std::string *warnings) {
   result_valobj_sp.reset();
 
   ExpressionResults execution_results = eExpressionSetupError;
@@ -2394,7 +2393,7 @@ ExpressionResults Target::EvaluateExpression(
         UserExpression::Evaluate(exe_ctx, options, expr, prefix,
                                  result_valobj_sp, error, fixed_expression,
                                  nullptr, // Module
-                                 ctx_obj);
+                                 ctx_obj, warnings);
   }
 
   return execution_results;

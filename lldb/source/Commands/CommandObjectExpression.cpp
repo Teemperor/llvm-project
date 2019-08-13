@@ -143,6 +143,10 @@ Status CommandObjectExpression::CommandOptions::SetOptionValue(
           option_arg.str().c_str());
     break;
 
+  case 'w':
+    warning = true;
+    break;
+
   case 'g':
     debug = true;
     unwind_on_error = false;
@@ -190,6 +194,7 @@ void CommandObjectExpression::CommandOptions::OptionParsingStarting(
   try_all_threads = true;
   timeout = 0;
   debug = false;
+  warning = false;
   language = eLanguageTypeUnknown;
   m_verbosity = eLanguageRuntimeDescriptionDisplayVerbosityCompact;
   auto_apply_fixits = eLazyBoolCalculate;
@@ -426,8 +431,11 @@ bool CommandObjectExpression::EvaluateExpression(llvm::StringRef expr,
     else
       options.SetTimeout(llvm::None);
 
+    std::string warnings;
     ExpressionResults success = target->EvaluateExpression(
-        expr, frame, result_valobj_sp, options, &m_fixed_expression);
+        expr, frame, result_valobj_sp, options, &m_fixed_expression, /*ctx*/nullptr, &warnings);
+    if (error_stream && m_command_options.debug)
+      error_stream->Printf("%s", warnings.c_str());
 
     // We only tell you about the FixIt if we applied it.  The compiler errors
     // will suggest the FixIt if it parsed.

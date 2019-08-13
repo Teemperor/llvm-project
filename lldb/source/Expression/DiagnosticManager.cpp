@@ -44,10 +44,13 @@ static const char *StringForSeverity(DiagnosticSeverity severity) {
   llvm_unreachable("switch needs another case for DiagnosticSeverity enum");
 }
 
-std::string DiagnosticManager::GetString(char separator) {
+std::string DiagnosticManager::GetString(char separator,
+                                         llvm::Optional<DiagnosticSeverity> severity_filter) {
   std::string ret;
 
   for (const Diagnostic *diagnostic : Diagnostics()) {
+    if (severity_filter && *severity_filter != diagnostic->GetSeverity())
+      continue;
     ret.append(StringForSeverity(diagnostic->GetSeverity()));
     ret.append(diagnostic->GetMessage());
     ret.push_back(separator);
