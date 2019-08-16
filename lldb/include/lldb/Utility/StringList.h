@@ -102,8 +102,8 @@ public:
   // that start with "s", and the first string to exactly match one of the
   // string values in this collection, will have "exact_matches_idx" filled in
   // to match the index, or "exact_matches_idx" will have SIZE_MAX
-  size_t AutoComplete(llvm::StringRef s, StringList &matches,
-                      size_t &exact_matches_idx) const;
+  ///
+  bool ElementsWithPrefix(llvm::StringRef prefix, StringList &elements) const;
 
   // Dump the StringList to the given lldb_private::Log, `log`, one item per
   // line. If given, `name` will be used to identify the start and end of the

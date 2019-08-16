@@ -309,11 +309,9 @@ int CommandCompletions::SettingsNames(CommandInterpreter &interpreter,
     }
   }
 
-  size_t exact_matches_idx = SIZE_MAX;
   StringList matches;
-  g_property_names.AutoComplete(request.GetCursorArgumentPrefix(), matches,
-                                exact_matches_idx);
-  request.SetWordComplete(exact_matches_idx != SIZE_MAX);
+  bool exact_match = g_property_names.ElementsWithPrefix(request.GetCursorArgumentPrefix(), matches);
+  request.SetWordComplete(exact_match);
   request.AddCompletions(matches);
   return request.GetNumberOfMatches();
 }

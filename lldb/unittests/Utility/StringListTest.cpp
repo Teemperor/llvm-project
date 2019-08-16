@@ -257,6 +257,18 @@ TEST(StringListTest, LongestCommonPrefixNoPrefix) {
   EXPECT_EQ("", prefix);
 }
 
+TEST(StringListTest, ElementsWithPrefix) {
+  StringList s;
+  s.AppendString("foo");
+  s.AppendString("1foobar");
+  s.AppendString("2foo");
+  s.AppendString("3foozar");
+
+  
+  std::string prefix = s.LongestCommonPrefix();
+  EXPECT_EQ("", prefix);
+}
+
 TEST(StringListTest, Clear) {
   StringList s;
   s.Clear();

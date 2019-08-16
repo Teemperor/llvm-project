@@ -225,27 +225,21 @@ StringList &StringList::operator=(const std::vector<std::string> &rhs) {
   return *this;
 }
 
-size_t StringList::AutoComplete(llvm::StringRef s, StringList &matches,
-                                size_t &exact_idx) const {
-  matches.Clear();
-  exact_idx = SIZE_MAX;
-  if (s.empty()) {
-    // No string, so it matches everything
-    matches = *this;
-    return matches.GetSize();
+bool StringList::ElementsWithPrefix(llvm::StringRef prefix,
+                                      StringList &elements) const {
+  // No string, so every elements starts with it.
+  if (prefix.empty()) {
+    elements.AppendList(*this);
+    return m_strings.find("") != m_strings.end();
   }
 
-  const size_t s_len = s.size();
-  const size_t num_strings = m_strings.size();
-
-  for (size_t i = 0; i < num_strings; ++i) {
-    if (m_strings[i].find(s) == 0) {
-      if (exact_idx == SIZE_MAX && m_strings[i].size() == s_len)
-        exact_idx = matches.GetSize();
-      matches.AppendString(m_strings[i]);
-    }
+  bool has_exact_match = false;
+  for (const std::string &s : m_strings) {
+    has_exact_match |= (prefix == s);
+    if (llvm::StringRef(s).startswith(prefix))
+      elements.AppendString(s);
   }
-  return matches.GetSize();
+  return has_exact_match;
 }
 
 void StringList::LogDump(Log *log, const char *name) {
