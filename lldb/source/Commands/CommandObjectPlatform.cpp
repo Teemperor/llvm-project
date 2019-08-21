@@ -117,8 +117,7 @@ public:
       m_permissions |= lldb::eFilePermissionsWorldExecute;
       break;
     default:
-      error.SetErrorStringWithFormat("unrecognized option '%c'", short_option);
-      break;
+      llvm_unreachable("Unimplemented option");
     }
 
     return error;
@@ -633,9 +632,7 @@ protected:
                                          option_arg.str().c_str());
         break;
       default:
-        error.SetErrorStringWithFormat("unrecognized option '%c'",
-                                       short_option);
-        break;
+        llvm_unreachable("Unimplemented option");
       }
 
       return error;
@@ -719,9 +716,7 @@ protected:
         m_data.assign(option_arg);
         break;
       default:
-        error.SetErrorStringWithFormat("unrecognized option '%c'",
-                                       short_option);
-        break;
+        llvm_unreachable("Unimplemented option");
       }
 
       return error;
@@ -1271,9 +1266,7 @@ protected:
         break;
 
       default:
-        error.SetErrorStringWithFormat("unrecognized option '%c'",
-                                       short_option);
-        break;
+        llvm_unreachable("Unimplemented option");
       }
 
       return error;
@@ -1427,9 +1420,7 @@ public:
         break;
 
       default:
-        error.SetErrorStringWithFormat("invalid short option character '%c'",
-                                       short_option);
-        break;
+        llvm_unreachable("Unimplemented option");
       }
       return error;
     }
@@ -1588,9 +1579,7 @@ public:
           timeout = std::chrono::seconds(timeout_sec);
         break;
       default:
-        error.SetErrorStringWithFormat("invalid short option character '%c'",
-                                       short_option);
-        break;
+        llvm_unreachable("Unimplemented option");
       }
 
       return error;

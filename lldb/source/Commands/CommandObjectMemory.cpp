@@ -96,9 +96,7 @@ public:
       break;
 
     default:
-      error.SetErrorStringWithFormat("unrecognized short option '%c'",
-                                     short_option);
-      break;
+      llvm_unreachable("Unimplemented option");
     }
     return error;
   }
@@ -935,9 +933,7 @@ public:
         break;
 
       default:
-        error.SetErrorStringWithFormat("unrecognized short option '%c'",
-                                       short_option);
-        break;
+        llvm_unreachable("Unimplemented option");
       }
       return error;
     }
@@ -1225,9 +1221,7 @@ public:
       } break;
 
       default:
-        error.SetErrorStringWithFormat("unrecognized short option '%c'",
-                                       short_option);
-        break;
+        llvm_unreachable("Unimplemented option");
       }
       return error;
     }

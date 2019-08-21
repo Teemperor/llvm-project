@@ -2013,9 +2013,7 @@ public:
         break;
 
       default:
-        error.SetErrorStringWithFormat("invalid short option character '%c'",
-                                       short_option);
-        break;
+        llvm_unreachable("Unimplemented option");
       }
       return error;
     }
@@ -3360,8 +3358,7 @@ public:
         break;
 
       default:
-        error.SetErrorStringWithFormat("unrecognized option %c.", short_option);
-        break;
+        llvm_unreachable("Unimplemented option");
       }
 
       return error;
@@ -3710,6 +3707,8 @@ public:
       case 'r':
         m_use_regex = true;
         break;
+      default:
+        llvm_unreachable("Unimplemented option");
       }
 
       return error;
@@ -4578,8 +4577,7 @@ public:
         break;
 
       default:
-        error.SetErrorStringWithFormat("unrecognized option %c.", short_option);
-        break;
+        llvm_unreachable("Unimplemented option");
       }
       return error;
     }
