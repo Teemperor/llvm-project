@@ -744,8 +744,10 @@ class EnableCommand : public CommandObjectParsed {
 public:
   EnableCommand(CommandInterpreter &interpreter, bool enable, const char *name,
                 const char *help, const char *syntax)
-      : CommandObjectParsed(interpreter, name, help, syntax), m_enable(enable),
-        m_options_sp(enable ? new EnableOptions() : nullptr) {}
+      : CommandObjectParsed(interpreter, name, help, syntax,
+                            eCommandRequiresTarget),
+        m_enable(enable), m_options_sp(enable ? new EnableOptions() : nullptr) {
+  }
 
 protected:
   void AppendStrictSourcesWarning(CommandReturnObject &result,
@@ -787,15 +789,10 @@ protected:
 
     // Now check if we have a running process.  If so, we should instruct the
     // process monitor to enable/disable DarwinLog support now.
-    Target *target = GetSelectedOrDummyTarget();
-    if (!target) {
-      // No target, so there is nothing more to do right now.
-      result.SetStatus(eReturnStatusSuccessFinishNoResult);
-      return true;
-    }
+    Target &target = GetSelectedOrDummyTarget();
 
     // Grab the active process.
-    auto process_sp = target->GetProcessSP();
+    auto process_sp = target.GetProcessSP();
     if (!process_sp) {
       // No active process, so there is nothing more to do right now.
       result.SetStatus(eReturnStatusSuccessFinishNoResult);
@@ -869,7 +866,8 @@ public:
       : CommandObjectParsed(interpreter, "status",
                             "Show whether Darwin log supported is available"
                             " and enabled.",
-                            "plugin structured-data darwin-log status") {}
+                            "plugin structured-data darwin-log status",
+                            eCommandRequiresTarget) {}
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
@@ -877,9 +875,9 @@ protected:
 
     // Figure out if we've got a process.  If so, we can tell if DarwinLog is
     // available for that process.
-    Target *target = GetSelectedOrDummyTarget();
-    auto process_sp = target ? target->GetProcessSP() : ProcessSP();
-    if (!target || !process_sp) {
+    Target &target = GetSelectedOrDummyTarget();
+    auto process_sp = target.GetProcessSP();
+    if (!process_sp) {
       stream.PutCString("Availability: unknown (requires process)\n");
       stream.PutCString("Enabled: not applicable "
                         "(requires process)\n");

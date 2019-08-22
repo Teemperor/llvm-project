@@ -412,14 +412,14 @@ public:
             "uses debug information and memory reads directly, rather than "
             "parsing and evaluating an expression, which may even involve "
             "JITing and running code in the target program.",
-            nullptr, eCommandRequiresFrame | eCommandTryTargetAPILock |
-                         eCommandProcessMustBeLaunched |
-                         eCommandProcessMustBePaused | eCommandRequiresProcess),
+            nullptr,
+            eCommandRequiresFrame | eCommandTryTargetAPILock |
+                eCommandProcessMustBeLaunched | eCommandProcessMustBePaused |
+                eCommandRequiresProcess | eCommandRequiresTarget),
         m_option_group(),
         m_option_variable(
             true), // Include the frame specific options by passing "true"
-        m_option_format(eFormatDefault),
-        m_varobj_options() {
+        m_option_format(eFormatDefault), m_varobj_options() {
     CommandArgumentEntry arg;
     CommandArgumentData var_name_arg;
 
@@ -713,11 +713,11 @@ protected:
 
     // Increment statistics.
     bool res = result.Succeeded();
-    Target *target = GetSelectedOrDummyTarget();
+    Target &target = GetSelectedOrDummyTarget();
     if (res)
-      target->IncrementStats(StatisticKind::FrameVarSuccess);
+      target.IncrementStats(StatisticKind::FrameVarSuccess);
     else
-      target->IncrementStats(StatisticKind::FrameVarFailure);
+      target.IncrementStats(StatisticKind::FrameVarFailure);
     return res;
   }
 

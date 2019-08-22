@@ -18,23 +18,23 @@ using namespace lldb_private;
 class CommandObjectStatsEnable : public CommandObjectParsed {
 public:
   CommandObjectStatsEnable(CommandInterpreter &interpreter)
-      : CommandObjectParsed(interpreter, "enable",
-                            "Enable statistics collection", nullptr,
-                            eCommandProcessMustBePaused) {}
+      : CommandObjectParsed(
+            interpreter, "enable", "Enable statistics collection", nullptr,
+            eCommandProcessMustBePaused | eCommandRequiresTarget) {}
 
   ~CommandObjectStatsEnable() override = default;
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget();
+    Target &target = GetSelectedOrDummyTarget();
 
-    if (target->GetCollectingStats()) {
+    if (target.GetCollectingStats()) {
       result.AppendError("statistics already enabled");
       result.SetStatus(eReturnStatusFailed);
       return false;
     }
 
-    target->SetCollectingStats(true);
+    target.SetCollectingStats(true);
     result.SetStatus(eReturnStatusSuccessFinishResult);
     return true;
   }
@@ -43,23 +43,23 @@ protected:
 class CommandObjectStatsDisable : public CommandObjectParsed {
 public:
   CommandObjectStatsDisable(CommandInterpreter &interpreter)
-      : CommandObjectParsed(interpreter, "disable",
-                            "Disable statistics collection", nullptr,
-                            eCommandProcessMustBePaused) {}
+      : CommandObjectParsed(
+            interpreter, "disable", "Disable statistics collection", nullptr,
+            eCommandProcessMustBePaused | eCommandRequiresTarget) {}
 
   ~CommandObjectStatsDisable() override = default;
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget();
+    Target &target = GetSelectedOrDummyTarget();
 
-    if (!target->GetCollectingStats()) {
+    if (!target.GetCollectingStats()) {
       result.AppendError("need to enable statistics before disabling them");
       result.SetStatus(eReturnStatusFailed);
       return false;
     }
 
-    target->SetCollectingStats(false);
+    target.SetCollectingStats(false);
     result.SetStatus(eReturnStatusSuccessFinishResult);
     return true;
   }
@@ -68,17 +68,18 @@ protected:
 class CommandObjectStatsDump : public CommandObjectParsed {
 public:
   CommandObjectStatsDump(CommandInterpreter &interpreter)
-      : CommandObjectParsed(interpreter, "dump", "Dump statistics results",
-                            nullptr, eCommandProcessMustBePaused) {}
+      : CommandObjectParsed(
+            interpreter, "dump", "Dump statistics results", nullptr,
+            eCommandProcessMustBePaused | eCommandRequiresTarget) {}
 
   ~CommandObjectStatsDump() override = default;
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget();
+    Target &target = GetSelectedOrDummyTarget();
 
     uint32_t i = 0;
-    for (auto &stat : target->GetStatistics()) {
+    for (auto &stat : target.GetStatistics()) {
       result.AppendMessageWithFormat(
           "%s : %u\n",
           lldb_private::GetStatDescription(static_cast<lldb_private::StatisticKind>(i))

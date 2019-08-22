@@ -202,11 +202,12 @@ CommandObjectExpression::CommandOptions::GetDefinitions() {
 
 CommandObjectExpression::CommandObjectExpression(
     CommandInterpreter &interpreter)
-    : CommandObjectRaw(
-          interpreter, "expression", "Evaluate an expression on the current "
-                                     "thread.  Displays any returned value "
-                                     "with LLDB's default formatting.",
-          "", eCommandProcessMustBePaused | eCommandTryTargetAPILock),
+    : CommandObjectRaw(interpreter, "expression",
+                       "Evaluate an expression on the current "
+                       "thread.  Displays any returned value "
+                       "with LLDB's default formatting.",
+                       "",
+                       eCommandProcessMustBePaused | eCommandTryTargetAPILock),
       IOHandlerDelegate(IOHandlerDelegate::Completion::Expression),
       m_option_group(), m_format_options(eFormatDefault),
       m_repl_option(LLDB_OPT_SET_1, false, "repl", 'r', "Drop into REPL", false,
@@ -316,7 +317,7 @@ void CommandObjectExpression::HandleCompletion(CompletionRequest &request) {
   Target *target = exe_ctx.GetTargetPtr();
 
   if (!target)
-    target = GetDummyTarget();
+    target = &GetDummyTarget();
 
   if (!target)
     return;
@@ -380,7 +381,7 @@ bool CommandObjectExpression::EvaluateExpression(llvm::StringRef expr,
   Target *target = exe_ctx.GetTargetPtr();
 
   if (!target)
-    target = GetDummyTarget();
+    target = &GetDummyTarget();
 
   if (target) {
     lldb::ValueObjectSP result_valobj_sp;
@@ -662,11 +663,11 @@ bool CommandObjectExpression::DoExecute(llvm::StringRef command,
     }
   }
 
-  Target *target = GetSelectedOrDummyTarget();
+  Target &target = GetSelectedOrDummyTarget();
   if (EvaluateExpression(expr, &(result.GetOutputStream()),
                          &(result.GetErrorStream()), &result)) {
 
-    if (!m_fixed_expression.empty() && target->GetEnableNotifyAboutFixIts()) {
+    if (!m_fixed_expression.empty() && target.GetEnableNotifyAboutFixIts()) {
       CommandHistory &history = m_interpreter.GetCommandHistory();
       // FIXME: Can we figure out what the user actually typed (e.g. some alias
       // for expr???)
@@ -681,12 +682,12 @@ bool CommandObjectExpression::DoExecute(llvm::StringRef command,
       history.AppendString(fixed_command);
     }
     // Increment statistics to record this expression evaluation success.
-    target->IncrementStats(StatisticKind::ExpressionSuccessful);
+    target.IncrementStats(StatisticKind::ExpressionSuccessful);
     return true;
   }
 
   // Increment statistics to record this expression evaluation failure.
-  target->IncrementStats(StatisticKind::ExpressionFailure);
+  target.IncrementStats(StatisticKind::ExpressionFailure);
   result.SetStatus(eReturnStatusFailed);
   return false;
 }

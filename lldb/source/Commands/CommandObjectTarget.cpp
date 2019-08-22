@@ -1030,7 +1030,7 @@ public:
       : CommandObjectParsed(interpreter, "target modules search-paths add",
                             "Add new image search paths substitution pairs to "
                             "the current target.",
-                            nullptr) {
+                            nullptr, eCommandRequiresTarget) {
     CommandArgumentEntry arg;
     CommandArgumentData old_prefix_arg;
     CommandArgumentData new_prefix_arg;
@@ -1059,42 +1059,37 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target) {
-      const size_t argc = command.GetArgumentCount();
-      if (argc & 1) {
-        result.AppendError("add requires an even number of arguments\n");
-        result.SetStatus(eReturnStatusFailed);
-      } else {
-        for (size_t i = 0; i < argc; i += 2) {
-          const char *from = command.GetArgumentAtIndex(i);
-          const char *to = command.GetArgumentAtIndex(i + 1);
+    Target &target = GetSelectedOrDummyTarget();
+    const size_t argc = command.GetArgumentCount();
+    if (argc & 1) {
+      result.AppendError("add requires an even number of arguments\n");
+      result.SetStatus(eReturnStatusFailed);
+    } else {
+      for (size_t i = 0; i < argc; i += 2) {
+        const char *from = command.GetArgumentAtIndex(i);
+        const char *to = command.GetArgumentAtIndex(i + 1);
 
-          if (from[0] && to[0]) {
-            Log *log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_HOST);
-            if (log) {
-              LLDB_LOGF(log,
-                        "target modules search path adding ImageSearchPath "
-                        "pair: '%s' -> '%s'",
-                        from, to);
-            }
-            bool last_pair = ((argc - i) == 2);
-            target->GetImageSearchPathList().Append(
-                ConstString(from), ConstString(to),
-                last_pair); // Notify if this is the last pair
-            result.SetStatus(eReturnStatusSuccessFinishNoResult);
-          } else {
-            if (from[0])
-              result.AppendError("<path-prefix> can't be empty\n");
-            else
-              result.AppendError("<new-path-prefix> can't be empty\n");
-            result.SetStatus(eReturnStatusFailed);
+        if (from[0] && to[0]) {
+          Log *log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_HOST);
+          if (log) {
+            LLDB_LOGF(log,
+                      "target modules search path adding ImageSearchPath "
+                      "pair: '%s' -> '%s'",
+                      from, to);
           }
+          bool last_pair = ((argc - i) == 2);
+          target.GetImageSearchPathList().Append(
+              ConstString(from), ConstString(to),
+              last_pair); // Notify if this is the last pair
+          result.SetStatus(eReturnStatusSuccessFinishNoResult);
+        } else {
+          if (from[0])
+            result.AppendError("<path-prefix> can't be empty\n");
+          else
+            result.AppendError("<new-path-prefix> can't be empty\n");
+          result.SetStatus(eReturnStatusFailed);
         }
       }
-    } else {
-      result.AppendError("invalid target\n");
-      result.SetStatus(eReturnStatusFailed);
     }
     return result.Succeeded();
   }
@@ -1108,21 +1103,17 @@ public:
       : CommandObjectParsed(interpreter, "target modules search-paths clear",
                             "Clear all current image search path substitution "
                             "pairs from the current target.",
-                            "target modules search-paths clear") {}
+                            "target modules search-paths clear",
+                            eCommandRequiresTarget) {}
 
   ~CommandObjectTargetModulesSearchPathsClear() override = default;
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target) {
-      bool notify = true;
-      target->GetImageSearchPathList().Clear(notify);
-      result.SetStatus(eReturnStatusSuccessFinishNoResult);
-    } else {
-      result.AppendError("invalid target\n");
-      result.SetStatus(eReturnStatusFailed);
-    }
+    Target &target = GetSelectedOrDummyTarget();
+    bool notify = true;
+    target.GetImageSearchPathList().Clear(notify);
+    result.SetStatus(eReturnStatusSuccessFinishNoResult);
     return result.Succeeded();
   }
 };
@@ -1135,7 +1126,7 @@ public:
       : CommandObjectParsed(interpreter, "target modules search-paths insert",
                             "Insert a new image search path substitution pair "
                             "into the current target at the specified index.",
-                            nullptr) {
+                            nullptr, eCommandRequiresTarget) {
     CommandArgumentEntry arg1;
     CommandArgumentEntry arg2;
     CommandArgumentData index_arg;
@@ -1175,55 +1166,49 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target) {
-      size_t argc = command.GetArgumentCount();
-      // check for at least 3 arguments and an odd number of parameters
-      if (argc >= 3 && argc & 1) {
-        bool success = false;
+    Target &target = GetSelectedOrDummyTarget();
+    size_t argc = command.GetArgumentCount();
+    // check for at least 3 arguments and an odd number of parameters
+    if (argc >= 3 && argc & 1) {
+      bool success = false;
 
-        uint32_t insert_idx = StringConvert::ToUInt32(
-            command.GetArgumentAtIndex(0), UINT32_MAX, 0, &success);
+      uint32_t insert_idx = StringConvert::ToUInt32(
+          command.GetArgumentAtIndex(0), UINT32_MAX, 0, &success);
 
-        if (!success) {
-          result.AppendErrorWithFormat(
-              "<index> parameter is not an integer: '%s'.\n",
-              command.GetArgumentAtIndex(0));
-          result.SetStatus(eReturnStatusFailed);
-          return result.Succeeded();
-        }
-
-        // shift off the index
-        command.Shift();
-        argc = command.GetArgumentCount();
-
-        for (uint32_t i = 0; i < argc; i += 2, ++insert_idx) {
-          const char *from = command.GetArgumentAtIndex(i);
-          const char *to = command.GetArgumentAtIndex(i + 1);
-
-          if (from[0] && to[0]) {
-            bool last_pair = ((argc - i) == 2);
-            target->GetImageSearchPathList().Insert(
-                ConstString(from), ConstString(to), insert_idx, last_pair);
-            result.SetStatus(eReturnStatusSuccessFinishNoResult);
-          } else {
-            if (from[0])
-              result.AppendError("<path-prefix> can't be empty\n");
-            else
-              result.AppendError("<new-path-prefix> can't be empty\n");
-            result.SetStatus(eReturnStatusFailed);
-            return false;
-          }
-        }
-      } else {
-        result.AppendError("insert requires at least three arguments\n");
+      if (!success) {
+        result.AppendErrorWithFormat(
+            "<index> parameter is not an integer: '%s'.\n",
+            command.GetArgumentAtIndex(0));
         result.SetStatus(eReturnStatusFailed);
         return result.Succeeded();
       }
 
+      // shift off the index
+      command.Shift();
+      argc = command.GetArgumentCount();
+
+      for (uint32_t i = 0; i < argc; i += 2, ++insert_idx) {
+        const char *from = command.GetArgumentAtIndex(i);
+        const char *to = command.GetArgumentAtIndex(i + 1);
+
+        if (from[0] && to[0]) {
+          bool last_pair = ((argc - i) == 2);
+          target.GetImageSearchPathList().Insert(
+              ConstString(from), ConstString(to), insert_idx, last_pair);
+          result.SetStatus(eReturnStatusSuccessFinishNoResult);
+        } else {
+          if (from[0])
+            result.AppendError("<path-prefix> can't be empty\n");
+          else
+            result.AppendError("<new-path-prefix> can't be empty\n");
+          result.SetStatus(eReturnStatusFailed);
+          return false;
+        }
+      }
     } else {
-      result.AppendError("invalid target\n");
+      result.AppendError("insert requires at least three arguments\n");
       result.SetStatus(eReturnStatusFailed);
+      return result.Succeeded();
     }
     return result.Succeeded();
   }
@@ -1237,26 +1222,22 @@ public:
       : CommandObjectParsed(interpreter, "target modules search-paths list",
                             "List all current image search path substitution "
                             "pairs in the current target.",
-                            "target modules search-paths list") {}
+                            "target modules search-paths list",
+                            eCommandRequiresTarget) {}
 
   ~CommandObjectTargetModulesSearchPathsList() override = default;
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target) {
-      if (command.GetArgumentCount() != 0) {
-        result.AppendError("list takes no arguments\n");
-        result.SetStatus(eReturnStatusFailed);
-        return result.Succeeded();
-      }
-
-      target->GetImageSearchPathList().Dump(&result.GetOutputStream());
-      result.SetStatus(eReturnStatusSuccessFinishResult);
-    } else {
-      result.AppendError("invalid target\n");
+    Target &target = GetSelectedOrDummyTarget();
+    if (command.GetArgumentCount() != 0) {
+      result.AppendError("list takes no arguments\n");
       result.SetStatus(eReturnStatusFailed);
+      return result.Succeeded();
     }
+
+    target.GetImageSearchPathList().Dump(&result.GetOutputStream());
+    result.SetStatus(eReturnStatusSuccessFinishResult);
     return result.Succeeded();
   }
 };
@@ -1269,7 +1250,7 @@ public:
       : CommandObjectParsed(
             interpreter, "target modules search-paths query",
             "Transform a path using the first applicable image search path.",
-            nullptr) {
+            nullptr, eCommandRequiresTarget) {
     CommandArgumentEntry arg;
     CommandArgumentData path_arg;
 
@@ -1289,26 +1270,21 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target) {
-      if (command.GetArgumentCount() != 1) {
-        result.AppendError("query requires one argument\n");
-        result.SetStatus(eReturnStatusFailed);
-        return result.Succeeded();
-      }
+    Target &target = GetSelectedOrDummyTarget();
+    if (command.GetArgumentCount() != 1) {
+      result.AppendError("query requires one argument\n");
+      result.SetStatus(eReturnStatusFailed);
+      return result.Succeeded();
+    }
 
       ConstString orig(command.GetArgumentAtIndex(0));
       ConstString transformed;
-      if (target->GetImageSearchPathList().RemapPath(orig, transformed))
+      if (target.GetImageSearchPathList().RemapPath(orig, transformed))
         result.GetOutputStream().Printf("%s\n", transformed.GetCString());
       else
         result.GetOutputStream().Printf("%s\n", orig.GetCString());
 
       result.SetStatus(eReturnStatusSuccessFinishResult);
-    } else {
-      result.AppendError("invalid target\n");
-      result.SetStatus(eReturnStatusFailed);
-    }
     return result.Succeeded();
   }
 };
@@ -1770,7 +1746,7 @@ static uint32_t LookupFileAndLineInModule(CommandInterpreter &interpreter,
   return 0;
 }
 
-static size_t FindModulesByName(Target *target, const char *module_name,
+static size_t FindModulesByName(Target &target, const char *module_name,
                                 ModuleList &module_list,
                                 bool check_global_list) {
   FileSpec module_file_spec(module_name);
@@ -1795,17 +1771,13 @@ static size_t FindModulesByName(Target *target, const char *module_name,
       }
     }
   } else {
-    if (target) {
-      const size_t num_matches =
-          target->GetImages().FindModules(module_spec, module_list);
+    const size_t num_matches =
+        target.GetImages().FindModules(module_spec, module_list);
 
-      // Not found in our module list for our target, check the main shared
-      // module list in case it is a extra file used somewhere else
-      if (num_matches == 0) {
-        module_spec.GetArchitecture() = target->GetArchitecture();
-        ModuleList::FindSharedModules(module_spec, module_list);
-      }
-    } else {
+    // Not found in our module list for our target, check the main shared
+    // module list in case it is a extra file used somewhere else
+    if (num_matches == 0) {
+      module_spec.GetArchitecture() = target.GetArchitecture();
       ModuleList::FindSharedModules(module_spec, module_list);
     }
   }
@@ -1825,7 +1797,8 @@ public:
                                                const char *name,
                                                const char *help,
                                                const char *syntax)
-      : CommandObjectParsed(interpreter, name, help, syntax) {
+      : CommandObjectParsed(interpreter, name, help, syntax,
+                            eCommandRequiresTarget) {
     CommandArgumentEntry arg;
     CommandArgumentData file_arg;
 
@@ -1905,15 +1878,9 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
+    Target &target = GetSelectedOrDummyTarget();
 
-    uint32_t addr_byte_size = target->GetArchitecture().GetAddressByteSize();
+    uint32_t addr_byte_size = target.GetArchitecture().GetAddressByteSize();
     result.GetOutputStream().SetAddressByteSize(addr_byte_size);
     result.GetErrorStream().SetAddressByteSize(addr_byte_size);
 
@@ -1921,7 +1888,7 @@ protected:
     if (command.GetArgumentCount() == 0) {
       // Dump all headers for all modules images
       num_dumped = DumpModuleObjfileHeaders(result.GetOutputStream(),
-                                            target->GetImages());
+                                            target.GetImages());
       if (num_dumped == 0) {
         result.AppendError("the target has no associated executable images");
         result.SetStatus(eReturnStatusFailed);
@@ -2028,75 +1995,69 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    } else {
-      uint32_t num_dumped = 0;
+    Target &target = GetSelectedOrDummyTarget();
+    uint32_t num_dumped = 0;
 
-      uint32_t addr_byte_size = target->GetArchitecture().GetAddressByteSize();
-      result.GetOutputStream().SetAddressByteSize(addr_byte_size);
-      result.GetErrorStream().SetAddressByteSize(addr_byte_size);
+    uint32_t addr_byte_size = target.GetArchitecture().GetAddressByteSize();
+    result.GetOutputStream().SetAddressByteSize(addr_byte_size);
+    result.GetErrorStream().SetAddressByteSize(addr_byte_size);
 
-      if (command.GetArgumentCount() == 0) {
-        // Dump all sections for all modules images
-        std::lock_guard<std::recursive_mutex> guard(
-            target->GetImages().GetMutex());
-        const size_t num_modules = target->GetImages().GetSize();
-        if (num_modules > 0) {
-          result.GetOutputStream().Printf("Dumping symbol table for %" PRIu64
-                                          " modules.\n",
-                                          (uint64_t)num_modules);
-          for (size_t image_idx = 0; image_idx < num_modules; ++image_idx) {
-            if (num_dumped > 0) {
-              result.GetOutputStream().EOL();
-              result.GetOutputStream().EOL();
-            }
-            if (m_interpreter.WasInterrupted())
-              break;
-            num_dumped++;
-            DumpModuleSymtab(
-                m_interpreter, result.GetOutputStream(),
-                target->GetImages().GetModulePointerAtIndexUnlocked(image_idx),
-                m_options.m_sort_order);
+    if (command.GetArgumentCount() == 0) {
+      // Dump all sections for all modules images
+      std::lock_guard<std::recursive_mutex> guard(
+          target.GetImages().GetMutex());
+      const size_t num_modules = target.GetImages().GetSize();
+      if (num_modules > 0) {
+        result.GetOutputStream().Printf("Dumping symbol table for %" PRIu64
+                                        " modules.\n",
+                                        (uint64_t)num_modules);
+        for (size_t image_idx = 0; image_idx < num_modules; ++image_idx) {
+          if (num_dumped > 0) {
+            result.GetOutputStream().EOL();
+            result.GetOutputStream().EOL();
           }
-        } else {
-          result.AppendError("the target has no associated executable images");
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          if (m_interpreter.WasInterrupted())
+            break;
+          num_dumped++;
+          DumpModuleSymtab(
+              m_interpreter, result.GetOutputStream(),
+              target.GetImages().GetModulePointerAtIndexUnlocked(image_idx),
+              m_options.m_sort_order);
         }
       } else {
-        // Dump specified images (by basename or fullpath)
-        const char *arg_cstr;
-        for (int arg_idx = 0;
-             (arg_cstr = command.GetArgumentAtIndex(arg_idx)) != nullptr;
-             ++arg_idx) {
-          ModuleList module_list;
-          const size_t num_matches =
-              FindModulesByName(target, arg_cstr, module_list, true);
-          if (num_matches > 0) {
-            for (size_t i = 0; i < num_matches; ++i) {
-              Module *module = module_list.GetModulePointerAtIndex(i);
-              if (module) {
-                if (num_dumped > 0) {
-                  result.GetOutputStream().EOL();
-                  result.GetOutputStream().EOL();
-                }
-                if (m_interpreter.WasInterrupted())
-                  break;
-                num_dumped++;
-                DumpModuleSymtab(m_interpreter, result.GetOutputStream(),
-                                 module, m_options.m_sort_order);
-              }
-            }
-          } else
-            result.AppendWarningWithFormat(
-                "Unable to find an image that matches '%s'.\n", arg_cstr);
-        }
+        result.AppendError("the target has no associated executable images");
+        result.SetStatus(eReturnStatusFailed);
+        return false;
       }
+    } else {
+      // Dump specified images (by basename or fullpath)
+      const char *arg_cstr;
+      for (int arg_idx = 0;
+           (arg_cstr = command.GetArgumentAtIndex(arg_idx)) != nullptr;
+           ++arg_idx) {
+        ModuleList module_list;
+        const size_t num_matches =
+            FindModulesByName(target, arg_cstr, module_list, true);
+        if (num_matches > 0) {
+          for (size_t i = 0; i < num_matches; ++i) {
+            Module *module = module_list.GetModulePointerAtIndex(i);
+            if (module) {
+              if (num_dumped > 0) {
+                result.GetOutputStream().EOL();
+                result.GetOutputStream().EOL();
+              }
+              if (m_interpreter.WasInterrupted())
+                break;
+              num_dumped++;
+              DumpModuleSymtab(m_interpreter, result.GetOutputStream(), module,
+                               m_options.m_sort_order);
+            }
+          }
+        } else
+          result.AppendWarningWithFormat(
+              "Unable to find an image that matches '%s'.\n", arg_cstr);
+      }
+    }
 
       if (num_dumped > 0)
         result.SetStatus(eReturnStatusSuccessFinishResult);
@@ -2104,7 +2065,6 @@ protected:
         result.AppendError("no matching executable images found");
         result.SetStatus(eReturnStatusFailed);
       }
-    }
     return result.Succeeded();
   }
 
@@ -2129,69 +2089,63 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    } else {
-      uint32_t num_dumped = 0;
+    Target &target = GetSelectedOrDummyTarget();
+    uint32_t num_dumped = 0;
 
-      uint32_t addr_byte_size = target->GetArchitecture().GetAddressByteSize();
-      result.GetOutputStream().SetAddressByteSize(addr_byte_size);
-      result.GetErrorStream().SetAddressByteSize(addr_byte_size);
+    uint32_t addr_byte_size = target.GetArchitecture().GetAddressByteSize();
+    result.GetOutputStream().SetAddressByteSize(addr_byte_size);
+    result.GetErrorStream().SetAddressByteSize(addr_byte_size);
 
-      if (command.GetArgumentCount() == 0) {
-        // Dump all sections for all modules images
-        const size_t num_modules = target->GetImages().GetSize();
-        if (num_modules > 0) {
-          result.GetOutputStream().Printf("Dumping sections for %" PRIu64
-                                          " modules.\n",
-                                          (uint64_t)num_modules);
-          for (size_t image_idx = 0; image_idx < num_modules; ++image_idx) {
-            if (m_interpreter.WasInterrupted())
-              break;
-            num_dumped++;
-            DumpModuleSections(
-                m_interpreter, result.GetOutputStream(),
-                target->GetImages().GetModulePointerAtIndex(image_idx));
-          }
-        } else {
-          result.AppendError("the target has no associated executable images");
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+    if (command.GetArgumentCount() == 0) {
+      // Dump all sections for all modules images
+      const size_t num_modules = target.GetImages().GetSize();
+      if (num_modules > 0) {
+        result.GetOutputStream().Printf("Dumping sections for %" PRIu64
+                                        " modules.\n",
+                                        (uint64_t)num_modules);
+        for (size_t image_idx = 0; image_idx < num_modules; ++image_idx) {
+          if (m_interpreter.WasInterrupted())
+            break;
+          num_dumped++;
+          DumpModuleSections(
+              m_interpreter, result.GetOutputStream(),
+              target.GetImages().GetModulePointerAtIndex(image_idx));
         }
       } else {
-        // Dump specified images (by basename or fullpath)
-        const char *arg_cstr;
-        for (int arg_idx = 0;
-             (arg_cstr = command.GetArgumentAtIndex(arg_idx)) != nullptr;
-             ++arg_idx) {
-          ModuleList module_list;
-          const size_t num_matches =
-              FindModulesByName(target, arg_cstr, module_list, true);
-          if (num_matches > 0) {
-            for (size_t i = 0; i < num_matches; ++i) {
-              if (m_interpreter.WasInterrupted())
-                break;
-              Module *module = module_list.GetModulePointerAtIndex(i);
-              if (module) {
-                num_dumped++;
-                DumpModuleSections(m_interpreter, result.GetOutputStream(),
-                                   module);
-              }
+        result.AppendError("the target has no associated executable images");
+        result.SetStatus(eReturnStatusFailed);
+        return false;
+      }
+    } else {
+      // Dump specified images (by basename or fullpath)
+      const char *arg_cstr;
+      for (int arg_idx = 0;
+           (arg_cstr = command.GetArgumentAtIndex(arg_idx)) != nullptr;
+           ++arg_idx) {
+        ModuleList module_list;
+        const size_t num_matches =
+            FindModulesByName(target, arg_cstr, module_list, true);
+        if (num_matches > 0) {
+          for (size_t i = 0; i < num_matches; ++i) {
+            if (m_interpreter.WasInterrupted())
+              break;
+            Module *module = module_list.GetModulePointerAtIndex(i);
+            if (module) {
+              num_dumped++;
+              DumpModuleSections(m_interpreter, result.GetOutputStream(),
+                                 module);
             }
-          } else {
-            // Check the global list
-            std::lock_guard<std::recursive_mutex> guard(
-                Module::GetAllocationModuleCollectionMutex());
-
-            result.AppendWarningWithFormat(
-                "Unable to find an image that matches '%s'.\n", arg_cstr);
           }
+        } else {
+          // Check the global list
+          std::lock_guard<std::recursive_mutex> guard(
+              Module::GetAllocationModuleCollectionMutex());
+
+          result.AppendWarningWithFormat(
+              "Unable to find an image that matches '%s'.\n", arg_cstr);
         }
       }
+    }
 
       if (num_dumped > 0)
         result.SetStatus(eReturnStatusSuccessFinishResult);
@@ -2199,7 +2153,6 @@ protected:
         result.AppendError("no matching executable images found");
         result.SetStatus(eReturnStatusFailed);
       }
-    }
     return result.Succeeded();
   }
 };
@@ -2222,15 +2175,9 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
+    Target &target = GetSelectedOrDummyTarget();
 
-    const size_t num_modules = target->GetImages().GetSize();
+    const size_t num_modules = target.GetImages().GetSize();
     if (num_modules == 0) {
       result.AppendError("the target has no associated executable images");
       result.SetStatus(eReturnStatusFailed);
@@ -2245,7 +2192,7 @@ protected:
       for (size_t image_idx = 0; image_idx < num_modules; ++image_idx) {
         if (m_interpreter.WasInterrupted())
           break;
-        Module *m = target->GetImages().GetModulePointerAtIndex(image_idx);
+        Module *m = target.GetImages().GetModulePointerAtIndex(image_idx);
         if (SymbolFile *sf = m->GetSymbolFile())
           sf->DumpClangAST(result.GetOutputStream());
       }
@@ -2299,65 +2246,59 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    } else {
-      uint32_t num_dumped = 0;
+    Target &target = GetSelectedOrDummyTarget();
+    uint32_t num_dumped = 0;
 
-      uint32_t addr_byte_size = target->GetArchitecture().GetAddressByteSize();
-      result.GetOutputStream().SetAddressByteSize(addr_byte_size);
-      result.GetErrorStream().SetAddressByteSize(addr_byte_size);
+    uint32_t addr_byte_size = target.GetArchitecture().GetAddressByteSize();
+    result.GetOutputStream().SetAddressByteSize(addr_byte_size);
+    result.GetErrorStream().SetAddressByteSize(addr_byte_size);
 
-      if (command.GetArgumentCount() == 0) {
-        // Dump all sections for all modules images
-        const ModuleList &target_modules = target->GetImages();
-        std::lock_guard<std::recursive_mutex> guard(target_modules.GetMutex());
-        const size_t num_modules = target_modules.GetSize();
-        if (num_modules > 0) {
-          result.GetOutputStream().Printf("Dumping debug symbols for %" PRIu64
-                                          " modules.\n",
-                                          (uint64_t)num_modules);
-          for (uint32_t image_idx = 0; image_idx < num_modules; ++image_idx) {
-            if (m_interpreter.WasInterrupted())
-              break;
-            if (DumpModuleSymbolFile(
-                    result.GetOutputStream(),
-                    target_modules.GetModulePointerAtIndexUnlocked(image_idx)))
-              num_dumped++;
-          }
-        } else {
-          result.AppendError("the target has no associated executable images");
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+    if (command.GetArgumentCount() == 0) {
+      // Dump all sections for all modules images
+      const ModuleList &target_modules = target.GetImages();
+      std::lock_guard<std::recursive_mutex> guard(target_modules.GetMutex());
+      const size_t num_modules = target_modules.GetSize();
+      if (num_modules > 0) {
+        result.GetOutputStream().Printf("Dumping debug symbols for %" PRIu64
+                                        " modules.\n",
+                                        (uint64_t)num_modules);
+        for (uint32_t image_idx = 0; image_idx < num_modules; ++image_idx) {
+          if (m_interpreter.WasInterrupted())
+            break;
+          if (DumpModuleSymbolFile(
+                  result.GetOutputStream(),
+                  target_modules.GetModulePointerAtIndexUnlocked(image_idx)))
+            num_dumped++;
         }
       } else {
-        // Dump specified images (by basename or fullpath)
-        const char *arg_cstr;
-        for (int arg_idx = 0;
-             (arg_cstr = command.GetArgumentAtIndex(arg_idx)) != nullptr;
-             ++arg_idx) {
-          ModuleList module_list;
-          const size_t num_matches =
-              FindModulesByName(target, arg_cstr, module_list, true);
-          if (num_matches > 0) {
-            for (size_t i = 0; i < num_matches; ++i) {
-              if (m_interpreter.WasInterrupted())
-                break;
-              Module *module = module_list.GetModulePointerAtIndex(i);
-              if (module) {
-                if (DumpModuleSymbolFile(result.GetOutputStream(), module))
-                  num_dumped++;
-              }
-            }
-          } else
-            result.AppendWarningWithFormat(
-                "Unable to find an image that matches '%s'.\n", arg_cstr);
-        }
+        result.AppendError("the target has no associated executable images");
+        result.SetStatus(eReturnStatusFailed);
+        return false;
       }
+    } else {
+      // Dump specified images (by basename or fullpath)
+      const char *arg_cstr;
+      for (int arg_idx = 0;
+           (arg_cstr = command.GetArgumentAtIndex(arg_idx)) != nullptr;
+           ++arg_idx) {
+        ModuleList module_list;
+        const size_t num_matches =
+            FindModulesByName(target, arg_cstr, module_list, true);
+        if (num_matches > 0) {
+          for (size_t i = 0; i < num_matches; ++i) {
+            if (m_interpreter.WasInterrupted())
+              break;
+            Module *module = module_list.GetModulePointerAtIndex(i);
+            if (module) {
+              if (DumpModuleSymbolFile(result.GetOutputStream(), module))
+                num_dumped++;
+            }
+          }
+        } else
+          result.AppendWarningWithFormat(
+              "Unable to find an image that matches '%s'.\n", arg_cstr);
+      }
+    }
 
       if (num_dumped > 0)
         result.SetStatus(eReturnStatusSuccessFinishResult);
@@ -2365,7 +2306,6 @@ protected:
         result.AppendError("no matching executable images found");
         result.SetStatus(eReturnStatusFailed);
       }
-    }
     return result.Succeeded();
   }
 };
@@ -2513,10 +2453,11 @@ public:
   CommandObjectTargetModulesAdd(CommandInterpreter &interpreter)
       : CommandObjectParsed(interpreter, "target modules add",
                             "Add a new module to the current target's modules.",
-                            "target modules add [<module>]"),
-        m_option_group(),
-        m_symbol_file(LLDB_OPT_SET_1, false, "symfile", 's', 0,
-                      eArgTypeFilename, "Fullpath to a stand alone debug "
+                            "target modules add [<module>]",
+                            eCommandRequiresTarget),
+        m_option_group(), m_symbol_file(LLDB_OPT_SET_1, false, "symfile", 's',
+                                        0, eArgTypeFilename,
+                                        "Fullpath to a stand alone debug "
                                         "symbols file for when debug symbols "
                                         "are not in the executable.") {
     m_option_group.Append(&m_uuid_option_group, LLDB_OPT_SET_ALL,
@@ -2543,126 +2484,118 @@ protected:
   OptionGroupFile m_symbol_file;
 
   bool DoExecute(Args &args, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    } else {
-      bool flush = false;
+    Target &target = GetSelectedOrDummyTarget();
+    bool flush = false;
 
-      const size_t argc = args.GetArgumentCount();
-      if (argc == 0) {
-        if (m_uuid_option_group.GetOptionValue().OptionWasSet()) {
-          // We are given a UUID only, go locate the file
-          ModuleSpec module_spec;
-          module_spec.GetUUID() =
-              m_uuid_option_group.GetOptionValue().GetCurrentValue();
-          if (m_symbol_file.GetOptionValue().OptionWasSet())
-            module_spec.GetSymbolFileSpec() =
-                m_symbol_file.GetOptionValue().GetCurrentValue();
-          if (Symbols::DownloadObjectAndSymbolFile(module_spec)) {
-            ModuleSP module_sp(target->GetOrCreateModule(module_spec,
-                                                 true /* notify */));
-            if (module_sp) {
-              result.SetStatus(eReturnStatusSuccessFinishResult);
-              return true;
-            } else {
-              StreamString strm;
-              module_spec.GetUUID().Dump(&strm);
-              if (module_spec.GetFileSpec()) {
-                if (module_spec.GetSymbolFileSpec()) {
-                  result.AppendErrorWithFormat(
-                      "Unable to create the executable or symbol file with "
-                      "UUID %s with path %s and symbol file %s",
-                      strm.GetData(),
-                      module_spec.GetFileSpec().GetPath().c_str(),
-                      module_spec.GetSymbolFileSpec().GetPath().c_str());
-                } else {
-                  result.AppendErrorWithFormat(
-                      "Unable to create the executable or symbol file with "
-                      "UUID %s with path %s",
-                      strm.GetData(),
-                      module_spec.GetFileSpec().GetPath().c_str());
-                }
-              } else {
-                result.AppendErrorWithFormat("Unable to create the executable "
-                                             "or symbol file with UUID %s",
-                                             strm.GetData());
-              }
-              result.SetStatus(eReturnStatusFailed);
-              return false;
-            }
+    const size_t argc = args.GetArgumentCount();
+    if (argc == 0) {
+      if (m_uuid_option_group.GetOptionValue().OptionWasSet()) {
+        // We are given a UUID only, go locate the file
+        ModuleSpec module_spec;
+        module_spec.GetUUID() =
+            m_uuid_option_group.GetOptionValue().GetCurrentValue();
+        if (m_symbol_file.GetOptionValue().OptionWasSet())
+          module_spec.GetSymbolFileSpec() =
+              m_symbol_file.GetOptionValue().GetCurrentValue();
+        if (Symbols::DownloadObjectAndSymbolFile(module_spec)) {
+          ModuleSP module_sp(
+              target.GetOrCreateModule(module_spec, true /* notify */));
+          if (module_sp) {
+            result.SetStatus(eReturnStatusSuccessFinishResult);
+            return true;
           } else {
             StreamString strm;
             module_spec.GetUUID().Dump(&strm);
-            result.AppendErrorWithFormat(
-                "Unable to locate the executable or symbol file with UUID %s",
-                strm.GetData());
+            if (module_spec.GetFileSpec()) {
+              if (module_spec.GetSymbolFileSpec()) {
+                result.AppendErrorWithFormat(
+                    "Unable to create the executable or symbol file with "
+                    "UUID %s with path %s and symbol file %s",
+                    strm.GetData(), module_spec.GetFileSpec().GetPath().c_str(),
+                    module_spec.GetSymbolFileSpec().GetPath().c_str());
+              } else {
+                result.AppendErrorWithFormat(
+                    "Unable to create the executable or symbol file with "
+                    "UUID %s with path %s",
+                    strm.GetData(),
+                    module_spec.GetFileSpec().GetPath().c_str());
+              }
+            } else {
+              result.AppendErrorWithFormat("Unable to create the executable "
+                                           "or symbol file with UUID %s",
+                                           strm.GetData());
+            }
             result.SetStatus(eReturnStatusFailed);
             return false;
           }
         } else {
-          result.AppendError(
-              "one or more executable image paths must be specified");
+          StreamString strm;
+          module_spec.GetUUID().Dump(&strm);
+          result.AppendErrorWithFormat(
+              "Unable to locate the executable or symbol file with UUID %s",
+              strm.GetData());
           result.SetStatus(eReturnStatusFailed);
           return false;
         }
       } else {
-        for (auto &entry : args.entries()) {
-          if (entry.ref.empty())
-            continue;
+        result.AppendError(
+            "one or more executable image paths must be specified");
+        result.SetStatus(eReturnStatusFailed);
+        return false;
+      }
+    } else {
+      for (auto &entry : args.entries()) {
+        if (entry.ref.empty())
+          continue;
 
-          FileSpec file_spec(entry.ref);
-          if (FileSystem::Instance().Exists(file_spec)) {
-            ModuleSpec module_spec(file_spec);
-            if (m_uuid_option_group.GetOptionValue().OptionWasSet())
-              module_spec.GetUUID() =
-                  m_uuid_option_group.GetOptionValue().GetCurrentValue();
-            if (m_symbol_file.GetOptionValue().OptionWasSet())
-              module_spec.GetSymbolFileSpec() =
-                  m_symbol_file.GetOptionValue().GetCurrentValue();
-            if (!module_spec.GetArchitecture().IsValid())
-              module_spec.GetArchitecture() = target->GetArchitecture();
-            Status error;
-            ModuleSP module_sp(target->GetOrCreateModule(module_spec, 
-                                            true /* notify */, &error));
-            if (!module_sp) {
-              const char *error_cstr = error.AsCString();
-              if (error_cstr)
-                result.AppendError(error_cstr);
-              else
-                result.AppendErrorWithFormat("unsupported module: %s",
-                                             entry.c_str());
-              result.SetStatus(eReturnStatusFailed);
-              return false;
-            } else {
-              flush = true;
-            }
-            result.SetStatus(eReturnStatusSuccessFinishResult);
-          } else {
-            std::string resolved_path = file_spec.GetPath();
+        FileSpec file_spec(entry.ref);
+        if (FileSystem::Instance().Exists(file_spec)) {
+          ModuleSpec module_spec(file_spec);
+          if (m_uuid_option_group.GetOptionValue().OptionWasSet())
+            module_spec.GetUUID() =
+                m_uuid_option_group.GetOptionValue().GetCurrentValue();
+          if (m_symbol_file.GetOptionValue().OptionWasSet())
+            module_spec.GetSymbolFileSpec() =
+                m_symbol_file.GetOptionValue().GetCurrentValue();
+          if (!module_spec.GetArchitecture().IsValid())
+            module_spec.GetArchitecture() = target.GetArchitecture();
+          Status error;
+          ModuleSP module_sp(
+              target.GetOrCreateModule(module_spec, true /* notify */, &error));
+          if (!module_sp) {
+            const char *error_cstr = error.AsCString();
+            if (error_cstr)
+              result.AppendError(error_cstr);
+            else
+              result.AppendErrorWithFormat("unsupported module: %s",
+                                           entry.c_str());
             result.SetStatus(eReturnStatusFailed);
-            if (resolved_path != entry.ref) {
-              result.AppendErrorWithFormat(
-                  "invalid module path '%s' with resolved path '%s'\n",
-                  entry.ref.str().c_str(), resolved_path.c_str());
-              break;
-            }
-            result.AppendErrorWithFormat("invalid module path '%s'\n",
-                                         entry.c_str());
+            return false;
+          } else {
+            flush = true;
+          }
+          result.SetStatus(eReturnStatusSuccessFinishResult);
+        } else {
+          std::string resolved_path = file_spec.GetPath();
+          result.SetStatus(eReturnStatusFailed);
+          if (resolved_path != entry.ref) {
+            result.AppendErrorWithFormat(
+                "invalid module path '%s' with resolved path '%s'\n",
+                entry.ref.str().c_str(), resolved_path.c_str());
             break;
           }
+          result.AppendErrorWithFormat("invalid module path '%s'\n",
+                                       entry.c_str());
+          break;
         }
       }
+    }
 
       if (flush) {
-        ProcessSP process = target->GetProcessSP();
+        ProcessSP process = target.GetProcessSP();
         if (process)
           process->Flush();
       }
-    }
 
     return result.Succeeded();
   }
@@ -2706,15 +2639,9 @@ public:
 
 protected:
   bool DoExecute(Args &args, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
+    Target &target = GetSelectedOrDummyTarget();
     const bool load = m_load_option.GetOptionValue().GetCurrentValue();
     const bool set_pc = m_pc_option.GetOptionValue().GetCurrentValue();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    } else {
       const size_t argc = args.GetArgumentCount();
       ModuleSpec module_spec;
       bool search_using_module_spec = false;
@@ -2723,7 +2650,7 @@ protected:
       if (load) {
         if (!m_file_option.GetOptionValue().OptionWasSet() &&
             !m_uuid_option_group.GetOptionValue().OptionWasSet()) {
-          ModuleList &module_list = target->GetImages();
+          ModuleList &module_list = target.GetImages();
           if (module_list.GetSize() == 1) {
             search_using_module_spec = true;
             module_spec.GetFileSpec() =
@@ -2764,7 +2691,7 @@ protected:
       if (search_using_module_spec) {
         ModuleList matching_modules;
         const size_t num_matches =
-            target->GetImages().FindModules(module_spec, matching_modules);
+            target.GetImages().FindModules(module_spec, matching_modules);
 
         char path[PATH_MAX];
         if (num_matches == 1) {
@@ -2780,7 +2707,7 @@ protected:
                     const addr_t slide =
                         m_slide_option.GetOptionValue().GetCurrentValue();
                     const bool slide_is_offset = true;
-                    module->SetLoadAddress(*target, slide, slide_is_offset,
+                    module->SetLoadAddress(target, slide, slide_is_offset,
                                            changed);
                   } else {
                     result.AppendError("one or more section name + load "
@@ -2817,7 +2744,7 @@ protected:
                             result.SetStatus(eReturnStatusFailed);
                             break;
                           } else {
-                            if (target->GetSectionLoadList()
+                            if (target.GetSectionLoadList()
                                     .SetSectionLoadAddress(section_sp,
                                                            load_addr))
                               changed = true;
@@ -2854,13 +2781,13 @@ protected:
                 }
 
                 if (changed) {
-                  target->ModulesDidLoad(matching_modules);
+                  target.ModulesDidLoad(matching_modules);
                   Process *process = m_exe_ctx.GetProcessPtr();
                   if (process)
                     process->Flush();
                 }
                 if (load) {
-                  ProcessSP process = target->CalculateProcess();
+                  ProcessSP process = target.CalculateProcess();
                   Address file_entry = objfile->GetEntryPointAddress();
                   if (!process) {
                     result.AppendError("No process");
@@ -2871,7 +2798,7 @@ protected:
                     return false;
                   }
                   std::vector<ObjectFile::LoadableData> loadables(
-                      objfile->GetLoadableData(*target));
+                      objfile->GetLoadableData(target));
                   if (loadables.size() == 0) {
                     result.AppendError("No loadable sections");
                     return false;
@@ -2885,7 +2812,7 @@ protected:
                     ThreadList &thread_list = process->GetThreadList();
                     RegisterContextSP reg_context(
                         thread_list.GetSelectedThread()->GetRegisterContext());
-                    addr_t file_entry_addr = file_entry.GetLoadAddress(target);
+                    addr_t file_entry_addr = file_entry.GetLoadAddress(&target);
                     if (!reg_context->SetPC(file_entry_addr)) {
                       result.AppendErrorWithFormat("failed to set PC value to "
                                                    "0x%" PRIx64 "\n",
@@ -2949,7 +2876,6 @@ protected:
         result.SetStatus(eReturnStatusFailed);
         return false;
       }
-    }
     return result.Succeeded();
   }
 
@@ -3014,7 +2940,7 @@ public:
       : CommandObjectParsed(
             interpreter, "target modules list",
             "List current executable and dependent shared library images.",
-            "target modules list [<cmd-options>]"),
+            "target modules list [<cmd-options>]", eCommandRequiresTarget),
         m_options() {}
 
   ~CommandObjectTargetModulesList() override = default;
@@ -3023,54 +2949,39 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
+    Target &target = GetSelectedOrDummyTarget();
     const bool use_global_module_list = m_options.m_use_global_module_list;
     // Define a local module list here to ensure it lives longer than any
     // "locker" object which might lock its contents below (through the
     // "module_list_ptr" variable).
     ModuleList module_list;
-    if (target == nullptr && !use_global_module_list) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    } else {
-      if (target) {
-        uint32_t addr_byte_size =
-            target->GetArchitecture().GetAddressByteSize();
-        result.GetOutputStream().SetAddressByteSize(addr_byte_size);
-        result.GetErrorStream().SetAddressByteSize(addr_byte_size);
-      }
-      // Dump all sections for all modules images
-      Stream &strm = result.GetOutputStream();
+    uint32_t addr_byte_size = target.GetArchitecture().GetAddressByteSize();
+    result.GetOutputStream().SetAddressByteSize(addr_byte_size);
+    result.GetErrorStream().SetAddressByteSize(addr_byte_size);
+    // Dump all sections for all modules images
+    Stream &strm = result.GetOutputStream();
 
-      if (m_options.m_module_addr != LLDB_INVALID_ADDRESS) {
-        if (target) {
-          Address module_address;
-          if (module_address.SetLoadAddress(m_options.m_module_addr, target)) {
-            ModuleSP module_sp(module_address.GetModule());
-            if (module_sp) {
-              PrintModule(target, module_sp.get(), 0, strm);
-              result.SetStatus(eReturnStatusSuccessFinishResult);
-            } else {
-              result.AppendErrorWithFormat(
-                  "Couldn't find module matching address: 0x%" PRIx64 ".",
-                  m_options.m_module_addr);
-              result.SetStatus(eReturnStatusFailed);
-            }
-          } else {
-            result.AppendErrorWithFormat(
-                "Couldn't find module containing address: 0x%" PRIx64 ".",
-                m_options.m_module_addr);
-            result.SetStatus(eReturnStatusFailed);
-          }
+    if (m_options.m_module_addr != LLDB_INVALID_ADDRESS) {
+      Address module_address;
+      if (module_address.SetLoadAddress(m_options.m_module_addr, &target)) {
+        ModuleSP module_sp(module_address.GetModule());
+        if (module_sp) {
+          PrintModule(&target, module_sp.get(), 0, strm);
+          result.SetStatus(eReturnStatusSuccessFinishResult);
         } else {
-          result.AppendError(
-              "Can only look up modules by address with a valid target.");
+          result.AppendErrorWithFormat(
+              "Couldn't find module matching address: 0x%" PRIx64 ".",
+              m_options.m_module_addr);
           result.SetStatus(eReturnStatusFailed);
         }
-        return result.Succeeded();
+      } else {
+        result.AppendErrorWithFormat(
+            "Couldn't find module containing address: 0x%" PRIx64 ".",
+            m_options.m_module_addr);
+        result.SetStatus(eReturnStatusFailed);
       }
+      return result.Succeeded();
+    }
 
       size_t num_modules = 0;
 
@@ -3088,7 +2999,7 @@ protected:
           guard.lock();
           num_modules = Module::GetNumberAllocatedModules();
         } else {
-          module_list_ptr = &target->GetImages();
+          module_list_ptr = &target.GetImages();
         }
       } else {
         // TODO: Convert to entry based iteration.  Requires converting
@@ -3132,7 +3043,7 @@ protected:
           }
 
           const size_t indent = strm.Printf("[%3u] ", image_idx);
-          PrintModule(target, module, indent, strm);
+          PrintModule(&target, module, indent, strm);
         }
         result.SetStatus(eReturnStatusSuccessFinishResult);
       } else {
@@ -3152,7 +3063,6 @@ protected:
         result.SetStatus(eReturnStatusFailed);
         return false;
       }
-    }
     return result.Succeeded();
   }
 
@@ -3891,91 +3801,82 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    } else {
-      bool syntax_error = false;
-      uint32_t i;
-      uint32_t num_successful_lookups = 0;
-      uint32_t addr_byte_size = target->GetArchitecture().GetAddressByteSize();
-      result.GetOutputStream().SetAddressByteSize(addr_byte_size);
-      result.GetErrorStream().SetAddressByteSize(addr_byte_size);
-      // Dump all sections for all modules images
+    Target &target = GetSelectedOrDummyTarget();
+    bool syntax_error = false;
+    uint32_t i;
+    uint32_t num_successful_lookups = 0;
+    uint32_t addr_byte_size = target.GetArchitecture().GetAddressByteSize();
+    result.GetOutputStream().SetAddressByteSize(addr_byte_size);
+    result.GetErrorStream().SetAddressByteSize(addr_byte_size);
+    // Dump all sections for all modules images
 
-      if (command.GetArgumentCount() == 0) {
-        ModuleSP current_module;
+    if (command.GetArgumentCount() == 0) {
+      ModuleSP current_module;
 
-        // Where it is possible to look in the current symbol context first,
-        // try that.  If this search was successful and --all was not passed,
-        // don't print anything else.
-        if (LookupHere(m_interpreter, result, syntax_error)) {
-          result.GetOutputStream().EOL();
-          num_successful_lookups++;
-          if (!m_options.m_print_all) {
-            result.SetStatus(eReturnStatusSuccessFinishResult);
-            return result.Succeeded();
-          }
-        }
-
-        // Dump all sections for all other modules
-
-        const ModuleList &target_modules = target->GetImages();
-        std::lock_guard<std::recursive_mutex> guard(target_modules.GetMutex());
-        const size_t num_modules = target_modules.GetSize();
-        if (num_modules > 0) {
-          for (i = 0; i < num_modules && !syntax_error; ++i) {
-            Module *module_pointer =
-                target_modules.GetModulePointerAtIndexUnlocked(i);
-
-            if (module_pointer != current_module.get() &&
-                LookupInModule(
-                    m_interpreter,
-                    target_modules.GetModulePointerAtIndexUnlocked(i), result,
-                    syntax_error)) {
-              result.GetOutputStream().EOL();
-              num_successful_lookups++;
-            }
-          }
-        } else {
-          result.AppendError("the target has no associated executable images");
-          result.SetStatus(eReturnStatusFailed);
-          return false;
-        }
-      } else {
-        // Dump specified images (by basename or fullpath)
-        const char *arg_cstr;
-        for (i = 0; (arg_cstr = command.GetArgumentAtIndex(i)) != nullptr &&
-                    !syntax_error;
-             ++i) {
-          ModuleList module_list;
-          const size_t num_matches =
-              FindModulesByName(target, arg_cstr, module_list, false);
-          if (num_matches > 0) {
-            for (size_t j = 0; j < num_matches; ++j) {
-              Module *module = module_list.GetModulePointerAtIndex(j);
-              if (module) {
-                if (LookupInModule(m_interpreter, module, result,
-                                   syntax_error)) {
-                  result.GetOutputStream().EOL();
-                  num_successful_lookups++;
-                }
-              }
-            }
-          } else
-            result.AppendWarningWithFormat(
-                "Unable to find an image that matches '%s'.\n", arg_cstr);
+      // Where it is possible to look in the current symbol context first,
+      // try that.  If this search was successful and --all was not passed,
+      // don't print anything else.
+      if (LookupHere(m_interpreter, result, syntax_error)) {
+        result.GetOutputStream().EOL();
+        num_successful_lookups++;
+        if (!m_options.m_print_all) {
+          result.SetStatus(eReturnStatusSuccessFinishResult);
+          return result.Succeeded();
         }
       }
 
-      if (num_successful_lookups > 0)
-        result.SetStatus(eReturnStatusSuccessFinishResult);
-      else
+      // Dump all sections for all other modules
+
+      const ModuleList &target_modules = target.GetImages();
+      std::lock_guard<std::recursive_mutex> guard(target_modules.GetMutex());
+      const size_t num_modules = target_modules.GetSize();
+      if (num_modules > 0) {
+        for (i = 0; i < num_modules && !syntax_error; ++i) {
+          Module *module_pointer =
+              target_modules.GetModulePointerAtIndexUnlocked(i);
+
+          if (module_pointer != current_module.get() &&
+              LookupInModule(m_interpreter,
+                             target_modules.GetModulePointerAtIndexUnlocked(i),
+                             result, syntax_error)) {
+            result.GetOutputStream().EOL();
+            num_successful_lookups++;
+          }
+        }
+      } else {
+        result.AppendError("the target has no associated executable images");
         result.SetStatus(eReturnStatusFailed);
+        return false;
+      }
+    } else {
+      // Dump specified images (by basename or fullpath)
+      const char *arg_cstr;
+      for (i = 0; (arg_cstr = command.GetArgumentAtIndex(i)) != nullptr &&
+                  !syntax_error;
+           ++i) {
+        ModuleList module_list;
+        const size_t num_matches =
+            FindModulesByName(target, arg_cstr, module_list, false);
+        if (num_matches > 0) {
+          for (size_t j = 0; j < num_matches; ++j) {
+            Module *module = module_list.GetModulePointerAtIndex(j);
+            if (module) {
+              if (LookupInModule(m_interpreter, module, result, syntax_error)) {
+                result.GetOutputStream().EOL();
+                num_successful_lookups++;
+              }
+            }
+          }
+        } else
+          result.AppendWarningWithFormat(
+              "Unable to find an image that matches '%s'.\n", arg_cstr);
+      }
     }
+
+    if (num_successful_lookups > 0)
+      result.SetStatus(eReturnStatusSuccessFinishResult);
+    else
+      result.SetStatus(eReturnStatusFailed);
     return result.Succeeded();
   }
 
@@ -4622,7 +4523,7 @@ public:
   CommandObjectTargetStopHookAdd(CommandInterpreter &interpreter)
       : CommandObjectParsed(interpreter, "target stop-hook add",
                             "Add a hook to be executed when the target stops.",
-                            "target stop-hook add"),
+                            "target stop-hook add", eCommandRequiresTarget),
         IOHandlerDelegateMultiline("DONE",
                                    IOHandlerDelegate::Completion::LLDBCommand),
         m_options() {}
@@ -4672,98 +4573,91 @@ protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     m_stop_hook_sp.reset();
 
-    Target *target = GetSelectedOrDummyTarget();
-    if (target) {
-      Target::StopHookSP new_hook_sp = target->CreateStopHook();
+    Target &target = GetSelectedOrDummyTarget();
+    Target::StopHookSP new_hook_sp = target.CreateStopHook();
 
-      //  First step, make the specifier.
-      std::unique_ptr<SymbolContextSpecifier> specifier_up;
-      if (m_options.m_sym_ctx_specified) {
-        specifier_up.reset(
-            new SymbolContextSpecifier(GetDebugger().GetSelectedTarget()));
+    //  First step, make the specifier.
+    std::unique_ptr<SymbolContextSpecifier> specifier_up;
+    if (m_options.m_sym_ctx_specified) {
+      specifier_up.reset(
+          new SymbolContextSpecifier(GetDebugger().GetSelectedTarget()));
 
-        if (!m_options.m_module_name.empty()) {
-          specifier_up->AddSpecification(
-              m_options.m_module_name.c_str(),
-              SymbolContextSpecifier::eModuleSpecified);
-        }
-
-        if (!m_options.m_class_name.empty()) {
-          specifier_up->AddSpecification(
-              m_options.m_class_name.c_str(),
-              SymbolContextSpecifier::eClassOrNamespaceSpecified);
-        }
-
-        if (!m_options.m_file_name.empty()) {
-          specifier_up->AddSpecification(
-              m_options.m_file_name.c_str(),
-              SymbolContextSpecifier::eFileSpecified);
-        }
-
-        if (m_options.m_line_start != 0) {
-          specifier_up->AddLineSpecification(
-              m_options.m_line_start,
-              SymbolContextSpecifier::eLineStartSpecified);
-        }
-
-        if (m_options.m_line_end != UINT_MAX) {
-          specifier_up->AddLineSpecification(
-              m_options.m_line_end, SymbolContextSpecifier::eLineEndSpecified);
-        }
-
-        if (!m_options.m_function_name.empty()) {
-          specifier_up->AddSpecification(
-              m_options.m_function_name.c_str(),
-              SymbolContextSpecifier::eFunctionSpecified);
-        }
+      if (!m_options.m_module_name.empty()) {
+        specifier_up->AddSpecification(
+            m_options.m_module_name.c_str(),
+            SymbolContextSpecifier::eModuleSpecified);
       }
 
-      if (specifier_up)
-        new_hook_sp->SetSpecifier(specifier_up.release());
-
-      // Next see if any of the thread options have been entered:
-
-      if (m_options.m_thread_specified) {
-        ThreadSpec *thread_spec = new ThreadSpec();
-
-        if (m_options.m_thread_id != LLDB_INVALID_THREAD_ID) {
-          thread_spec->SetTID(m_options.m_thread_id);
-        }
-
-        if (m_options.m_thread_index != UINT32_MAX)
-          thread_spec->SetIndex(m_options.m_thread_index);
-
-        if (!m_options.m_thread_name.empty())
-          thread_spec->SetName(m_options.m_thread_name.c_str());
-
-        if (!m_options.m_queue_name.empty())
-          thread_spec->SetQueueName(m_options.m_queue_name.c_str());
-
-        new_hook_sp->SetThreadSpecifier(thread_spec);
+      if (!m_options.m_class_name.empty()) {
+        specifier_up->AddSpecification(
+            m_options.m_class_name.c_str(),
+            SymbolContextSpecifier::eClassOrNamespaceSpecified);
       }
-      
-      new_hook_sp->SetAutoContinue(m_options.m_auto_continue);
-      if (m_options.m_use_one_liner) {
-        // Use one-liners.
-        for (auto cmd : m_options.m_one_liner)
-          new_hook_sp->GetCommandPointer()->AppendString(
-            cmd.c_str());
-        result.AppendMessageWithFormat("Stop hook #%" PRIu64 " added.\n",
-                                       new_hook_sp->GetID());
-      } else {
-        m_stop_hook_sp = new_hook_sp;
-        m_interpreter.GetLLDBCommandsFromIOHandler(
-            "> ",     // Prompt
-            *this,    // IOHandlerDelegate
-            true,     // Run IOHandler in async mode
-            nullptr); // Baton for the "io_handler" that will be passed back
-                      // into our IOHandlerDelegate functions
+
+      if (!m_options.m_file_name.empty()) {
+        specifier_up->AddSpecification(m_options.m_file_name.c_str(),
+                                       SymbolContextSpecifier::eFileSpecified);
       }
-      result.SetStatus(eReturnStatusSuccessFinishNoResult);
-    } else {
-      result.AppendError("invalid target\n");
-      result.SetStatus(eReturnStatusFailed);
+
+      if (m_options.m_line_start != 0) {
+        specifier_up->AddLineSpecification(
+            m_options.m_line_start,
+            SymbolContextSpecifier::eLineStartSpecified);
+      }
+
+      if (m_options.m_line_end != UINT_MAX) {
+        specifier_up->AddLineSpecification(
+            m_options.m_line_end, SymbolContextSpecifier::eLineEndSpecified);
+      }
+
+      if (!m_options.m_function_name.empty()) {
+        specifier_up->AddSpecification(
+            m_options.m_function_name.c_str(),
+            SymbolContextSpecifier::eFunctionSpecified);
+      }
     }
+
+    if (specifier_up)
+      new_hook_sp->SetSpecifier(specifier_up.release());
+
+    // Next see if any of the thread options have been entered:
+
+    if (m_options.m_thread_specified) {
+      ThreadSpec *thread_spec = new ThreadSpec();
+
+      if (m_options.m_thread_id != LLDB_INVALID_THREAD_ID) {
+        thread_spec->SetTID(m_options.m_thread_id);
+      }
+
+      if (m_options.m_thread_index != UINT32_MAX)
+        thread_spec->SetIndex(m_options.m_thread_index);
+
+      if (!m_options.m_thread_name.empty())
+        thread_spec->SetName(m_options.m_thread_name.c_str());
+
+      if (!m_options.m_queue_name.empty())
+        thread_spec->SetQueueName(m_options.m_queue_name.c_str());
+
+      new_hook_sp->SetThreadSpecifier(thread_spec);
+    }
+
+    new_hook_sp->SetAutoContinue(m_options.m_auto_continue);
+    if (m_options.m_use_one_liner) {
+      // Use one-liners.
+      for (auto cmd : m_options.m_one_liner)
+        new_hook_sp->GetCommandPointer()->AppendString(cmd.c_str());
+      result.AppendMessageWithFormat("Stop hook #%" PRIu64 " added.\n",
+                                     new_hook_sp->GetID());
+    } else {
+      m_stop_hook_sp = new_hook_sp;
+      m_interpreter.GetLLDBCommandsFromIOHandler(
+          "> ",     // Prompt
+          *this,    // IOHandlerDelegate
+          true,     // Run IOHandler in async mode
+          nullptr); // Baton for the "io_handler" that will be passed back
+                    // into our IOHandlerDelegate functions
+    }
+    result.SetStatus(eReturnStatusSuccessFinishNoResult);
 
     return result.Succeeded();
   }
@@ -4780,51 +4674,45 @@ private:
 class CommandObjectTargetStopHookDelete : public CommandObjectParsed {
 public:
   CommandObjectTargetStopHookDelete(CommandInterpreter &interpreter)
-      : CommandObjectParsed(interpreter, "target stop-hook delete",
-                            "Delete a stop-hook.",
-                            "target stop-hook delete [<idx>]") {}
+      : CommandObjectParsed(
+            interpreter, "target stop-hook delete", "Delete a stop-hook.",
+            "target stop-hook delete [<idx>]", eCommandRequiresTarget) {}
 
   ~CommandObjectTargetStopHookDelete() override = default;
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget();
-    if (target) {
-      // FIXME: see if we can use the breakpoint id style parser?
-      size_t num_args = command.GetArgumentCount();
-      if (num_args == 0) {
-        if (!m_interpreter.Confirm("Delete all stop hooks?", true)) {
+    Target &target = GetSelectedOrDummyTarget();
+    // FIXME: see if we can use the breakpoint id style parser?
+    size_t num_args = command.GetArgumentCount();
+    if (num_args == 0) {
+      if (!m_interpreter.Confirm("Delete all stop hooks?", true)) {
+        result.SetStatus(eReturnStatusFailed);
+        return false;
+      } else {
+        target.RemoveAllStopHooks();
+      }
+    } else {
+      bool success;
+      for (size_t i = 0; i < num_args; i++) {
+        lldb::user_id_t user_id = StringConvert::ToUInt32(
+            command.GetArgumentAtIndex(i), 0, 0, &success);
+        if (!success) {
+          result.AppendErrorWithFormat("invalid stop hook id: \"%s\".\n",
+                                       command.GetArgumentAtIndex(i));
           result.SetStatus(eReturnStatusFailed);
           return false;
-        } else {
-          target->RemoveAllStopHooks();
         }
-      } else {
-        bool success;
-        for (size_t i = 0; i < num_args; i++) {
-          lldb::user_id_t user_id = StringConvert::ToUInt32(
-              command.GetArgumentAtIndex(i), 0, 0, &success);
-          if (!success) {
-            result.AppendErrorWithFormat("invalid stop hook id: \"%s\".\n",
-                                         command.GetArgumentAtIndex(i));
-            result.SetStatus(eReturnStatusFailed);
-            return false;
-          }
-          success = target->RemoveStopHookByID(user_id);
-          if (!success) {
-            result.AppendErrorWithFormat("unknown stop hook id: \"%s\".\n",
-                                         command.GetArgumentAtIndex(i));
-            result.SetStatus(eReturnStatusFailed);
-            return false;
-          }
+        success = target.RemoveStopHookByID(user_id);
+        if (!success) {
+          result.AppendErrorWithFormat("unknown stop hook id: \"%s\".\n",
+                                       command.GetArgumentAtIndex(i));
+          result.SetStatus(eReturnStatusFailed);
+          return false;
         }
       }
-      result.SetStatus(eReturnStatusSuccessFinishNoResult);
-    } else {
-      result.AppendError("invalid target\n");
-      result.SetStatus(eReturnStatusFailed);
     }
-
+    result.SetStatus(eReturnStatusSuccessFinishNoResult);
     return result.Succeeded();
   }
 };
@@ -4838,45 +4726,41 @@ public:
   CommandObjectTargetStopHookEnableDisable(CommandInterpreter &interpreter,
                                            bool enable, const char *name,
                                            const char *help, const char *syntax)
-      : CommandObjectParsed(interpreter, name, help, syntax), m_enable(enable) {
-  }
+      : CommandObjectParsed(interpreter, name, help, syntax,
+                            eCommandRequiresTarget),
+        m_enable(enable) {}
 
   ~CommandObjectTargetStopHookEnableDisable() override = default;
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget();
-    if (target) {
-      // FIXME: see if we can use the breakpoint id style parser?
-      size_t num_args = command.GetArgumentCount();
-      bool success;
+    Target &target = GetSelectedOrDummyTarget();
+    // FIXME: see if we can use the breakpoint id style parser?
+    size_t num_args = command.GetArgumentCount();
+    bool success;
 
-      if (num_args == 0) {
-        target->SetAllStopHooksActiveState(m_enable);
-      } else {
-        for (size_t i = 0; i < num_args; i++) {
-          lldb::user_id_t user_id = StringConvert::ToUInt32(
-              command.GetArgumentAtIndex(i), 0, 0, &success);
-          if (!success) {
-            result.AppendErrorWithFormat("invalid stop hook id: \"%s\".\n",
-                                         command.GetArgumentAtIndex(i));
-            result.SetStatus(eReturnStatusFailed);
-            return false;
-          }
-          success = target->SetStopHookActiveStateByID(user_id, m_enable);
-          if (!success) {
-            result.AppendErrorWithFormat("unknown stop hook id: \"%s\".\n",
-                                         command.GetArgumentAtIndex(i));
-            result.SetStatus(eReturnStatusFailed);
-            return false;
-          }
+    if (num_args == 0) {
+      target.SetAllStopHooksActiveState(m_enable);
+    } else {
+      for (size_t i = 0; i < num_args; i++) {
+        lldb::user_id_t user_id = StringConvert::ToUInt32(
+            command.GetArgumentAtIndex(i), 0, 0, &success);
+        if (!success) {
+          result.AppendErrorWithFormat("invalid stop hook id: \"%s\".\n",
+                                       command.GetArgumentAtIndex(i));
+          result.SetStatus(eReturnStatusFailed);
+          return false;
+        }
+        success = target.SetStopHookActiveStateByID(user_id, m_enable);
+        if (!success) {
+          result.AppendErrorWithFormat("unknown stop hook id: \"%s\".\n",
+                                       command.GetArgumentAtIndex(i));
+          result.SetStatus(eReturnStatusFailed);
+          return false;
         }
       }
-      result.SetStatus(eReturnStatusSuccessFinishNoResult);
-    } else {
-      result.AppendError("invalid target\n");
-      result.SetStatus(eReturnStatusFailed);
     }
+    result.SetStatus(eReturnStatusSuccessFinishNoResult);
     return result.Succeeded();
   }
 
@@ -4891,27 +4775,22 @@ private:
 class CommandObjectTargetStopHookList : public CommandObjectParsed {
 public:
   CommandObjectTargetStopHookList(CommandInterpreter &interpreter)
-      : CommandObjectParsed(interpreter, "target stop-hook list",
-                            "List all stop-hooks.",
-                            "target stop-hook list [<type>]") {}
+      : CommandObjectParsed(
+            interpreter, "target stop-hook list", "List all stop-hooks.",
+            "target stop-hook list [<type>]", eCommandRequiresTarget) {}
 
   ~CommandObjectTargetStopHookList() override = default;
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget();
-    if (!target) {
-      result.AppendError("invalid target\n");
-      result.SetStatus(eReturnStatusFailed);
-      return result.Succeeded();
-    }
+    Target &target = GetSelectedOrDummyTarget();
 
-    size_t num_hooks = target->GetNumStopHooks();
+    size_t num_hooks = target.GetNumStopHooks();
     if (num_hooks == 0) {
       result.GetOutputStream().PutCString("No stop hooks.\n");
     } else {
       for (size_t i = 0; i < num_hooks; i++) {
-        Target::StopHookSP this_hook = target->GetStopHookAtIndex(i);
+        Target::StopHookSP this_hook = target.GetStopHookAtIndex(i);
         if (i > 0)
           result.GetOutputStream().PutCString("\n");
         this_hook->GetDescription(&(result.GetOutputStream()),

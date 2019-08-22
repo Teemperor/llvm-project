@@ -247,7 +247,7 @@ public:
   CommandObjectPlatformStatus(CommandInterpreter &interpreter)
       : CommandObjectParsed(interpreter, "platform status",
                             "Display status for the current platform.", nullptr,
-                            0) {}
+                            eCommandRequiresTarget) {}
 
   ~CommandObjectPlatformStatus() override = default;
 
@@ -255,11 +255,7 @@ protected:
   bool DoExecute(Args &args, CommandReturnObject &result) override {
     Stream &ostrm = result.GetOutputStream();
 
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    PlatformSP platform_sp;
-    if (target) {
-      platform_sp = target->GetPlatform();
-    }
+    PlatformSP platform_sp = GetSelectedOrDummyTarget().GetPlatform();
     if (!platform_sp) {
       platform_sp = GetDebugger().GetPlatformList().GetSelectedPlatform();
     }
@@ -956,11 +952,7 @@ public:
 
 protected:
   bool DoExecute(Args &args, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    PlatformSP platform_sp;
-    if (target) {
-      platform_sp = target->GetPlatform();
-    }
+    PlatformSP platform_sp = GetSelectedOrDummyTarget().GetPlatform();
     if (!platform_sp) {
       platform_sp = GetDebugger().GetPlatformList().GetSelectedPlatform();
     }
@@ -1039,7 +1031,7 @@ public:
       : CommandObjectParsed(interpreter, "platform process list",
                             "List processes on a remote platform by name, pid, "
                             "or many other matching attributes.",
-                            "platform process list", 0),
+                            "platform process list", eCommandRequiresTarget),
         m_options() {}
 
   ~CommandObjectPlatformProcessList() override = default;
@@ -1048,11 +1040,7 @@ public:
 
 protected:
   bool DoExecute(Args &args, CommandReturnObject &result) override {
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    PlatformSP platform_sp;
-    if (target) {
-      platform_sp = target->GetPlatform();
-    }
+    PlatformSP platform_sp = GetSelectedOrDummyTarget().GetPlatform();
     if (!platform_sp) {
       platform_sp = GetDebugger().GetPlatformList().GetSelectedPlatform();
     }
@@ -1298,7 +1286,7 @@ public:
       : CommandObjectParsed(
             interpreter, "platform process info",
             "Get detailed information for one or more process by process ID.",
-            "platform process info <pid> [<pid> <pid> ...]", 0) {
+            "platform process info <pid> [<pid> <pid> ...]") {
     CommandArgumentEntry arg;
     CommandArgumentData pid_args;
 
@@ -1322,9 +1310,6 @@ protected:
     PlatformSP platform_sp;
     if (target) {
       platform_sp = target->GetPlatform();
-    }
-    if (!platform_sp) {
-      platform_sp = GetDebugger().GetPlatformList().GetSelectedPlatform();
     }
 
     if (platform_sp) {

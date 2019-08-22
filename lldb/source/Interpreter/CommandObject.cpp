@@ -917,12 +917,16 @@ const char *CommandObject::GetArgumentDescriptionAsCString(
   return g_arguments_data[arg_type].help_text;
 }
 
-Target *CommandObject::GetDummyTarget() {
-  return m_interpreter.GetDebugger().GetDummyTarget();
+Target &CommandObject::GetDummyTarget() {
+  assert(m_interpreter.GetDebugger().GetDummyTarget() && "No dummy target");
+  return *m_interpreter.GetDebugger().GetDummyTarget();
 }
 
-Target *CommandObject::GetSelectedOrDummyTarget(bool prefer_dummy) {
-  return m_interpreter.GetDebugger().GetSelectedOrDummyTarget(prefer_dummy);
+Target &CommandObject::GetSelectedOrDummyTarget(bool prefer_dummy) {
+  Target *target =
+      m_interpreter.GetDebugger().GetSelectedOrDummyTarget(prefer_dummy);
+  assert(target && "No dummy target");
+  return *target;
 }
 
 Thread *CommandObject::GetDefaultThread() {

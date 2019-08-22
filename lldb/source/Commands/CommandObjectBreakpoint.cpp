@@ -242,14 +242,14 @@ public:
             "Sets a breakpoint or set of breakpoints in the executable.",
             "breakpoint set <cmd-options>"),
         m_bp_opts(), m_options() {
-          // We're picking up all the normal options, commands and disable.
-          m_all_options.Append(&m_bp_opts, 
-                               LLDB_OPT_SET_1 | LLDB_OPT_SET_3 | LLDB_OPT_SET_4, 
-                               LLDB_OPT_SET_ALL);
-          m_all_options.Append(&m_dummy_options, LLDB_OPT_SET_1, LLDB_OPT_SET_ALL);
-          m_all_options.Append(&m_options);
-          m_all_options.Finalize();
-        }
+    // We're picking up all the normal options, commands and disable.
+    m_all_options.Append(&m_bp_opts,
+                         LLDB_OPT_SET_1 | LLDB_OPT_SET_3 | LLDB_OPT_SET_4,
+                         LLDB_OPT_SET_ALL);
+    m_all_options.Append(&m_dummy_options, LLDB_OPT_SET_1, LLDB_OPT_SET_ALL);
+    m_all_options.Append(&m_options);
+    m_all_options.Finalize();
+  }
 
   ~CommandObjectBreakpointSet() override = default;
 
@@ -550,14 +550,7 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget(m_dummy_options.m_use_dummy);
-
-    if (target == nullptr) {
-      result.AppendError("Invalid target.  Must set target before setting "
-                         "breakpoints (see 'target create' command).");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
+    Target &target = GetSelectedOrDummyTarget(m_dummy_options.m_use_dummy);
 
     // The following are the various types of breakpoints that could be set:
     //   1).  -f -l -p  [-s -g]   (setting breakpoint by source location)
@@ -619,16 +612,11 @@ protected:
       // Only check for inline functions if
       LazyBool check_inlines = eLazyBoolCalculate;
 
-      bp_sp = target->CreateBreakpoint(&(m_options.m_modules), 
-                                       file,
-                                       m_options.m_line_num,
-                                       m_options.m_column,
-                                       m_options.m_offset_addr,
-                                       check_inlines, 
-                                       m_options.m_skip_prologue,
-                                       internal, 
-                                       m_options.m_hardware,
-                                       m_options.m_move_to_nearest_code);
+      bp_sp = target.CreateBreakpoint(
+          &(m_options.m_modules), file, m_options.m_line_num,
+          m_options.m_column, m_options.m_offset_addr, check_inlines,
+          m_options.m_skip_prologue, internal, m_options.m_hardware,
+          m_options.m_move_to_nearest_code);
     } break;
 
     case eSetTypeAddress: // Breakpoint by address
@@ -640,12 +628,11 @@ protected:
       if (num_modules_specified == 1) {
         const FileSpec *file_spec =
             m_options.m_modules.GetFileSpecPointerAtIndex(0);
-        bp_sp = target->CreateAddressInModuleBreakpoint(m_options.m_load_addr,
-                                                        internal, file_spec,
-                                                        m_options.m_hardware);
+        bp_sp = target.CreateAddressInModuleBreakpoint(
+            m_options.m_load_addr, internal, file_spec, m_options.m_hardware);
       } else if (num_modules_specified == 0) {
-        bp_sp = target->CreateBreakpoint(m_options.m_load_addr, internal,
-                                         m_options.m_hardware);
+        bp_sp = target.CreateBreakpoint(m_options.m_load_addr, internal,
+                                        m_options.m_hardware);
       } else {
         result.AppendError("Only one shared library can be specified for "
                            "address breakpoints.");
@@ -661,15 +648,11 @@ protected:
       if (name_type_mask == 0)
         name_type_mask = eFunctionNameTypeAuto;
 
-      bp_sp = target->CreateBreakpoint(&(m_options.m_modules), 
-                                       &(m_options.m_filenames),
-                                       m_options.m_func_names, 
-                                       name_type_mask, 
-                                       m_options.m_language,
-                                       m_options.m_offset_addr, 
-                                       m_options.m_skip_prologue, 
-                                       internal,
-                                       m_options.m_hardware);
+      bp_sp = target.CreateBreakpoint(
+          &(m_options.m_modules), &(m_options.m_filenames),
+          m_options.m_func_names, name_type_mask, m_options.m_language,
+          m_options.m_offset_addr, m_options.m_skip_prologue, internal,
+          m_options.m_hardware);
     } break;
 
     case eSetTypeFunctionRegexp: // Breakpoint by regular expression function
@@ -684,13 +667,10 @@ protected:
           return false;
         }
 
-        bp_sp = target->CreateFuncRegexBreakpoint(&(m_options.m_modules), 
-                                                  &(m_options.m_filenames), 
-                                                  regexp,
-                                                  m_options.m_language, 
-                                                  m_options.m_skip_prologue, 
-                                                  internal,
-                                                  m_options.m_hardware);
+        bp_sp = target.CreateFuncRegexBreakpoint(
+            &(m_options.m_modules), &(m_options.m_filenames), regexp,
+            m_options.m_language, m_options.m_skip_prologue, internal,
+            m_options.m_hardware);
       }
       break;
     case eSetTypeSourceRegexp: // Breakpoint by regexp on source text.
@@ -717,30 +697,22 @@ protected:
         result.SetStatus(eReturnStatusFailed);
         return false;
       }
-      bp_sp = 
-          target->CreateSourceRegexBreakpoint(&(m_options.m_modules), 
-                                              &(m_options.m_filenames),
-                                              m_options
-                                                  .m_source_regex_func_names,
-                                              regexp,
-                                              internal,
-                                              m_options.m_hardware,
-                                              m_options.m_move_to_nearest_code);
+      bp_sp = target.CreateSourceRegexBreakpoint(
+          &(m_options.m_modules), &(m_options.m_filenames),
+          m_options.m_source_regex_func_names, regexp, internal,
+          m_options.m_hardware, m_options.m_move_to_nearest_code);
     } break;
     case eSetTypeException: {
       Status precond_error;
-      bp_sp = target->CreateExceptionBreakpoint(m_options.m_exception_language, 
-                                                m_options.m_catch_bp,
-                                                m_options.m_throw_bp, 
-                                                internal,
-                                                &m_options
-                                                    .m_exception_extra_args, 
-                                                &precond_error);
+      bp_sp = target.CreateExceptionBreakpoint(
+          m_options.m_exception_language, m_options.m_catch_bp,
+          m_options.m_throw_bp, internal, &m_options.m_exception_extra_args,
+          &precond_error);
       if (precond_error.Fail()) {
         result.AppendErrorWithFormat(
             "Error setting extra exception arguments: %s",
             precond_error.AsCString());
-        target->RemoveBreakpointByID(bp_sp->GetID());
+        target.RemoveBreakpointByID(bp_sp->GetID());
         result.SetStatus(eReturnStatusFailed);
         return false;
       }
@@ -748,18 +720,15 @@ protected:
     case eSetTypeScripted: {
 
       Status error;
-      bp_sp = target->CreateScriptedBreakpoint(m_options.m_python_class,
-                                               &(m_options.m_modules), 
-                                               &(m_options.m_filenames),
-                                               false,
-                                               m_options.m_hardware,
-                                               m_options.m_extra_args_sp,
-                                               &error);
+      bp_sp = target.CreateScriptedBreakpoint(
+          m_options.m_python_class, &(m_options.m_modules),
+          &(m_options.m_filenames), false, m_options.m_hardware,
+          m_options.m_extra_args_sp, &error);
       if (error.Fail()) {
         result.AppendErrorWithFormat(
             "Error setting extra exception arguments: %s",
             error.AsCString());
-        target->RemoveBreakpointByID(bp_sp->GetID());
+        target.RemoveBreakpointByID(bp_sp->GetID());
         result.SetStatus(eReturnStatusFailed);
         return false;
       }
@@ -775,11 +744,11 @@ protected:
       if (!m_options.m_breakpoint_names.empty()) {
         Status name_error;
         for (auto name : m_options.m_breakpoint_names) {
-          target->AddNameToBreakpoint(bp_sp, name.c_str(), name_error);
+          target.AddNameToBreakpoint(bp_sp, name.c_str(), name_error);
           if (name_error.Fail()) {
             result.AppendErrorWithFormat("Invalid breakpoint name: %s",
                                          name.c_str());
-            target->RemoveBreakpointByID(bp_sp->GetID());
+            target.RemoveBreakpointByID(bp_sp->GetID());
             result.SetStatus(eReturnStatusFailed);
             return false;
           }
@@ -792,7 +761,7 @@ protected:
       const bool show_locations = false;
       bp_sp->GetDescription(&output_stream, lldb::eDescriptionLevelInitial,
                          show_locations);
-      if (target == GetDebugger().GetDummyTarget())
+      if (&target == &GetDummyTarget())
         output_stream.Printf("Breakpoint set in dummy target, will get copied "
                              "into future targets.\n");
       else {
@@ -814,12 +783,12 @@ protected:
   }
 
 private:
-  bool GetDefaultFile(Target *target, FileSpec &file,
+  bool GetDefaultFile(Target &target, FileSpec &file,
                       CommandReturnObject &result) {
     uint32_t default_line;
     // First use the Source Manager's default file. Then use the current stack
     // frame's file.
-    if (!target->GetSourceManager().GetDefaultFileAndLine(file, default_line)) {
+    if (!target.GetSourceManager().GetDefaultFileAndLine(file, default_line)) {
       StackFrame *cur_frame = m_exe_ctx.GetFramePtr();
       if (cur_frame == nullptr) {
         result.AppendError(
@@ -866,7 +835,7 @@ public:
                             "created breakpoint.  "
                             "With the exception of -e, -d and -i, passing an "
                             "empty argument clears the modification.",
-                            nullptr),
+                            nullptr, eCommandRequiresTarget),
         m_options() {
     CommandArgumentEntry arg;
     CommandObject::AddIDsArgumentData(arg, eArgTypeBreakpointID,
@@ -888,20 +857,15 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget(m_dummy_opts.m_use_dummy);
-    if (target == nullptr) {
-      result.AppendError("Invalid target.  No existing target or breakpoints.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
+    Target &target = GetSelectedOrDummyTarget(m_dummy_opts.m_use_dummy);
 
     std::unique_lock<std::recursive_mutex> lock;
-    target->GetBreakpointList().GetListMutex(lock);
+    target.GetBreakpointList().GetListMutex(lock);
 
     BreakpointIDList valid_bp_ids;
 
     CommandObjectMultiwordBreakpoint::VerifyBreakpointOrLocationIDs(
-        command, target, result, &valid_bp_ids, 
+        command, target, result, &valid_bp_ids,
         BreakpointName::Permissions::PermissionKinds::disablePerm);
 
     if (result.Succeeded()) {
@@ -911,7 +875,7 @@ protected:
 
         if (cur_bp_id.GetBreakpointID() != LLDB_INVALID_BREAK_ID) {
           Breakpoint *bp =
-              target->GetBreakpointByID(cur_bp_id.GetBreakpointID()).get();
+              target.GetBreakpointByID(cur_bp_id.GetBreakpointID()).get();
           if (cur_bp_id.GetLocationID() != LLDB_INVALID_BREAK_ID) {
             BreakpointLocation *location =
                 bp->FindLocationByID(cur_bp_id.GetLocationID()).get();
@@ -944,7 +908,7 @@ public:
       : CommandObjectParsed(interpreter, "enable",
                             "Enable the specified disabled breakpoint(s). If "
                             "no breakpoints are specified, enable all of them.",
-                            nullptr) {
+                            nullptr, eCommandRequiresTarget) {
     CommandArgumentEntry arg;
     CommandObject::AddIDsArgumentData(arg, eArgTypeBreakpointID,
                                       eArgTypeBreakpointIDRange);
@@ -957,17 +921,12 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget();
-    if (target == nullptr) {
-      result.AppendError("Invalid target.  No existing target or breakpoints.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
+    Target &target = GetSelectedOrDummyTarget();
 
     std::unique_lock<std::recursive_mutex> lock;
-    target->GetBreakpointList().GetListMutex(lock);
+    target.GetBreakpointList().GetListMutex(lock);
 
-    const BreakpointList &breakpoints = target->GetBreakpointList();
+    const BreakpointList &breakpoints = target.GetBreakpointList();
 
     size_t num_breakpoints = breakpoints.GetSize();
 
@@ -979,7 +938,7 @@ protected:
 
     if (command.empty()) {
       // No breakpoint selected; enable all currently set breakpoints.
-      target->EnableAllowedBreakpoints();
+      target.EnableAllowedBreakpoints();
       result.AppendMessageWithFormat("All breakpoints enabled. (%" PRIu64
                                      " breakpoints)\n",
                                      (uint64_t)num_breakpoints);
@@ -1000,7 +959,7 @@ protected:
 
           if (cur_bp_id.GetBreakpointID() != LLDB_INVALID_BREAK_ID) {
             Breakpoint *breakpoint =
-                target->GetBreakpointByID(cur_bp_id.GetBreakpointID()).get();
+                target.GetBreakpointByID(cur_bp_id.GetBreakpointID()).get();
             if (cur_bp_id.GetLocationID() != LLDB_INVALID_BREAK_ID) {
               BreakpointLocation *location =
                   breakpoint->FindLocationByID(cur_bp_id.GetLocationID()).get();
@@ -1035,7 +994,7 @@ public:
             "Disable the specified breakpoint(s) without deleting "
             "them.  If none are specified, disable all "
             "breakpoints.",
-            nullptr) {
+            nullptr, eCommandRequiresTarget) {
     SetHelpLong(
         "Disable the specified breakpoint(s) without deleting them.  \
 If none are specified, disable all breakpoints."
@@ -1070,17 +1029,12 @@ the second re-enables the first location.");
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget();
-    if (target == nullptr) {
-      result.AppendError("Invalid target.  No existing target or breakpoints.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
+    Target &target = GetSelectedOrDummyTarget();
 
     std::unique_lock<std::recursive_mutex> lock;
-    target->GetBreakpointList().GetListMutex(lock);
+    target.GetBreakpointList().GetListMutex(lock);
 
-    const BreakpointList &breakpoints = target->GetBreakpointList();
+    const BreakpointList &breakpoints = target.GetBreakpointList();
     size_t num_breakpoints = breakpoints.GetSize();
 
     if (num_breakpoints == 0) {
@@ -1091,7 +1045,7 @@ protected:
 
     if (command.empty()) {
       // No breakpoint selected; disable all currently set breakpoints.
-      target->DisableAllowedBreakpoints();
+      target.DisableAllowedBreakpoints();
       result.AppendMessageWithFormat("All breakpoints disabled. (%" PRIu64
                                      " breakpoints)\n",
                                      (uint64_t)num_breakpoints);
@@ -1113,7 +1067,7 @@ protected:
 
           if (cur_bp_id.GetBreakpointID() != LLDB_INVALID_BREAK_ID) {
             Breakpoint *breakpoint =
-                target->GetBreakpointByID(cur_bp_id.GetBreakpointID()).get();
+                target.GetBreakpointByID(cur_bp_id.GetBreakpointID()).get();
             if (cur_bp_id.GetLocationID() != LLDB_INVALID_BREAK_ID) {
               BreakpointLocation *location =
                   breakpoint->FindLocationByID(cur_bp_id.GetLocationID()).get();
@@ -1151,7 +1105,7 @@ public:
       : CommandObjectParsed(
             interpreter, "breakpoint list",
             "List some or all breakpoints at configurable levels of detail.",
-            nullptr),
+            nullptr, eCommandRequiresTarget),
         m_options() {
     CommandArgumentEntry arg;
     CommandArgumentData bp_id_arg;
@@ -1228,18 +1182,12 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget(m_options.m_use_dummy);
-
-    if (target == nullptr) {
-      result.AppendError("Invalid target. No current target or breakpoints.");
-      result.SetStatus(eReturnStatusSuccessFinishNoResult);
-      return true;
-    }
+    Target &target = GetSelectedOrDummyTarget(m_options.m_use_dummy);
 
     const BreakpointList &breakpoints =
-        target->GetBreakpointList(m_options.m_internal);
+        target.GetBreakpointList(m_options.m_internal);
     std::unique_lock<std::recursive_mutex> lock;
-    target->GetBreakpointList(m_options.m_internal).GetListMutex(lock);
+    target.GetBreakpointList(m_options.m_internal).GetListMutex(lock);
 
     size_t num_breakpoints = breakpoints.GetSize();
 
@@ -1272,7 +1220,7 @@ protected:
         for (size_t i = 0; i < valid_bp_ids.GetSize(); ++i) {
           BreakpointID cur_bp_id = valid_bp_ids.GetBreakpointIDAtIndex(i);
           Breakpoint *breakpoint =
-              target->GetBreakpointByID(cur_bp_id.GetBreakpointID()).get();
+              target.GetBreakpointByID(cur_bp_id.GetBreakpointID()).get();
           AddBreakpointDescription(&output_stream, breakpoint,
                                    m_options.m_level);
         }
@@ -1306,7 +1254,8 @@ public:
       : CommandObjectParsed(interpreter, "breakpoint clear",
                             "Delete or disable breakpoints matching the "
                             "specified source file and line.",
-                            "breakpoint clear <cmd-options>"),
+                            "breakpoint clear <cmd-options>",
+                            eCommandRequiresTarget),
         m_options() {}
 
   ~CommandObjectBreakpointClear() override = default;
@@ -1357,12 +1306,7 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget();
-    if (target == nullptr) {
-      result.AppendError("Invalid target. No existing target or breakpoints.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
+    Target &target = GetSelectedOrDummyTarget();
 
     // The following are the various types of breakpoints that could be
     // cleared:
@@ -1374,9 +1318,9 @@ protected:
       break_type = eClearTypeFileAndLine;
 
     std::unique_lock<std::recursive_mutex> lock;
-    target->GetBreakpointList().GetListMutex(lock);
+    target.GetBreakpointList().GetListMutex(lock);
 
-    BreakpointList &breakpoints = target->GetBreakpointList();
+    BreakpointList &breakpoints = target.GetBreakpointList();
     size_t num_breakpoints = breakpoints.GetSize();
 
     // Early return if there's no breakpoint at all.
@@ -1410,7 +1354,7 @@ protected:
           if (loc_coll.GetSize() == 0) {
             bp->GetDescription(&ss, lldb::eDescriptionLevelBrief);
             ss.EOL();
-            target->RemoveBreakpointByID(bp->GetID());
+            target.RemoveBreakpointByID(bp->GetID());
             ++num_cleared;
           }
         }
@@ -1451,7 +1395,7 @@ public:
       : CommandObjectParsed(interpreter, "breakpoint delete",
                             "Delete the specified breakpoint(s).  If no "
                             "breakpoints are specified, delete them all.",
-                            nullptr),
+                            nullptr, eCommandRequiresTarget),
         m_options() {
     CommandArgumentEntry arg;
     CommandObject::AddIDsArgumentData(arg, eArgTypeBreakpointID,
@@ -1508,18 +1452,12 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget(m_options.m_use_dummy);
-
-    if (target == nullptr) {
-      result.AppendError("Invalid target. No existing target or breakpoints.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
+    Target &target = GetSelectedOrDummyTarget(m_options.m_use_dummy);
 
     std::unique_lock<std::recursive_mutex> lock;
-    target->GetBreakpointList().GetListMutex(lock);
+    target.GetBreakpointList().GetListMutex(lock);
 
-    const BreakpointList &breakpoints = target->GetBreakpointList();
+    const BreakpointList &breakpoints = target.GetBreakpointList();
 
     size_t num_breakpoints = breakpoints.GetSize();
 
@@ -1536,7 +1474,7 @@ protected:
               true)) {
         result.AppendMessage("Operation cancelled...");
       } else {
-        target->RemoveAllowedBreakpoints();
+        target.RemoveAllowedBreakpoints();
         result.AppendMessageWithFormat(
             "All breakpoints removed. (%" PRIu64 " breakpoint%s)\n",
             (uint64_t)num_breakpoints, num_breakpoints > 1 ? "s" : "");
@@ -1559,7 +1497,7 @@ protected:
           if (cur_bp_id.GetBreakpointID() != LLDB_INVALID_BREAK_ID) {
             if (cur_bp_id.GetLocationID() != LLDB_INVALID_BREAK_ID) {
               Breakpoint *breakpoint =
-                  target->GetBreakpointByID(cur_bp_id.GetBreakpointID()).get();
+                  target.GetBreakpointByID(cur_bp_id.GetBreakpointID()).get();
               BreakpointLocation *location =
                   breakpoint->FindLocationByID(cur_bp_id.GetLocationID()).get();
               // It makes no sense to try to delete individual locations, so we
@@ -1569,7 +1507,7 @@ protected:
                 ++disable_count;
               }
             } else {
-              target->RemoveBreakpointByID(cur_bp_id.GetBreakpointID());
+              target.RemoveBreakpointByID(cur_bp_id.GetBreakpointID());
               ++delete_count;
             }
           }
@@ -1720,13 +1658,15 @@ class CommandObjectBreakpointNameConfigure : public CommandObjectParsed {
 public:
   CommandObjectBreakpointNameConfigure(CommandInterpreter &interpreter)
       : CommandObjectParsed(
-            interpreter, "configure", "Configure the options for the breakpoint"
+            interpreter, "configure",
+            "Configure the options for the breakpoint"
             " name provided.  "
             "If you provide a breakpoint id, the options will be copied from "
             "the breakpoint, otherwise only the options specified will be set "
             "on the name.",
             "breakpoint name configure <command-options> "
-            "<breakpoint-name-list>"),
+            "<breakpoint-name-list>",
+            eCommandRequiresTarget),
         m_bp_opts(), m_option_group() {
     // Create the first variant for the first (and only) argument for this
     // command.
@@ -1762,18 +1702,11 @@ protected:
       result.SetStatus(eReturnStatusFailed);
       return false;
     }
-    
-    Target *target =
-        GetSelectedOrDummyTarget(false);
 
-    if (target == nullptr) {
-      result.AppendError("Invalid target. No existing target or breakpoints.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
+    Target &target = GetSelectedOrDummyTarget(false);
 
     std::unique_lock<std::recursive_mutex> lock;
-    target->GetBreakpointList().GetListMutex(lock);
+    target.GetBreakpointList().GetListMutex(lock);
 
     // Make a pass through first to see that all the names are legal.
     for (auto &entry : command.entries()) {
@@ -1792,7 +1725,7 @@ protected:
     if (m_bp_id.m_breakpoint.OptionWasSet())
     {
       lldb::break_id_t bp_id = m_bp_id.m_breakpoint.GetUInt64Value();
-      bp_sp = target->GetBreakpointByID(bp_id);
+      bp_sp = target.GetBreakpointByID(bp_id);
       if (!bp_sp)
       {
         result.AppendErrorWithFormatv("Could not find specified breakpoint {0}",
@@ -1805,18 +1738,17 @@ protected:
     Status error;
     for (auto &entry : command.entries()) {
       ConstString name(entry.c_str());
-      BreakpointName *bp_name = target->FindBreakpointName(name, true, error);
+      BreakpointName *bp_name = target.FindBreakpointName(name, true, error);
       if (!bp_name)
         continue;
       if (m_bp_id.m_help_string.OptionWasSet())
         bp_name->SetHelp(m_bp_id.m_help_string.GetStringValue().str().c_str());
       
       if (bp_sp)
-        target->ConfigureBreakpointName(*bp_name,
-                                       *bp_sp->GetOptions(),
+        target.ConfigureBreakpointName(*bp_name, *bp_sp->GetOptions(),
                                        m_access_options.GetPermissions());
       else
-        target->ConfigureBreakpointName(*bp_name,
+        target.ConfigureBreakpointName(*bp_name,
                                        m_bp_opts.GetBreakpointOptions(),
                                        m_access_options.GetPermissions());
     }
@@ -1835,7 +1767,8 @@ public:
   CommandObjectBreakpointNameAdd(CommandInterpreter &interpreter)
       : CommandObjectParsed(
             interpreter, "add", "Add a name to the breakpoints provided.",
-            "breakpoint name add <command-options> <breakpoint-id-list>"),
+            "breakpoint name add <command-options> <breakpoint-id-list>",
+            eCommandRequiresTarget),
         m_name_options(), m_option_group() {
     // Create the first variant for the first (and only) argument for this
     // command.
@@ -1861,19 +1794,13 @@ protected:
       return false;
     }
 
-    Target *target =
+    Target &target =
         GetSelectedOrDummyTarget(m_name_options.m_use_dummy.GetCurrentValue());
 
-    if (target == nullptr) {
-      result.AppendError("Invalid target. No existing target or breakpoints.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
-
     std::unique_lock<std::recursive_mutex> lock;
-    target->GetBreakpointList().GetListMutex(lock);
+    target.GetBreakpointList().GetListMutex(lock);
 
-    const BreakpointList &breakpoints = target->GetBreakpointList();
+    const BreakpointList &breakpoints = target.GetBreakpointList();
 
     size_t num_breakpoints = breakpoints.GetSize();
     if (num_breakpoints == 0) {
@@ -1902,7 +1829,7 @@ protected:
         lldb::break_id_t bp_id =
             valid_bp_ids.GetBreakpointIDAtIndex(index).GetBreakpointID();
         BreakpointSP bp_sp = breakpoints.FindBreakpointByID(bp_id);
-        target->AddNameToBreakpoint(bp_sp, bp_name, error);
+        target.AddNameToBreakpoint(bp_sp, bp_name, error);
       }
     }
 
@@ -1920,7 +1847,8 @@ public:
       : CommandObjectParsed(
             interpreter, "delete",
             "Delete a name from the breakpoints provided.",
-            "breakpoint name delete <command-options> <breakpoint-id-list>"),
+            "breakpoint name delete <command-options> <breakpoint-id-list>",
+            eCommandRequiresTarget),
         m_name_options(), m_option_group() {
     // Create the first variant for the first (and only) argument for this
     // command.
@@ -1946,19 +1874,13 @@ protected:
       return false;
     }
 
-    Target *target =
+    Target &target =
         GetSelectedOrDummyTarget(m_name_options.m_use_dummy.GetCurrentValue());
 
-    if (target == nullptr) {
-      result.AppendError("Invalid target. No existing target or breakpoints.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
-
     std::unique_lock<std::recursive_mutex> lock;
-    target->GetBreakpointList().GetListMutex(lock);
+    target.GetBreakpointList().GetListMutex(lock);
 
-    const BreakpointList &breakpoints = target->GetBreakpointList();
+    const BreakpointList &breakpoints = target.GetBreakpointList();
 
     size_t num_breakpoints = breakpoints.GetSize();
     if (num_breakpoints == 0) {
@@ -1985,7 +1907,7 @@ protected:
         lldb::break_id_t bp_id =
             valid_bp_ids.GetBreakpointIDAtIndex(index).GetBreakpointID();
         BreakpointSP bp_sp = breakpoints.FindBreakpointByID(bp_id);
-        target->RemoveNameFromBreakpoint(bp_sp, bp_name);
+        target.RemoveNameFromBreakpoint(bp_sp, bp_name);
       }
     }
 
@@ -2004,7 +1926,8 @@ public:
                             "List either the names for a breakpoint or info "
                             "about a given name.  With no arguments, lists all "
                             "names",
-                            "breakpoint name list <command-options>"),
+                            "breakpoint name list <command-options>",
+                            eCommandRequiresTarget),
         m_name_options(), m_option_group() {
     m_option_group.Append(&m_name_options, LLDB_OPT_SET_3, LLDB_OPT_SET_ALL);
     m_option_group.Finalize();
@@ -2016,19 +1939,12 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target =
+    Target &target =
         GetSelectedOrDummyTarget(m_name_options.m_use_dummy.GetCurrentValue());
 
-    if (target == nullptr) {
-      result.AppendError("Invalid target. No existing target or breakpoints.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
-    
-    
     std::vector<std::string> name_list;
     if (command.empty()) {
-      target->GetBreakpointNames(name_list);
+      target.GetBreakpointNames(name_list);
     } else {
       for (const Args::ArgEntry &arg : command)
       {
@@ -2043,9 +1959,8 @@ protected:
         const char *name = name_str.c_str();
         // First print out the options for the name:
         Status error;
-        BreakpointName *bp_name = target->FindBreakpointName(ConstString(name),
-                                                             false,
-                                                             error);
+        BreakpointName *bp_name =
+            target.FindBreakpointName(ConstString(name), false, error);
         if (bp_name)
         {
           StreamString s;
@@ -2056,9 +1971,9 @@ protected:
           }
         
           std::unique_lock<std::recursive_mutex> lock;
-          target->GetBreakpointList().GetListMutex(lock);
+          target.GetBreakpointList().GetListMutex(lock);
 
-          BreakpointList &breakpoints = target->GetBreakpointList();
+          BreakpointList &breakpoints = target.GetBreakpointList();
           bool any_set = false;
           for (BreakpointSP bp_sp : breakpoints.Breakpoints()) {
             if (bp_sp->MatchesName(name)) {
@@ -2122,7 +2037,7 @@ public:
       : CommandObjectParsed(interpreter, "breakpoint read",
                             "Read and set the breakpoints previously saved to "
                             "a file with \"breakpoint write\".  ",
-                            nullptr),
+                            nullptr, eCommandRequiresTarget),
         m_options() {
     CommandArgumentEntry arg;
     CommandObject::AddIDsArgumentData(arg, eArgTypeBreakpointID,
@@ -2185,21 +2100,16 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget();
-    if (target == nullptr) {
-      result.AppendError("Invalid target.  No existing target or breakpoints.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
+    Target &target = GetSelectedOrDummyTarget();
 
     std::unique_lock<std::recursive_mutex> lock;
-    target->GetBreakpointList().GetListMutex(lock);
+    target.GetBreakpointList().GetListMutex(lock);
 
     FileSpec input_spec(m_options.m_filename);
     FileSystem::Instance().Resolve(input_spec);
     BreakpointIDList new_bps;
-    Status error = target->CreateBreakpointsFromFile(
-        input_spec, m_options.m_names, new_bps);
+    Status error = target.CreateBreakpointsFromFile(input_spec,
+                                                    m_options.m_names, new_bps);
 
     if (!error.Success()) {
       result.AppendError(error.AsCString());
@@ -2217,7 +2127,7 @@ protected:
       result.AppendMessage("New breakpoints:");
       for (size_t i = 0; i < num_breakpoints; ++i) {
         BreakpointID bp_id = new_bps.GetBreakpointIDAtIndex(i);
-        Breakpoint *bp = target->GetBreakpointList()
+        Breakpoint *bp = target.GetBreakpointList()
                              .FindBreakpointByID(bp_id.GetBreakpointID())
                              .get();
         if (bp)
@@ -2245,7 +2155,7 @@ public:
                             "Write the breakpoints listed to a file that can "
                             "be read in with \"breakpoint read\".  "
                             "If given no arguments, writes all breakpoints.",
-                            nullptr),
+                            nullptr, eCommandRequiresTarget),
         m_options() {
     CommandArgumentEntry arg;
     CommandObject::AddIDsArgumentData(arg, eArgTypeBreakpointID,
@@ -2301,15 +2211,10 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    Target *target = GetSelectedOrDummyTarget();
-    if (target == nullptr) {
-      result.AppendError("Invalid target.  No existing target or breakpoints.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
+    Target &target = GetSelectedOrDummyTarget();
 
     std::unique_lock<std::recursive_mutex> lock;
-    target->GetBreakpointList().GetListMutex(lock);
+    target.GetBreakpointList().GetListMutex(lock);
 
     BreakpointIDList valid_bp_ids;
     if (!command.empty()) {
@@ -2324,8 +2229,8 @@ protected:
     }
     FileSpec file_spec(m_options.m_filename);
     FileSystem::Instance().Resolve(file_spec);
-    Status error = target->SerializeBreakpointsToFile(file_spec, valid_bp_ids,
-                                                      m_options.m_append);
+    Status error = target.SerializeBreakpointsToFile(file_spec, valid_bp_ids,
+                                                     m_options.m_append);
     if (!error.Success()) {
       result.AppendErrorWithFormat("error serializing breakpoints: %s.",
                                    error.AsCString());
@@ -2397,13 +2302,10 @@ CommandObjectMultiwordBreakpoint::CommandObjectMultiwordBreakpoint(
 
 CommandObjectMultiwordBreakpoint::~CommandObjectMultiwordBreakpoint() = default;
 
-void CommandObjectMultiwordBreakpoint::VerifyIDs(Args &args, Target *target,
-                                                 bool allow_locations,
-                                                 CommandReturnObject &result,
-                                                 BreakpointIDList *valid_ids,
-                                                 BreakpointName::Permissions
-                                                     ::PermissionKinds 
-                                                     purpose) {
+void CommandObjectMultiwordBreakpoint::VerifyIDs(
+    Args &args, Target &target, bool allow_locations,
+    CommandReturnObject &result, BreakpointIDList *valid_ids,
+    BreakpointName::Permissions ::PermissionKinds purpose) {
   // args can be strings representing 1). integers (for breakpoint ids)
   //                                  2). the full breakpoint & location
   //                                  canonical representation
@@ -2418,9 +2320,9 @@ void CommandObjectMultiwordBreakpoint::VerifyIDs(Args &args, Target *target,
   Args temp_args;
 
   if (args.empty()) {
-    if (target->GetLastCreatedBreakpoint()) {
+    if (target.GetLastCreatedBreakpoint()) {
       valid_ids->AddBreakpointID(BreakpointID(
-          target->GetLastCreatedBreakpoint()->GetID(), LLDB_INVALID_BREAK_ID));
+          target.GetLastCreatedBreakpoint()->GetID(), LLDB_INVALID_BREAK_ID));
       result.SetStatus(eReturnStatusSuccessFinishNoResult);
     } else {
       result.AppendError(
@@ -2456,7 +2358,7 @@ void CommandObjectMultiwordBreakpoint::VerifyIDs(Args &args, Target *target,
     for (size_t i = 0; i < count; ++i) {
       BreakpointID cur_bp_id = valid_ids->GetBreakpointIDAtIndex(i);
       Breakpoint *breakpoint =
-          target->GetBreakpointByID(cur_bp_id.GetBreakpointID()).get();
+          target.GetBreakpointByID(cur_bp_id.GetBreakpointID()).get();
       if (breakpoint != nullptr) {
         const size_t num_locations = breakpoint->GetNumLocations();
         if (static_cast<size_t>(cur_bp_id.GetLocationID()) > num_locations) {

@@ -108,12 +108,10 @@ void BreakpointIDList::InsertStringArray(
 //  NEW_ARGS should be a copy of OLD_ARGS, with and ID range specifiers replaced
 //  by the members of the range.
 
-void BreakpointIDList::FindAndReplaceIDRanges(Args &old_args, Target *target,
-                                              bool allow_locations,
-                                              BreakpointName::Permissions
-                                                  ::PermissionKinds purpose,
-                                              CommandReturnObject &result,
-                                              Args &new_args) {
+void BreakpointIDList::FindAndReplaceIDRanges(
+    Args &old_args, Target &target, bool allow_locations,
+    BreakpointName::Permissions ::PermissionKinds purpose,
+    CommandReturnObject &result, Args &new_args) {
   llvm::StringRef range_from;
   llvm::StringRef range_to;
   llvm::StringRef current_arg;
@@ -165,7 +163,7 @@ void BreakpointIDList::FindAndReplaceIDRanges(Args &old_args, Target *target,
           BreakpointSP breakpoint_sp;
           auto bp_id = BreakpointID::ParseCanonicalReference(bp_id_str);
           if (bp_id.hasValue())
-            breakpoint_sp = target->GetBreakpointByID(bp_id->GetBreakpointID());
+            breakpoint_sp = target.GetBreakpointByID(bp_id->GetBreakpointID());
           if (!breakpoint_sp) {
             new_args.Clear();
             result.AppendErrorWithFormat("'%d' is not a valid breakpoint ID.\n",
@@ -195,7 +193,7 @@ void BreakpointIDList::FindAndReplaceIDRanges(Args &old_args, Target *target,
     auto end_bp = BreakpointID::ParseCanonicalReference(range_to);
 
     if (!start_bp.hasValue() ||
-        !target->GetBreakpointByID(start_bp->GetBreakpointID())) {
+        !target.GetBreakpointByID(start_bp->GetBreakpointID())) {
       new_args.Clear();
       result.AppendErrorWithFormat("'%s' is not a valid breakpoint ID.\n",
                                    range_from.str().c_str());
@@ -204,7 +202,7 @@ void BreakpointIDList::FindAndReplaceIDRanges(Args &old_args, Target *target,
     }
 
     if (!end_bp.hasValue() ||
-        !target->GetBreakpointByID(end_bp->GetBreakpointID())) {
+        !target.GetBreakpointByID(end_bp->GetBreakpointID())) {
       new_args.Clear();
       result.AppendErrorWithFormat("'%s' is not a valid breakpoint ID.\n",
                                    range_to.str().c_str());
@@ -252,7 +250,7 @@ void BreakpointIDList::FindAndReplaceIDRanges(Args &old_args, Target *target,
       }
     }
 
-    const BreakpointList &breakpoints = target->GetBreakpointList();
+    const BreakpointList &breakpoints = target.GetBreakpointList();
     const size_t num_breakpoints = breakpoints.GetSize();
     for (size_t j = 0; j < num_breakpoints; ++j) {
       Breakpoint *breakpoint = breakpoints.GetBreakpointAtIndex(j).get();
@@ -296,14 +294,13 @@ void BreakpointIDList::FindAndReplaceIDRanges(Args &old_args, Target *target,
   }
 
   // Okay, now see if we found any names, and if we did, add them:
-  if (target && !names_found.empty()) {
+  if (!names_found.empty()) {
     Status error;
     // Remove any names that aren't visible for this purpose:
     auto iter = names_found.begin();
     while (iter != names_found.end()) {
-      BreakpointName *bp_name = target->FindBreakpointName(ConstString(*iter),
-                                                           true,
-                                                           error);
+      BreakpointName *bp_name =
+          target.FindBreakpointName(ConstString(*iter), true, error);
       if (bp_name && !bp_name->GetPermission(purpose))
         iter = names_found.erase(iter);
       else
@@ -311,7 +308,7 @@ void BreakpointIDList::FindAndReplaceIDRanges(Args &old_args, Target *target,
     }
     
     if (!names_found.empty()) {
-      for (BreakpointSP bkpt_sp : target->GetBreakpointList().Breakpoints()) {
+      for (BreakpointSP bkpt_sp : target.GetBreakpointList().Breakpoints()) {
         for (std::string name : names_found) {
           if (bkpt_sp->MatchesName(name.c_str())) {
             StreamString canonical_id_str;

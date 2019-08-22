@@ -1091,13 +1091,7 @@ protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     bool synchronous_execution = m_interpreter.GetSynchronous();
 
-    Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
+    Target &target = GetSelectedOrDummyTarget();
 
     Process *process = m_exe_ctx.GetProcessPtr();
     if (process == nullptr) {
@@ -1207,9 +1201,9 @@ protected:
               break;
 
             addr_t address =
-                line_entry.range.GetBaseAddress().GetLoadAddress(target);
+                line_entry.range.GetBaseAddress().GetLoadAddress(&target);
             if (address != LLDB_INVALID_ADDRESS) {
-              if (fun_addr_range.ContainsLoadAddress(address, target))
+              if (fun_addr_range.ContainsLoadAddress(address, &target))
                 address_list.push_back(address);
               else
                 all_in_function = false;
@@ -1219,7 +1213,7 @@ protected:
         }
 
         for (lldb::addr_t address : m_options.m_until_addrs) {
-          if (fun_addr_range.ContainsLoadAddress(address, target))
+          if (fun_addr_range.ContainsLoadAddress(address, &target))
             address_list.push_back(address);
           else
             all_in_function = false;

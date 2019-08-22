@@ -212,22 +212,16 @@ CommandObjectDisassemble::CommandObjectDisassemble(
           "Disassemble specified instructions in the current target.  "
           "Defaults to the current function for the current thread and "
           "stack frame.",
-          "disassemble [<cmd-options>]"),
+          "disassemble [<cmd-options>]", eCommandRequiresTarget),
       m_options() {}
 
 CommandObjectDisassemble::~CommandObjectDisassemble() = default;
 
 bool CommandObjectDisassemble::DoExecute(Args &command,
                                          CommandReturnObject &result) {
-  Target *target = GetDebugger().GetSelectedTarget().get();
-  if (target == nullptr) {
-    result.AppendError("invalid target, create a debug target using the "
-                       "'target create' command");
-    result.SetStatus(eReturnStatusFailed);
-    return false;
-  }
+  Target &target = GetSelectedOrDummyTarget();
   if (!m_options.arch.IsValid())
-    m_options.arch = target->GetArchitecture();
+    m_options.arch = target.GetArchitecture();
 
   if (!m_options.arch.IsValid()) {
     result.AppendError(
@@ -371,12 +365,11 @@ bool CommandObjectDisassemble::DoExecute(Args &command,
           }
           ranges.push_back(range);
         } else {
-          if (m_options.symbol_containing_addr != LLDB_INVALID_ADDRESS &&
-              target) {
-            if (!target->GetSectionLoadList().IsEmpty()) {
+          if (m_options.symbol_containing_addr != LLDB_INVALID_ADDRESS) {
+            if (!target.GetSectionLoadList().IsEmpty()) {
               bool failed = false;
               Address symbol_containing_address;
-              if (target->GetSectionLoadList().ResolveLoadAddress(
+              if (target.GetSectionLoadList().ResolveLoadAddress(
                       m_options.symbol_containing_addr,
                       symbol_containing_address)) {
                 ModuleSP module_sp(symbol_containing_address.GetModule());
@@ -407,7 +400,7 @@ bool CommandObjectDisassemble::DoExecute(Args &command,
               }
               ranges.push_back(range);
             } else {
-              for (lldb::ModuleSP module_sp : target->GetImages().Modules()) {
+              for (lldb::ModuleSP module_sp : target.GetImages().Modules()) {
                 lldb::addr_t file_addr = m_options.symbol_containing_addr;
                 Address file_address;
                 if (module_sp->ResolveFileAddress(file_addr, file_address)) {
