@@ -592,7 +592,7 @@ public:
       : CommandObjectParsed(interpreter, "list", "List the script or set of "
                                                  "commands to be executed when "
                                                  "the breakpoint is hit.",
-                            nullptr) {
+                            nullptr, eCommandRequiresTarget) {
     CommandArgumentEntry arg;
     CommandArgumentData bp_id_arg;
 
@@ -613,13 +613,6 @@ public:
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
-
-    if (target == nullptr) {
-      result.AppendError("There is not a current executable; there are no "
-                         "breakpoints for which to list commands");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
 
     const BreakpointList &breakpoints = target->GetBreakpointList();
     size_t num_breakpoints = breakpoints.GetSize();

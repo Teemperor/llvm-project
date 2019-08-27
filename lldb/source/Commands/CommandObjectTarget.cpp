@@ -1899,19 +1899,13 @@ public:
       : CommandObjectTargetModulesModuleAutoComplete(
             interpreter, "target modules dump objfile",
             "Dump the object file headers from one or more target modules.",
-            nullptr) {}
+            nullptr, eCommandRequiresTarget) {}
 
   ~CommandObjectTargetModulesDumpObjfile() override = default;
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
 
     uint32_t addr_byte_size = target->GetArchitecture().GetAddressByteSize();
     result.GetOutputStream().SetAddressByteSize(addr_byte_size);
@@ -1984,7 +1978,7 @@ public:
   CommandObjectTargetModulesDumpSymtab(CommandInterpreter &interpreter)
       : CommandObjectTargetModulesModuleAutoComplete(
             interpreter, "target modules dump symtab",
-            "Dump the symbol table from one or more target modules.", nullptr),
+            "Dump the symbol table from one or more target modules.", nullptr, eCommandRequiresTarget),
         m_options() {}
 
   ~CommandObjectTargetModulesDumpSymtab() override = default;
@@ -2029,12 +2023,7 @@ public:
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    } else {
+
       uint32_t num_dumped = 0;
 
       uint32_t addr_byte_size = target->GetArchitecture().GetAddressByteSize();
@@ -2104,7 +2093,6 @@ protected:
         result.AppendError("no matching executable images found");
         result.SetStatus(eReturnStatusFailed);
       }
-    }
     return result.Succeeded();
   }
 
@@ -2123,19 +2111,13 @@ public:
             interpreter, "target modules dump sections",
             "Dump the sections from one or more target modules.",
             //"target modules dump sections [<file1> ...]")
-            nullptr) {}
+            nullptr, eCommandRequiresTarget) {}
 
   ~CommandObjectTargetModulesDumpSections() override = default;
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    } else {
       uint32_t num_dumped = 0;
 
       uint32_t addr_byte_size = target->GetArchitecture().GetAddressByteSize();
@@ -2199,7 +2181,6 @@ protected:
         result.AppendError("no matching executable images found");
         result.SetStatus(eReturnStatusFailed);
       }
-    }
     return result.Succeeded();
   }
 };
@@ -2216,19 +2197,13 @@ public:
             interpreter, "target modules dump ast",
             "Dump the clang ast for a given module's symbol file.",
             //"target modules dump ast [<file1> ...]")
-            nullptr) {}
+            nullptr, eCommandRequiresTarget) {}
 
   ~CommandObjectTargetModulesDumpClangAST() override = default;
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    }
 
     const size_t num_modules = target->GetImages().GetSize();
     if (num_modules == 0) {
@@ -2293,19 +2268,13 @@ public:
             interpreter, "target modules dump symfile",
             "Dump the debug symbol file for one or more target modules.",
             //"target modules dump symfile [<file1> ...]")
-            nullptr) {}
+            nullptr, eCommandRequiresTarget) {}
 
   ~CommandObjectTargetModulesDumpSymfile() override = default;
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    } else {
       uint32_t num_dumped = 0;
 
       uint32_t addr_byte_size = target->GetArchitecture().GetAddressByteSize();
@@ -2365,7 +2334,6 @@ protected:
         result.AppendError("no matching executable images found");
         result.SetStatus(eReturnStatusFailed);
       }
-    }
     return result.Succeeded();
   }
 };
@@ -2513,7 +2481,7 @@ public:
   CommandObjectTargetModulesAdd(CommandInterpreter &interpreter)
       : CommandObjectParsed(interpreter, "target modules add",
                             "Add a new module to the current target's modules.",
-                            "target modules add [<module>]"),
+                            "target modules add [<module>]", eCommandRequiresTarget),
         m_option_group(),
         m_symbol_file(LLDB_OPT_SET_1, false, "symfile", 's', 0,
                       eArgTypeFilename, "Fullpath to a stand alone debug "
@@ -2544,12 +2512,6 @@ protected:
 
   bool DoExecute(Args &args, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    } else {
       bool flush = false;
 
       const size_t argc = args.GetArgumentCount();
@@ -2662,7 +2624,6 @@ protected:
         if (process)
           process->Flush();
       }
-    }
 
     return result.Succeeded();
   }
@@ -2677,7 +2638,7 @@ public:
                                                 "one or more sections in a "
                                                 "target module.",
             "target modules load [--file <module> --uuid <uuid>] <sect-name> "
-            "<address> [<sect-name> <address> ....]"),
+            "<address> [<sect-name> <address> ....]", eCommandRequiresTarget),
         m_option_group(),
         m_file_option(LLDB_OPT_SET_1, false, "file", 'f', 0, eArgTypeName,
                       "Fullpath or basename for module to load.", ""),
@@ -2709,12 +2670,7 @@ protected:
     Target *target = GetDebugger().GetSelectedTarget().get();
     const bool load = m_load_option.GetOptionValue().GetCurrentValue();
     const bool set_pc = m_pc_option.GetOptionValue().GetCurrentValue();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    } else {
+
       const size_t argc = args.GetArgumentCount();
       ModuleSpec module_spec;
       bool search_using_module_spec = false;
@@ -2949,7 +2905,6 @@ protected:
         result.SetStatus(eReturnStatusFailed);
         return false;
       }
-    }
     return result.Succeeded();
   }
 
@@ -3892,12 +3847,6 @@ public:
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
-    if (target == nullptr) {
-      result.AppendError("invalid target, create a debug target using the "
-                         "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
-    } else {
       bool syntax_error = false;
       uint32_t i;
       uint32_t num_successful_lookups = 0;
@@ -3975,7 +3924,6 @@ protected:
         result.SetStatus(eReturnStatusSuccessFinishResult);
       else
         result.SetStatus(eReturnStatusFailed);
-    }
     return result.Succeeded();
   }
 
