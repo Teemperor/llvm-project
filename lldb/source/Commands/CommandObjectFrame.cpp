@@ -1,4 +1,4 @@
-//===-- CommandObjectFrame.cpp ----------------------------------*- C++ -*-===//
+﻿//===-- CommandObjectFrame.cpp ----------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -143,7 +143,7 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Thread *thread = m_exe_ctx.GetThreadPtr();
     StackFrameSP frame_sp = thread->GetSelectedFrame();
 
@@ -153,8 +153,7 @@ protected:
       if (m_options.reg.hasValue() || m_options.offset.hasValue()) {
         result.AppendError(
             "`frame diagnose --address` is incompatible with other arguments.");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
       valobj_sp = frame_sp->GuessValueForAddress(m_options.address.getValue());
     } else if (m_options.reg.hasValue()) {
@@ -164,8 +163,7 @@ protected:
       StopInfoSP stop_info_sp = thread->GetStopInfo();
       if (!stop_info_sp) {
         result.AppendError("No arguments provided, and no stop info.");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       valobj_sp = StopInfo::GetCrashingDereference(stop_info_sp);
@@ -173,8 +171,7 @@ protected:
 
     if (!valobj_sp) {
       result.AppendError("No diagnosis available.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
 
@@ -194,8 +191,6 @@ protected:
     ValueObjectPrinter printer(valobj_sp.get(), &result.GetOutputStream(),
                                options);
     printer.PrintValueObject();
-
-    return true;
   }
 
 protected:
@@ -219,10 +214,9 @@ public:
   ~CommandObjectFrameInfo() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     m_exe_ctx.GetFrameRef().DumpUsingSettingsFormat(&result.GetOutputStream());
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return result.Succeeded();
   }
 };
 
@@ -301,7 +295,7 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     // No need to check "thread" for validity as eCommandRequiresThread ensures
     // it is valid
     Thread *thread = m_exe_ctx.GetThreadPtr();
@@ -321,8 +315,7 @@ protected:
             // If you are already at the bottom of the stack, then just warn
             // and don't reset the frame.
             result.AppendError("Already at the bottom of the stack.");
-            result.SetStatus(eReturnStatusFailed);
-            return false;
+            return result.SetStatus(eReturnStatusFailed);
           } else
             frame_idx = 0;
         }
@@ -340,8 +333,7 @@ protected:
             // If we are already at the top of the stack, just warn and don't
             // reset the frame.
             result.AppendError("Already at the top of the stack.");
-            result.SetStatus(eReturnStatusFailed);
-            return false;
+            return result.SetStatus(eReturnStatusFailed);
           } else
             frame_idx = num_frames - 1;
         }
@@ -354,15 +346,14 @@ protected:
         m_options.GenerateOptionUsage(
             result.GetErrorStream(), this,
             GetCommandInterpreter().GetDebugger().GetTerminalWidth());
-        return false;
+        return;
       }
 
       if (command.GetArgumentCount() == 1) {
         if (command[0].ref.getAsInteger(0, frame_idx)) {
           result.AppendErrorWithFormat("invalid frame index argument '%s'.",
                                        command[0].c_str());
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       } else if (command.GetArgumentCount() == 0) {
         frame_idx = thread->GetSelectedFrameIndex();
@@ -382,8 +373,6 @@ protected:
                                    frame_idx);
       result.SetStatus(eReturnStatusFailed);
     }
-
-    return result.Succeeded();
   }
 
 protected:
@@ -479,7 +468,7 @@ protected:
     return llvm::StringRef::withNullAsEmpty(nullptr);
   }
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     // No need to check "frame" for validity as eCommandRequiresFrame ensures
     // it is valid
     StackFrame *frame = m_exe_ctx.GetFramePtr();
@@ -712,13 +701,11 @@ protected:
     }
 
     // Increment statistics.
-    bool res = result.Succeeded();
     Target &target = GetSelectedOrDummyTarget();
-    if (res)
+    if (result.Succeeded())
       target.IncrementStats(StatisticKind::FrameVarSuccess);
     else
       target.IncrementStats(StatisticKind::FrameVarFailure);
-    return res;
   }
 
 protected:
@@ -788,7 +775,7 @@ private:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override;
+  void DoExecute(Args &command, CommandReturnObject &result) override;
 
 public:
   CommandObjectFrameRecognizerAdd(CommandInterpreter &interpreter)
@@ -844,28 +831,25 @@ Process 1234 stopped
   ~CommandObjectFrameRecognizerAdd() override = default;
 };
 
-bool CommandObjectFrameRecognizerAdd::DoExecute(Args &command,
+void CommandObjectFrameRecognizerAdd::DoExecute(Args &command,
                                                 CommandReturnObject &result) {
 #ifndef LLDB_DISABLE_PYTHON
   if (m_options.m_class_name.empty()) {
     result.AppendErrorWithFormat(
         "%s needs a Python class name (-l argument).\n", m_cmd_name.c_str());
-    result.SetStatus(eReturnStatusFailed);
-    return false;
+    return result.SetStatus(eReturnStatusFailed);
   }
 
   if (m_options.m_module.empty()) {
     result.AppendErrorWithFormat("%s needs a module name (-s argument).\n",
                                  m_cmd_name.c_str());
-    result.SetStatus(eReturnStatusFailed);
-    return false;
+    return result.SetStatus(eReturnStatusFailed);
   }
 
   if (m_options.m_function.empty()) {
     result.AppendErrorWithFormat("%s needs a function name (-n argument).\n",
                                  m_cmd_name.c_str());
-    result.SetStatus(eReturnStatusFailed);
-    return false;
+    return result.SetStatus(eReturnStatusFailed);
   }
 
   ScriptInterpreter *interpreter = GetDebugger().GetScriptInterpreter();
@@ -894,7 +878,6 @@ bool CommandObjectFrameRecognizerAdd::DoExecute(Args &command,
 #endif
 
   result.SetStatus(eReturnStatusSuccessFinishNoResult);
-  return result.Succeeded();
 }
 
 class CommandObjectFrameRecognizerClear : public CommandObjectParsed {
@@ -906,10 +889,9 @@ public:
   ~CommandObjectFrameRecognizerClear() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     StackFrameRecognizerManager::RemoveAllRecognizers();
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return result.Succeeded();
   }
 };
 
@@ -922,26 +904,23 @@ class CommandObjectFrameRecognizerDelete : public CommandObjectParsed {
   ~CommandObjectFrameRecognizerDelete() override = default;
 
  protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     if (command.GetArgumentCount() == 0) {
       if (!m_interpreter.Confirm(
               "About to delete all frame recognizers, do you want to do that?",
               true)) {
         result.AppendMessage("Operation cancelled...");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       StackFrameRecognizerManager::RemoveAllRecognizers();
-      result.SetStatus(eReturnStatusSuccessFinishResult);
-      return result.Succeeded();
+      return result.SetStatus(eReturnStatusSuccessFinishResult);
     }
 
     if (command.GetArgumentCount() != 1) {
       result.AppendErrorWithFormat("'%s' takes zero or one arguments.\n",
                                    m_cmd_name.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     uint32_t recognizer_id =
@@ -949,7 +928,6 @@ class CommandObjectFrameRecognizerDelete : public CommandObjectParsed {
 
     StackFrameRecognizerManager::RemoveRecognizerWithID(recognizer_id);
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return result.Succeeded();
   }
 };
 
@@ -963,7 +941,7 @@ class CommandObjectFrameRecognizerList : public CommandObjectParsed {
   ~CommandObjectFrameRecognizerList() override = default;
 
  protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     bool any_printed = false;
     StackFrameRecognizerManager::ForEach(
         [&result, &any_printed](uint32_t recognizer_id, std::string name,
@@ -982,7 +960,6 @@ class CommandObjectFrameRecognizerList : public CommandObjectParsed {
       result.GetOutputStream().PutCString("no matching results found.\n");
       result.SetStatus(eReturnStatusSuccessFinishNoResult);
     }
-    return result.Succeeded();
   }
 };
 
@@ -1011,24 +988,21 @@ class CommandObjectFrameRecognizerInfo : public CommandObjectParsed {
   ~CommandObjectFrameRecognizerInfo() override = default;
 
  protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Process *process = m_exe_ctx.GetProcessPtr();
     if (process == nullptr) {
       result.AppendError("no process");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
     Thread *thread = m_exe_ctx.GetThreadPtr();
     if (thread == nullptr) {
       result.AppendError("no thread");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
     if (command.GetArgumentCount() != 1) {
       result.AppendErrorWithFormat(
           "'%s' takes exactly one frame index argument.\n", m_cmd_name.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     uint32_t frame_index =
@@ -1036,8 +1010,7 @@ class CommandObjectFrameRecognizerInfo : public CommandObjectParsed {
     StackFrameSP frame_sp = thread->GetStackFrameAtIndex(frame_index);
     if (!frame_sp) {
       result.AppendErrorWithFormat("no frame with index %u", frame_index);
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     auto recognizer =
@@ -1053,7 +1026,6 @@ class CommandObjectFrameRecognizerInfo : public CommandObjectParsed {
     }
     output_stream.EOL();
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return result.Succeeded();
   }
 };
 

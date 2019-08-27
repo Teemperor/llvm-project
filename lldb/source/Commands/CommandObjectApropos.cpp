@@ -40,7 +40,7 @@ CommandObjectApropos::CommandObjectApropos(CommandInterpreter &interpreter)
 
 CommandObjectApropos::~CommandObjectApropos() = default;
 
-bool CommandObjectApropos::DoExecute(Args &args, CommandReturnObject &result) {
+void CommandObjectApropos::DoExecute(Args &args, CommandReturnObject &result) {
   const size_t argc = args.GetArgumentCount();
 
   if (argc == 1) {
@@ -94,6 +94,4 @@ bool CommandObjectApropos::DoExecute(Args &args, CommandReturnObject &result) {
     result.AppendError("'apropos' must be called with exactly one argument.\n");
     result.SetStatus(eReturnStatusFailed);
   }
-
-  return result.Succeeded();
 }

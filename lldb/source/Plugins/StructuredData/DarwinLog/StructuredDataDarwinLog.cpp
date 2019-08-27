@@ -770,7 +770,7 @@ protected:
     result.AppendWarning(stream.GetString());
   }
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     // First off, set the global sticky state of enable/disable based on this
     // command execution.
     s_is_explicitly_enabled = m_enable;
@@ -791,18 +791,15 @@ protected:
 
     // Grab the active process.
     auto process_sp = target.GetProcessSP();
-    if (!process_sp) {
-      // No active process, so there is nothing more to do right now.
-      result.SetStatus(eReturnStatusSuccessFinishNoResult);
-      return true;
-    }
+
+    // No active process, so there is nothing more to do right now.
+    if (!process_sp)
+      return result.SetStatus(eReturnStatusSuccessFinishNoResult);
 
     // If the process is no longer alive, we can't do this now. We'll catch it
     // the next time the process is started up.
-    if (!process_sp->IsAlive()) {
-      result.SetStatus(eReturnStatusSuccessFinishNoResult);
-      return true;
-    }
+    if (!process_sp->IsAlive())
+      return result.SetStatus(eReturnStatusSuccessFinishNoResult);
 
     // Get the plugin for the process.
     auto plugin_sp =
@@ -844,7 +841,6 @@ protected:
       // one this command is setup to do.
       plugin.SetEnabled(m_enable);
     }
-    return result.Succeeded();
   }
 
   Options *GetOptions() override {
@@ -867,7 +863,7 @@ public:
                             "plugin structured-data darwin-log status") {}
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     auto &stream = result.GetOutputStream();
 
     // Figure out if we've got a process.  If so, we can tell if DarwinLog is
@@ -893,11 +889,9 @@ protected:
     DebuggerSP debugger_sp =
         GetCommandInterpreter().GetDebugger().shared_from_this();
     auto options_sp = GetGlobalEnableOptions(debugger_sp);
-    if (!options_sp) {
-      // Nothing more to do.
-      result.SetStatus(eReturnStatusSuccessFinishResult);
-      return true;
-    }
+    // Nothing more to do.
+    if (!options_sp)
+      return result.SetStatus(eReturnStatusSuccessFinishResult);
 
     // Print filter rules
     stream.PutCString("DarwinLog filter rules:\n");
@@ -929,7 +923,6 @@ protected:
                   options_sp->GetFallthroughAccepts() ? "accept" : "reject");
 
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 };
 

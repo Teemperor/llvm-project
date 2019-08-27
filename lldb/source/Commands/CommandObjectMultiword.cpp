@@ -84,29 +84,28 @@ bool CommandObjectMultiword::LoadSubCommand(llvm::StringRef name,
   return success;
 }
 
-bool CommandObjectMultiword::Execute(const char *args_string,
+void CommandObjectMultiword::Execute(const char *args_string,
                                      CommandReturnObject &result) {
   Args args(args_string);
   const size_t argc = args.GetArgumentCount();
   if (argc == 0) {
     this->CommandObject::GenerateHelpText(result);
-    return result.Succeeded();
+    return;
   }
 
   auto sub_command = args[0].ref;
   if (sub_command.empty())
-    return result.Succeeded();
+    return;
 
   if (sub_command.equals_lower("help")) {
     this->CommandObject::GenerateHelpText(result);
-    return result.Succeeded();
+    return;
   }
 
   if (m_subcommand_dict.empty()) {
     result.AppendErrorWithFormat("'%s' does not have any subcommands.\n",
                                  GetCommandName().str().c_str());
-    result.SetStatus(eReturnStatusFailed);
-    return false;
+    return result.SetStatus(eReturnStatusFailed);
   }
 
   StringList matches;
@@ -118,7 +117,7 @@ bool CommandObjectMultiword::Execute(const char *args_string,
 
     args.Shift();
     sub_cmd_obj->Execute(args_string, result);
-    return result.Succeeded();
+    return;
   }
 
   std::string error_msg;
@@ -144,7 +143,6 @@ bool CommandObjectMultiword::Execute(const char *args_string,
   error_msg.append("\n");
   result.AppendRawError(error_msg.c_str());
   result.SetStatus(eReturnStatusFailed);
-  return false;
 }
 
 void CommandObjectMultiword::GenerateHelpText(Stream &output_stream) {
@@ -375,12 +373,11 @@ const char *CommandObjectProxy::GetRepeatCommand(Args &current_command_args,
   return nullptr;
 }
 
-bool CommandObjectProxy::Execute(const char *args_string,
+void CommandObjectProxy::Execute(const char *args_string,
                                  CommandReturnObject &result) {
   CommandObject *proxy_command = GetProxyCommandObject();
   if (proxy_command)
-    return proxy_command->Execute(args_string, result);
+    proxy_command->Execute(args_string, result);
   result.AppendError("command is not implemented");
   result.SetStatus(eReturnStatusFailed);
-  return false;
 }

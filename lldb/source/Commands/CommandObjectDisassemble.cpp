@@ -217,14 +217,13 @@ CommandObjectDisassemble::CommandObjectDisassemble(
 
 CommandObjectDisassemble::~CommandObjectDisassemble() = default;
 
-bool CommandObjectDisassemble::DoExecute(Args &command,
+void CommandObjectDisassemble::DoExecute(Args &command,
                                          CommandReturnObject &result) {
   Target *target = GetDebugger().GetSelectedTarget().get();
   if (target == nullptr) {
     result.AppendError("invalid target, create a debug target using the "
                        "'target create' command");
-    result.SetStatus(eReturnStatusFailed);
-    return false;
+    return result.SetStatus(eReturnStatusFailed);
   }
   if (!m_options.arch.IsValid())
     m_options.arch = target->GetArchitecture();
@@ -232,8 +231,7 @@ bool CommandObjectDisassemble::DoExecute(Args &command,
   if (!m_options.arch.IsValid()) {
     result.AppendError(
         "use the --arch option or set the target architecture to disassemble");
-    result.SetStatus(eReturnStatusFailed);
-    return false;
+    return result.SetStatus(eReturnStatusFailed);
   }
 
   const char *plugin_name = m_options.GetPluginName();
@@ -252,8 +250,7 @@ bool CommandObjectDisassemble::DoExecute(Args &command,
       result.AppendErrorWithFormat(
           "Unable to find Disassembler plug-in for the '%s' architecture.\n",
           m_options.arch.GetArchitectureName());
-    result.SetStatus(eReturnStatusFailed);
-    return false;
+    return result.SetStatus(eReturnStatusFailed);
   } else if (flavor_string != nullptr &&
              !disassembler->FlavorValidForArchSpec(m_options.arch,
                                                    flavor_string))
@@ -269,8 +266,7 @@ bool CommandObjectDisassemble::DoExecute(Args &command,
         GetCommandInterpreter().GetDebugger().GetTerminalWidth();
     GetOptions()->GenerateOptionUsage(result.GetErrorStream(), this,
                                       terminal_width);
-    result.SetStatus(eReturnStatusFailed);
-    return false;
+    return result.SetStatus(eReturnStatusFailed);
   }
 
   if (m_options.show_mixed && m_options.num_lines_context == 0)
@@ -314,8 +310,7 @@ bool CommandObjectDisassemble::DoExecute(Args &command,
       if (frame == nullptr) {
         result.AppendError("Cannot disassemble around the current line without "
                            "a selected frame.\n");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
       LineEntry pc_line_entry(
           frame->GetSymbolContext(eSymbolContextLineEntry).line_entry);
@@ -330,8 +325,7 @@ bool CommandObjectDisassemble::DoExecute(Args &command,
       if (frame == nullptr) {
         result.AppendError("Cannot disassemble around the current function "
                            "without a selected frame.\n");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
       Symbol *symbol = frame->GetSymbolContext(eSymbolContextSymbol).symbol;
       if (symbol) {
@@ -347,8 +341,7 @@ bool CommandObjectDisassemble::DoExecute(Args &command,
         if (frame == nullptr) {
           result.AppendError("Cannot disassemble around the current PC without "
                              "a selected frame.\n");
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
         range.GetBaseAddress() = frame->GetFrameCodeAddress();
         if (m_options.num_instructions == 0) {
@@ -364,8 +357,7 @@ bool CommandObjectDisassemble::DoExecute(Args &command,
             if (m_options.end_addr <= m_options.start_addr) {
               result.AppendErrorWithFormat(
                   "End address before start address.\n");
-              result.SetStatus(eReturnStatusFailed);
-              return false;
+              return result.SetStatus(eReturnStatusFailed);
             }
             range.SetByteSize(m_options.end_addr - m_options.start_addr);
           }
@@ -402,8 +394,7 @@ bool CommandObjectDisassemble::DoExecute(Args &command,
                     "Could not find function bounds for address 0x%" PRIx64
                     "\n",
                     m_options.symbol_containing_addr);
-                result.SetStatus(eReturnStatusFailed);
-                return false;
+                return result.SetStatus(eReturnStatusFailed);
               }
               ranges.push_back(range);
             } else {
@@ -450,8 +441,7 @@ bool CommandObjectDisassemble::DoExecute(Args &command,
 
         if (!range.GetBaseAddress().IsValid()) {
           result.AppendError("invalid frame");
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       }
 
@@ -494,8 +484,7 @@ bool CommandObjectDisassemble::DoExecute(Args &command,
             range.GetBaseAddress() = frame->GetFrameCodeAddress();
         } else {
           result.AppendError("invalid frame");
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
         ranges.push_back(range);
       }
@@ -523,6 +512,4 @@ bool CommandObjectDisassemble::DoExecute(Args &command,
       }
     }
   }
-
-  return result.Succeeded();
 }

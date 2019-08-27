@@ -46,13 +46,12 @@ public:
   }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     size_t argc = command.GetArgumentCount();
 
     if (argc != 1) {
       result.AppendError("'plugin load' requires one argument");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     Status error;
@@ -66,8 +65,6 @@ protected:
       result.AppendError(error.AsCString());
       result.SetStatus(eReturnStatusFailed);
     }
-
-    return result.Succeeded();
   }
 };
 

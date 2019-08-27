@@ -26,7 +26,7 @@ CommandObjectRegexCommand::CommandObjectRegexCommand(
 // Destructor
 CommandObjectRegexCommand::~CommandObjectRegexCommand() {}
 
-bool CommandObjectRegexCommand::DoExecute(llvm::StringRef command,
+void CommandObjectRegexCommand::DoExecute(llvm::StringRef command,
                                           CommandReturnObject &result) {
   EntryCollection::const_iterator pos, end = m_entries.end();
   for (pos = m_entries.begin(); pos != end; ++pos) {
@@ -54,8 +54,9 @@ bool CommandObjectRegexCommand::DoExecute(llvm::StringRef command,
       // Pass in true for "no context switching".  The command that called us
       // should have set up the context appropriately, we shouldn't have to
       // redo that.
-      return m_interpreter.HandleCommand(
+      m_interpreter.HandleCommand(
           new_command.c_str(), eLazyBoolCalculate, result, nullptr, true, true);
+      return;
     }
   }
   result.SetStatus(eReturnStatusFailed);
@@ -66,7 +67,6 @@ bool CommandObjectRegexCommand::DoExecute(llvm::StringRef command,
                              << "' failed to match any "
                                 "regular expression in the '"
                              << m_cmd_name << "' regex ";
-  return false;
 }
 
 bool CommandObjectRegexCommand::AddRegexCommand(const char *re_cstr,

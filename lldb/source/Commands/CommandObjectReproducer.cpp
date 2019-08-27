@@ -31,11 +31,11 @@ public:
   ~CommandObjectReproducerGenerate() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     if (!command.empty()) {
       result.AppendErrorWithFormat("'%s' takes no arguments",
                                    m_cmd_name.c_str());
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     auto &r = repro::Reproducer::Instance();
@@ -43,12 +43,10 @@ protected:
       generator->Keep();
     } else if (r.GetLoader()) {
       // Make this operation a NOP in replay mode.
-      result.SetStatus(eReturnStatusSuccessFinishNoResult);
-      return result.Succeeded();
+      return result.SetStatus(eReturnStatusSuccessFinishNoResult);
     } else {
       result.AppendErrorWithFormat("Unable to get the reproducer generator");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     result.GetOutputStream()
@@ -57,8 +55,7 @@ protected:
         << "Please have a look at the directory to assess if you're willing to "
            "share the contained information.\n";
 
-    result.SetStatus(eReturnStatusSuccessFinishResult);
-    return result.Succeeded();
+    return result.SetStatus(eReturnStatusSuccessFinishResult);
   }
 };
 
@@ -77,11 +74,11 @@ public:
   ~CommandObjectReproducerStatus() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     if (!command.empty()) {
       result.AppendErrorWithFormat("'%s' takes no arguments",
                                    m_cmd_name.c_str());
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     auto &r = repro::Reproducer::Instance();
@@ -94,7 +91,6 @@ protected:
     }
 
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return result.Succeeded();
   }
 };
 

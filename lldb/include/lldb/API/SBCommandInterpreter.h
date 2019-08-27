@@ -252,10 +252,8 @@ class SBCommandPluginInterface {
 public:
   virtual ~SBCommandPluginInterface() = default;
 
-  virtual bool DoExecute(lldb::SBDebugger /*debugger*/, char ** /*command*/,
-                         lldb::SBCommandReturnObject & /*result*/) {
-    return false;
-  }
+  virtual void DoExecute(lldb::SBDebugger /*debugger*/, char ** /*command*/,
+                         lldb::SBCommandReturnObject & result);
 };
 
 class SBCommand {

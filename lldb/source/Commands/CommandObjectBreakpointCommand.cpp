@@ -360,7 +360,7 @@ are no syntax errors may indicate that a function was declared but never called.
   };
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target &target = GetSelectedOrDummyTarget(m_options.m_use_dummy);
 
     const BreakpointList &breakpoints = target.GetBreakpointList();
@@ -368,16 +368,14 @@ protected:
 
     if (num_breakpoints == 0) {
       result.AppendError("No breakpoints exist to have commands added");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (!m_options.m_use_script_language &&
         !m_options.m_function_name.empty()) {
       result.AppendError("need to enable scripting to have a function run as a "
                          "breakpoint command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     BreakpointIDList valid_bp_ids;
@@ -437,8 +435,6 @@ protected:
           CollectDataForBreakpointCommandCallback(m_bp_options_vec, result);
       }
     }
-
-    return result.Succeeded();
   }
 
 private:
@@ -528,7 +524,7 @@ public:
   };
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target &target = GetSelectedOrDummyTarget(m_options.m_use_dummy);
 
     const BreakpointList &breakpoints = target.GetBreakpointList();
@@ -536,15 +532,13 @@ protected:
 
     if (num_breakpoints == 0) {
       result.AppendError("No breakpoints exist to have commands deleted");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (command.empty()) {
       result.AppendError(
           "No breakpoint specified from which to delete the commands");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     BreakpointIDList valid_bp_ids;
@@ -568,8 +562,7 @@ protected:
               result.AppendErrorWithFormat("Invalid breakpoint ID: %u.%u.\n",
                                            cur_bp_id.GetBreakpointID(),
                                            cur_bp_id.GetLocationID());
-              result.SetStatus(eReturnStatusFailed);
-              return false;
+              return result.SetStatus(eReturnStatusFailed);
             }
           } else {
             bp->ClearCallback();
@@ -577,7 +570,6 @@ protected:
         }
       }
     }
-    return result.Succeeded();
   }
 
 private:
@@ -611,14 +603,13 @@ public:
   ~CommandObjectBreakpointCommandList() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
 
     if (target == nullptr) {
       result.AppendError("There is not a current executable; there are no "
                          "breakpoints for which to list commands");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     const BreakpointList &breakpoints = target->GetBreakpointList();
@@ -626,15 +617,13 @@ protected:
 
     if (num_breakpoints == 0) {
       result.AppendError("No breakpoints exist for which to list commands");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (command.empty()) {
       result.AppendError(
           "No breakpoint specified for which to list the commands");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     BreakpointIDList valid_bp_ids;
@@ -659,8 +648,7 @@ protected:
                 result.AppendErrorWithFormat("Invalid breakpoint ID: %u.%u.\n",
                                              cur_bp_id.GetBreakpointID(),
                                              cur_bp_id.GetLocationID());
-                result.SetStatus(eReturnStatusFailed);
-                return false;
+                return result.SetStatus(eReturnStatusFailed);
               }
             }
 
@@ -697,8 +685,6 @@ protected:
         }
       }
     }
-
-    return result.Succeeded();
   }
 };
 

@@ -33,21 +33,20 @@ CommandObjectScript::CommandObjectScript(CommandInterpreter &interpreter,
 
 CommandObjectScript::~CommandObjectScript() {}
 
-bool CommandObjectScript::DoExecute(llvm::StringRef command,
+void CommandObjectScript::DoExecute(llvm::StringRef command,
                                     CommandReturnObject &result) {
 #ifdef LLDB_DISABLE_PYTHON
   // if we ever support languages other than Python this simple #ifdef won't
   // work
   result.AppendError("your copy of LLDB does not support scripting.");
   result.SetStatus(eReturnStatusFailed);
-  return false;
 #else
   if (m_interpreter.GetDebugger().GetScriptLanguage() ==
       lldb::eScriptLanguageNone) {
     result.AppendError(
         "the script-lang setting is set to none - scripting not available");
     result.SetStatus(eReturnStatusFailed);
-    return false;
+    return;
   }
 
   ScriptInterpreter *script_interpreter = GetDebugger().GetScriptInterpreter();
@@ -55,7 +54,7 @@ bool CommandObjectScript::DoExecute(llvm::StringRef command,
   if (script_interpreter == nullptr) {
     result.AppendError("no script interpreter");
     result.SetStatus(eReturnStatusFailed);
-    return false;
+    return;
   }
 
   DataVisualization::ForceUpdate(); // script might change Python code we use
@@ -65,7 +64,6 @@ bool CommandObjectScript::DoExecute(llvm::StringRef command,
   if (command.empty()) {
     script_interpreter->ExecuteInterpreterLoop();
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
-    return result.Succeeded();
   }
 
   // We can do better when reporting the status of one-liner script execution.
@@ -73,7 +71,5 @@ bool CommandObjectScript::DoExecute(llvm::StringRef command,
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
   else
     result.SetStatus(eReturnStatusFailed);
-
-  return result.Succeeded();
 #endif
 }

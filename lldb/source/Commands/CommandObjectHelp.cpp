@@ -73,7 +73,7 @@ CommandObjectHelp::CommandOptions::GetDefinitions() {
   return llvm::makeArrayRef(g_help_options);
 }
 
-bool CommandObjectHelp::DoExecute(Args &command, CommandReturnObject &result) {
+void CommandObjectHelp::DoExecute(Args &command, CommandReturnObject &result) {
   CommandObject::CommandMap::iterator pos;
   CommandObject *cmd_obj;
   const size_t argc = command.GetArgumentCount();
@@ -139,16 +139,14 @@ bool CommandObjectHelp::DoExecute(Args &command, CommandReturnObject &result) {
           }
           s.Printf("\n");
           result.AppendError(s.GetString());
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         } else if (!sub_cmd_obj) {
           StreamString error_msg_stream;
           GenerateAdditionalHelpAvenuesMessage(
               &error_msg_stream, cmd_string.c_str(),
               m_interpreter.GetCommandPrefix(), sub_command.c_str());
           result.AppendError(error_msg_stream.GetString());
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         } else {
           GenerateAdditionalHelpAvenuesMessage(
               &result.GetOutputStream(), cmd_string.c_str(),
@@ -197,8 +195,6 @@ bool CommandObjectHelp::DoExecute(Args &command, CommandReturnObject &result) {
       }
     }
   }
-
-  return result.Succeeded();
 }
 
 void CommandObjectHelp::HandleCompletion(CompletionRequest &request) {

@@ -82,15 +82,15 @@ public:
 
   ~CommandObjectIterateOverThreads() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     result.SetStatus(m_success_return);
 
     bool all_threads = false;
     if (command.GetArgumentCount() == 0) {
       Thread *thread = m_exe_ctx.GetThreadPtr();
       if (!thread || !HandleOneThread(thread->GetID(), result))
-        return false;
-      return result.Succeeded();
+        return result.SetStatus(eReturnStatusFailed);
+      return;
     } else if (command.GetArgumentCount() == 1) {
       all_threads = ::strcmp(command.GetArgumentAtIndex(0), "all") == 0;
       m_unique_stacks = ::strcmp(command.GetArgumentAtIndex(0), "unique") == 0;
@@ -121,8 +121,7 @@ public:
         if (!success) {
           result.AppendErrorWithFormat("invalid thread specification: \"%s\"\n",
                                        command.GetArgumentAtIndex(i));
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
 
         ThreadSP thread =
@@ -131,8 +130,7 @@ public:
         if (!thread) {
           result.AppendErrorWithFormat("no thread with index: \"%s\"\n",
                                        command.GetArgumentAtIndex(i));
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
 
         tids.push_back(thread->GetID());
@@ -144,7 +142,7 @@ public:
       std::set<UniqueStack> unique_stacks;
       for (const lldb::tid_t &tid : tids) {
         if (!BucketThread(tid, unique_stacks, result)) {
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       }
 
@@ -165,9 +163,8 @@ public:
         uint32_t representative_thread_id = stack.GetRepresentativeThread();
         ThreadSP thread = process->GetThreadList().FindThreadByIndexID(
             representative_thread_id);
-        if (!HandleOneThread(thread->GetID(), result)) {
-          return false;
-        }
+        if (!HandleOneThread(thread->GetID(), result))
+          return result.SetStatus(eReturnStatusFailed);
       }
     } else {
       uint32_t idx = 0;
@@ -176,12 +173,11 @@ public:
           result.AppendMessage("");
 
         if (!HandleOneThread(tid, result))
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
 
         ++idx;
       }
     }
-    return result.Succeeded();
   }
 
 protected:
@@ -554,7 +550,7 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Process *process = m_exe_ctx.GetProcessPtr();
     bool synchronous_execution = m_interpreter.GetSynchronous();
 
@@ -566,8 +562,7 @@ protected:
 
       if (thread == nullptr) {
         result.AppendError("no selected thread in process");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
     } else {
       const char *thread_idx_cstr = command.GetArgumentAtIndex(0);
@@ -576,8 +571,7 @@ protected:
       if (step_thread_idx == LLDB_INVALID_INDEX32) {
         result.AppendErrorWithFormat("invalid thread index '%s'.\n",
                                      thread_idx_cstr);
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
       thread =
           process->GetThreadList().FindThreadByIndexID(step_thread_idx).get();
@@ -585,23 +579,20 @@ protected:
         result.AppendErrorWithFormat(
             "Thread index %u is out of range (valid values are 0 - %u).\n",
             step_thread_idx, num_threads);
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
     }
 
     if (m_step_type == eStepTypeScripted) {
       if (m_options.m_class_name.empty()) {
         result.AppendErrorWithFormat("empty class name for scripted step.");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       } else if (!GetDebugger().GetScriptInterpreter()->CheckObjectExists(
                      m_options.m_class_name.c_str())) {
         result.AppendErrorWithFormat(
             "class for scripted step: \"%s\" does not exist.",
             m_options.m_class_name.c_str());
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
     }
 
@@ -609,8 +600,7 @@ protected:
         m_step_type != eStepTypeInto) {
       result.AppendErrorWithFormat(
           "end line option is only valid for step into");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     const bool abort_other_plans = false;
@@ -643,16 +633,14 @@ protected:
                                                    error)) {
             result.AppendErrorWithFormat("invalid end-line option: %s.",
                                          error.AsCString());
-            result.SetStatus(eReturnStatusFailed);
-            return false;
+            return result.SetStatus(eReturnStatusFailed);
           }
         } else if (m_options.m_end_line_is_block_end) {
           Status error;
           Block *block = frame->GetSymbolContext(eSymbolContextBlock).block;
           if (!block) {
             result.AppendErrorWithFormat("Could not find the current block.");
-            result.SetStatus(eReturnStatusFailed);
-            return false;
+            return result.SetStatus(eReturnStatusFailed);
           }
 
           AddressRange block_range;
@@ -661,8 +649,7 @@ protected:
           if (!block_range.GetBaseAddress().IsValid()) {
             result.AppendErrorWithFormat(
                 "Could not find the current block address.");
-            result.SetStatus(eReturnStatusFailed);
-            return false;
+            return result.SetStatus(eReturnStatusFailed);
           }
           lldb::addr_t pc_offset_in_block =
               pc_address.GetFileAddress() -
@@ -719,8 +706,7 @@ protected:
           bool_stop_other_threads, new_plan_status);
     } else {
       result.AppendError("step type is not supported");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // If we got a new plan, then set it to be a master plan (User level Plans
@@ -751,8 +737,7 @@ protected:
 
       if (!error.Success()) {
         result.AppendMessage(error.AsCString());
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       // There is a race condition where this thread will return up the call
@@ -777,7 +762,6 @@ protected:
       result.SetError(new_plan_status);
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
 protected:
@@ -816,21 +800,19 @@ public:
 
   ~CommandObjectThreadContinue() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     bool synchronous_execution = m_interpreter.GetSynchronous();
 
     if (!GetDebugger().GetSelectedTarget()) {
       result.AppendError("invalid target, create a debug target using the "
                          "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     Process *process = m_exe_ctx.GetProcessPtr();
     if (process == nullptr) {
       result.AppendError("no process exists. Cannot continue");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     StateType state = process->GetState();
@@ -850,8 +832,7 @@ public:
           if (entry.ref.getAsInteger(0, thread_idx)) {
             result.AppendErrorWithFormat(
                 "invalid thread index argument: \"%s\".\n", entry.c_str());
-            result.SetStatus(eReturnStatusFailed);
-            return false;
+            return result.SetStatus(eReturnStatusFailed);
           }
           Thread *thread =
               process->GetThreadList().FindThreadByIndexID(thread_idx).get();
@@ -861,15 +842,13 @@ public:
           } else {
             result.AppendErrorWithFormat("invalid thread index %u.\n",
                                          thread_idx);
-            result.SetStatus(eReturnStatusFailed);
-            return false;
+            return result.SetStatus(eReturnStatusFailed);
           }
         }
 
         if (resume_threads.empty()) {
           result.AppendError("no valid thread indexes were specified");
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         } else {
           if (resume_threads.size() == 1)
             result.AppendMessageWithFormat("Resuming thread: ");
@@ -908,8 +887,7 @@ public:
         Thread *current_thread = GetDefaultThread();
         if (current_thread == nullptr) {
           result.AppendError("the process doesn't have a current thread");
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
         // Set the actions that the threads should each take when resuming
         for (uint32_t idx = 0; idx < num_threads; ++idx) {
@@ -959,8 +937,6 @@ public:
           StateAsCString(state));
       result.SetStatus(eReturnStatusFailed);
     }
-
-    return result.Succeeded();
   }
 };
 
@@ -1088,15 +1064,14 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     bool synchronous_execution = m_interpreter.GetSynchronous();
 
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (target == nullptr) {
       result.AppendError("invalid target, create a debug target using the "
                          "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     Process *process = m_exe_ctx.GetProcessPtr();
@@ -1116,16 +1091,14 @@ protected:
           if (line_number == UINT32_MAX) {
             result.AppendErrorWithFormat("invalid line number: '%s'.\n",
                                          command.GetArgumentAtIndex(i));
-            result.SetStatus(eReturnStatusFailed);
-            return false;
+            return result.SetStatus(eReturnStatusFailed);
           } else
             line_numbers.push_back(line_number);
         }
       } else if (m_options.m_until_addrs.empty()) {
         result.AppendErrorWithFormat("No line number or address provided:\n%s",
                                      GetSyntax().str().c_str());
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       if (m_options.m_thread_idx == LLDB_INVALID_THREAD_ID) {
@@ -1141,8 +1114,7 @@ protected:
         result.AppendErrorWithFormat(
             "Thread index %u is out of range (valid values are 0 - %u).\n",
             m_options.m_thread_idx, num_threads);
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       const bool abort_other_plans = false;
@@ -1153,8 +1125,7 @@ protected:
         result.AppendErrorWithFormat(
             "Frame index %u is out of range for thread %u.\n",
             m_options.m_frame_idx, m_options.m_thread_idx);
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       ThreadPlanSP new_plan_sp;
@@ -1173,8 +1144,7 @@ protected:
                                        "frame %u of thread index %u.\n",
                                        m_options.m_frame_idx,
                                        m_options.m_thread_idx);
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
 
         LineEntry function_start;
@@ -1233,8 +1203,7 @@ protected:
             result.AppendErrorWithFormat(
                 "Until target outside of the current function.\n");
 
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
 
         new_plan_sp = thread->QueueThreadPlanForStepUntil(
@@ -1249,15 +1218,13 @@ protected:
           new_plan_sp->SetOkayToDiscard(false);
         } else {
           result.SetError(new_plan_status);
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       } else {
         result.AppendErrorWithFormat(
             "Frame index %u of thread %u has no debug information.\n",
             m_options.m_frame_idx, m_options.m_thread_idx);
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       process->GetThreadList().SetSelectedThreadByID(m_options.m_thread_idx);
@@ -1289,7 +1256,6 @@ protected:
         result.SetStatus(eReturnStatusFailed);
       }
     }
-    return result.Succeeded();
   }
 
   CommandOptions m_options;
@@ -1323,18 +1289,16 @@ public:
   ~CommandObjectThreadSelect() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Process *process = m_exe_ctx.GetProcessPtr();
     if (process == nullptr) {
       result.AppendError("no process");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     } else if (command.GetArgumentCount() != 1) {
       result.AppendErrorWithFormat(
           "'%s' takes exactly one thread index argument:\nUsage: %s\n",
           m_cmd_name.c_str(), m_cmd_syntax.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     uint32_t index_id =
@@ -1345,14 +1309,11 @@ protected:
     if (new_thread == nullptr) {
       result.AppendErrorWithFormat("invalid thread #%s.\n",
                                    command.GetArgumentAtIndex(0));
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     process->GetThreadList().SetSelectedThreadByID(new_thread->GetID(), true);
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
-
-    return result.Succeeded();
   }
 };
 
@@ -1373,7 +1334,7 @@ public:
   ~CommandObjectThreadList() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Stream &strm = result.GetOutputStream();
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
     Process *process = m_exe_ctx.GetProcessPtr();
@@ -1384,7 +1345,6 @@ protected:
     process->GetStatus(strm);
     process->GetThreadStatus(strm, only_threads_with_stop_reason, start_frame,
                              num_frames, num_frames_with_source, false);
-    return result.Succeeded();
   }
 };
 
@@ -1604,7 +1564,7 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(llvm::StringRef command,
+  void DoExecute(llvm::StringRef command,
                  CommandReturnObject &result) override {
     // I am going to handle this by hand, because I don't want you to have to
     // say:
@@ -1633,7 +1593,6 @@ protected:
           result.SetStatus(eReturnStatusFailed);
         }
       }
-      return result.Succeeded();
     }
 
     ValueObjectSP return_valobj_sp;
@@ -1643,8 +1602,7 @@ protected:
 
     if (frame_sp->IsInlined()) {
       result.AppendError("Don't know how to return from inlined frames.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (!command.empty()) {
@@ -1665,8 +1623,7 @@ protected:
         else
           result.AppendErrorWithFormat(
               "Unknown error evaluating result expression.");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
     }
 
@@ -1678,12 +1635,10 @@ protected:
       result.AppendErrorWithFormat(
           "Error returning from frame %d of thread %d: %s.", frame_idx,
           thread_sp->GetIndexID(), error.AsCString());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 
   CommandOptions m_options;
@@ -1765,7 +1720,7 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     RegisterContext *reg_ctx = m_exe_ctx.GetRegisterContext();
     StackFrame *frame = m_exe_ctx.GetFramePtr();
     Thread *thread = m_exe_ctx.GetThreadPtr();
@@ -1780,15 +1735,13 @@ protected:
       lldb::addr_t callAddr = dest.GetCallableLoadAddress(target);
       if (callAddr == LLDB_INVALID_ADDRESS) {
         result.AppendErrorWithFormat("Invalid destination address.");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       if (!reg_ctx->SetPC(callAddr)) {
         result.AppendErrorWithFormat("Error changing PC value for thread %d.",
                                      thread->GetIndexID());
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
     } else {
       // Pick either the absolute line, or work out a relative one.
@@ -1804,8 +1757,7 @@ protected:
       if (!file) {
         result.AppendErrorWithFormat(
             "No source file available for the current location.");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       std::string warnings;
@@ -1813,7 +1765,7 @@ protected:
 
       if (err.Fail()) {
         result.SetError(err);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       if (!warnings.empty())
@@ -1821,7 +1773,6 @@ protected:
     }
 
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 
   CommandOptions m_options;
@@ -1947,14 +1898,13 @@ public:
 
   ~CommandObjectThreadPlanDiscard() override = default;
 
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     Thread *thread = m_exe_ctx.GetThreadPtr();
     if (args.GetArgumentCount() != 1) {
       result.AppendErrorWithFormat("Too many arguments, expected one - the "
                                    "thread plan index - but got %zu.",
                                    args.GetArgumentCount());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     bool success;
@@ -1964,26 +1914,22 @@ public:
       result.AppendErrorWithFormat(
           "Invalid thread index: \"%s\" - should be unsigned int.",
           args.GetArgumentAtIndex(0));
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (thread_plan_idx == 0) {
       result.AppendErrorWithFormat(
           "You wouldn't really want me to discard the base thread plan.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (thread->DiscardUserThreadPlansUpToIndex(thread_plan_idx)) {
       result.SetStatus(eReturnStatusSuccessFinishNoResult);
-      return true;
     } else {
       result.AppendErrorWithFormat(
           "Could not find User thread plan with index %s.",
           args.GetArgumentAtIndex(0));
       result.SetStatus(eReturnStatusFailed);
-      return false;
     }
   }
 };

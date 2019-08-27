@@ -576,7 +576,7 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     std::unique_ptr<RegularExpression> regex_up;
     switch (command.GetArgumentCount()) {
     case 0:
@@ -587,15 +587,13 @@ protected:
       if (!regex_up->IsValid()) {
         result.AppendError(
             "invalid argument - please provide a valid regular expression");
-        result.SetStatus(lldb::eReturnStatusFailed);
-        return false;
+        return result.SetStatus(lldb::eReturnStatusFailed);
       }
       break;
     }
     default: {
       result.AppendError("please provide 0 or 1 arguments");
-      result.SetStatus(lldb::eReturnStatusFailed);
-      return false;
+      return result.SetStatus(lldb::eReturnStatusFailed);
     }
     }
 
@@ -655,11 +653,9 @@ protected:
         }
       }
       result.SetStatus(lldb::eReturnStatusSuccessFinishResult);
-      return true;
     } else {
       result.AppendError("current process has no Objective-C runtime loaded");
       result.SetStatus(lldb::eReturnStatusFailed);
-      return false;
     }
   }
 
@@ -693,11 +689,10 @@ public:
   ~CommandObjectMultiwordObjC_TaggedPointer_Info() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     if (command.GetArgumentCount() == 0) {
       result.AppendError("this command requires arguments");
-      result.SetStatus(lldb::eReturnStatusFailed);
-      return false;
+      return result.SetStatus(lldb::eReturnStatusFailed);
     }
 
     Process *process = m_exe_ctx.GetProcessPtr();
@@ -737,15 +732,12 @@ protected:
         }
       } else {
         result.AppendError("current process has no tagged pointer support");
-        result.SetStatus(lldb::eReturnStatusFailed);
-        return false;
+        return result.SetStatus(lldb::eReturnStatusFailed);
       }
       result.SetStatus(lldb::eReturnStatusSuccessFinishResult);
-      return true;
     } else {
       result.AppendError("current process has no Objective-C runtime loaded");
       result.SetStatus(lldb::eReturnStatusFailed);
-      return false;
     }
   }
 };

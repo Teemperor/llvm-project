@@ -145,7 +145,7 @@ public:
   }
 
 protected:
-  bool DoExecute(Args &launch_args, CommandReturnObject &result) override {
+  void DoExecute(Args &launch_args, CommandReturnObject &result) override {
     Debugger &debugger = GetDebugger();
     Target *target = debugger.GetSelectedTarget().get();
     // If our listener is nullptr, users aren't allows to launch
@@ -154,14 +154,13 @@ protected:
     if (exe_module_sp == nullptr) {
       result.AppendError("no file in target, create a debug target using the "
                          "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     StateType state = eStateInvalid;
 
     if (!StopProcessIfNecessary(m_exe_ctx.GetProcessPtr(), state, result))
-      return false;
+      return;
 
     llvm::StringRef target_settings_argv0 = target->GetArg0();
 
@@ -247,7 +246,6 @@ protected:
       result.AppendError(error.AsCString());
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
 protected:
@@ -373,7 +371,7 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     PlatformSP platform_sp(
         GetDebugger().GetPlatformList().GetSelectedPlatform());
 
@@ -387,7 +385,7 @@ protected:
     Process *process = m_exe_ctx.GetProcessPtr();
 
     if (!StopProcessIfNecessary(process, state, result))
-      return false;
+      return;
 
     if (target == nullptr) {
       // If there isn't a current target create one.
@@ -401,7 +399,7 @@ protected:
       target = new_target_sp.get();
       if (target == nullptr || error.Fail()) {
         result.AppendError(error.AsCString("Error creating target"));
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
       GetDebugger().GetTargetList().SetSelectedTarget(target);
     }
@@ -416,8 +414,7 @@ protected:
     if (command.GetArgumentCount()) {
       result.AppendErrorWithFormat("Invalid arguments for '%s'.\nUsage: %s\n",
                                    m_cmd_name.c_str(), m_cmd_syntax.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     m_interpreter.UpdateExecutionContext(nullptr);
@@ -441,7 +438,7 @@ protected:
     }
 
     if (!result.Succeeded())
-      return false;
+      return;
 
     // Okay, we're done.  Last step is to warn if the executable module has
     // changed:
@@ -481,8 +478,6 @@ protected:
     // process once attached.
     if (m_options.attach_info.GetContinueOnceAttached())
       m_interpreter.HandleCommand("process continue", eLazyBoolNo, result);
-
-    return result.Succeeded();
   }
 
   CommandOptions m_options;
@@ -548,7 +543,7 @@ protected:
     uint32_t m_ignore;
   };
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Process *process = m_exe_ctx.GetProcessPtr();
     bool synchronous_execution = m_interpreter.GetSynchronous();
     StateType state = process->GetState();
@@ -557,8 +552,7 @@ protected:
         result.AppendErrorWithFormat(
             "The '%s' command does not take any arguments.\n",
             m_cmd_name.c_str());
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       if (m_options.m_ignore > 0) {
@@ -637,7 +631,6 @@ protected:
           StateAsCString(state));
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
   Options *GetOptions() override { return &m_options; }
@@ -710,7 +703,7 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Process *process = m_exe_ctx.GetProcessPtr();
     // FIXME: This will be a Command Option:
     bool keep_stopped;
@@ -728,9 +721,7 @@ protected:
     } else {
       result.AppendErrorWithFormat("Detach failed: %s\n", error.AsCString());
       result.SetStatus(eReturnStatusFailed);
-      return false;
     }
-    return result.Succeeded();
   }
 
   CommandOptions m_options;
@@ -794,13 +785,12 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     if (command.GetArgumentCount() != 1) {
       result.AppendErrorWithFormat(
           "'%s' takes exactly one argument:\nUsage: %s\n", m_cmd_name.c_str(),
           m_cmd_syntax.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     Process *process = m_exe_ctx.GetProcessPtr();
@@ -809,8 +799,7 @@ protected:
           "Process %" PRIu64
           " is currently being debugged, kill the process before connecting.\n",
           process->GetID());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     const char *plugin_name = nullptr;
@@ -826,9 +815,7 @@ protected:
     if (error.Fail() || process_sp == nullptr) {
       result.AppendError(error.AsCString("Error connecting to the process"));
       result.SetStatus(eReturnStatusFailed);
-      return false;
     }
-    return true;
   }
 
   CommandOptions m_options;
@@ -917,7 +904,7 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Process *process = m_exe_ctx.GetProcessPtr();
 
     for (auto &entry : command.entries()) {
@@ -957,7 +944,6 @@ protected:
         result.SetStatus(eReturnStatusFailed);
       }
     }
-    return result.Succeeded();
   }
 
   CommandOptions m_options;
@@ -980,7 +966,7 @@ public:
   ~CommandObjectProcessUnload() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Process *process = m_exe_ctx.GetProcessPtr();
 
     for (auto &entry : command.entries()) {
@@ -1005,7 +991,6 @@ protected:
         }
       }
     }
-    return result.Succeeded();
   }
 };
 
@@ -1037,7 +1022,7 @@ public:
   ~CommandObjectProcessSignal() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Process *process = m_exe_ctx.GetProcessPtr();
 
     if (command.GetArgumentCount() == 1) {
@@ -1070,7 +1055,6 @@ protected:
           m_cmd_name.c_str(), m_cmd_syntax.c_str());
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -1089,12 +1073,11 @@ public:
   ~CommandObjectProcessInterrupt() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Process *process = m_exe_ctx.GetProcessPtr();
     if (process == nullptr) {
       result.AppendError("no process to halt");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (command.GetArgumentCount() == 0) {
@@ -1112,7 +1095,6 @@ protected:
                                    m_cmd_name.c_str(), m_cmd_syntax.c_str());
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -1131,12 +1113,11 @@ public:
   ~CommandObjectProcessKill() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Process *process = m_exe_ctx.GetProcessPtr();
     if (process == nullptr) {
       result.AppendError("no process to kill");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (command.GetArgumentCount() == 0) {
@@ -1153,7 +1134,6 @@ protected:
                                    m_cmd_name.c_str(), m_cmd_syntax.c_str());
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -1173,7 +1153,7 @@ public:
   ~CommandObjectProcessSaveCore() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     ProcessSP process_sp = m_exe_ctx.GetProcessSP();
     if (process_sp) {
       if (command.GetArgumentCount() == 1) {
@@ -1193,11 +1173,8 @@ protected:
       }
     } else {
       result.AppendError("invalid process");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
-
-    return result.Succeeded();
   }
 };
 
@@ -1215,7 +1192,7 @@ public:
 
   ~CommandObjectProcessStatus() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Stream &strm = result.GetOutputStream();
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
     // No need to check "process" for validity as eCommandRequiresProcess
@@ -1229,7 +1206,6 @@ public:
     process->GetStatus(strm);
     process->GetThreadStatus(strm, only_threads_with_stop_reason, start_frame,
                              num_frames, num_frames_with_source, stop_format);
-    return result.Succeeded();
   }
 };
 
@@ -1374,15 +1350,14 @@ public:
   }
 
 protected:
-  bool DoExecute(Args &signal_args, CommandReturnObject &result) override {
+  void DoExecute(Args &signal_args, CommandReturnObject &result) override {
     TargetSP target_sp = GetDebugger().GetSelectedTarget();
 
     if (!target_sp) {
       result.AppendError("No current target;"
                          " cannot handle signals until you have a valid target "
                          "and process.\n");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     ProcessSP process_sp = target_sp->GetProcessSP();
@@ -1390,8 +1365,7 @@ protected:
     if (!process_sp) {
       result.AppendError("No current process; cannot handle signals until you "
                          "have a valid process.\n");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     int stop_action = -1;   // -1 means leave the current setting alone
@@ -1402,24 +1376,21 @@ protected:
         !VerifyCommandOptionValue(m_options.stop, stop_action)) {
       result.AppendError("Invalid argument for command option --stop; must be "
                          "true or false.\n");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (!m_options.notify.empty() &&
         !VerifyCommandOptionValue(m_options.notify, notify_action)) {
       result.AppendError("Invalid argument for command option --notify; must "
                          "be true or false.\n");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (!m_options.pass.empty() &&
         !VerifyCommandOptionValue(m_options.pass, pass_action)) {
       result.AppendError("Invalid argument for command option --pass; must be "
                          "true or false.\n");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     size_t num_args = signal_args.GetArgumentCount();
@@ -1475,8 +1446,6 @@ protected:
       result.SetStatus(eReturnStatusSuccessFinishNoResult);
     else
       result.SetStatus(eReturnStatusFailed);
-
-    return result.Succeeded();
   }
 
   CommandOptions m_options;

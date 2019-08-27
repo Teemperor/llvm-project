@@ -548,14 +548,13 @@ protected:
     return true;
   }
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     const size_t argc = command.GetArgumentCount();
 
     if (argc != 0) {
       result.AppendErrorWithFormat("'%s' takes no arguments, only flags.\n",
                                    GetCommandName().str().c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     Target *target = m_exe_ctx.GetTargetPtr();
@@ -564,8 +563,7 @@ protected:
       if (target == nullptr) {
         result.AppendError("invalid target, create a debug target using the "
                            "'target create' command.");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
     }
 
@@ -587,13 +585,11 @@ protected:
       }
       if (!m_module_list.GetSize()) {
         result.AppendError("No modules match the input.");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
     } else if (target->GetImages().GetSize() == 0) {
       result.AppendError("The target has no associated executable images.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Check the arguments to see what lines we should dump.
@@ -622,7 +618,6 @@ protected:
       else
         result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
   CommandOptions m_options;
@@ -928,14 +923,13 @@ protected:
     return num_matches;
   }
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     const size_t argc = command.GetArgumentCount();
 
     if (argc != 0) {
       result.AppendErrorWithFormat("'%s' takes no arguments, only flags.\n",
                                    GetCommandName().str().c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     Target *target = m_exe_ctx.GetTargetPtr();
@@ -970,8 +964,7 @@ protected:
       if (num_matches == 0) {
         result.AppendErrorWithFormat("Could not find function named: \"%s\".\n",
                                      m_options.symbol_name.c_str());
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       if (num_matches > 1) {
@@ -1008,7 +1001,7 @@ protected:
           result.SetStatus(eReturnStatusFailed);
         }
       }
-      return result.Succeeded();
+      return;
     } else if (m_options.address != LLDB_INVALID_ADDRESS) {
       Address so_addr;
       StreamString error_strm;
@@ -1037,8 +1030,7 @@ protected:
               "no modules have source information for file address 0x%" PRIx64
               ".\n",
               m_options.address);
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       } else {
         // The target has some things loaded, resolve this address to a compile
@@ -1060,8 +1052,7 @@ protected:
                                            "is no line table information "
                                            "available for this address.\n",
                                            error_strm.GetData());
-              result.SetStatus(eReturnStatusFailed);
-              return false;
+              return result.SetStatus(eReturnStatusFailed);
             }
           }
         }
@@ -1070,8 +1061,7 @@ protected:
           result.AppendErrorWithFormat(
               "no modules contain load address 0x%" PRIx64 ".\n",
               m_options.address);
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       }
       uint32_t num_matches = sc_list.GetSize();
@@ -1189,8 +1179,7 @@ protected:
       if (num_matches == 0) {
         result.AppendErrorWithFormat("Could not find source file \"%s\".\n",
                                      m_options.file_name.c_str());
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       if (num_matches > 1) {
@@ -1213,8 +1202,7 @@ protected:
           result.AppendErrorWithFormat(
               "Multiple source files found matching: \"%s.\"\n",
               m_options.file_name.c_str());
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       }
 
@@ -1242,12 +1230,10 @@ protected:
         } else {
           result.AppendErrorWithFormat("No comp unit found for: \"%s.\"\n",
                                        m_options.file_name.c_str());
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       }
     }
-    return result.Succeeded();
   }
 
   const SymbolContextList *GetBreakpointLocations() {

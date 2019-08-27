@@ -267,7 +267,7 @@ public:
   }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     const size_t argc = command.GetArgumentCount();
     FileSpec core_file(m_core_file.GetOptionValue().GetCurrentValue());
     FileSpec remote_file(m_remote_file.GetOptionValue().GetCurrentValue());
@@ -276,14 +276,12 @@ protected:
       if (!FileSystem::Instance().Exists(core_file)) {
         result.AppendErrorWithFormat("core file '%s' doesn't exist",
                                      core_file.GetPath().c_str());
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
       if (!FileSystem::Instance().Readable(core_file)) {
         result.AppendErrorWithFormat("core file '%s' is not readable",
                                      core_file.GetPath().c_str());
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
     }
 
@@ -294,16 +292,14 @@ protected:
           if (!FileSystem::Instance().Readable(symfile)) {
             result.AppendErrorWithFormat("symbol file '%s' is not readable",
                                          symfile.GetPath().c_str());
-            result.SetStatus(eReturnStatusFailed);
-            return false;
+            return result.SetStatus(eReturnStatusFailed);
           }
         } else {
           char symfile_path[PATH_MAX];
           symfile.GetPath(symfile_path, sizeof(symfile_path));
           result.AppendErrorWithFormat("invalid symbol file path '%s'",
                                        symfile_path);
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       }
 
@@ -343,8 +339,7 @@ protected:
                 Status err = platform_sp->PutFile(file_spec, remote_file);
                 if (err.Fail()) {
                   result.AppendError(err.AsCString());
-                  result.SetStatus(eReturnStatusFailed);
-                  return false;
+                  return result.SetStatus(eReturnStatusFailed);
                 }
               }
             } else {
@@ -356,29 +351,25 @@ protected:
               if (!platform_sp) {
                 result.AppendError(
                     "unable to perform remote debugging without a platform");
-                result.SetStatus(eReturnStatusFailed);
-                return false;
+                return result.SetStatus(eReturnStatusFailed);
               }
               if (file_path) {
                 // copy the remote file to the local file
                 Status err = platform_sp->GetFile(remote_file, file_spec);
                 if (err.Fail()) {
                   result.AppendError(err.AsCString());
-                  result.SetStatus(eReturnStatusFailed);
-                  return false;
+                  return result.SetStatus(eReturnStatusFailed);
                 }
               } else {
                 // make up a local file
                 result.AppendError("remote --> local transfer without local "
                                    "path is not implemented yet");
-                result.SetStatus(eReturnStatusFailed);
-                return false;
+                return result.SetStatus(eReturnStatusFailed);
               }
             }
           } else {
             result.AppendError("no platform found for target");
-            result.SetStatus(eReturnStatusFailed);
-            return false;
+            return result.SetStatus(eReturnStatusFailed);
           }
         }
 
@@ -410,8 +401,7 @@ protected:
             if (!FileSystem::Instance().Readable(core_file)) {
               result.AppendMessageWithFormat(
                   "Core file '%s' is not readable.\n", core_path);
-              result.SetStatus(eReturnStatusFailed);
-              return false;
+              return result.SetStatus(eReturnStatusFailed);
             }
             FileSpec core_file_dir;
             core_file_dir.GetDirectory() = core_file.GetDirectory();
@@ -428,8 +418,7 @@ protected:
               if (error.Fail()) {
                 result.AppendError(
                     error.AsCString("can't find plug-in for core file"));
-                result.SetStatus(eReturnStatusFailed);
-                return false;
+                return result.SetStatus(eReturnStatusFailed);
               } else {
                 result.AppendMessageWithFormat(
                     "Core file '%s' (%s) was loaded.\n", core_path,
@@ -464,7 +453,6 @@ protected:
                                    m_cmd_name.c_str());
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
 private:
@@ -492,7 +480,7 @@ public:
   ~CommandObjectTargetList() override = default;
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     if (args.GetArgumentCount() == 0) {
       Stream &strm = result.GetOutputStream();
 
@@ -506,7 +494,6 @@ protected:
       result.AppendError("the 'target list' command takes no arguments\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -525,7 +512,7 @@ public:
   ~CommandObjectTargetSelect() override = default;
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     if (args.GetArgumentCount() == 1) {
       bool success = false;
       const char *target_idx_arg = args.GetArgumentAtIndex(0);
@@ -569,7 +556,6 @@ protected:
           "'target select' takes a single argument: a target index\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -605,7 +591,7 @@ public:
   Options *GetOptions() override { return &m_option_group; }
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     const size_t argc = args.GetArgumentCount();
     std::vector<TargetSP> delete_target_list;
     TargetList &target_list = GetDebugger().GetTargetList();
@@ -619,8 +605,7 @@ protected:
       // Bail out if don't have any targets.
       if (num_targets == 0) {
         result.AppendError("no targets to delete");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       for (auto &entry : args.entries()) {
@@ -628,8 +613,7 @@ protected:
         if (entry.ref.getAsInteger(0, target_idx)) {
           result.AppendErrorWithFormat("invalid target index '%s'\n",
                                        entry.c_str());
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
         if (target_idx < num_targets) {
           target_sp = target_list.GetTargetAtIndex(target_idx);
@@ -647,15 +631,13 @@ protected:
               "target index %u is out of range, the only valid index is 0\n",
               target_idx);
 
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
     } else {
       target_sp = target_list.GetSelectedTarget();
       if (!target_sp) {
         result.AppendErrorWithFormat("no target is currently selected\n");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
       delete_target_list.push_back(target_sp);
     }
@@ -675,8 +657,6 @@ protected:
     result.GetOutputStream().Printf("%u targets deleted.\n",
                                     (uint32_t)num_targets_to_delete);
     result.SetStatus(eReturnStatusSuccessFinishResult);
-
-    return true;
   }
 
   OptionGroupOptions m_option_group;
@@ -841,7 +821,7 @@ protected:
     }
   }
 
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     Target *target = m_exe_ctx.GetTargetPtr();
     const size_t argc = args.GetArgumentCount();
     Stream &s = result.GetOutputStream();
@@ -862,8 +842,7 @@ protected:
           if (!regex.IsValid()) {
             result.GetErrorStream().Printf(
                 "error: invalid regular expression: '%s'\n", arg);
-            result.SetStatus(eReturnStatusFailed);
-            return false;
+            return result.SetStatus(eReturnStatusFailed);
           }
           use_var_name = true;
           matches = target->GetImages().FindGlobalVariables(regex, UINT32_MAX,
@@ -878,8 +857,7 @@ protected:
         if (matches == 0) {
           result.GetErrorStream().Printf(
               "error: can't find global variable '%s'\n", arg);
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         } else {
           for (uint32_t global_idx = 0; global_idx < matches; ++global_idx) {
             VariableSP var_sp(variable_list.GetVariableAtIndex(global_idx));
@@ -1010,8 +988,6 @@ protected:
                                       m_cmd_name.c_str());
       m_interpreter.TruncationWarningGiven();
     }
-
-    return result.Succeeded();
   }
 
   OptionGroupOptions m_option_group;
@@ -1058,7 +1034,7 @@ public:
   ~CommandObjectTargetModulesSearchPathsAdd() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (target) {
       const size_t argc = command.GetArgumentCount();
@@ -1096,7 +1072,6 @@ protected:
       result.AppendError("invalid target\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -1113,7 +1088,7 @@ public:
   ~CommandObjectTargetModulesSearchPathsClear() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (target) {
       bool notify = true;
@@ -1123,7 +1098,6 @@ protected:
       result.AppendError("invalid target\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -1174,7 +1148,7 @@ public:
   ~CommandObjectTargetModulesSearchPathsInsert() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (target) {
       size_t argc = command.GetArgumentCount();
@@ -1189,8 +1163,7 @@ protected:
           result.AppendErrorWithFormat(
               "<index> parameter is not an integer: '%s'.\n",
               command.GetArgumentAtIndex(0));
-          result.SetStatus(eReturnStatusFailed);
-          return result.Succeeded();
+          return result.SetStatus(eReturnStatusFailed);
         }
 
         // shift off the index
@@ -1211,21 +1184,18 @@ protected:
               result.AppendError("<path-prefix> can't be empty\n");
             else
               result.AppendError("<new-path-prefix> can't be empty\n");
-            result.SetStatus(eReturnStatusFailed);
-            return false;
+            return result.SetStatus(eReturnStatusFailed);
           }
         }
       } else {
         result.AppendError("insert requires at least three arguments\n");
-        result.SetStatus(eReturnStatusFailed);
-        return result.Succeeded();
+        return result.SetStatus(eReturnStatusFailed);
       }
 
     } else {
       result.AppendError("invalid target\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -1242,13 +1212,12 @@ public:
   ~CommandObjectTargetModulesSearchPathsList() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (target) {
       if (command.GetArgumentCount() != 0) {
         result.AppendError("list takes no arguments\n");
-        result.SetStatus(eReturnStatusFailed);
-        return result.Succeeded();
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       target->GetImageSearchPathList().Dump(&result.GetOutputStream());
@@ -1257,7 +1226,6 @@ protected:
       result.AppendError("invalid target\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -1288,13 +1256,12 @@ public:
   ~CommandObjectTargetModulesSearchPathsQuery() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (target) {
       if (command.GetArgumentCount() != 1) {
         result.AppendError("query requires one argument\n");
-        result.SetStatus(eReturnStatusFailed);
-        return result.Succeeded();
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       ConstString orig(command.GetArgumentAtIndex(0));
@@ -1309,7 +1276,6 @@ protected:
       result.AppendError("invalid target\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -1904,13 +1870,12 @@ public:
   ~CommandObjectTargetModulesDumpObjfile() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (target == nullptr) {
       result.AppendError("invalid target, create a debug target using the "
                          "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     uint32_t addr_byte_size = target->GetArchitecture().GetAddressByteSize();
@@ -1951,7 +1916,6 @@ protected:
       result.AppendError("no matching executable images found");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -2027,13 +1991,12 @@ public:
   };
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (target == nullptr) {
       result.AppendError("invalid target, create a debug target using the "
                          "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     } else {
       uint32_t num_dumped = 0;
 
@@ -2065,8 +2028,7 @@ protected:
           }
         } else {
           result.AppendError("the target has no associated executable images");
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       } else {
         // Dump specified images (by basename or fullpath)
@@ -2105,7 +2067,6 @@ protected:
         result.SetStatus(eReturnStatusFailed);
       }
     }
-    return result.Succeeded();
   }
 
   CommandOptions m_options;
@@ -2128,13 +2089,12 @@ public:
   ~CommandObjectTargetModulesDumpSections() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (target == nullptr) {
       result.AppendError("invalid target, create a debug target using the "
                          "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     } else {
       uint32_t num_dumped = 0;
 
@@ -2159,8 +2119,7 @@ protected:
           }
         } else {
           result.AppendError("the target has no associated executable images");
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       } else {
         // Dump specified images (by basename or fullpath)
@@ -2200,7 +2159,6 @@ protected:
         result.SetStatus(eReturnStatusFailed);
       }
     }
-    return result.Succeeded();
   }
 };
 
@@ -2221,20 +2179,18 @@ public:
   ~CommandObjectTargetModulesDumpClangAST() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (target == nullptr) {
       result.AppendError("invalid target, create a debug target using the "
                          "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     const size_t num_modules = target->GetImages().GetSize();
     if (num_modules == 0) {
       result.AppendError("the target has no associated executable images");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (command.GetArgumentCount() == 0) {
@@ -2250,7 +2206,6 @@ protected:
           sf->DumpClangAST(result.GetOutputStream());
       }
       result.SetStatus(eReturnStatusSuccessFinishResult);
-      return true;
     }
 
     // Dump specified ASTs (by basename or fullpath)
@@ -2277,7 +2232,6 @@ protected:
       }
     }
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 };
 
@@ -2298,13 +2252,12 @@ public:
   ~CommandObjectTargetModulesDumpSymfile() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (target == nullptr) {
       result.AppendError("invalid target, create a debug target using the "
                          "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     } else {
       uint32_t num_dumped = 0;
 
@@ -2331,8 +2284,7 @@ protected:
           }
         } else {
           result.AppendError("the target has no associated executable images");
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       } else {
         // Dump specified images (by basename or fullpath)
@@ -2366,7 +2318,6 @@ protected:
         result.SetStatus(eReturnStatusFailed);
       }
     }
-    return result.Succeeded();
   }
 };
 
@@ -2390,7 +2341,7 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = m_exe_ctx.GetTargetPtr();
     uint32_t total_num_dumped = 0;
 
@@ -2400,8 +2351,7 @@ protected:
 
     if (command.GetArgumentCount() == 0) {
       result.AppendError("file option must be specified.");
-      result.SetStatus(eReturnStatusFailed);
-      return result.Succeeded();
+      return result.SetStatus(eReturnStatusFailed);
     } else {
       // Dump specified images (by basename or fullpath)
       const char *arg_cstr;
@@ -2441,7 +2391,6 @@ protected:
       result.AppendError("no source filenames matched any command arguments");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
   class CommandOptions : public Options {
@@ -2542,13 +2491,12 @@ protected:
   OptionGroupUUID m_uuid_option_group;
   OptionGroupFile m_symbol_file;
 
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (target == nullptr) {
       result.AppendError("invalid target, create a debug target using the "
                          "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     } else {
       bool flush = false;
 
@@ -2566,8 +2514,7 @@ protected:
             ModuleSP module_sp(target->GetOrCreateModule(module_spec,
                                                  true /* notify */));
             if (module_sp) {
-              result.SetStatus(eReturnStatusSuccessFinishResult);
-              return true;
+              return result.SetStatus(eReturnStatusSuccessFinishResult);
             } else {
               StreamString strm;
               module_spec.GetUUID().Dump(&strm);
@@ -2591,8 +2538,7 @@ protected:
                                              "or symbol file with UUID %s",
                                              strm.GetData());
               }
-              result.SetStatus(eReturnStatusFailed);
-              return false;
+              return result.SetStatus(eReturnStatusFailed);
             }
           } else {
             StreamString strm;
@@ -2600,14 +2546,12 @@ protected:
             result.AppendErrorWithFormat(
                 "Unable to locate the executable or symbol file with UUID %s",
                 strm.GetData());
-            result.SetStatus(eReturnStatusFailed);
-            return false;
+            return result.SetStatus(eReturnStatusFailed);
           }
         } else {
           result.AppendError(
               "one or more executable image paths must be specified");
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       } else {
         for (auto &entry : args.entries()) {
@@ -2635,8 +2579,7 @@ protected:
               else
                 result.AppendErrorWithFormat("unsupported module: %s",
                                              entry.c_str());
-              result.SetStatus(eReturnStatusFailed);
-              return false;
+              return result.SetStatus(eReturnStatusFailed);
             } else {
               flush = true;
             }
@@ -2663,8 +2606,6 @@ protected:
           process->Flush();
       }
     }
-
-    return result.Succeeded();
   }
 };
 
@@ -2705,15 +2646,14 @@ public:
   Options *GetOptions() override { return &m_option_group; }
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     const bool load = m_load_option.GetOptionValue().GetCurrentValue();
     const bool set_pc = m_pc_option.GetOptionValue().GetCurrentValue();
     if (target == nullptr) {
       result.AppendError("invalid target, create a debug target using the "
                          "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     } else {
       const size_t argc = args.GetArgumentCount();
       ModuleSpec module_spec;
@@ -2785,16 +2725,14 @@ protected:
                   } else {
                     result.AppendError("one or more section name + load "
                                        "address pair must be specified");
-                    result.SetStatus(eReturnStatusFailed);
-                    return false;
+                    return result.SetStatus(eReturnStatusFailed);
                   }
                 } else {
                   if (m_slide_option.GetOptionValue().OptionWasSet()) {
                     result.AppendError("The \"--slide <offset>\" option can't "
                                        "be used in conjunction with setting "
                                        "section load addresses.\n");
-                    result.SetStatus(eReturnStatusFailed);
-                    return false;
+                    return result.SetStatus(eReturnStatusFailed);
                   }
 
                   for (size_t i = 0; i < argc; i += 2) {
@@ -2864,22 +2802,22 @@ protected:
                   Address file_entry = objfile->GetEntryPointAddress();
                   if (!process) {
                     result.AppendError("No process");
-                    return false;
+                    return result.SetStatus(eReturnStatusFailed);
                   }
                   if (set_pc && !file_entry.IsValid()) {
                     result.AppendError("No entry address in object file");
-                    return false;
+                    return result.SetStatus(eReturnStatusFailed);
                   }
                   std::vector<ObjectFile::LoadableData> loadables(
                       objfile->GetLoadableData(*target));
                   if (loadables.size() == 0) {
                     result.AppendError("No loadable sections");
-                    return false;
+                    return result.SetStatus(eReturnStatusFailed);
                   }
                   Status error = process->WriteObjectFile(std::move(loadables));
                   if (error.Fail()) {
                     result.AppendError(error.AsCString());
-                    return false;
+                    return result.SetStatus(eReturnStatusFailed);
                   }
                   if (set_pc) {
                     ThreadList &thread_list = process->GetThreadList();
@@ -2946,11 +2884,9 @@ protected:
       } else {
         result.AppendError("either the \"--file <module>\" or the \"--uuid "
                            "<uuid>\" option must be specified.\n");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
     }
-    return result.Succeeded();
   }
 
   OptionGroupOptions m_option_group;
@@ -3022,7 +2958,7 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     const bool use_global_module_list = m_options.m_use_global_module_list;
     // Define a local module list here to ensure it lives longer than any
@@ -3032,8 +2968,7 @@ protected:
     if (target == nullptr && !use_global_module_list) {
       result.AppendError("invalid target, create a debug target using the "
                          "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     } else {
       if (target) {
         uint32_t addr_byte_size =
@@ -3069,7 +3004,7 @@ protected:
               "Can only look up modules by address with a valid target.");
           result.SetStatus(eReturnStatusFailed);
         }
-        return result.Succeeded();
+        return;
       }
 
       size_t num_modules = 0;
@@ -3102,8 +3037,7 @@ protected:
             if (argc == 1) {
               result.AppendErrorWithFormat("no modules found that match '%s'",
                                            arg_cstr);
-              result.SetStatus(eReturnStatusFailed);
-              return false;
+              return result.SetStatus(eReturnStatusFailed);
             }
           }
         }
@@ -3149,11 +3083,9 @@ protected:
             result.AppendError(
                 "the target has no associated executable images");
         }
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
     }
-    return result.Succeeded();
   }
 
   void PrintModule(Target *target, Module *module, int indent, Stream &strm) {
@@ -3390,7 +3322,7 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = m_exe_ctx.GetTargetPtr();
     Process *process = m_exe_ctx.GetProcessPtr();
     ABI *abi = nullptr;
@@ -3400,22 +3332,19 @@ protected:
     if (process == nullptr) {
       result.AppendError(
           "You must have a process running to use this command.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     ThreadList threads(process->GetThreadList());
     if (threads.GetSize() == 0) {
       result.AppendError("The process must be paused to use this command.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     ThreadSP thread(threads.GetThreadAtIndex(0));
     if (!thread) {
       result.AppendError("The process must be paused to use this command.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     SymbolContextList sc_list;
@@ -3439,16 +3368,14 @@ protected:
     } else {
       result.AppendError(
           "address-expression or function name option must be specified.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     size_t num_matches = sc_list.GetSize();
     if (num_matches == 0) {
       result.AppendErrorWithFormat("no unwind data found that matches '%s'.",
                                    m_options.m_str.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     for (uint32_t idx = 0; idx < num_matches; idx++) {
@@ -3606,7 +3533,6 @@ protected:
 
       result.GetOutputStream().Printf("\n");
     }
-    return result.Succeeded();
   }
 
   CommandOptions m_options;
@@ -3890,13 +3816,12 @@ public:
   }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (target == nullptr) {
       result.AppendError("invalid target, create a debug target using the "
                          "'target create' command");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     } else {
       bool syntax_error = false;
       uint32_t i;
@@ -3915,10 +3840,8 @@ protected:
         if (LookupHere(m_interpreter, result, syntax_error)) {
           result.GetOutputStream().EOL();
           num_successful_lookups++;
-          if (!m_options.m_print_all) {
-            result.SetStatus(eReturnStatusSuccessFinishResult);
-            return result.Succeeded();
-          }
+          if (!m_options.m_print_all)
+            return result.SetStatus(eReturnStatusSuccessFinishResult);
         }
 
         // Dump all sections for all other modules
@@ -3942,8 +3865,7 @@ protected:
           }
         } else {
           result.AppendError("the target has no associated executable images");
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       } else {
         // Dump specified images (by basename or fullpath)
@@ -3976,7 +3898,6 @@ protected:
       else
         result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
   CommandOptions m_options;
@@ -4263,7 +4184,7 @@ protected:
     return false;
   }
 
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     Target *target = m_exe_ctx.GetTargetPtr();
     result.SetStatus(eReturnStatusFailed);
     bool flush = false;
@@ -4427,7 +4348,6 @@ protected:
       if (process)
         process->Flush();
     }
-    return result.Succeeded();
   }
 
   OptionGroupOptions m_option_group;
@@ -4669,7 +4589,7 @@ protected:
     io_handler.SetIsDone(true);
   }
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     m_stop_hook_sp.reset();
 
     Target &target = GetSelectedOrDummyTarget();
@@ -4758,8 +4678,6 @@ protected:
                       // into our IOHandlerDelegate functions
       }
       result.SetStatus(eReturnStatusSuccessFinishNoResult);
-
-    return result.Succeeded();
   }
 
 private:
@@ -4781,14 +4699,13 @@ public:
   ~CommandObjectTargetStopHookDelete() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target &target = GetSelectedOrDummyTarget();
     // FIXME: see if we can use the breakpoint id style parser?
     size_t num_args = command.GetArgumentCount();
     if (num_args == 0) {
       if (!m_interpreter.Confirm("Delete all stop hooks?", true)) {
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       } else {
         target.RemoveAllStopHooks();
       }
@@ -4800,20 +4717,17 @@ protected:
         if (!success) {
           result.AppendErrorWithFormat("invalid stop hook id: \"%s\".\n",
                                        command.GetArgumentAtIndex(i));
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
         success = target.RemoveStopHookByID(user_id);
         if (!success) {
           result.AppendErrorWithFormat("unknown stop hook id: \"%s\".\n",
                                        command.GetArgumentAtIndex(i));
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       }
     }
-      result.SetStatus(eReturnStatusSuccessFinishNoResult);
-    return result.Succeeded();
+    result.SetStatus(eReturnStatusSuccessFinishNoResult);
   }
 };
 
@@ -4832,7 +4746,7 @@ public:
   ~CommandObjectTargetStopHookEnableDisable() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target &target = GetSelectedOrDummyTarget();
     // FIXME: see if we can use the breakpoint id style parser?
     size_t num_args = command.GetArgumentCount();
@@ -4847,20 +4761,17 @@ protected:
         if (!success) {
           result.AppendErrorWithFormat("invalid stop hook id: \"%s\".\n",
                                        command.GetArgumentAtIndex(i));
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
         success = target.SetStopHookActiveStateByID(user_id, m_enable);
         if (!success) {
           result.AppendErrorWithFormat("unknown stop hook id: \"%s\".\n",
                                        command.GetArgumentAtIndex(i));
-          result.SetStatus(eReturnStatusFailed);
-          return false;
+          return result.SetStatus(eReturnStatusFailed);
         }
       }
     }
-      result.SetStatus(eReturnStatusSuccessFinishNoResult);
-    return result.Succeeded();
+    result.SetStatus(eReturnStatusSuccessFinishNoResult);
   }
 
 private:
@@ -4881,7 +4792,7 @@ public:
   ~CommandObjectTargetStopHookList() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target &target = GetSelectedOrDummyTarget();
 
     size_t num_hooks = target.GetNumStopHooks();
@@ -4897,7 +4808,6 @@ protected:
       }
     }
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return result.Succeeded();
   }
 };
 

@@ -898,7 +898,7 @@ public:
 
   ~CommandObjectProcessKDPPacketSend() {}
 
-  bool DoExecute(Args &command, CommandReturnObject &result) {
+  void DoExecute(Args &command, CommandReturnObject &result) {
     const size_t argc = command.GetArgumentCount();
     if (argc == 0) {
       if (!m_command_byte.GetOptionValue().OptionWasSet()) {

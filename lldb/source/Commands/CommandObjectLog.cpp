@@ -135,12 +135,12 @@ public:
   };
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     if (args.GetArgumentCount() < 2) {
       result.AppendErrorWithFormat(
           "%s takes a log channel and one or more log types.\n",
           m_cmd_name.c_str());
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Store into a std::string since we're about to shift the channel off.
@@ -163,7 +163,6 @@ protected:
       result.SetStatus(eReturnStatusSuccessFinishNoResult);
     else
       result.SetStatus(eReturnStatusFailed);
-    return result.Succeeded();
   }
 
   CommandOptions m_options;
@@ -202,12 +201,12 @@ public:
   ~CommandObjectLogDisable() override = default;
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     if (args.empty()) {
       result.AppendErrorWithFormat(
           "%s takes a log channel and one or more log types.\n",
           m_cmd_name.c_str());
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     const std::string channel = args[0].ref;
@@ -223,7 +222,6 @@ protected:
         result.SetStatus(eReturnStatusSuccessFinishNoResult);
       result.GetErrorStream() << error_stream.str();
     }
-    return result.Succeeded();
   }
 };
 
@@ -253,7 +251,7 @@ public:
   ~CommandObjectLogList() override = default;
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     std::string output;
     llvm::raw_string_ostream output_stream(output);
     if (args.empty()) {
@@ -268,7 +266,6 @@ protected:
         result.SetStatus(eReturnStatusSuccessFinishResult);
     }
     result.GetOutputStream() << output_stream.str();
-    return result.Succeeded();
   }
 };
 
@@ -285,7 +282,7 @@ public:
   ~CommandObjectLogTimer() override = default;
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     result.SetStatus(eReturnStatusFailed);
 
     if (args.GetArgumentCount() == 1) {
@@ -333,7 +330,6 @@ protected:
       result.AppendError("Missing subcommand");
       result.AppendErrorWithFormat("Usage: %s\n", m_cmd_syntax.c_str());
     }
-    return result.Succeeded();
   }
 };
 

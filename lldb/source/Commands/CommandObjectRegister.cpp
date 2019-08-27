@@ -148,7 +148,7 @@ public:
   }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Stream &strm = result.GetOutputStream();
     RegisterContext *reg_ctx = m_exe_ctx.GetRegisterContext();
 
@@ -221,7 +221,6 @@ protected:
         }
       }
     }
-    return result.Succeeded();
   }
 
   class CommandOptions : public OptionGroup {
@@ -326,7 +325,7 @@ public:
   ~CommandObjectRegisterWrite() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     DataExtractor reg_data;
     RegisterContext *reg_ctx = m_exe_ctx.GetRegisterContext();
 
@@ -356,8 +355,7 @@ protected:
             // Toss all frames and anything else in the thread after a register
             // has been written.
             m_exe_ctx.GetThreadRef().Flush();
-            result.SetStatus(eReturnStatusSuccessFinishNoResult);
-            return true;
+            return result.SetStatus(eReturnStatusSuccessFinishNoResult);
           }
         }
         if (error.AsCString()) {
@@ -377,7 +375,6 @@ protected:
         result.SetStatus(eReturnStatusFailed);
       }
     }
-    return result.Succeeded();
   }
 };
 

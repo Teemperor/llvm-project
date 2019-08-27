@@ -37,7 +37,7 @@ public:
   void HandleCompletion(CompletionRequest &request) override;
 
 protected:
-  bool DoExecute(llvm::StringRef command, CommandReturnObject &result) override;
+  void DoExecute(llvm::StringRef command, CommandReturnObject &result) override;
 
   struct Entry {
     RegularExpression regex;

@@ -166,29 +166,27 @@ insert-before or insert-after.");
   }
 
 protected:
-  bool DoExecute(llvm::StringRef command,
+  void DoExecute(llvm::StringRef command,
                  CommandReturnObject &result) override {
     Args cmd_args(command);
 
     // Process possible options.
     if (!ParseOptions(cmd_args, result))
-      return false;
+      return;
 
     const size_t min_argc = m_options.m_force ? 1 : 2;
     const size_t argc = cmd_args.GetArgumentCount();
 
     if ((argc < min_argc) && (!m_options.m_global)) {
       result.AppendError("'settings set' takes more arguments");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     const char *var_name = cmd_args.GetArgumentAtIndex(0);
     if ((var_name == nullptr) || (var_name[0] == '\0')) {
       result.AppendError(
           "'settings set' command requires a valid variable name");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // A missing value corresponds to clearing the setting when "force" is
@@ -199,9 +197,8 @@ protected:
       if (error.Fail()) {
         result.AppendError(error.AsCString());
         result.SetStatus(eReturnStatusFailed);
-        return false;
       }
-      return result.Succeeded();
+      return;
     }
 
     // Split the raw command into var_name and value pair.
@@ -231,12 +228,9 @@ protected:
     if (error.Fail()) {
       result.AppendError(error.AsCString());
       result.SetStatus(eReturnStatusFailed);
-      return false;
     } else {
       result.SetStatus(eReturnStatusSuccessFinishResult);
     }
-
-    return result.Succeeded();
   }
 
 private:
@@ -278,7 +272,7 @@ public:
   }
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     result.SetStatus(eReturnStatusSuccessFinishResult);
 
     if (!args.empty()) {
@@ -297,8 +291,6 @@ protected:
       GetDebugger().DumpAllPropertyValues(&m_exe_ctx, result.GetOutputStream(),
                                           OptionValue::eDumpGroupValue);
     }
-
-    return result.Succeeded();
   }
 };
 
@@ -375,7 +367,7 @@ public:
   };
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     FileSpec file_spec(m_options.m_filename);
     FileSystem::Instance().Resolve(file_spec);
     std::string path(file_spec.GetPath());
@@ -391,8 +383,7 @@ protected:
 
     if (!out_file.GetFile().IsValid()) {
       result.AppendErrorWithFormat("%s: unable to write to file", path.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Exporting should not be context sensitive.
@@ -401,7 +392,7 @@ protected:
     if (args.empty()) {
       GetDebugger().DumpAllPropertyValues(&clean_ctx, out_file,
                                           OptionValue::eDumpGroupExport);
-      return result.Succeeded();
+      return;
     }
 
     for (const auto &arg : args) {
@@ -412,8 +403,6 @@ protected:
         result.SetStatus(eReturnStatusFailed);
       }
     }
-
-    return result.Succeeded();
   }
 
 private:
@@ -472,7 +461,7 @@ public:
   };
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     FileSpec file(m_options.m_filename);
     FileSystem::Instance().Resolve(file);
     ExecutionContext clean_ctx;
@@ -483,7 +472,6 @@ protected:
     options.SetPrintErrors(true);
     options.SetStopOnError(false);
     m_interpreter.HandleCommandsFromFile(file, &clean_ctx, options, result);
-    return result.Succeeded();
   }
 
 private:
@@ -529,7 +517,7 @@ public:
   }
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     result.SetStatus(eReturnStatusSuccessFinishResult);
 
     const bool will_modify = false;
@@ -559,8 +547,6 @@ protected:
       GetDebugger().DumpAllDescriptions(m_interpreter,
                                         result.GetOutputStream());
     }
-
-    return result.Succeeded();
   }
 };
 
@@ -617,7 +603,7 @@ public:
   }
 
 protected:
-  bool DoExecute(llvm::StringRef command,
+  void DoExecute(llvm::StringRef command,
                  CommandReturnObject &result) override {
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
 
@@ -625,7 +611,7 @@ protected:
 
     // Process possible options.
     if (!ParseOptions(cmd_args, result))
-      return false;
+      return;
 
     const size_t argc = cmd_args.GetArgumentCount();
     if (argc == 0) {
@@ -633,16 +619,14 @@ protected:
                          "or an array followed by one or more indexes, or a "
                          "dictionary followed by one or more key names to "
                          "remove");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     const char *var_name = cmd_args.GetArgumentAtIndex(0);
     if ((var_name == nullptr) || (var_name[0] == '\0')) {
       result.AppendError(
           "'settings remove' command requires a valid variable name");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Split the raw command into var_name and value pair.
@@ -655,11 +639,8 @@ protected:
         &m_exe_ctx, eVarSetOperationRemove, var_name, var_value_cstr));
     if (error.Fail()) {
       result.AppendError(error.AsCString());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
-
-    return result.Succeeded();
   }
 };
 
@@ -730,7 +711,7 @@ public:
   }
 
 protected:
-  bool DoExecute(llvm::StringRef command,
+  void DoExecute(llvm::StringRef command,
                  CommandReturnObject &result) override {
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
 
@@ -739,8 +720,7 @@ protected:
     if ((var_name == nullptr) || (var_name[0] == '\0')) {
       result.AppendError("'settings replace' command requires a valid variable "
                          "name; No value supplied");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Split the raw command into var_name, index_value, and value triple.
@@ -753,13 +733,10 @@ protected:
         &m_exe_ctx, eVarSetOperationReplace, var_name, var_value_cstr));
     if (error.Fail()) {
       result.AppendError(error.AsCString());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     } else {
       result.SetStatus(eReturnStatusSuccessFinishNoResult);
     }
-
-    return result.Succeeded();
   }
 };
 
@@ -826,7 +803,7 @@ public:
   }
 
 protected:
-  bool DoExecute(llvm::StringRef command,
+  void DoExecute(llvm::StringRef command,
                  CommandReturnObject &result) override {
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
 
@@ -835,16 +812,14 @@ protected:
 
     if (argc < 3) {
       result.AppendError("'settings insert-before' takes more arguments");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     const char *var_name = cmd_args.GetArgumentAtIndex(0);
     if ((var_name == nullptr) || (var_name[0] == '\0')) {
       result.AppendError("'settings insert-before' command requires a valid "
                          "variable name; No value supplied");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Split the raw command into var_name, index_value, and value triple.
@@ -857,11 +832,8 @@ protected:
         &m_exe_ctx, eVarSetOperationInsertBefore, var_name, var_value_cstr));
     if (error.Fail()) {
       result.AppendError(error.AsCString());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
-
-    return result.Succeeded();
   }
 };
 
@@ -927,7 +899,7 @@ public:
   }
 
 protected:
-  bool DoExecute(llvm::StringRef command,
+  void DoExecute(llvm::StringRef command,
                  CommandReturnObject &result) override {
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
 
@@ -936,16 +908,14 @@ protected:
 
     if (argc < 3) {
       result.AppendError("'settings insert-after' takes more arguments");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     const char *var_name = cmd_args.GetArgumentAtIndex(0);
     if ((var_name == nullptr) || (var_name[0] == '\0')) {
       result.AppendError("'settings insert-after' command requires a valid "
                          "variable name; No value supplied");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Split the raw command into var_name, index_value, and value triple.
@@ -958,11 +928,8 @@ protected:
         &m_exe_ctx, eVarSetOperationInsertAfter, var_name, var_value_cstr));
     if (error.Fail()) {
       result.AppendError(error.AsCString());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
-
-    return result.Succeeded();
   }
 };
 
@@ -1017,7 +984,7 @@ public:
   }
 
 protected:
-  bool DoExecute(llvm::StringRef command,
+  void DoExecute(llvm::StringRef command,
                  CommandReturnObject &result) override {
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
     Args cmd_args(command);
@@ -1025,16 +992,14 @@ protected:
 
     if (argc < 2) {
       result.AppendError("'settings append' takes more arguments");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     const char *var_name = cmd_args.GetArgumentAtIndex(0);
     if ((var_name == nullptr) || (var_name[0] == '\0')) {
       result.AppendError("'settings append' command requires a valid variable "
                          "name; No value supplied");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Do not perform cmd_args.Shift() since StringRef is manipulating the raw
@@ -1050,11 +1015,8 @@ protected:
         &m_exe_ctx, eVarSetOperationAppend, var_name, var_value_cstr));
     if (error.Fail()) {
       result.AppendError(error.AsCString());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
-
-    return result.Succeeded();
   }
 };
 
@@ -1094,33 +1056,28 @@ public:
   }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
     const size_t argc = command.GetArgumentCount();
 
     if (argc != 1) {
       result.AppendError("'settings clear' takes exactly one argument");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     const char *var_name = command.GetArgumentAtIndex(0);
     if ((var_name == nullptr) || (var_name[0] == '\0')) {
       result.AppendError("'settings clear' command requires a valid variable "
                          "name; No value supplied");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     Status error(GetDebugger().SetPropertyValue(
         &m_exe_ctx, eVarSetOperationClear, var_name, llvm::StringRef()));
     if (error.Fail()) {
       result.AppendError(error.AsCString());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
-
-    return result.Succeeded();
   }
 };
 

@@ -23,7 +23,7 @@ public:
   ~CommandObjectScript() override;
 
 protected:
-  bool DoExecute(llvm::StringRef command, CommandReturnObject &result) override;
+  void DoExecute(llvm::StringRef command, CommandReturnObject &result) override;
 };
 
 } // namespace lldb_private

@@ -4004,13 +4004,12 @@ public:
 
   ~CommandObjectRenderScriptRuntimeModuleDump() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     RenderScriptRuntime *runtime = llvm::cast<RenderScriptRuntime>(
         m_exe_ctx.GetProcessPtr()->GetLanguageRuntime(
             eLanguageTypeExtRenderScript));
     runtime->DumpModules(result.GetOutputStream());
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 };
 
@@ -4039,13 +4038,12 @@ public:
 
   ~CommandObjectRenderScriptRuntimeKernelList() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     RenderScriptRuntime *runtime = llvm::cast<RenderScriptRuntime>(
         m_exe_ctx.GetProcessPtr()->GetLanguageRuntime(
             eLanguageTypeExtRenderScript));
     runtime->DumpKernels(result.GetOutputStream());
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 };
 
@@ -4174,14 +4172,13 @@ public:
 
   Options *GetOptions() override { return &m_options; }
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     const size_t argc = command.GetArgumentCount();
     if (argc < 1) {
       result.AppendErrorWithFormat("'%s' takes 1 argument of reduction name, "
                                    "and an optional kernel type list",
                                    m_cmd_name.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     RenderScriptRuntime *runtime = static_cast<RenderScriptRuntime *>(
@@ -4194,13 +4191,11 @@ public:
     auto coord = m_options.m_have_coord ? &m_options.m_coord : nullptr;
     if (!runtime->PlaceBreakpointOnReduction(target, outstream, name, coord,
                                              m_options.m_kernel_types)) {
-      result.SetStatus(eReturnStatusFailed);
       result.AppendError("Error: unable to place breakpoint on reduction");
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
     result.AppendMessage("Breakpoint(s) created");
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 
 private:
@@ -4276,14 +4271,13 @@ public:
     bool m_have_coord;
   };
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     const size_t argc = command.GetArgumentCount();
     if (argc < 1) {
       result.AppendErrorWithFormat(
           "'%s' takes 1 argument of kernel name, and an optional coordinate.",
           m_cmd_name.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     RenderScriptRuntime *runtime = llvm::cast<RenderScriptRuntime>(
@@ -4295,15 +4289,13 @@ public:
     auto name = command.GetArgumentAtIndex(0);
     auto coord = m_options.m_have_coord ? &m_options.m_coord : nullptr;
     if (!runtime->PlaceBreakpointOnKernel(target, outstream, name, coord)) {
-      result.SetStatus(eReturnStatusFailed);
       result.AppendErrorWithFormat(
           "Error: unable to set breakpoint on kernel '%s'", name);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     result.AppendMessage("Breakpoint(s) created");
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 
 private:
@@ -4328,13 +4320,12 @@ public:
 
   ~CommandObjectRenderScriptRuntimeKernelBreakpointAll() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     const size_t argc = command.GetArgumentCount();
     if (argc != 1) {
       result.AppendErrorWithFormat(
           "'%s' takes 1 argument of 'enable' or 'disable'", m_cmd_name.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     RenderScriptRuntime *runtime = static_cast<RenderScriptRuntime *>(
@@ -4352,14 +4343,12 @@ public:
     } else {
       result.AppendErrorWithFormat(
           "Argument must be either 'enable' or 'disable'");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     runtime->SetBreakAllKernels(do_break, m_exe_ctx.GetTargetSP());
 
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 };
 
@@ -4395,7 +4384,7 @@ public:
 
   ~CommandObjectRenderScriptRuntimeKernelCoordinate() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     RSCoordinate coord{};
     bool success = RenderScriptRuntime::GetKernelCoordinate(
         coord, m_exe_ctx.GetThreadPtr());
@@ -4410,7 +4399,6 @@ public:
       stream.EOL();
       result.SetStatus(eReturnStatusFailed);
     }
-    return true;
   }
 };
 
@@ -4469,13 +4457,12 @@ public:
 
   ~CommandObjectRenderScriptRuntimeContextDump() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     RenderScriptRuntime *runtime = llvm::cast<RenderScriptRuntime>(
         m_exe_ctx.GetProcessPtr()->GetLanguageRuntime(
             eLanguageTypeExtRenderScript));
     runtime->DumpContexts(result.GetOutputStream());
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 };
 
@@ -4553,14 +4540,13 @@ public:
     FileSpec m_outfile;
   };
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     const size_t argc = command.GetArgumentCount();
     if (argc < 1) {
       result.AppendErrorWithFormat("'%s' takes 1 argument, an allocation ID. "
                                    "As well as an optional -f argument",
                                    m_cmd_name.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     RenderScriptRuntime *runtime = static_cast<RenderScriptRuntime *>(
@@ -4574,8 +4560,7 @@ public:
     if (!success) {
       result.AppendErrorWithFormat("invalid allocation id argument '%s'",
                                    id_cstr);
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     Stream *output_strm = nullptr;
@@ -4595,8 +4580,7 @@ public:
         result.GetOutputStream().EOL();
       } else {
         result.AppendErrorWithFormat("Couldn't open file '%s'", path.c_str());
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
     } else
       output_strm = &result.GetOutputStream();
@@ -4609,8 +4593,6 @@ public:
       result.SetStatus(eReturnStatusSuccessFinishResult);
     else
       result.SetStatus(eReturnStatusFailed);
-
-    return true;
   }
 
 private:
@@ -4671,14 +4653,13 @@ public:
     uint32_t m_id;
   };
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     RenderScriptRuntime *runtime = static_cast<RenderScriptRuntime *>(
         m_exe_ctx.GetProcessPtr()->GetLanguageRuntime(
             eLanguageTypeExtRenderScript));
     runtime->ListAllocations(result.GetOutputStream(), m_exe_ctx.GetFramePtr(),
                              m_options.m_id);
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 
 private:
@@ -4698,14 +4679,13 @@ public:
 
   ~CommandObjectRenderScriptRuntimeAllocationLoad() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     const size_t argc = command.GetArgumentCount();
     if (argc != 2) {
       result.AppendErrorWithFormat(
           "'%s' takes 2 arguments, an allocation ID and filename to read from.",
           m_cmd_name.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     RenderScriptRuntime *runtime = static_cast<RenderScriptRuntime *>(
@@ -4719,8 +4699,7 @@ public:
     if (!success) {
       result.AppendErrorWithFormat("invalid allocation id argument '%s'",
                                    id_cstr);
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     const char *path = command.GetArgumentAtIndex(1);
@@ -4731,8 +4710,6 @@ public:
       result.SetStatus(eReturnStatusSuccessFinishResult);
     else
       result.SetStatus(eReturnStatusFailed);
-
-    return true;
   }
 };
 
@@ -4749,14 +4726,13 @@ public:
 
   ~CommandObjectRenderScriptRuntimeAllocationSave() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     const size_t argc = command.GetArgumentCount();
     if (argc != 2) {
       result.AppendErrorWithFormat(
           "'%s' takes 2 arguments, an allocation ID and filename to read from.",
           m_cmd_name.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     RenderScriptRuntime *runtime = static_cast<RenderScriptRuntime *>(
@@ -4770,8 +4746,7 @@ public:
     if (!success) {
       result.AppendErrorWithFormat("invalid allocation id argument '%s'",
                                    id_cstr);
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     const char *path = command.GetArgumentAtIndex(1);
@@ -4782,8 +4757,6 @@ public:
       result.SetStatus(eReturnStatusSuccessFinishResult);
     else
       result.SetStatus(eReturnStatusFailed);
-
-    return true;
   }
 };
 
@@ -4800,7 +4773,7 @@ public:
 
   ~CommandObjectRenderScriptRuntimeAllocationRefresh() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     RenderScriptRuntime *runtime = static_cast<RenderScriptRuntime *>(
         m_exe_ctx.GetProcessPtr()->GetLanguageRuntime(
             eLanguageTypeExtRenderScript));
@@ -4810,10 +4783,8 @@ public:
 
     if (success) {
       result.SetStatus(eReturnStatusSuccessFinishResult);
-      return true;
     } else {
       result.SetStatus(eReturnStatusFailed);
-      return false;
     }
   }
 };
@@ -4861,13 +4832,12 @@ public:
 
   ~CommandObjectRenderScriptRuntimeStatus() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     RenderScriptRuntime *runtime = llvm::cast<RenderScriptRuntime>(
         m_exe_ctx.GetProcessPtr()->GetLanguageRuntime(
             eLanguageTypeExtRenderScript));
     runtime->DumpStatus(result.GetOutputStream());
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 };
 

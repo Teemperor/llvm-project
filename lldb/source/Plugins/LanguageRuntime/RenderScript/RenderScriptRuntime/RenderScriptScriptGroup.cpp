@@ -43,7 +43,7 @@ public:
 
   ~CommandObjectRenderScriptScriptGroupBreakpointSet() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Stream &stream = result.GetOutputStream();
     RenderScriptRuntime *runtime = static_cast<RenderScriptRuntime *>(
         m_exe_ctx.GetProcessPtr()->GetLanguageRuntime(
@@ -65,7 +65,6 @@ public:
       runtime->PlaceBreakpointOnScriptGroup(target, stream, name, stop_on_all);
     }
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 };
 
@@ -100,7 +99,7 @@ public:
 
   ~CommandObjectRenderScriptScriptGroupList() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Stream &stream = result.GetOutputStream();
     RenderScriptRuntime *runtime = static_cast<RenderScriptRuntime *>(
         m_exe_ctx.GetProcessPtr()->GetLanguageRuntime(
@@ -131,7 +130,6 @@ public:
     }
     stream.IndentLess();
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 };
 

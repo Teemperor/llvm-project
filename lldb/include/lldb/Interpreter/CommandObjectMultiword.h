@@ -55,7 +55,7 @@ public:
   const char *GetRepeatCommand(Args &current_command_args,
                                uint32_t index) override;
 
-  bool Execute(const char *args_string, CommandReturnObject &result) override;
+  void Execute(const char *args_string, CommandReturnObject &result) override;
 
   bool IsRemovable() const override { return m_can_be_removed; }
 
@@ -121,7 +121,7 @@ public:
   const char *GetRepeatCommand(Args &current_command_args,
                                uint32_t index) override;
 
-  bool Execute(const char *args_string, CommandReturnObject &result) override;
+  void Execute(const char *args_string, CommandReturnObject &result) override;
 
 protected:
   // These two want to iterate over the subcommand dictionary.

@@ -22,23 +22,20 @@ namespace lldb {
 class ChildCommand : public lldb::SBCommandPluginInterface
 {
 public:
-    virtual bool
+    virtual void
     DoExecute (lldb::SBDebugger debugger,
                char** command,
                lldb::SBCommandReturnObject &result)
     {
-        if (command)
-        {
-            const char* arg = *command;
-            while (arg)
-            {
-                result.Printf("%s ",arg);
-                arg = *(++command);
-            }
-            result.Printf("\n");
-            return true;
+        if (!command)
+          return result.SetStatus(eReturnStatusFailed);
+
+        const char* arg = *command;
+        while (arg) {
+          result.Printf("%s ",arg);
+          arg = *(++command);
         }
-        return false;
+        result.Printf("\n");
     }
     
 };

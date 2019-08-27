@@ -25,18 +25,16 @@ public:
   ~CommandObjectStatsEnable() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target &target = GetSelectedOrDummyTarget();
 
     if (target.GetCollectingStats()) {
       result.AppendError("statistics already enabled");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     target.SetCollectingStats(true);
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 };
 
@@ -50,18 +48,16 @@ public:
   ~CommandObjectStatsDisable() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target &target = GetSelectedOrDummyTarget();
 
     if (!target.GetCollectingStats()) {
       result.AppendError("need to enable statistics before disabling them");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     target.SetCollectingStats(false);
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 };
 
@@ -74,7 +70,7 @@ public:
   ~CommandObjectStatsDump() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target &target = GetSelectedOrDummyTarget();
 
     uint32_t i = 0;
@@ -87,7 +83,6 @@ protected:
       i += 1;
     }
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 };
 

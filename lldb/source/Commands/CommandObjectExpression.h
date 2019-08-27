@@ -64,7 +64,7 @@ protected:
   bool IOHandlerIsInputComplete(IOHandler &io_handler,
                                 StringList &lines) override;
 
-  bool DoExecute(llvm::StringRef command, CommandReturnObject &result) override;
+  void DoExecute(llvm::StringRef command, CommandReturnObject &result) override;
 
   bool EvaluateExpression(llvm::StringRef expr, Stream *output_stream,
                           Stream *error_stream,

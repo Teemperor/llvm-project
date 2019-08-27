@@ -110,7 +110,7 @@ protected:
     OptionValueBoolean m_clear;
   };
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     if (m_options.m_clear.GetCurrentValue() &&
         m_options.m_clear.OptionWasSet()) {
       m_interpreter.GetCommandHistory().Clear();
@@ -172,7 +172,6 @@ protected:
                      stop_idx.second);
       }
     }
-    return result.Succeeded();
   }
 
   CommandOptions m_options;
@@ -274,13 +273,12 @@ protected:
     OptionValueBoolean m_stop_on_continue;
   };
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     if (command.GetArgumentCount() != 1) {
       result.AppendErrorWithFormat(
           "'%s' takes exactly one executable filename argument.\n",
           GetCommandName().str().c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     FileSpec cmd_file(command[0].ref);
@@ -318,7 +316,6 @@ protected:
       CommandInterpreterRunOptions options;
       m_interpreter.HandleCommandsFromFile(cmd_file, exe_ctx, options, result);
     }
-    return result.Succeeded();
   }
 
   CommandOptions m_options;
@@ -517,12 +514,10 @@ rather than using a positional placeholder:"
   ~CommandObjectCommandsAlias() override = default;
 
 protected:
-  bool DoExecute(llvm::StringRef raw_command_line,
+  void DoExecute(llvm::StringRef raw_command_line,
                  CommandReturnObject &result) override {
-    if (raw_command_line.empty()) {
-      result.AppendError("'command alias' requires at least two arguments");
-      return false;
-    }
+    if (raw_command_line.empty())
+      return result.AppendError("'command alias' requires at least two arguments");
 
     ExecutionContext exe_ctx = GetCommandInterpreter().GetExecutionContext();
     m_option_group.NotifyOptionParsingStarting(&exe_ctx);
@@ -533,15 +528,14 @@ protected:
     if (args_with_suffix.HasArgs())
       if (!ParseOptionsAndNotify(args_with_suffix.GetArgs(), result,
                                  m_option_group, exe_ctx))
-        return false;
+        return;
 
     llvm::StringRef raw_command_string(remainder);
     Args args(raw_command_string);
 
     if (args.GetArgumentCount() < 2) {
       result.AppendError("'command alias' requires at least two arguments");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Get the alias command.
@@ -553,8 +547,7 @@ protected:
         result.AppendWarning("if trying to pass options to 'command alias' add "
                              "a -- at the end of the options");
       }
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Strip the new alias name off 'raw_command_string'  (leave it on args,
@@ -567,8 +560,7 @@ protected:
         raw_command_string = raw_command_string.substr(pos);
     } else {
       result.AppendError("Error parsing command string.  No alias created.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Verify that the command is alias-able.
@@ -576,8 +568,7 @@ protected:
       result.AppendErrorWithFormat(
           "'%s' is a permanent debugger command and cannot be redefined.\n",
           args[0].c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Get CommandObject that is being aliased. The command name is read from
@@ -593,17 +584,15 @@ protected:
                                    "  No alias created.",
                                    original_raw_command_string.str().c_str());
       result.SetStatus(eReturnStatusFailed);
-      return false;
     } else if (!cmd_obj->WantsRawCommandString()) {
       // Note that args was initialized with the original command, and has not
       // been updated to this point. Therefore can we pass it to the version of
       // Execute that does not need/expect raw input in the alias.
-      return HandleAliasingNormalCommand(args, result);
+      HandleAliasingNormalCommand(args, result);
     } else {
-      return HandleAliasingRawCommand(alias_command, raw_command_string,
+      HandleAliasingRawCommand(alias_command, raw_command_string,
                                       *cmd_obj, result);
     }
-    return result.Succeeded();
   }
 
   bool HandleAliasingRawCommand(llvm::StringRef alias_command,
@@ -643,13 +632,12 @@ protected:
     return result.Succeeded();
   }
 
-  bool HandleAliasingNormalCommand(Args &args, CommandReturnObject &result) {
+  void HandleAliasingNormalCommand(Args &args, CommandReturnObject &result) {
     size_t argc = args.GetArgumentCount();
 
     if (argc < 2) {
       result.AppendError("'command alias' requires at least two arguments");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Save these in std::strings since we're going to shift them off.
@@ -666,8 +654,7 @@ protected:
       result.AppendErrorWithFormat(
           "'%s' is a permanent debugger command and cannot be redefined.\n",
           alias_command.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     CommandObjectSP command_obj_sp(
@@ -677,8 +664,7 @@ protected:
     if (!command_obj_sp) {
       result.AppendErrorWithFormat("'%s' is not an existing command.\n",
                                    actual_command.c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
     CommandObject *cmd_obj = command_obj_sp.get();
     CommandObject *sub_cmd_obj = nullptr;
@@ -694,8 +680,7 @@ protected:
             "'%s' is not a valid sub-command of '%s'.  "
             "Unable to create alias.\n",
             args[0].c_str(), actual_command.c_str());
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       sub_cmd_obj = subcommand_obj_sp.get();
@@ -734,11 +719,8 @@ protected:
       result.SetStatus(eReturnStatusSuccessFinishNoResult);
     } else {
       result.AppendError("Unable to create requested alias.\n");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
-
-    return result.Succeeded();
   }
 };
 
@@ -770,14 +752,13 @@ public:
   ~CommandObjectCommandsUnalias() override = default;
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     CommandObject::CommandMap::iterator pos;
     CommandObject *cmd_obj;
 
     if (args.empty()) {
       result.AppendError("must call 'unalias' with a valid alias");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     auto command_name = args[0].ref;
@@ -787,8 +768,7 @@ protected:
           "'%s' is not a known command.\nTry 'help' to see a "
           "current list of commands.\n",
           args[0].c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (m_interpreter.CommandExists(command_name)) {
@@ -802,8 +782,7 @@ protected:
             "'%s' is a permanent debugger command and cannot be removed.\n",
             args[0].c_str());
       }
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (!m_interpreter.RemoveAlias(command_name)) {
@@ -814,12 +793,10 @@ protected:
       else
         result.AppendErrorWithFormat("'%s' is not an existing alias.\n",
                                      args[0].c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
-    return result.Succeeded();
   }
 };
 
@@ -851,7 +828,7 @@ public:
   ~CommandObjectCommandsDelete() override = default;
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     CommandObject::CommandMap::iterator pos;
 
     if (args.empty()) {
@@ -870,20 +847,17 @@ protected:
           &error_msg_stream, command_name, llvm::StringRef(), llvm::StringRef(),
           generate_upropos, generate_type_lookup);
       result.AppendError(error_msg_stream.GetString());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (!m_interpreter.RemoveCommand(command_name)) {
       result.AppendErrorWithFormat(
           "'%s' is a permanent debugger command and cannot be removed.\n",
           args[0].c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
-    return true;
   }
 };
 
@@ -977,13 +951,12 @@ protected:
     }
   }
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     const size_t argc = command.GetArgumentCount();
     if (argc == 0) {
       result.AppendError("usage: 'command regex <command-name> "
                          "[s/<regex1>/<subst1>/ s/<regex2>/<subst2>/ ...]'\n");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     Status error;
@@ -1025,8 +998,6 @@ protected:
       result.AppendError(error.AsCString());
       result.SetStatus(eReturnStatusFailed);
     }
-
-    return result.Succeeded();
   }
 
   Status AppendRegexSubstitution(const llvm::StringRef &regex_sed,
@@ -1232,7 +1203,7 @@ public:
   }
 
 protected:
-  bool DoExecute(llvm::StringRef raw_command_line,
+  void DoExecute(llvm::StringRef raw_command_line,
                  CommandReturnObject &result) override {
     ScriptInterpreter *scripter = GetDebugger().GetScriptInterpreter();
 
@@ -1255,8 +1226,6 @@ protected:
           result.SetStatus(eReturnStatusSuccessFinishResult);
       }
     }
-
-    return result.Succeeded();
   }
 
 private:
@@ -1319,7 +1288,7 @@ public:
   }
 
 protected:
-  bool DoExecute(llvm::StringRef raw_command_line,
+  void DoExecute(llvm::StringRef raw_command_line,
                  CommandReturnObject &result) override {
     ScriptInterpreter *scripter = GetDebugger().GetScriptInterpreter();
 
@@ -1341,8 +1310,6 @@ protected:
           result.SetStatus(eReturnStatusSuccessFinishResult);
       }
     }
-
-    return result.Succeeded();
   }
 
 private:
@@ -1425,18 +1392,16 @@ protected:
     bool m_allow_reload;
   };
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     if (GetDebugger().GetScriptLanguage() != lldb::eScriptLanguagePython) {
       result.AppendError("only scripting language supported for module "
                          "importing is currently Python");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (command.empty()) {
       result.AppendError("command script import needs one or more arguments");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     for (auto &entry : command.entries()) {
@@ -1461,8 +1426,6 @@ protected:
         result.SetStatus(eReturnStatusFailed);
       }
     }
-
-    return result.Succeeded();
   }
 
   CommandOptions m_options;
@@ -1640,18 +1603,16 @@ protected:
   }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     if (GetDebugger().GetScriptLanguage() != lldb::eScriptLanguagePython) {
       result.AppendError("only scripting language supported for scripted "
                          "commands is currently Python");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (command.GetArgumentCount() != 1) {
       result.AppendError("'command script add' requires one argument");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Store the options in case we get multi-line input
@@ -1682,16 +1643,14 @@ protected:
       ScriptInterpreter *interpreter = GetDebugger().GetScriptInterpreter();
       if (!interpreter) {
         result.AppendError("cannot find ScriptInterpreter");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       auto cmd_obj_sp = interpreter->CreateScriptCommandObject(
           m_options.m_class_name.c_str());
       if (!cmd_obj_sp) {
         result.AppendError("cannot create helper object");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       CommandObjectSP new_cmd(new CommandObjectScriptingObject(
@@ -1703,8 +1662,6 @@ protected:
         result.SetStatus(eReturnStatusFailed);
       }
     }
-
-    return result.Succeeded();
   }
 
   CommandOptions m_options;
@@ -1723,12 +1680,10 @@ public:
 
   ~CommandObjectCommandsScriptList() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     m_interpreter.GetHelp(result, CommandInterpreter::eCommandTypesUserDef);
 
     result.SetStatus(eReturnStatusSuccessFinishResult);
-
-    return true;
   }
 };
 
@@ -1743,12 +1698,10 @@ public:
   ~CommandObjectCommandsScriptClear() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     m_interpreter.RemoveAllUser();
 
     result.SetStatus(eReturnStatusSuccessFinishResult);
-
-    return true;
   }
 };
 
@@ -1777,12 +1730,11 @@ public:
   ~CommandObjectCommandsScriptDelete() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
 
     if (command.GetArgumentCount() != 1) {
       result.AppendError("'command script delete' requires one argument");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     auto cmd_name = command[0].ref;
@@ -1790,13 +1742,11 @@ protected:
     if (cmd_name.empty() || !m_interpreter.HasUserCommands() ||
         !m_interpreter.UserCommandExists(cmd_name)) {
       result.AppendErrorWithFormat("command %s not found", command[0].c_str());
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     m_interpreter.RemoveUser(cmd_name);
     result.SetStatus(eReturnStatusSuccessFinishResult);
-    return true;
   }
 };
 

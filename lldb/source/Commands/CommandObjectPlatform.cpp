@@ -165,7 +165,7 @@ public:
   Options *GetOptions() override { return &m_option_group; }
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     if (args.GetArgumentCount() == 1) {
       const char *platform_name = args.GetArgumentAtIndex(0);
       if (platform_name && platform_name[0]) {
@@ -193,7 +193,6 @@ protected:
           "platform create takes a platform name as an argument\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
   OptionGroupOptions m_option_group;
@@ -211,7 +210,7 @@ public:
   ~CommandObjectPlatformList() override = default;
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     Stream &ostrm = result.GetOutputStream();
     ostrm.Printf("Available platforms:\n");
 
@@ -237,7 +236,6 @@ protected:
       result.SetStatus(eReturnStatusFailed);
     } else
       result.SetStatus(eReturnStatusSuccessFinishResult);
-    return result.Succeeded();
   }
 };
 
@@ -252,7 +250,7 @@ public:
   ~CommandObjectPlatformStatus() override = default;
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     Stream &ostrm = result.GetOutputStream();
 
     Target *target = GetDebugger().GetSelectedTarget().get();
@@ -270,7 +268,6 @@ protected:
       result.AppendError("no platform is currently selected\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -286,7 +283,7 @@ public:
   ~CommandObjectPlatformConnect() override = default;
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     Stream &ostrm = result.GetOutputStream();
 
     PlatformSP platform_sp(
@@ -310,7 +307,6 @@ protected:
       result.AppendError("no platform is currently selected\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
   Options *GetOptions() override {
@@ -337,7 +333,7 @@ public:
   ~CommandObjectPlatformDisconnect() override = default;
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     PlatformSP platform_sp(
         GetDebugger().GetPlatformList().GetSelectedPlatform());
     if (platform_sp) {
@@ -382,7 +378,6 @@ protected:
       result.AppendError("no platform is currently selected");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -404,7 +399,7 @@ public:
   ~CommandObjectPlatformSettings() override = default;
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     PlatformSP platform_sp(
         GetDebugger().GetPlatformList().GetSelectedPlatform());
     if (platform_sp) {
@@ -415,7 +410,6 @@ protected:
       result.AppendError("no platform is currently selected");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
   Options *GetOptions() override {
@@ -440,7 +434,7 @@ public:
 
   ~CommandObjectPlatformMkDir() override = default;
 
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     PlatformSP platform_sp(
         GetDebugger().GetPlatformList().GetSelectedPlatform());
     if (platform_sp) {
@@ -465,7 +459,6 @@ public:
       result.AppendError("no platform currently selected\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
   Options *GetOptions() override {
@@ -489,7 +482,7 @@ public:
 
   ~CommandObjectPlatformFOpen() override = default;
 
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     PlatformSP platform_sp(
         GetDebugger().GetPlatformList().GetSelectedPlatform());
     if (platform_sp) {
@@ -520,7 +513,6 @@ public:
       result.AppendError("no platform currently selected\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
   Options *GetOptions() override {
@@ -543,7 +535,7 @@ public:
 
   ~CommandObjectPlatformFClose() override = default;
 
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     PlatformSP platform_sp(
         GetDebugger().GetPlatformList().GetSelectedPlatform());
     if (platform_sp) {
@@ -564,7 +556,6 @@ public:
       result.AppendError("no platform currently selected\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -583,7 +574,7 @@ public:
 
   ~CommandObjectPlatformFRead() override = default;
 
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     PlatformSP platform_sp(
         GetDebugger().GetPlatformList().GetSelectedPlatform());
     if (platform_sp) {
@@ -602,7 +593,6 @@ public:
       result.AppendError("no platform currently selected\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
   Options *GetOptions() override { return &m_options; }
@@ -670,7 +660,7 @@ public:
 
   ~CommandObjectPlatformFWrite() override = default;
 
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     PlatformSP platform_sp(
         GetDebugger().GetPlatformList().GetSelectedPlatform());
     if (platform_sp) {
@@ -688,7 +678,6 @@ public:
       result.AppendError("no platform currently selected\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
   Options *GetOptions() override { return &m_options; }
@@ -804,14 +793,13 @@ public:
 
   ~CommandObjectPlatformGetFile() override = default;
 
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     // If the number of arguments is incorrect, issue an error message.
     if (args.GetArgumentCount() != 2) {
       result.GetErrorStream().Printf("error: required arguments missing; "
                                      "specify both the source and destination "
                                      "file paths\n");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     PlatformSP platform_sp(
@@ -835,7 +823,6 @@ public:
       result.AppendError("no platform currently selected\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -869,14 +856,13 @@ public:
 
   ~CommandObjectPlatformGetSize() override = default;
 
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     // If the number of arguments is incorrect, issue an error message.
     if (args.GetArgumentCount() != 1) {
       result.GetErrorStream().Printf("error: required argument missing; "
                                      "specify the source file path as the only "
                                      "argument\n");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     PlatformSP platform_sp(
@@ -899,7 +885,6 @@ public:
       result.AppendError("no platform currently selected\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -914,7 +899,7 @@ public:
 
   ~CommandObjectPlatformPutFile() override = default;
 
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     const char *src = args.GetArgumentAtIndex(0);
     const char *dst = args.GetArgumentAtIndex(1);
 
@@ -936,7 +921,6 @@ public:
       result.AppendError("no platform currently selected\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -955,7 +939,7 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     PlatformSP platform_sp;
     if (target) {
@@ -1001,8 +985,7 @@ protected:
         ProcessSP process_sp(platform_sp->DebugProcess(
             m_options.launch_info, debugger, target, error));
         if (process_sp && process_sp->IsAlive()) {
-          result.SetStatus(eReturnStatusSuccessFinishNoResult);
-          return true;
+          return result.SetStatus(eReturnStatusSuccessFinishNoResult);
         }
 
         if (error.Success())
@@ -1014,13 +997,11 @@ protected:
         result.AppendError("'platform process launch' uses the current target "
                            "file and arguments, or the executable and its "
                            "arguments can be specified in this command");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
     } else {
       result.AppendError("no platform is selected\n");
     }
-    return result.Succeeded();
   }
 
 protected:
@@ -1047,7 +1028,7 @@ public:
   Options *GetOptions() override { return &m_options; }
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     PlatformSP platform_sp;
     if (target) {
@@ -1146,7 +1127,6 @@ protected:
       result.AppendError("no platform is selected\n");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
   class CommandOptions : public Options {
@@ -1317,7 +1297,7 @@ public:
   ~CommandObjectPlatformProcessInfo() override = default;
 
 protected:
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     PlatformSP platform_sp;
     if (target) {
@@ -1371,7 +1351,6 @@ protected:
       result.AppendError("no platform is currently selected");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 
@@ -1489,7 +1468,7 @@ public:
 
   ~CommandObjectPlatformProcessAttach() override = default;
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     PlatformSP platform_sp(
         GetDebugger().GetPlatformList().GetSelectedPlatform());
     if (platform_sp) {
@@ -1508,7 +1487,6 @@ public:
       result.AppendError("no platform is currently selected");
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 
   Options *GetOptions() override { return &m_options; }
@@ -1598,7 +1576,7 @@ public:
 
   Options *GetOptions() override { return &m_options; }
 
-  bool DoExecute(llvm::StringRef raw_command_line,
+  void DoExecute(llvm::StringRef raw_command_line,
                  CommandReturnObject &result) override {
     ExecutionContext exe_ctx = GetCommandInterpreter().GetExecutionContext();
     m_options.NotifyOptionParsingStarting(&exe_ctx);
@@ -1607,7 +1585,7 @@ public:
     // Print out an usage syntax on an empty command line.
     if (raw_command_line.empty()) {
       result.GetOutputStream().Printf("%s\n", this->GetSyntax().str().c_str());
-      return true;
+      return;
     }
 
     OptionsWithRaw args(raw_command_line);
@@ -1615,7 +1593,7 @@ public:
 
     if (args.HasArgs())
       if (!ParseOptions(args.GetArgs(), result))
-        return false;
+        return;
 
     PlatformSP platform_sp(
         GetDebugger().GetPlatformList().GetSelectedPlatform());
@@ -1657,7 +1635,6 @@ public:
     } else {
       result.SetStatus(eReturnStatusSuccessFinishResult);
     }
-    return true;
   }
 
   CommandOptions m_options;
@@ -1674,11 +1651,10 @@ public:
 
   ~CommandObjectPlatformInstall() override = default;
 
-  bool DoExecute(Args &args, CommandReturnObject &result) override {
+  void DoExecute(Args &args, CommandReturnObject &result) override {
     if (args.GetArgumentCount() != 2) {
       result.AppendError("platform target-install takes two arguments");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
     // TODO: move the bulk of this code over to the platform itself
     FileSpec src(args.GetArgumentAtIndex(0));
@@ -1686,15 +1662,13 @@ public:
     FileSpec dst(args.GetArgumentAtIndex(1));
     if (!FileSystem::Instance().Exists(src)) {
       result.AppendError("source location does not exist or is not accessible");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
     PlatformSP platform_sp(
         GetDebugger().GetPlatformList().GetSelectedPlatform());
     if (!platform_sp) {
       result.AppendError("no platform currently selected");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     Status error = platform_sp->Install(src, dst);
@@ -1704,7 +1678,6 @@ public:
       result.AppendErrorWithFormat("install failed: %s", error.AsCString());
       result.SetStatus(eReturnStatusFailed);
     }
-    return result.Succeeded();
   }
 };
 

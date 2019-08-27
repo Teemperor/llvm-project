@@ -946,17 +946,15 @@ Thread *CommandObject::GetDefaultThread() {
     return nullptr;
 }
 
-bool CommandObjectParsed::Execute(const char *args_string,
+void CommandObjectParsed::Execute(const char *args_string,
                                   CommandReturnObject &result) {
-  bool handled = false;
   Args cmd_args(args_string);
   if (HasOverrideCallback()) {
     Args full_args(GetCommandName());
     full_args.AppendArguments(cmd_args);
-    handled =
-        InvokeOverrideCallback(full_args.GetConstArgumentVector(), result);
+    InvokeOverrideCallback(full_args.GetConstArgumentVector(), result);
   }
-  if (!handled) {
+  if (!result.Succeeded()) {
     for (auto entry : llvm::enumerate(cmd_args.entries())) {
       if (!entry.value().ref.empty() && entry.value().ref.front() == '`') {
         cmd_args.ReplaceArgumentAtIndex(
@@ -969,16 +967,15 @@ bool CommandObjectParsed::Execute(const char *args_string,
       if (ParseOptions(cmd_args, result)) {
         // Call the command-specific version of 'Execute', passing it the
         // already processed arguments.
-        handled = DoExecute(cmd_args, result);
+        DoExecute(cmd_args, result);
       }
     }
 
     Cleanup();
   }
-  return handled;
 }
 
-bool CommandObjectRaw::Execute(const char *args_string,
+void CommandObjectRaw::Execute(const char *args_string,
                                CommandReturnObject &result) {
   bool handled = false;
   if (HasOverrideCallback()) {
@@ -991,11 +988,10 @@ bool CommandObjectRaw::Execute(const char *args_string,
   }
   if (!handled) {
     if (CheckRequirements(result))
-      handled = DoExecute(args_string, result);
+      DoExecute(args_string, result);
 
     Cleanup();
   }
-  return handled;
 }
 
 static llvm::StringRef arch_helper() {

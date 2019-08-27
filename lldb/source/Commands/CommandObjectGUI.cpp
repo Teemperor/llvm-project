@@ -23,7 +23,7 @@ CommandObjectGUI::CommandObjectGUI(CommandInterpreter &interpreter)
 
 CommandObjectGUI::~CommandObjectGUI() {}
 
-bool CommandObjectGUI::DoExecute(Args &args, CommandReturnObject &result) {
+void CommandObjectGUI::DoExecute(Args &args, CommandReturnObject &result) {
 #ifndef LLDB_DISABLE_CURSES
   if (args.GetArgumentCount() == 0) {
     Debugger &debugger = GetDebugger();
@@ -43,9 +43,8 @@ bool CommandObjectGUI::DoExecute(Args &args, CommandReturnObject &result) {
     result.AppendError("the gui command takes no arguments.");
     result.SetStatus(eReturnStatusFailed);
   }
-  return true;
 #else
   result.AppendError("lldb was not build with gui support");
-  return false;
+  result.SetStatus(eReturnStatusFailed);
 #endif
 }

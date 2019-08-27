@@ -39,7 +39,7 @@ public:
   Options *GetOptions() override { return &m_option_group; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     StringList commands;
     commands.AppendString("thread backtrace");
 
@@ -83,8 +83,7 @@ protected:
         result.AppendErrorWithFormat("Failed to open file '%s' for %s: %s\n",
                                      path.c_str(), append ? "append" : "write",
                                      error.AsCString());
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       result.SetImmediateOutputStream(outfile_stream);
@@ -97,8 +96,6 @@ protected:
     options.SetPrintErrors(true);
     options.SetAddToHistory(false);
     m_interpreter.HandleCommands(commands, &m_exe_ctx, options, result);
-
-    return result.Succeeded();
   }
 
 private:

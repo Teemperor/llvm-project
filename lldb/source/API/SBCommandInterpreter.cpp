@@ -161,14 +161,13 @@ public:
   bool IsRemovable() const override { return true; }
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     SBCommandReturnObject sb_return(&result);
     SBCommandInterpreter sb_interpreter(&m_interpreter);
     SBDebugger debugger_sb(m_interpreter.GetDebugger().shared_from_this());
-    bool ret = m_backend->DoExecute(
+    m_backend->DoExecute(
         debugger_sb, (char **)command.GetArgumentVector(), sb_return);
     sb_return.Release();
-    return ret;
   }
   std::shared_ptr<lldb::SBCommandPluginInterface> m_backend;
 };
@@ -709,6 +708,11 @@ SBCommandInterpreter::AddCommand(const char *name,
       m_opaque_ptr->AddUserCommand(name, new_command_sp, true))
     return LLDB_RECORD_RESULT(lldb::SBCommand(new_command_sp));
   return LLDB_RECORD_RESULT(lldb::SBCommand());
+}
+
+void SBCommandPluginInterface::DoExecute(SBDebugger, char **,
+                                         SBCommandReturnObject &result) {
+  result.SetStatus(eReturnStatusFailed);
 }
 
 SBCommand::SBCommand() { LLDB_RECORD_CONSTRUCTOR_NO_ARGS(SBCommand); }

@@ -216,12 +216,11 @@ public:
   };
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (target == nullptr) {
       result.AppendError("Invalid target. No current target or watchpoints.");
-      result.SetStatus(eReturnStatusSuccessFinishNoResult);
-      return true;
+      return result.SetStatus(eReturnStatusSuccessFinishNoResult);
     }
 
     if (target->GetProcessSP() && target->GetProcessSP()->IsAlive()) {
@@ -243,8 +242,7 @@ protected:
 
     if (num_watchpoints == 0) {
       result.AppendMessage("No watchpoints currently set.");
-      result.SetStatus(eReturnStatusSuccessFinishNoResult);
-      return true;
+      return result.SetStatus(eReturnStatusSuccessFinishNoResult);
     }
 
     Stream &output_stream = result.GetOutputStream();
@@ -263,8 +261,7 @@ protected:
       if (!CommandObjectMultiwordWatchpoint::VerifyWatchpointIDs(
               target, command, wp_ids)) {
         result.AppendError("Invalid watchpoints specification.");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       const size_t size = wp_ids.size();
@@ -275,8 +272,6 @@ protected:
         result.SetStatus(eReturnStatusSuccessFinishNoResult);
       }
     }
-
-    return result.Succeeded();
   }
 
 private:
@@ -304,10 +299,10 @@ public:
   ~CommandObjectWatchpointEnable() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (!CheckTargetForWatchpointOperations(target, result))
-      return false;
+      return;
 
     std::unique_lock<std::recursive_mutex> lock;
     target->GetWatchpointList().GetListMutex(lock);
@@ -318,8 +313,7 @@ protected:
 
     if (num_watchpoints == 0) {
       result.AppendError("No watchpoints exist to be enabled.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (command.GetArgumentCount() == 0) {
@@ -335,8 +329,7 @@ protected:
       if (!CommandObjectMultiwordWatchpoint::VerifyWatchpointIDs(
               target, command, wp_ids)) {
         result.AppendError("Invalid watchpoints specification.");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       int count = 0;
@@ -347,8 +340,6 @@ protected:
       result.AppendMessageWithFormat("%d watchpoints enabled.\n", count);
       result.SetStatus(eReturnStatusSuccessFinishNoResult);
     }
-
-    return result.Succeeded();
   }
 };
 
@@ -374,10 +365,10 @@ public:
   ~CommandObjectWatchpointDisable() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (!CheckTargetForWatchpointOperations(target, result))
-      return false;
+      return;
 
     std::unique_lock<std::recursive_mutex> lock;
     target->GetWatchpointList().GetListMutex(lock);
@@ -387,8 +378,7 @@ protected:
 
     if (num_watchpoints == 0) {
       result.AppendError("No watchpoints exist to be disabled.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (command.GetArgumentCount() == 0) {
@@ -408,8 +398,7 @@ protected:
       if (!CommandObjectMultiwordWatchpoint::VerifyWatchpointIDs(
               target, command, wp_ids)) {
         result.AppendError("Invalid watchpoints specification.");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       int count = 0;
@@ -420,8 +409,6 @@ protected:
       result.AppendMessageWithFormat("%d watchpoints disabled.\n", count);
       result.SetStatus(eReturnStatusSuccessFinishNoResult);
     }
-
-    return result.Succeeded();
   }
 };
 
@@ -446,10 +433,10 @@ public:
   ~CommandObjectWatchpointDelete() override = default;
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (!CheckTargetForWatchpointOperations(target, result))
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
 
     std::unique_lock<std::recursive_mutex> lock;
     target->GetWatchpointList().GetListMutex(lock);
@@ -460,8 +447,7 @@ protected:
 
     if (num_watchpoints == 0) {
       result.AppendError("No watchpoints exist to be deleted.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (command.GetArgumentCount() == 0) {
@@ -482,8 +468,7 @@ protected:
       if (!CommandObjectMultiwordWatchpoint::VerifyWatchpointIDs(
               target, command, wp_ids)) {
         result.AppendError("Invalid watchpoints specification.");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       int count = 0;
@@ -494,8 +479,6 @@ protected:
       result.AppendMessageWithFormat("%d watchpoints deleted.\n", count);
       result.SetStatus(eReturnStatusSuccessFinishNoResult);
     }
-
-    return result.Succeeded();
   }
 };
 
@@ -563,10 +546,10 @@ public:
   };
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (!CheckTargetForWatchpointOperations(target, result))
-      return false;
+      return;
 
     std::unique_lock<std::recursive_mutex> lock;
     target->GetWatchpointList().GetListMutex(lock);
@@ -577,8 +560,7 @@ protected:
 
     if (num_watchpoints == 0) {
       result.AppendError("No watchpoints exist to be ignored.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (command.GetArgumentCount() == 0) {
@@ -593,8 +575,7 @@ protected:
       if (!CommandObjectMultiwordWatchpoint::VerifyWatchpointIDs(
               target, command, wp_ids)) {
         result.AppendError("Invalid watchpoints specification.");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       int count = 0;
@@ -605,8 +586,6 @@ protected:
       result.AppendMessageWithFormat("%d watchpoints ignored.\n", count);
       result.SetStatus(eReturnStatusSuccessFinishNoResult);
     }
-
-    return result.Succeeded();
   }
 
 private:
@@ -684,10 +663,10 @@ public:
   };
 
 protected:
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     if (!CheckTargetForWatchpointOperations(target, result))
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
 
     std::unique_lock<std::recursive_mutex> lock;
     target->GetWatchpointList().GetListMutex(lock);
@@ -698,8 +677,7 @@ protected:
 
     if (num_watchpoints == 0) {
       result.AppendError("No watchpoints exist to be modified.");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (command.GetArgumentCount() == 0) {
@@ -712,8 +690,7 @@ protected:
       if (!CommandObjectMultiwordWatchpoint::VerifyWatchpointIDs(
               target, command, wp_ids)) {
         result.AppendError("Invalid watchpoints specification.");
-        result.SetStatus(eReturnStatusFailed);
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
       }
 
       int count = 0;
@@ -728,8 +705,6 @@ protected:
       result.AppendMessageWithFormat("%d watchpoints modified.\n", count);
       result.SetStatus(eReturnStatusSuccessFinishNoResult);
     }
-
-    return result.Succeeded();
   }
 
 private:
@@ -802,7 +777,7 @@ protected:
     return 0;
   }
 
-  bool DoExecute(Args &command, CommandReturnObject &result) override {
+  void DoExecute(Args &command, CommandReturnObject &result) override {
     Target *target = GetDebugger().GetSelectedTarget().get();
     StackFrame *frame = m_exe_ctx.GetFramePtr();
 
@@ -812,8 +787,7 @@ protected:
       result.GetErrorStream().Printf("error: required argument missing; "
                                      "specify your program variable to watch "
                                      "for\n");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // If no '-w' is specified, default to '-w write'.
@@ -834,8 +808,7 @@ protected:
     if (command.GetArgumentCount() != 1) {
       result.GetErrorStream().Printf(
           "error: specify exactly one variable to watch for\n");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Things have checked out ok...
@@ -883,7 +856,7 @@ protected:
         result.GetErrorStream().Printf("error: unable to find any variable "
                                        "expression path that matches '%s'\n",
                                        command.GetArgumentAtIndex(0));
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Now it's time to create the watchpoint.
@@ -915,8 +888,6 @@ protected:
         result.AppendError(error.AsCString());
       result.SetStatus(eReturnStatusFailed);
     }
-
-    return result.Succeeded();
   }
 
 private:
@@ -982,7 +953,7 @@ Examples:
   Options *GetOptions() override { return &m_option_group; }
 
 protected:
-  bool DoExecute(llvm::StringRef raw_command,
+  void DoExecute(llvm::StringRef raw_command,
                  CommandReturnObject &result) override {
     auto exe_ctx = GetCommandInterpreter().GetExecutionContext();
     m_option_group.NotifyOptionParsingStarting(
@@ -998,7 +969,7 @@ protected:
     if (args.HasArgs())
       if (!ParseOptionsAndNotify(args.GetArgs(), result, m_option_group,
                                  exe_ctx))
-        return false;
+        return result.SetStatus(eReturnStatusFailed);
 
     // If no argument is present, issue an error message.  There's no way to
     // set a watchpoint.
@@ -1006,8 +977,7 @@ protected:
       result.GetErrorStream().Printf("error: required argument missing; "
                                      "specify an expression to evaulate into "
                                      "the address to watch for\n");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // If no '-w' is specified, default to '-w write'.
@@ -1036,8 +1006,7 @@ protected:
       result.GetErrorStream().Printf(
           "error: expression evaluation of address to watch failed\n");
       result.GetErrorStream() << "expression evaluated: \n" << expr << "\n";
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     // Get the address to watch.
@@ -1046,8 +1015,7 @@ protected:
     if (!success) {
       result.GetErrorStream().Printf(
           "error: expression did not evaluate to an address\n");
-      result.SetStatus(eReturnStatusFailed);
-      return false;
+      return result.SetStatus(eReturnStatusFailed);
     }
 
     if (m_option_watchpoint.watch_size != 0)
@@ -1081,8 +1049,6 @@ protected:
         result.AppendError(error.AsCString());
       result.SetStatus(eReturnStatusFailed);
     }
-
-    return result.Succeeded();
   }
 
 private:
