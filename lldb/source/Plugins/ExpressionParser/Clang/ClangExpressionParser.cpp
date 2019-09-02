@@ -70,6 +70,7 @@
 #include "lldb/Core/Disassembler.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/StreamFile.h"
+#include "lldb/Expression/ExpressionSourceCode.h"
 #include "lldb/Expression/IRExecutionUnit.h"
 #include "lldb/Expression/IRInterpreter.h"
 #include "lldb/Host/File.h"
@@ -891,33 +892,8 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
                         codegenoptions::FullDebugInfo;
 
   if (should_create_file) {
-    int temp_fd = -1;
-    llvm::SmallString<128> result_path;
-    if (FileSpec tmpdir_file_spec = HostInfo::GetProcessTempDir()) {
-      tmpdir_file_spec.AppendPathComponent("lldb-%%%%%%.expr");
-      std::string temp_source_path = tmpdir_file_spec.GetPath();
-      llvm::sys::fs::createUniqueFile(temp_source_path, temp_fd, result_path);
-    } else {
-      llvm::sys::fs::createTemporaryFile("lldb", "expr", temp_fd, result_path);
-    }
-
-    if (temp_fd != -1) {
-      lldb_private::File file(temp_fd, true);
-      const size_t expr_text_len = strlen(expr_text);
-      size_t bytes_written = expr_text_len;
-      if (file.Write(expr_text, bytes_written).Success()) {
-        if (bytes_written == expr_text_len) {
-          file.Close();
-          if (auto fileEntry =
-                  m_compiler->getFileManager().getFile(result_path)) {
-            source_mgr.setMainFileID(source_mgr.createFileID(
-                *fileEntry,
-                SourceLocation(), SrcMgr::C_User));
-            created_main_file = true;
-          }
-        }
-      }
-    }
+    llvm::Optional<std::string> path = ExpressionSourceCode::SaveExpressionTextToTempFile("lldb-", ".expr", expr_text);
+    created_main_file = path.hasValue();
   }
 
   if (!created_main_file) {

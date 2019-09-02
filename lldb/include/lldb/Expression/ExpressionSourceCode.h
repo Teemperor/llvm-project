@@ -10,6 +10,7 @@
 #define liblldb_ExpressionSourceCode_h
 
 #include "lldb/lldb-enumerations.h"
+#include "lldb/Target/Target.h"
 #include "llvm/ADT/ArrayRef.h"
 
 #include <string>
@@ -27,12 +28,18 @@ public:
   bool NeedsWrapping() const { return m_wrap == Wrap; }
 
   const char *GetName() const { return m_name.c_str(); }
-
+  
+  static llvm::Optional<std::string>
+  SaveExpressionTextToTempFile(llvm::StringRef file_prefix,
+  llvm::StringRef file_suffix,
+  llvm::StringRef text);
+  
 protected:
   ExpressionSourceCode(llvm::StringRef name, llvm::StringRef prefix,
                        llvm::StringRef body, Wrapping wrap)
       : m_name(name.str()), m_prefix(prefix.str()), m_body(body.str()),
         m_wrap(wrap) {}
+  
 
   std::string m_name;
   std::string m_prefix;
