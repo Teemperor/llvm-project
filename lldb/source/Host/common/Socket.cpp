@@ -325,7 +325,7 @@ IOObject::WaitableHandle Socket::GetWaitableHandle() {
   return m_socket;
 }
 
-Status Socket::Read(void *buf, size_t &num_bytes) {
+llvm::Expected<size_t> Socket::Read(void *buf, size_t num_bytes) {
   Status error;
   int bytes_received = 0;
   do {
@@ -335,8 +335,7 @@ Status Socket::Read(void *buf, size_t &num_bytes) {
   if (bytes_received < 0) {
     SetLastError(error);
     num_bytes = 0;
-  } else
-    num_bytes = bytes_received;
+  }
 
   Log *log(lldb_private::GetLogIfAnyCategoriesSet(LIBLLDB_LOG_COMMUNICATION));
   if (log) {
@@ -349,10 +348,10 @@ Status Socket::Read(void *buf, size_t &num_bytes) {
               static_cast<int64_t>(bytes_received), error.AsCString());
   }
 
-  return error;
+  return bytes_received;
 }
 
-Status Socket::Write(const void *buf, size_t &num_bytes) {
+llvm::Expected<size_t> Socket::Write(const void *buf, size_t num_bytes) {
   Status error;
   int bytes_sent = 0;
   do {
@@ -361,9 +360,8 @@ Status Socket::Write(const void *buf, size_t &num_bytes) {
 
   if (bytes_sent < 0) {
     SetLastError(error);
-    num_bytes = 0;
-  } else
-    num_bytes = bytes_sent;
+    return llvm::make_error<ReadWriteErrorInfo>("TODO");
+  }
 
   Log *log(lldb_private::GetLogIfAnyCategoriesSet(LIBLLDB_LOG_COMMUNICATION));
   if (log) {
@@ -376,7 +374,7 @@ Status Socket::Write(const void *buf, size_t &num_bytes) {
               static_cast<int64_t>(bytes_sent), error.AsCString());
   }
 
-  return error;
+  return bytes_sent;
 }
 
 Status Socket::PreDisconnect() {

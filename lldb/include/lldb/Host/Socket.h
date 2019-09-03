@@ -89,8 +89,8 @@ public:
   NativeSocket GetNativeSocket() const { return m_socket; }
   SocketProtocol GetSocketProtocol() const { return m_protocol; }
 
-  Status Read(void *buf, size_t &num_bytes) override;
-  Status Write(const void *buf, size_t &num_bytes) override;
+  llvm::Expected<size_t> Read(void *buf, size_t num_bytes) override;
+  llvm::Expected<size_t> Write(const void *buf, size_t num_bytes) override;
 
   virtual Status PreDisconnect();
   Status Close() override;

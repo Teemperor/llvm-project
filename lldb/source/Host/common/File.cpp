@@ -328,184 +328,86 @@ Status File::Sync() {
 
 #if defined(__APPLE__)
 // Darwin kernels only can read/write <= INT_MAX bytes
-#define MAX_READ_SIZE INT_MAX
-#define MAX_WRITE_SIZE INT_MAX
+#define MAX_READ_SIZE ((size_t)INT_MAX)
+#define MAX_WRITE_SIZE ((size_t)INT_MAX)
 #endif
 
-Status File::Read(void *buf, size_t &num_bytes) {
-  Status error;
-
+llvm::Expected<size_t> File::Read(void *buf, size_t num_bytes) {
 #if defined(MAX_READ_SIZE)
-  if (num_bytes > MAX_READ_SIZE) {
-    uint8_t *p = (uint8_t *)buf;
-    size_t bytes_left = num_bytes;
-    // Init the num_bytes read to zero
-    num_bytes = 0;
-
-    while (bytes_left > 0) {
-      size_t curr_num_bytes;
-      if (bytes_left > MAX_READ_SIZE)
-        curr_num_bytes = MAX_READ_SIZE;
-      else
-        curr_num_bytes = bytes_left;
-
-      error = Read(p + num_bytes, curr_num_bytes);
-
-      // Update how many bytes were read
-      num_bytes += curr_num_bytes;
-      if (bytes_left < curr_num_bytes)
-        bytes_left = 0;
-      else
-        bytes_left -= curr_num_bytes;
-
-      if (error.Fail())
-        break;
-    }
-    return error;
-  }
+  num_bytes = std::min(num_bytes, MAX_READ_SIZE);
 #endif
 
   ssize_t bytes_read = -1;
   if (DescriptorIsValid()) {
     bytes_read = llvm::sys::RetryAfterSignal(-1, ::read, m_descriptor, buf, num_bytes);
     if (bytes_read == -1) {
-      error.SetErrorToErrno();
-      num_bytes = 0;
+      return llvm::errorCodeToError(std::error_code(errno, std::generic_category()));
     } else
-      num_bytes = bytes_read;
+      return bytes_read;
   } else if (StreamIsValid()) {
     bytes_read = ::fread(buf, 1, num_bytes, m_stream);
 
     if (bytes_read == 0) {
       if (::feof(m_stream))
-        error.SetErrorString("feof");
+        return llvm::make_error<ReadWriteErrorInfo>("feof");
       else if (::ferror(m_stream))
-        error.SetErrorString("ferror");
-      num_bytes = 0;
-    } else
-      num_bytes = bytes_read;
-  } else {
-    num_bytes = 0;
-    error.SetErrorString("invalid file handle");
+        return llvm::make_error<ReadWriteErrorInfo>("ferror");
+      assert(num_bytes == 0);
+    }
+    return bytes_read;
   }
-  return error;
+  return llvm::make_error<ReadWriteErrorInfo>("invalid file handle");
 }
 
-Status File::Write(const void *buf, size_t &num_bytes) {
-  Status error;
-
-#if defined(MAX_WRITE_SIZE)
-  if (num_bytes > MAX_WRITE_SIZE) {
-    const uint8_t *p = (const uint8_t *)buf;
-    size_t bytes_left = num_bytes;
-    // Init the num_bytes written to zero
-    num_bytes = 0;
-
-    while (bytes_left > 0) {
-      size_t curr_num_bytes;
-      if (bytes_left > MAX_WRITE_SIZE)
-        curr_num_bytes = MAX_WRITE_SIZE;
-      else
-        curr_num_bytes = bytes_left;
-
-      error = Write(p + num_bytes, curr_num_bytes);
-
-      // Update how many bytes were read
-      num_bytes += curr_num_bytes;
-      if (bytes_left < curr_num_bytes)
-        bytes_left = 0;
-      else
-        bytes_left -= curr_num_bytes;
-
-      if (error.Fail())
-        break;
-    }
-    return error;
-  }
-#endif
+llvm::Expected<size_t> File::Write(const void *buf, size_t num_bytes) {
+  #if defined(MAX_WRITE_SIZE)
+    num_bytes = std::min(num_bytes, MAX_WRITE_SIZE);
+  #endif
 
   ssize_t bytes_written = -1;
   if (DescriptorIsValid()) {
     bytes_written =
         llvm::sys::RetryAfterSignal(-1, ::write, m_descriptor, buf, num_bytes);
-    if (bytes_written == -1) {
-      error.SetErrorToErrno();
-      num_bytes = 0;
-    } else
-      num_bytes = bytes_written;
+    if (bytes_written == -1)
+      return llvm::errorCodeToError(std::error_code(errno, std::generic_category()));
+    return bytes_written;
   } else if (StreamIsValid()) {
     bytes_written = ::fwrite(buf, 1, num_bytes, m_stream);
 
     if (bytes_written == 0) {
       if (::feof(m_stream))
-        error.SetErrorString("feof");
+        return llvm::make_error<ReadWriteErrorInfo>("feof");
       else if (::ferror(m_stream))
-        error.SetErrorString("ferror");
-      num_bytes = 0;
-    } else
-      num_bytes = bytes_written;
-
-  } else {
-    num_bytes = 0;
-    error.SetErrorString("invalid file handle");
+        return llvm::make_error<ReadWriteErrorInfo>("ferror");
+      assert(num_bytes == 0);
+    }
+    return bytes_written;
   }
-
-  return error;
+  return llvm::make_error<ReadWriteErrorInfo>("invalid file handle");
 }
 
-Status File::Read(void *buf, size_t &num_bytes, off_t &offset) {
-  Status error;
+llvm::Expected<size_t> File::Read(void *buf, size_t num_bytes, off_t &offset) {
+  #if defined(MAX_READ_SIZE)
+    num_bytes = std::min(num_bytes, MAX_READ_SIZE);
+  #endif
 
-#if defined(MAX_READ_SIZE)
-  if (num_bytes > MAX_READ_SIZE) {
-    uint8_t *p = (uint8_t *)buf;
-    size_t bytes_left = num_bytes;
-    // Init the num_bytes read to zero
-    num_bytes = 0;
-
-    while (bytes_left > 0) {
-      size_t curr_num_bytes;
-      if (bytes_left > MAX_READ_SIZE)
-        curr_num_bytes = MAX_READ_SIZE;
-      else
-        curr_num_bytes = bytes_left;
-
-      error = Read(p + num_bytes, curr_num_bytes, offset);
-
-      // Update how many bytes were read
-      num_bytes += curr_num_bytes;
-      if (bytes_left < curr_num_bytes)
-        bytes_left = 0;
-      else
-        bytes_left -= curr_num_bytes;
-
-      if (error.Fail())
-        break;
-    }
-    return error;
-  }
-#endif
 
 #ifndef _WIN32
   int fd = GetDescriptor();
   if (fd != kInvalidDescriptor) {
     ssize_t bytes_read =
         llvm::sys::RetryAfterSignal(-1, ::pread, fd, buf, num_bytes, offset);
-    if (bytes_read < 0) {
-      num_bytes = 0;
-      error.SetErrorToErrno();
-    } else {
-      offset += bytes_read;
-      num_bytes = bytes_read;
-    }
-  } else {
-    num_bytes = 0;
-    error.SetErrorString("invalid file handle");
+    if (bytes_read < 0)
+      return llvm::errorCodeToError(std::error_code(errno, std::generic_category()));
+    offset += bytes_read;
+    return bytes_read;
   }
+  return llvm::make_error<ReadWriteErrorInfo>("invalid file handle");
 #else
   std::lock_guard<std::mutex> guard(offset_access_mutex);
   long cur = ::lseek(m_descriptor, 0, SEEK_CUR);
   SeekFromStart(offset);
+<<<<<<< HEAD
   error = Read(buf, num_bytes);
   if (!error.Fail())
     SeekFromStart(cur);
@@ -542,39 +444,13 @@ Status File::Write(const void *buf, size_t &num_bytes, off_t &offset) {
       if (error.Fail())
         break;
     }
+=======
+  llvm::Expected<size_t> error = Read(buf, num_bytes);
+  if (!error)
+>>>>>>> d8751d52be5... holy shit
     return error;
-  }
+  SeekFromStart(cur);
 #endif
-
-  int fd = GetDescriptor();
-  if (fd != kInvalidDescriptor) {
-#ifndef _WIN32
-    ssize_t bytes_written =
-        llvm::sys::RetryAfterSignal(-1, ::pwrite, m_descriptor, buf, num_bytes, offset);
-    if (bytes_written < 0) {
-      num_bytes = 0;
-      error.SetErrorToErrno();
-    } else {
-      offset += bytes_written;
-      num_bytes = bytes_written;
-    }
-#else
-    std::lock_guard<std::mutex> guard(offset_access_mutex);
-    long cur = ::lseek(m_descriptor, 0, SEEK_CUR);
-    SeekFromStart(offset);
-    error = Write(buf, num_bytes);
-    long after = ::lseek(m_descriptor, 0, SEEK_CUR);
-
-    if (!error.Fail())
-      SeekFromStart(cur);
-
-    offset = after;
-#endif
-  } else {
-    num_bytes = 0;
-    error.SetErrorString("invalid file handle");
-  }
-  return error;
 }
 
 // Print some formatted output to the stream.

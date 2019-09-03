@@ -15,6 +15,8 @@
 
 #include "lldb/lldb-private.h"
 
+#include "llvm/Support/Error.h"
+
 namespace lldb_private {
 
 class IOObject {
@@ -33,8 +35,8 @@ public:
       : m_fd_type(type), m_should_close_fd(should_close) {}
   virtual ~IOObject();
 
-  virtual Status Read(void *buf, size_t &num_bytes) = 0;
-  virtual Status Write(const void *buf, size_t &num_bytes) = 0;
+  virtual llvm::Expected<size_t> Read(void *buf, size_t num_bytes) = 0;
+  virtual llvm::Expected<size_t> Write(const void *buf, size_t num_bytes) = 0;
   virtual bool IsValid() const = 0;
   virtual Status Close() = 0;
 

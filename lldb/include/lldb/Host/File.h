@@ -14,12 +14,26 @@
 #include "lldb/Utility/Status.h"
 #include "lldb/lldb-private.h"
 
+#include "llvm/Support/Errc.h"
+
 #include <mutex>
 #include <stdarg.h>
 #include <stdio.h>
 #include <sys/types.h>
 
 namespace lldb_private {
+
+class ReadWriteErrorInfo
+    : public llvm::ErrorInfo<ReadWriteErrorInfo, llvm::StringError> {
+public:
+  static char ID;
+  using llvm::ErrorInfo<ReadWriteErrorInfo,
+                        llvm::StringError>::ErrorInfo; // inherit constructors
+  ReadWriteErrorInfo(const llvm::Twine &S)
+      : ErrorInfo(S, llvm::errc::not_supported) {}
+
+  ReadWriteErrorInfo() : ErrorInfo(llvm::errc::not_supported) {}
+};
 
 /// \class File File.h "lldb/Host/File.h"
 /// A file class.
@@ -130,7 +144,7 @@ public:
   FILE *GetStream();
 
   void SetStream(FILE *fh, bool transfer_ownership);
-
+  
   /// Read bytes from a file from the current file position.
   ///
   /// NOTE: This function is NOT thread safe. Use the read function
@@ -140,14 +154,13 @@ public:
   /// \param[in] buf
   ///     A buffer where to put the bytes that are read.
   ///
-  /// \param[in,out] num_bytes
-  ///     The number of bytes to read form the current file position
-  ///     which gets modified with the number of bytes that were read.
+  /// \param[in] num_bytes
+  ///     The number of bytes to read form the current file position.
   ///
   /// \return
   ///     An error object that indicates success or the reason for
   ///     failure.
-  Status Read(void *buf, size_t &num_bytes) override;
+  llvm::Expected<size_t> Read(void *buf, size_t num_bytes) override;
 
   /// Write bytes to a file at the current file position.
   ///
@@ -158,15 +171,13 @@ public:
   /// \param[in] buf
   ///     A buffer where to put the bytes that are read.
   ///
-  /// \param[in,out] num_bytes
-  ///     The number of bytes to write to the current file position
-  ///     which gets modified with the number of bytes that were
-  ///     written.
+  /// \param[in] num_bytes
+  ///     The number of bytes to write to the current file position.
   ///
   /// \return
   ///     An error object that indicates success or the reason for
   ///     failure.
-  Status Write(const void *buf, size_t &num_bytes) override;
+  llvm::Expected<size_t> Write(const void *buf, size_t num_bytes) override;
 
   /// Seek to an offset relative to the beginning of the file.
   ///
@@ -238,20 +249,50 @@ public:
   /// \param[in] dst
   ///     A buffer where to put the bytes that are read.
   ///
-  /// \param[in,out] num_bytes
-  ///     The number of bytes to read form the current file position
-  ///     which gets modified with the number of bytes that were read.
+  /// \param[in] num_bytes
+  ///     The number of bytes to read form the current file position.
+  ///
+  /// \param[in] offset
+  ///     The offset within the file from which to read \a num_bytes
+  ///     bytes.
+  ///
+  /// \return
+  ///     An error object that indicates success or the reason for
+  ///     failure.
+  llvm::Expected<size_t> Read(void *dst, size_t num_bytes, off_t &offset);
+
+<<<<<<< HEAD
+=======
+  /// Read bytes from a file from the specified file offset.
+  ///
+  /// NOTE: This function is thread safe in that clients manager their
+  /// own file position markers and reads on other threads won't mess up the
+  /// current read.
+  ///
+  /// \param[in] num_bytes
+  ///     The number of bytes to read form the current file position.
   ///
   /// \param[in,out] offset
   ///     The offset within the file from which to read \a num_bytes
   ///     bytes. This offset gets incremented by the number of bytes
   ///     that were read.
   ///
+  /// \param[in] null_terminate
+  ///     Ensure that the data that is read is terminated with a NULL
+  ///     character so that the data can be used as a C string.
+  ///
+  /// \param[out] data_buffer_sp
+  ///     A data buffer to create and fill in that will contain any
+  ///     data that is read from the file. This buffer will be reset
+  ///     if an error occurs.
+  ///
   /// \return
   ///     An error object that indicates success or the reason for
   ///     failure.
-  Status Read(void *dst, size_t &num_bytes, off_t &offset);
+  llvm::Expected<size_t> Read(size_t num_bytes, off_t &offset, bool null_terminate,
+              lldb::DataBufferSP &data_buffer_sp);
 
+>>>>>>> d8751d52be5... holy shit
   /// Write bytes to a file at the specified file offset.
   ///
   /// NOTE: This function is thread safe in that clients manager their
@@ -264,8 +305,6 @@ public:
   ///
   /// \param[in,out] num_bytes
   ///     The number of bytes to write to the file at offset \a offset.
-  ///     \a num_bytes gets modified with the number of bytes that
-  ///     were read.
   ///
   /// \param[in,out] offset
   ///     The offset within the file at which to write \a num_bytes
@@ -275,7 +314,7 @@ public:
   /// \return
   ///     An error object that indicates success or the reason for
   ///     failure.
-  Status Write(const void *src, size_t &num_bytes, off_t &offset);
+  llvm::Expected<size_t> Write(const void *src, size_t num_bytes, off_t &offset);
 
   /// Flush the current stream
   ///
