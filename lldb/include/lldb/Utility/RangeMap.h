@@ -642,8 +642,6 @@ public:
 #ifdef ASSERT_RANGEMAP_ARE_SORTED
   bool IsSorted() const {
     typename Collection::const_iterator pos, end, prev;
-    // First we determine if we can combine any of the Entry objects so we
-    // don't end up allocating and making a new collection for no reason
     for (pos = m_entries.begin(), end = m_entries.end(), prev = end; pos != end;
          prev = pos++) {
       if (prev != end && *pos < *prev)
@@ -724,12 +722,14 @@ public:
 #ifdef ASSERT_RANGEMAP_ARE_SORTED
     assert(IsSorted());
 #endif
+    if (m_entries.empty())
+      return 0;
 
-    if (!m_entries.empty()) {
-      for (const auto &entry : m_entries) {
-        if (entry.Contains(addr))
-          indexes.push_back(entry.data);
-      }
+    auto start = std::lower_bound(m_entries.begin(), m_entries.end(), Entry(addr, 1), BaseLessThan);
+    auto end = std::upper_bound(m_entries.begin(), m_entries.end(), Entry(addr, 1), BaseLessThan);
+    for (auto I = start; I != end; ++I) {
+      if (I->Contains(addr))
+        indexes.push_back(I->data);
     }
     return indexes.size();
   }
