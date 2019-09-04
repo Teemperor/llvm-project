@@ -2690,7 +2690,7 @@ bool RenderScriptRuntime::SaveAllocation(Stream &strm, const uint32_t alloc_id,
   LLDB_LOGF(log, "%s - writing File Header, 0x%" PRIx64 " bytes", __FUNCTION__,
             (uint64_t)num_bytes);
 
-  Status err = file.Write(&head, num_bytes);
+  Status err = file.WriteAll(&head, num_bytes);
   if (!err.Success()) {
     strm.Printf("Error: '%s' when writing to file '%s'", err.AsCString(), path);
     strm.EOL();
@@ -2715,7 +2715,7 @@ bool RenderScriptRuntime::SaveAllocation(Stream &strm, const uint32_t alloc_id,
   LLDB_LOGF(log, "%s - writing element headers, 0x%" PRIx64 " bytes.",
             __FUNCTION__, (uint64_t)num_bytes);
 
-  err = file.Write(element_header_buffer.get(), num_bytes);
+  err = file.WriteAll(element_header_buffer.get(), num_bytes);
   if (!err.Success()) {
     strm.Printf("Error: '%s' when writing to file '%s'", err.AsCString(), path);
     strm.EOL();
@@ -2727,7 +2727,7 @@ bool RenderScriptRuntime::SaveAllocation(Stream &strm, const uint32_t alloc_id,
   LLDB_LOGF(log, "%s - writing 0x%" PRIx64 " bytes", __FUNCTION__,
             (uint64_t)num_bytes);
 
-  err = file.Write(buffer.get(), num_bytes);
+  err = file.WriteAll(buffer.get(), num_bytes);
   if (!err.Success()) {
     strm.Printf("Error: '%s' when writing to file '%s'", err.AsCString(), path);
     strm.EOL();

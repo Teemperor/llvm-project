@@ -406,13 +406,16 @@ void REPL::IOHandlerInputComplete(IOHandler &io_handler, std::string &code) {
                                         lldb::eFilePermissionsFileDefault);
             std::string code(m_code.CopyList());
             code.append(1, '\n');
-            size_t bytes_written = code.size();
-            file.Write(code.c_str(), bytes_written);
+            Status error = file.WriteAll(code);
             file.Close();
-
-            // Now set the default file and line to the REPL source file
-            m_target.GetSourceManager().SetDefaultFileAndLine(
-                FileSpec(m_repl_source_path), new_default_line);
+            if (error.Fail()) {
+              error_sp->Printf("error: failed to update code on disk -- %s",
+                               error.AsCString());
+            } else {
+              // Now set the default file and line to the REPL source file
+              m_target.GetSourceManager().SetDefaultFileAndLine(
+                  FileSpec(m_repl_source_path), new_default_line);
+            }
           }
           static_cast<IOHandlerEditline &>(io_handler)
               .SetBaseLineNumber(m_code.GetSize() + 1);

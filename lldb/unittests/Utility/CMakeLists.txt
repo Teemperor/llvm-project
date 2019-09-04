@@ -12,6 +12,7 @@ add_lldb_unittest(UtilityTests
   EventTest.cpp
   FileSpecTest.cpp
   FlagsTest.cpp
+  IOObjectTest.cpp
   JSONTest.cpp
   ListenerTest.cpp
   LogTest.cpp

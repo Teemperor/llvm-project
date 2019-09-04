@@ -35,6 +35,10 @@ public:
 
   virtual Status Read(void *buf, size_t &num_bytes) = 0;
   virtual Status Write(const void *buf, size_t &num_bytes) = 0;
+  LLVM_NODISCARD
+  Status WriteAll(const void *buf, size_t num_bytes);
+  LLVM_NODISCARD
+  Status WriteAll(llvm::StringRef data);
   virtual bool IsValid() const = 0;
   virtual Status Close() = 0;
 

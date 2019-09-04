@@ -6281,8 +6281,7 @@ bool ObjectFileMachO::SaveCore(const lldb::ProcessSP &process_sp,
             // Read 1 page at a time
             uint8_t bytes[0x1000];
             // Write the mach header and load commands out to the core file
-            size_t bytes_written = buffer.GetString().size();
-            error = core_file.Write(buffer.GetString().data(), bytes_written);
+            error = core_file.WriteAll(buffer.GetString());
             if (error.Success()) {
               // Now write the file data for all memory segments in the process
               for (const auto &segment : segment_load_commands) {

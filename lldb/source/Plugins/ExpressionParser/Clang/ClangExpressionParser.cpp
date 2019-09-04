@@ -903,18 +903,13 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
 
     if (temp_fd != -1) {
       lldb_private::File file(temp_fd, true);
-      const size_t expr_text_len = strlen(expr_text);
-      size_t bytes_written = expr_text_len;
-      if (file.Write(expr_text, bytes_written).Success()) {
-        if (bytes_written == expr_text_len) {
-          file.Close();
-          if (auto fileEntry =
-                  m_compiler->getFileManager().getFile(result_path)) {
-            source_mgr.setMainFileID(source_mgr.createFileID(
-                *fileEntry,
-                SourceLocation(), SrcMgr::C_User));
-            created_main_file = true;
-          }
+      if (file.WriteAll(expr_text).Success()) {
+        file.Close();
+        if (auto fileEntry =
+                m_compiler->getFileManager().getFile(result_path)) {
+          source_mgr.setMainFileID(source_mgr.createFileID(
+              *fileEntry, SourceLocation(), SrcMgr::C_User));
+          created_main_file = true;
         }
       }
     }
