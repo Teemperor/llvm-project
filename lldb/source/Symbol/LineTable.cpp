@@ -103,6 +103,7 @@ void LineTable::InsertSequence(LineSequence *sequence) {
   // the address of the last item in our entry collection, just append.
   if (m_entries.empty() ||
       !Entry::EntryAddressLessThan(entry, m_entries.back())) {
+    m_entries.reserve(m_entries.size() + seq->m_entries.size());
     m_entries.insert(m_entries.end(), seq->m_entries.begin(),
                      seq->m_entries.end());
     return;
@@ -129,6 +130,7 @@ void LineTable::InsertSequence(LineSequence *sequence) {
     assert(prev_pos->is_terminal_entry);
   }
 #endif
+  m_entries.reserve(m_entries.size() + seq->m_entries.size());
   m_entries.insert(pos, seq->m_entries.begin(), seq->m_entries.end());
 }
 
