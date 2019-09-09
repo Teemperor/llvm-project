@@ -241,27 +241,9 @@ static void SetupModuleHeaderPaths(CompilerInstance *compiler,
   search_opts.ModuleCachePath = module_cache.str();
   LLDB_LOG(log, "Using module cache path: {0}", module_cache.c_str());
 
-  FileSpec clang_resource_dir = GetClangResourceDir();
-  std::string resource_dir = clang_resource_dir.GetPath();
-  if (FileSystem::Instance().IsDirectory(resource_dir)) {
-    search_opts.ResourceDir = resource_dir;
-    std::string resource_include = resource_dir + "/include";
-    search_opts.AddPath(resource_include, frontend::System, false, true);
-
-    LLDB_LOG(log, "Added resource include dir: {0}", resource_include);
-  }
+  search_opts.ResourceDir = GetClangResourceDir().GetPath();
 
   search_opts.ImplicitModuleMaps = true;
-
-  std::vector<std::string> system_include_directories =
-      target_sp->GetPlatform()->GetSystemIncludeDirectories(
-          lldb::eLanguageTypeC_plus_plus);
-
-  for (const std::string &include_dir : system_include_directories) {
-    search_opts.AddPath(include_dir, frontend::System, false, true);
-
-    LLDB_LOG(log, "Added system include dir: {0}", include_dir);
-  }
 }
 
 //===----------------------------------------------------------------------===//

@@ -3,5 +3,6 @@
 
 int main(int argc, char **argv) {
   std::cout << "Test" << std::endl;
+  fprintf(stderr, "4345\n");
   return 0; // Set break point at this line.
 }

@@ -26,6 +26,7 @@
 #include "ClangExpressionSourceCode.h"
 #include "ClangModulesDeclVendor.h"
 #include "ClangPersistentVariables.h"
+#include "IncludeDirectorySearcher.h"
 
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Module.h"
@@ -441,7 +442,7 @@ std::vector<std::string>
 ClangUserExpression::GetModulesToImport(ExecutionContext &exe_ctx) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
 
-  if (!SupportsCxxModuleImport(Language()))
+  if (!SupportsCxxModuleImport(m_language))
     return {};
 
   Target *target = exe_ctx.GetTargetPtr();
@@ -461,24 +462,9 @@ ClangUserExpression::GetModulesToImport(ExecutionContext &exe_ctx) {
   if (!sc.comp_unit)
     return {};
 
-  if (log) {
-    for (const SourceModule &m : sc.comp_unit->GetImportedModules()) {
-      LLDB_LOG(log, "Found module in compile unit: {0:$[.]} - include dir: {1}",
-                  llvm::make_range(m.path.begin(), m.path.end()), m.search_path);
-    }
-  }
-
-  for (const SourceModule &m : sc.comp_unit->GetImportedModules())
-    m_include_directories.emplace_back(m.search_path.GetCString());
-
-  // Check if we imported 'std' or any of its submodules.
-  // We currently don't support importing any other modules in the expression
-  // parser.
-  for (const SourceModule &m : sc.comp_unit->GetImportedModules())
-    if (!m.path.empty() && m.path.front() == "std")
-      return {"std"};
-
-  return {};
+  IncludeDirectorySearcher incs(sc.comp_unit->GetSupportFiles());
+  m_include_directories = incs.GetIncludeDirs().vec();
+  return incs.GetImportedModules().vec();
 }
 
 bool ClangUserExpression::PrepareForParsing(
