@@ -25,6 +25,7 @@
 #include "ClangExpressionParser.h"
 #include "ClangModulesDeclVendor.h"
 #include "ClangPersistentVariables.h"
+#include "CppModuleConfiguration.h"
 
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Module.h"
@@ -433,48 +434,31 @@ static bool SupportsCxxModuleImport(lldb::LanguageType language) {
   }
 }
 
-std::vector<std::string>
-ClangUserExpression::GetModulesToImport(ExecutionContext &exe_ctx) {
+CppModuleConfiguration GetModuleConfig(lldb::LanguageType language,
+                                       ExecutionContext &exe_ctx) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
 
-  if (!SupportsCxxModuleImport(Language()))
-    return {};
+  if (!SupportsCxxModuleImport(language))
+    return CppModuleConfiguration();
 
   Target *target = exe_ctx.GetTargetPtr();
   if (!target || !target->GetEnableImportStdModule())
-    return {};
+    return CppModuleConfiguration();
 
   StackFrame *frame = exe_ctx.GetFramePtr();
   if (!frame)
-    return {};
+    return CppModuleConfiguration();
 
   Block *block = frame->GetFrameBlock();
   if (!block)
-    return {};
+    return CppModuleConfiguration();
 
   SymbolContext sc;
   block->CalculateSymbolContext(&sc);
   if (!sc.comp_unit)
-    return {};
+    return CppModuleConfiguration();
 
-  if (log) {
-    for (const SourceModule &m : sc.comp_unit->GetImportedModules()) {
-      LLDB_LOG(log, "Found module in compile unit: {0:$[.]} - include dir: {1}",
-                  llvm::make_range(m.path.begin(), m.path.end()), m.search_path);
-    }
-  }
-
-  for (const SourceModule &m : sc.comp_unit->GetImportedModules())
-    m_include_directories.emplace_back(m.search_path.GetCString());
-
-  // Check if we imported 'std' or any of its submodules.
-  // We currently don't support importing any other modules in the expression
-  // parser.
-  for (const SourceModule &m : sc.comp_unit->GetImportedModules())
-    if (!m.path.empty() && m.path.front() == "std")
-      return {"std"};
-
-  return {};
+  return CppModuleConfiguration(sc.comp_unit->GetSupportFiles());
 }
 
 bool ClangUserExpression::PrepareForParsing(
@@ -502,14 +486,21 @@ bool ClangUserExpression::PrepareForParsing(
 
   SetupDeclVendor(exe_ctx, m_target);
 
-  std::vector<std::string> used_modules = GetModulesToImport(exe_ctx);
-  m_imported_cpp_modules = !used_modules.empty();
+  CppModuleConfiguration module_config = GetModuleConfig(m_language, exe_ctx);
+  llvm::ArrayRef<std::string> imported_modules =
+      module_config.GetImportedModules();
+  m_imported_cpp_modules = !imported_modules.empty();
+  m_include_directories = module_config.GetIncludeDirs();
 
   LLDB_LOG(log, "List of imported modules in expression: {0}",
-           llvm::make_range(used_modules.begin(), used_modules.end()));
+           llvm::make_range(imported_modules.begin(), imported_modules.end()));
+  LLDB_LOG(log, "List of include directories gathered for modules: {0}",
+           llvm::make_range(m_include_directories.begin(),
+                            m_include_directories.end()));
 
   UpdateLanguageForExpr();
-  CreateSourceCode(diagnostic_manager, exe_ctx, used_modules, for_completion);
+  CreateSourceCode(diagnostic_manager, exe_ctx, imported_modules,
+                   for_completion);
   return true;
 }
 
