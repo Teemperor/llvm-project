@@ -26,7 +26,7 @@
 #include "ClangExpressionSourceCode.h"
 #include "ClangModulesDeclVendor.h"
 #include "ClangPersistentVariables.h"
-#include "IncludeDirectorySearcher.h"
+#include "CppModuleConfiguration.h"
 
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Module.h"
@@ -438,33 +438,31 @@ static bool SupportsCxxModuleImport(lldb::LanguageType language) {
   }
 }
 
-std::vector<std::string>
-ClangUserExpression::GetModulesToImport(ExecutionContext &exe_ctx) {
+CppModuleConfiguration GetModuleConfig(lldb::LanguageType language,
+                                          ExecutionContext &exe_ctx) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
 
-  if (!SupportsCxxModuleImport(m_language))
-    return {};
+  if (!SupportsCxxModuleImport(language))
+    return CppModuleConfiguration();
 
   Target *target = exe_ctx.GetTargetPtr();
   if (!target || !target->GetEnableImportStdModule())
-    return {};
+    return CppModuleConfiguration();
 
   StackFrame *frame = exe_ctx.GetFramePtr();
   if (!frame)
-    return {};
+    return CppModuleConfiguration();
 
   Block *block = frame->GetFrameBlock();
   if (!block)
-    return {};
+    return CppModuleConfiguration();
 
   SymbolContext sc;
   block->CalculateSymbolContext(&sc);
   if (!sc.comp_unit)
-    return {};
+    return CppModuleConfiguration();
 
-  IncludeDirectorySearcher incs(sc.comp_unit->GetSupportFiles());
-  m_include_directories = incs.GetIncludeDirs().vec();
-  return incs.GetImportedModules().vec();
+  return CppModuleConfiguration(sc.comp_unit->GetSupportFiles());
 }
 
 bool ClangUserExpression::PrepareForParsing(
@@ -492,14 +490,16 @@ bool ClangUserExpression::PrepareForParsing(
 
   SetupDeclVendor(exe_ctx, m_target);
 
-  std::vector<std::string> used_modules = GetModulesToImport(exe_ctx);
-  m_imported_cpp_modules = !used_modules.empty();
+  CppModuleConfiguration module_config = GetModuleConfig(m_language, exe_ctx);
+  llvm::ArrayRef<std::string> imported_modules = module_config.GetImportedModules();
+  m_imported_cpp_modules = !imported_modules.empty();
+  m_include_directories = module_config.GetIncludeDirs();
 
   LLDB_LOG(log, "List of imported modules in expression: {0}",
-           llvm::make_range(used_modules.begin(), used_modules.end()));
+           llvm::make_range(imported_modules.begin(), imported_modules.end()));
 
   UpdateLanguageForExpr();
-  CreateSourceCode(diagnostic_manager, exe_ctx, used_modules, for_completion);
+  CreateSourceCode(diagnostic_manager, exe_ctx, imported_modules, for_completion);
   return true;
 }
 
