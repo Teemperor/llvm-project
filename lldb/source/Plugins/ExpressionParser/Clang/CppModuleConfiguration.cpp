@@ -17,22 +17,25 @@ void CppModuleConfiguration::handleFile(const FileSpec &f) {
   llvm::StringRef dir = f.GetDirectory().GetStringRef();
 
   if (dir.endswith("/include/c++/v1"))
-    m_std_inc = f.GetDirectory();
-  if (dir.endswith("/usr/include/bits"))
-    m_usr_inc = ConstString(dir.str() + "/..");
+    m_std_inc = dir.str();
+  if (dir.endswith("/usr/include/bits")) {
+    llvm::SmallVector<char, 256> path;
+    llvm::sys::path::remove_dots();
+    m_usr_inc = llvm::sys::path::remove_dots(dir.str() + "/..", true).str();
+  }
   if (dir.endswith("/usr/include"))
-    m_usr_inc = f.GetDirectory();
+    m_usr_inc = dir.str();
 }
 
 bool CppModuleConfiguration::hasValidConfig() {
-  return !m_usr_inc.IsEmpty() && !m_std_inc.IsEmpty() && !m_resource_inc.IsEmpty();
+  return !m_usr_inc.empty() && !m_std_inc.empty() && !m_resource_inc.empty();
 }
 
 CppModuleConfiguration::CppModuleConfiguration(const FileSpecList &support_files) {
   for (const FileSpec &f : support_files)
     handleFile(f);
 
-  m_resource_inc = ConstString(GetClangResourceDir().GetPath() + "/include");
+  m_resource_inc = GetClangResourceDir().GetPath() + "/include";
 
   if (hasValidConfig()){
     m_include_dirs = {m_std_inc, m_resource_inc, m_usr_inc};

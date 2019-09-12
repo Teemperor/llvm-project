@@ -14,11 +14,11 @@
 namespace lldb_private {
 
 class CppModuleConfiguration {
-  ConstString m_resource_inc;
-  ConstString m_std_inc;
-  ConstString m_usr_inc;
+  std::string m_resource_inc;
+  std::string m_std_inc;
+  std::string m_usr_inc;
 
-  std::vector<ConstString> m_include_dirs;
+  std::vector<std::string> m_include_dirs;
   std::vector<std::string> m_imported_modules;
 
   void handleFile(const FileSpec &f);
@@ -28,7 +28,7 @@ public:
   explicit CppModuleConfiguration(const FileSpecList &support_files);
   CppModuleConfiguration() {}
 
-  llvm::ArrayRef<ConstString> GetIncludeDirs() const {
+  llvm::ArrayRef<std::string> GetIncludeDirs() const {
     return m_include_dirs;
   }
 

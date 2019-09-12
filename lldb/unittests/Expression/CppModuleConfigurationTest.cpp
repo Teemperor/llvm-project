@@ -28,6 +28,8 @@ struct CppModuleConfigurationTest : public testing::Test {
 };
 } // namespace
 
+#define RESOURCE_DIR "/include"
+
 static FileSpecList makeFiles(std::initializer_list<std::string> paths) {
   FileSpecList result;
   for (const std::string &path : paths)
@@ -40,9 +42,9 @@ TEST_F(CppModuleConfigurationTest, Basic) {
                                            "/usr/include/c++/v1/vector"}));
   const auto &imported_modules = config.GetImportedModules();
   EXPECT_THAT(imported_modules, testing::ElementsAre("std"));
-  EXPECT_THAT(config.GetIncludeDirs(), testing::ElementsAre("/usr/include/",
-                                                            "",
-                                                            "/usr/include/c++/v1/"));
+  EXPECT_THAT(config.GetIncludeDirs(), testing::ElementsAre("/usr/include/c++/v1",
+                                                            RESOURCE_DIR,
+                                                            "/usr/include"));
 }
 
 
