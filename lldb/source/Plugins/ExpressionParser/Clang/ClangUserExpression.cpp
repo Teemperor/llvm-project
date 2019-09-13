@@ -313,6 +313,7 @@ void ClangUserExpression::ScanContext(ExecutionContext &exe_ctx, Status &err) {
 // count is not available, [myArray count] returns id, which can't be directly
 // cast to int without causing a clang error.
 static void ApplyObjcCastHack(std::string &expr) {
+
 #define OBJC_CAST_HACK_FROM "(int)["
 #define OBJC_CAST_HACK_TO "(int)(long long)["
 

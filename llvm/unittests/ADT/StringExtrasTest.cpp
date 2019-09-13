@@ -118,3 +118,27 @@ TEST(StringExtrasTest, printHTMLEscaped) {
   printHTMLEscaped("ABCdef123&<>\"'", OS);
   EXPECT_EQ("ABCdef123&amp;&lt;&gt;&quot;&apos;", OS.str());
 }
+
+static std::string replaceAllHelper(const std::string &Str, const std::string &Needle, const std::string &Sub) {
+  std::string StrCopy = Str;
+  replaceAll(StrCopy, Needle, Sub);
+  return StrCopy;
+}
+
+TEST(StringExtrasTest, replaceAllEmpty) {
+  EXPECT_EQ("", replaceAllHelper("", "", ""));
+  EXPECT_EQ("", replaceAllHelper("", "", "a"));
+  EXPECT_EQ("a", replaceAllHelper("a", "", ""));
+  EXPECT_EQ("a", replaceAllHelper("a", "", "a"));
+}
+
+TEST(StringExtrasTest, replaceAllOverlapping) {
+  EXPECT_EQ("papabba", replaceAllHelper("abbabba", "abba", "papa"));
+  EXPECT_EQ("bba", replaceAllHelper("aaaaa", "aa", "b"));
+  EXPECT_EQ("bbbb", replaceAllHelper("aa", "a", "bb"));
+}
+
+TEST(StringExtrasTest, replaceAllNeedleInSub) {
+  EXPECT_EQ("abba abba abba ", replaceAllHelper("bbbbbb", "bb", "abba "));
+  EXPECT_EQ("abba abba abba ", replaceAllHelper("bbb", "b", "abba "));
+}

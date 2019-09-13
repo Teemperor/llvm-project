@@ -44,6 +44,7 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FileSystem.h"
 
 #include <memory>
@@ -2669,18 +2670,6 @@ bool ScriptInterpreterPythonImpl::RunScriptFormatKeyword(
   return ret_val;
 }
 
-uint64_t replace_all(std::string &str, const std::string &oldStr,
-                     const std::string &newStr) {
-  size_t pos = 0;
-  uint64_t matches = 0;
-  while ((pos = str.find(oldStr, pos)) != std::string::npos) {
-    matches++;
-    str.replace(pos, oldStr.length(), newStr);
-    pos += newStr.length();
-  }
-  return matches;
-}
-
 bool ScriptInterpreterPythonImpl::LoadScriptingModule(
     const char *pathname, bool can_reload, bool init_session,
     lldb_private::Status &error, StructuredData::ObjectSP *module_sp) {
@@ -2727,8 +2716,8 @@ bool ScriptInterpreterPythonImpl::LoadScriptingModule(
       }
 
       std::string directory = target_file.GetDirectory().GetCString();
-      replace_all(directory, "\\", "\\\\");
-      replace_all(directory, "'", "\\'");
+      replaceAll(directory, "\\", "\\\\");
+      replaceAll(directory, "'", "\\'");
 
       // now make sure that Python has "directory" in the search path
       StreamString command_stream;

@@ -262,6 +262,15 @@ void SplitString(StringRef Source,
                  SmallVectorImpl<StringRef> &OutFragments,
                  StringRef Delimiters = " \t\n\v\f\r");
 
+inline void replaceAll(std::string &str, const std::string &needle, const std::string &sub) {
+  if (needle.empty())
+    return;
+  for (size_t pos = 0; (pos = str.find(needle, pos)) != std::string::npos;
+       pos += sub.size()) {
+    str.replace(pos, needle.size(), sub);
+  }
+}
+
 /// Returns the English suffix for an ordinal integer (-st, -nd, -rd, -th).
 inline StringRef getOrdinalSuffix(unsigned Val) {
   // It is critically important that we do this perfectly for
