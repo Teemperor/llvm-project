@@ -1008,9 +1008,20 @@ bool SymbolFileDWARF::ParseLineTable(CompileUnit &comp_unit) {
     comp_unit.SetLineTable(line_table_up.release());
   }
 
-  comp_unit.SetSupportFiles(ParseSupportFilesFromPrologue(
+  FileSpecList support_files = ParseSupportFilesFromPrologue(
       comp_unit.GetModule(), line_table->Prologue, dwarf_cu->GetPathStyle(),
-      dwarf_cu->GetCompilationDirectory().GetCString(), FileSpec(comp_unit)));
+      dwarf_cu->GetCompilationDirectory().GetCString(), FileSpec(comp_unit));
+  UpdateExternalModuleListIfNeeded();
+  for (auto &p : m_external_type_modules) {
+    ModuleSP module = p.second;
+    for (size_t i = 0; i < module->GetNumCompileUnits(); ++i) {
+      CompUnitSP u = module->GetCompileUnitAtIndex(i);
+      FileSpecList l = u->GetSupportFiles();
+      for (const FileSpec& f : l)
+        support_files.Append(f);
+    }
+  }
+  comp_unit.SetSupportFiles(support_files);
 
   return true;
 }
