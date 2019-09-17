@@ -182,9 +182,7 @@ Args &Args::operator=(const Args &rhs) {
   m_entries.clear();
   for (auto &entry : rhs.m_entries) {
     m_entries.emplace_back(entry.ref(), entry.quote);
-    m_argv.push_back(m_entries.back().data());
   }
-  m_argv.push_back(nullptr);
   return *this;
 }
 
@@ -245,41 +243,29 @@ void Args::SetCommandString(llvm::StringRef command) {
   while (!command.empty()) {
     std::tie(arg, quote, command) = ParseSingleArgument(command);
     m_entries.emplace_back(arg, quote);
-    m_argv.push_back(m_entries.back().data());
     command = ltrimForArgs(command);
   }
-  m_argv.push_back(nullptr);
 }
 
 size_t Args::GetArgumentCount() const { return m_entries.size(); }
 
 const char *Args::GetArgumentAtIndex(size_t idx) const {
-  if (idx < m_argv.size())
-    return m_argv[idx];
+  if (idx < m_entries.size())
+    return m_entries[idx].c_str();
   return nullptr;
 }
 
-char **Args::GetArgumentVector() {
-  assert(!m_argv.empty());
-  // TODO: functions like execve and posix_spawnp exhibit undefined behavior
-  // when argv or envp is null.  So the code below is actually wrong.  However,
-  // other code in LLDB depends on it being null.  The code has been acting
-  // this way for some time, so it makes sense to leave it this way until
-  // someone has the time to come along and fix it.
-  return (m_argv.size() > 1) ? m_argv.data() : nullptr;
-}
-
-const char **Args::GetConstArgumentVector() const {
-  assert(!m_argv.empty());
-  return (m_argv.size() > 1) ? const_cast<const char **>(m_argv.data())
-                             : nullptr;
+std::vector<const char *> Args::GetArgumentVector() const {
+  std::vector<const char *> result;
+  for (const ArgEntry &e : m_entries)
+    result.push_back(e.c_str());
+  return result;
 }
 
 void Args::Shift() {
   // Don't pop the last NULL terminator from the argv array
   if (m_entries.empty())
     return;
-  m_argv.erase(m_argv.begin());
   m_entries.erase(m_entries.begin());
 }
 
@@ -288,28 +274,17 @@ void Args::Unshift(llvm::StringRef arg_str, char quote_char) {
 }
 
 void Args::AppendArguments(const Args &rhs) {
-  assert(m_argv.size() == m_entries.size() + 1);
-  assert(m_argv.back() == nullptr);
-  m_argv.pop_back();
   for (auto &entry : rhs.m_entries) {
     m_entries.emplace_back(entry.ref(), entry.quote);
-    m_argv.push_back(m_entries.back().data());
   }
-  m_argv.push_back(nullptr);
 }
 
 void Args::AppendArguments(const char **argv) {
   size_t argc = ArgvToArgc(argv);
 
-  assert(m_argv.size() == m_entries.size() + 1);
-  assert(m_argv.back() == nullptr);
-  m_argv.pop_back();
   for (auto arg : llvm::makeArrayRef(argv, argc)) {
     m_entries.emplace_back(arg, '\0');
-    m_argv.push_back(m_entries.back().data());
   }
-
-  m_argv.push_back(nullptr);
 }
 
 void Args::AppendArgument(llvm::StringRef arg_str, char quote_char) {
@@ -318,32 +293,24 @@ void Args::AppendArgument(llvm::StringRef arg_str, char quote_char) {
 
 void Args::InsertArgumentAtIndex(size_t idx, llvm::StringRef arg_str,
                                  char quote_char) {
-  assert(m_argv.size() == m_entries.size() + 1);
-  assert(m_argv.back() == nullptr);
 
   if (idx > m_entries.size())
     return;
   m_entries.emplace(m_entries.begin() + idx, arg_str, quote_char);
-  m_argv.insert(m_argv.begin() + idx, m_entries[idx].data());
 }
 
 void Args::ReplaceArgumentAtIndex(size_t idx, llvm::StringRef arg_str,
                                   char quote_char) {
-  assert(m_argv.size() == m_entries.size() + 1);
-  assert(m_argv.back() == nullptr);
-
   if (idx >= m_entries.size())
     return;
 
   m_entries[idx] = ArgEntry(arg_str, quote_char);
-  m_argv[idx] = m_entries[idx].data();
 }
 
 void Args::DeleteArgumentAtIndex(size_t idx) {
   if (idx >= m_entries.size())
     return;
 
-  m_argv.erase(m_argv.begin() + idx);
   m_entries.erase(m_entries.begin() + idx);
 }
 
@@ -352,7 +319,6 @@ void Args::SetArguments(size_t argc, const char **argv) {
 
   auto args = llvm::makeArrayRef(argv, argc);
   m_entries.resize(argc);
-  m_argv.resize(argc + 1);
   for (size_t i = 0; i < args.size(); ++i) {
     char quote =
         ((args[i][0] == '\'') || (args[i][0] == '"') || (args[i][0] == '`'))
@@ -360,7 +326,6 @@ void Args::SetArguments(size_t argc, const char **argv) {
             : '\0';
 
     m_entries[i] = ArgEntry(args[i], quote);
-    m_argv[i] = m_entries[i].data();
   }
 }
 
@@ -371,7 +336,6 @@ void Args::SetArguments(const char **argv) {
 void Args::Clear() {
   m_entries.clear();
   m_argv.clear();
-  m_argv.push_back(nullptr);
 }
 
 const char *Args::GetShellSafeArgument(const FileSpec &shell,

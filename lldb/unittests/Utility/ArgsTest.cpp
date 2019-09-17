@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
 #include "lldb/Utility/Args.h"
@@ -112,36 +113,36 @@ TEST(ArgsTest, TestInsertArg) {
 
 TEST(ArgsTest, TestArgv) {
   Args args;
-  EXPECT_EQ(nullptr, args.GetArgumentVector());
+  EXPECT_THAT(args.GetArgumentVector(), testing::ElementsAre(nullptr));
 
   args.AppendArgument("1");
-  EXPECT_NE(nullptr, args.GetArgumentVector()[0]);
+  EXPECT_STREQ("1", args.GetArgumentVector()[0]);
   EXPECT_EQ(nullptr, args.GetArgumentVector()[1]);
 
   args.AppendArgument("2");
-  EXPECT_NE(nullptr, args.GetArgumentVector()[0]);
-  EXPECT_NE(nullptr, args.GetArgumentVector()[1]);
+  EXPECT_STREQ("1", args.GetArgumentVector()[0]);
+  EXPECT_STREQ("2", args.GetArgumentVector()[1]);
   EXPECT_EQ(nullptr, args.GetArgumentVector()[2]);
 
   args.AppendArgument("3");
-  EXPECT_NE(nullptr, args.GetArgumentVector()[0]);
-  EXPECT_NE(nullptr, args.GetArgumentVector()[1]);
-  EXPECT_NE(nullptr, args.GetArgumentVector()[2]);
+  EXPECT_STREQ("1", args.GetArgumentVector()[0]);
+  EXPECT_STREQ("2", args.GetArgumentVector()[1]);
+  EXPECT_STREQ("3", args.GetArgumentVector()[2]);
   EXPECT_EQ(nullptr, args.GetArgumentVector()[3]);
 
   args.InsertArgumentAtIndex(1, "1.5");
-  EXPECT_NE(nullptr, args.GetArgumentVector()[0]);
-  EXPECT_NE(nullptr, args.GetArgumentVector()[1]);
-  EXPECT_NE(nullptr, args.GetArgumentVector()[2]);
-  EXPECT_NE(nullptr, args.GetArgumentVector()[3]);
+  EXPECT_STREQ("1", args.GetArgumentVector()[0]);
+  EXPECT_STREQ("1.5", args.GetArgumentVector()[1]);
+  EXPECT_STREQ("2", args.GetArgumentVector()[2]);
+  EXPECT_STREQ("3", args.GetArgumentVector()[3]);
   EXPECT_EQ(nullptr, args.GetArgumentVector()[4]);
 
   args.InsertArgumentAtIndex(4, "3.5");
-  EXPECT_NE(nullptr, args.GetArgumentVector()[0]);
-  EXPECT_NE(nullptr, args.GetArgumentVector()[1]);
-  EXPECT_NE(nullptr, args.GetArgumentVector()[2]);
-  EXPECT_NE(nullptr, args.GetArgumentVector()[3]);
-  EXPECT_NE(nullptr, args.GetArgumentVector()[4]);
+  EXPECT_STREQ("1", args.GetArgumentVector()[0]);
+  EXPECT_STREQ("1.5", args.GetArgumentVector()[1]);
+  EXPECT_STREQ("2", args.GetArgumentVector()[2]);
+  EXPECT_STREQ("3", args.GetArgumentVector()[3]);
+  EXPECT_STREQ("3.5", args.GetArgumentVector()[4]);
   EXPECT_EQ(nullptr, args.GetArgumentVector()[5]);
 }
 
@@ -207,14 +208,6 @@ TEST(ArgsTest, AppendArguments) {
   EXPECT_STREQ("2", args.GetArgumentAtIndex(1));
   EXPECT_STREQ("3", args.GetArgumentAtIndex(2));
   EXPECT_STREQ("4", args.GetArgumentAtIndex(3));
-}
-
-TEST(ArgsTest, GetArgumentArrayRef) {
-  Args args("foo bar");
-  auto ref = args.GetArgumentArrayRef();
-  ASSERT_EQ(2u, ref.size());
-  EXPECT_STREQ("foo", ref[0]);
-  EXPECT_STREQ("bar", ref[1]);
 }
 
 TEST(ArgsTest, EscapeLLDBCommandArgument) {

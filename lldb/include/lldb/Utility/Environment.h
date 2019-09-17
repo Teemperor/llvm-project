@@ -61,6 +61,7 @@ public:
   Environment(char *const *Env)
       : Environment(const_cast<const char *const *>(Env)) {}
   Environment(const char *const *Env);
+  Environment(const std::vector<const char *> Env) : Environment(Env.data()) {}
 
   Environment &operator=(Environment RHS) {
     Base::operator=(std::move(RHS));

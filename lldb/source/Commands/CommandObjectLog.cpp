@@ -177,7 +177,7 @@ protected:
     std::string error;
     llvm::raw_string_ostream error_stream(error);
     bool success =
-        GetDebugger().EnableLog(channel, args.GetArgumentArrayRef(), log_file,
+        GetDebugger().EnableLog(channel, args.GetArgumentVector(), log_file,
                                 m_options.log_options, error_stream);
     result.GetErrorStream() << error_stream.str();
 
@@ -247,7 +247,7 @@ protected:
     } else {
       std::string error;
       llvm::raw_string_ostream error_stream(error);
-      if (Log::DisableLogChannel(channel, args.GetArgumentArrayRef(),
+      if (Log::DisableLogChannel(channel, args.GetArgumentVector(),
                                  error_stream))
         result.SetStatus(eReturnStatusSuccessFinishNoResult);
       result.GetErrorStream() << error_stream.str();

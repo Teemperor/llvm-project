@@ -273,9 +273,10 @@ LaunchInNewTerminalWithAppleScript(const char *exe_path,
 
   command.PutCString(" -- ");
 
-  const char **argv = launch_info.GetArguments().GetConstArgumentVector();
-  if (argv) {
-    for (size_t i = 0; argv[i] != NULL; ++i) {
+  std::vector<const char *> argv =
+      launch_info.GetArguments().GetArgumentVector();
+  if (!argv.empty()) {
+    for (size_t i = 0; i < argv.size(); ++i) {
       if (i == 0)
         command.Printf(" '%s'", exe_path);
       else
@@ -1157,19 +1158,18 @@ static Status LaunchProcessPosixSpawn(const char *exe_path,
   }
 #endif // !defined(__arm__)
 
-  const char *tmp_argv[2];
-  char *const *argv = const_cast<char *const *>(
-      launch_info.GetArguments().GetConstArgumentVector());
+  std::vector<const char *> args =
+      launch_info.GetArguments().GetArgumentVector();
+  if (args.empty())
+    args = {exe_path};
+  args.push_back(nullptr);
+
+  char *const *argv = const_cast<char *const *>(args.data());
+  // posix_spawn gets very unhappy if it doesn't have at least the program
+  // name in argv[0]. One of the side affects I have noticed is the
+  // environment
+  // variables don't make it into the child process if "argv == NULL"!!!
   Environment::Envp envp = launch_info.GetEnvironment().getEnvp();
-  if (argv == NULL) {
-    // posix_spawn gets very unhappy if it doesn't have at least the program
-    // name in argv[0]. One of the side affects I have noticed is the
-    // environment
-    // variables don't make it into the child process if "argv == NULL"!!!
-    tmp_argv[0] = exe_path;
-    tmp_argv[1] = NULL;
-    argv = const_cast<char *const *>(tmp_argv);
-  }
 
   FileSpec working_dir{launch_info.GetWorkingDirectory()};
   if (working_dir) {

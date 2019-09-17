@@ -52,7 +52,7 @@ bool LLDBServerUtilities::SetupLogging(const std::string &log_file,
 
     bool success = Log::EnableLogChannel(
         log_stream_sp, log_options, channel,
-        channel_then_categories.GetArgumentArrayRef(), error_stream);
+        channel_then_categories.GetArgumentVector(), error_stream);
     if (!success) {
       errs() << formatv("Unable to setup logging for channel \"{0}\": {1}",
                         channel, error_stream.str());

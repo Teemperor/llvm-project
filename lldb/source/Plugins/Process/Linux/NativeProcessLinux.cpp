@@ -121,9 +121,9 @@ void MaybeLogLaunchInfo(const ProcessLaunchInfo &info) {
     LLDB_LOG(log, "leaving STDERR as is");
 
   int i = 0;
-  for (const char **args = info.GetArguments().GetConstArgumentVector(); *args;
-       ++args, ++i)
-    LLDB_LOG(log, "arg {0}: '{1}'", i, *args);
+  for (const char *args : info.GetArguments().GetArgumentVector())
+    if (args)
+      LLDB_LOG(log, "arg {0}: '{1}'", i, *args);
 }
 
 void DisplayBytes(StreamString &s, void *bytes, uint32_t count) {

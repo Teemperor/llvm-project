@@ -250,9 +250,10 @@ bool ProcessLaunchInfo::ConvertArgumentsForLaunchingInShell(
     if (m_shell) {
       std::string shell_executable = m_shell.GetPath();
 
-      const char **argv = GetArguments().GetConstArgumentVector();
-      if (argv == nullptr || argv[0] == nullptr)
+      if (GetArguments().GetArgumentCount() == 0)
         return false;
+      std::vector<const char *> argv = GetArguments().GetArgumentVector();
+      argv.push_back(nullptr);
       Args shell_arguments;
       std::string safe_arg;
       shell_arguments.AppendArgument(shell_executable);

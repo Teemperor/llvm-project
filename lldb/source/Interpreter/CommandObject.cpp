@@ -962,8 +962,7 @@ bool CommandObjectParsed::Execute(const char *args_string,
   if (HasOverrideCallback()) {
     Args full_args(GetCommandName());
     full_args.AppendArguments(cmd_args);
-    handled =
-        InvokeOverrideCallback(full_args.GetConstArgumentVector(), result);
+    handled = InvokeOverrideCallback(full_args.GetArgumentVector(), result);
   }
   if (!handled) {
     for (auto entry : llvm::enumerate(cmd_args.entries())) {
@@ -994,8 +993,7 @@ bool CommandObjectRaw::Execute(const char *args_string,
     std::string full_command(GetCommandName());
     full_command += ' ';
     full_command += args_string;
-    const char *argv[2] = {nullptr, nullptr};
-    argv[0] = full_command.c_str();
+    std::vector<const char *> argv = {full_command.c_str(), nullptr};
     handled = InvokeOverrideCallback(argv, result);
   }
   if (!handled) {

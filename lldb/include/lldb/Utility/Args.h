@@ -72,7 +72,11 @@ public:
     SetArguments(const_cast<const char **>(env.getEnvp().get()));
   }
 
-  explicit operator Environment() const { return GetConstArgumentVector(); }
+  operator Environment() const {
+    auto result = GetArgumentVector();
+    result.push_back(nullptr);
+    return Environment(result);
+  }
 
   /// Dump all entries to the stream \a s using label \a label_name.
   ///
@@ -133,38 +137,9 @@ public:
 
   /// Gets the argument vector.
   ///
-  /// The value returned by this function can be used by any function that
-  /// takes and vector. The return value is just like \a argv in the standard
-  /// C entry point function:
-  ///     \code
-  ///         int main (int argc, const char **argv);
-  ///     \endcode
-  ///
   /// \return
-  ///     An array of NULL terminated C string argument pointers that
-  ///     also has a terminating NULL C string pointer
-  char **GetArgumentVector();
-
-  /// Gets the argument vector.
-  ///
-  /// The value returned by this function can be used by any function that
-  /// takes and vector. The return value is just like \a argv in the standard
-  /// C entry point function:
-  ///     \code
-  ///         int main (int argc, const char **argv);
-  ///     \endcode
-  ///
-  /// \return
-  ///     An array of NULL terminate C string argument pointers that
-  ///     also has a terminating NULL C string pointer
-  const char **GetConstArgumentVector() const;
-
-  /// Gets the argument as an ArrayRef. Note that the return value does *not*
-  /// have a nullptr const char * at the end, as the size of the list is
-  /// embedded in the ArrayRef object.
-  llvm::ArrayRef<const char *> GetArgumentArrayRef() const {
-    return llvm::makeArrayRef(m_argv).drop_back();
-  }
+  ///     An array of NULL terminated C string argument pointers.
+  std::vector<const char *> GetArgumentVector() const;
 
   /// Appends a new argument to the end of the list argument list.
   ///

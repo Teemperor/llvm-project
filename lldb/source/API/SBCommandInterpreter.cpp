@@ -165,8 +165,20 @@ protected:
     SBCommandReturnObject sb_return(result);
     SBCommandInterpreter sb_interpreter(&m_interpreter);
     SBDebugger debugger_sb(m_interpreter.GetDebugger().shared_from_this());
-    bool ret = m_backend->DoExecute(
-        debugger_sb, (char **)command.GetArgumentVector(), sb_return);
+    // DoExecute takes a 'char **' so we need to allocate memory for that.
+    std::vector<char *> args;
+    for (const char *arg : command.GetArgumentVector()) {
+      std::size_t size = strlen(arg) + 1U;
+      args.push_back(new char[size]);
+      std::memcpy(args.back(), arg, size);
+    }
+    args.push_back(nullptr);
+
+    bool ret = m_backend->DoExecute(debugger_sb, args.data(), sb_return);
+
+    // Free the memory we allocated for args.
+    for (char *arg : args)
+      delete[] arg;
     return ret;
   }
   std::shared_ptr<lldb::SBCommandPluginInterface> m_backend;

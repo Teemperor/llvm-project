@@ -1964,20 +1964,15 @@ void CommandInterpreter::BuildAliasCommandArgs(CommandObject *alias_cmd_obj,
         new_args.AppendArgument(entry.value().ref());
     }
 
-    cmd_args.Clear();
-    cmd_args.SetArguments(new_args.GetArgumentCount(),
-                          new_args.GetConstArgumentVector());
+    cmd_args = new_args;
   } else {
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
     // This alias was not created with any options; nothing further needs to be
     // done, unless it is a command that wants raw input, in which case we need
     // to clear the rest of the data from cmd_args, since its in the raw input
     // string.
-    if (wants_raw_input) {
-      cmd_args.Clear();
-      cmd_args.SetArguments(new_args.GetArgumentCount(),
-                            new_args.GetConstArgumentVector());
-    }
+    if (wants_raw_input)
+      cmd_args = new_args;
     return;
   }
 

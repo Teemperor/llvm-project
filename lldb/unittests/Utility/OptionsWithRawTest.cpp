@@ -62,7 +62,7 @@ TEST(OptionsWithRawTest, EmptySuffix) {
   ASSERT_EQ(args.GetArgString(), "-foo ");
   ASSERT_EQ(args.GetArgStringWithDelimiter(), "-foo --");
 
-  auto ref = args.GetArgs().GetArgumentArrayRef();
+  auto ref = args.GetArgs().GetArgumentVector();
   ASSERT_EQ(1u, ref.size());
   EXPECT_STREQ("-foo", ref[0]);
 
@@ -77,7 +77,7 @@ TEST(OptionsWithRawTest, EmptySuffixSingleWhitespace) {
   ASSERT_EQ(args.GetArgString(), "-foo ");
   ASSERT_EQ(args.GetArgStringWithDelimiter(), "-foo -- ");
 
-  auto ref = args.GetArgs().GetArgumentArrayRef();
+  auto ref = args.GetArgs().GetArgumentVector();
   ASSERT_EQ(1u, ref.size());
   EXPECT_STREQ("-foo", ref[0]);
 
@@ -91,7 +91,7 @@ TEST(OptionsWithRawTest, WhitespaceSuffix) {
   ASSERT_EQ(args.GetArgString(), "-foo ");
   ASSERT_EQ(args.GetArgStringWithDelimiter(), "-foo -- ");
 
-  auto ref = args.GetArgs().GetArgumentArrayRef();
+  auto ref = args.GetArgs().GetArgumentVector();
   ASSERT_EQ(1u, ref.size());
   EXPECT_STREQ("-foo", ref[0]);
 
@@ -105,7 +105,7 @@ TEST(OptionsWithRawTest, LeadingSpaceArgs) {
   ASSERT_EQ(args.GetArgString(), " -foo ");
   ASSERT_EQ(args.GetArgStringWithDelimiter(), " -foo -- ");
 
-  auto ref = args.GetArgs().GetArgumentArrayRef();
+  auto ref = args.GetArgs().GetArgumentVector();
   ASSERT_EQ(1u, ref.size());
   EXPECT_STREQ("-foo", ref[0]);
 
@@ -119,7 +119,7 @@ TEST(OptionsWithRawTest, SingleWordSuffix) {
   ASSERT_EQ(args.GetArgString(), "-foo ");
   ASSERT_EQ(args.GetArgStringWithDelimiter(), "-foo -- ");
 
-  auto ref = args.GetArgs().GetArgumentArrayRef();
+  auto ref = args.GetArgs().GetArgumentVector();
   ASSERT_EQ(1u, ref.size());
   EXPECT_STREQ("-foo", ref[0]);
 
@@ -133,7 +133,7 @@ TEST(OptionsWithRawTest, MultiWordSuffix) {
   ASSERT_EQ(args.GetArgString(), "-foo ");
   ASSERT_EQ(args.GetArgStringWithDelimiter(), "-foo -- ");
 
-  auto ref = args.GetArgs().GetArgumentArrayRef();
+  auto ref = args.GetArgs().GetArgumentVector();
   ASSERT_EQ(1u, ref.size());
   EXPECT_STREQ("-foo", ref[0]);
 
@@ -147,7 +147,7 @@ TEST(OptionsWithRawTest, UnterminatedQuote) {
   ASSERT_EQ(args.GetArgString(), "-foo ");
   ASSERT_EQ(args.GetArgStringWithDelimiter(), "-foo -- ");
 
-  auto ref = args.GetArgs().GetArgumentArrayRef();
+  auto ref = args.GetArgs().GetArgumentVector();
   ASSERT_EQ(1u, ref.size());
   EXPECT_STREQ("-foo", ref[0]);
 
@@ -161,7 +161,7 @@ TEST(OptionsWithRawTest, TerminatedQuote) {
   ASSERT_EQ(args.GetArgString(), "-foo ");
   ASSERT_EQ(args.GetArgStringWithDelimiter(), "-foo -- ");
 
-  auto ref = args.GetArgs().GetArgumentArrayRef();
+  auto ref = args.GetArgs().GetArgumentVector();
   ASSERT_EQ(1u, ref.size());
   EXPECT_STREQ("-foo", ref[0]);
 
@@ -175,7 +175,7 @@ TEST(OptionsWithRawTest, EmptyArgsOnlySuffix) {
   ASSERT_EQ(args.GetArgString(), "");
   ASSERT_EQ(args.GetArgStringWithDelimiter(), "-- ");
 
-  auto ref = args.GetArgs().GetArgumentArrayRef();
+  auto ref = args.GetArgs().GetArgumentVector();
   ASSERT_EQ(0u, ref.size());
 
   ASSERT_STREQ(args.GetRawPart().c_str(), "bar");

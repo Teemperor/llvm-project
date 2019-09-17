@@ -292,13 +292,14 @@ public:
     m_command_override_baton = baton;
   }
 
-  bool InvokeOverrideCallback(const char **argv, CommandReturnObject &result) {
+  bool InvokeOverrideCallback(std::vector<const char *> argv,
+                              CommandReturnObject &result) {
     if (m_command_override_callback)
-      return m_command_override_callback(m_command_override_baton, argv,
+      return m_command_override_callback(m_command_override_baton, argv.data(),
                                          result);
     else if (m_deprecated_command_override_callback)
       return m_deprecated_command_override_callback(m_command_override_baton,
-                                                    argv);
+                                                    argv.data());
     else
       return false;
   }

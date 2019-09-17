@@ -115,7 +115,8 @@ static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
     }
   }
 
-  const char **argv = info.GetArguments().GetConstArgumentVector();
+  std::vector<const char *> argv = info.GetArguments().GetArgumentVector();
+  argv.push_back(nullptr);
 
   // Change working directory
   if (info.GetWorkingDirectory() &&
@@ -153,7 +154,7 @@ static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
   }
 
   // Execute.  We should never return...
-  execve(argv[0], const_cast<char *const *>(argv), envp);
+  execve(argv[0], const_cast<char *const *>(argv.data()), envp);
 
 #if defined(__linux__)
   if (errno == ETXTBSY) {
@@ -166,7 +167,7 @@ static void LLVM_ATTRIBUTE_NORETURN ChildFunc(int error_fd,
     // Since this state should clear up quickly, wait a while and then give it
     // one more go.
     usleep(50000);
-    execve(argv[0], const_cast<char *const *>(argv), envp);
+    execve(argv[0], const_cast<char *const *>(argv.data()), envp);
   }
 #endif
 
