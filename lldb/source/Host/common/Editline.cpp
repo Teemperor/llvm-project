@@ -14,6 +14,7 @@
 #include "lldb/Host/Editline.h"
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Host/Host.h"
+#include "lldb/Utility/AnsiTerminal.h"
 #include "lldb/Utility/CompletionRequest.h"
 #include "lldb/Utility/FileSpec.h"
 #include "lldb/Utility/LLDBAssert.h"
@@ -833,6 +834,53 @@ unsigned char Editline::FixIndentationCommand(int ch) {
   return CC_NEWLINE;
 }
 
+unsigned char Editline::ApplyShadowSuggestionCommand(int) {
+  // Insert the character typed before proceeding
+  const LineInfo *line_info = el_line(m_editline);
+
+  llvm::StringRef line(line_info->buffer,
+                       line_info->lastchar - line_info->buffer);
+
+  unsigned cursor_index = line_info->cursor - line_info->buffer;
+  if (cursor_index != line.size()) {
+    return CC_ERROR;
+  }
+
+  std::string shadow;
+  m_shadow_callback(line, shadow, m_shadow_callback_baton);
+
+  el_insertstr(m_editline, shadow.c_str());
+  return CC_REFRESH;
+}
+
+unsigned char Editline::ShadowSuggestionCommand(int ch) {
+  // Insert the character typed before proceeding
+  EditLineCharType inserted[] = {(EditLineCharType)ch, 0};
+  const LineInfo *line_info = el_line(m_editline);
+
+  llvm::StringRef old_line(line_info->buffer,
+                       line_info->lastchar - line_info->buffer);
+  std::string line_with_char = old_line.str() + std::string(1, ch);
+  llvm::StringRef line = line_with_char;
+
+  unsigned cursor_index = line_info->cursor - line_info->buffer;
+  if (cursor_index != old_line.size()) {
+    el_insertstr(m_editline, inserted);
+    return CC_NORM;
+  }
+  //llvm::errs() << "\n\n\n\n'" << line << "'\n\n\n\n";
+
+  std::string shadow;
+  m_shadow_callback(line, shadow, m_shadow_callback_baton);
+
+  shadow = std::string(1, ch) + ansi::FormatAnsiTerminalCodes("${ansi.faint}") + shadow + ansi::FormatAnsiTerminalCodes("${ansi.normal}");
+  el_insertstr(m_editline, inserted);
+  printf("%s", shadow.c_str());
+  fflush(stdout);
+  MoveCursor(CursorLocation::BlockEnd, CursorLocation::EditingPrompt);
+  return CC_REFRESH;
+}
+
 unsigned char Editline::RevertLineCommand(int ch) {
   el_winsertstr(m_editline, m_input_lines[m_current_line_index].c_str());
   if (m_revert_cursor_index >= 0) {
@@ -1080,6 +1128,16 @@ void Editline::ConfigureEditor(bool multiline) {
           (EditlineCommandCallbackType)([](EditLine *editline, int ch) {
             return Editline::InstanceFor(editline)->FixIndentationCommand(ch);
           }));
+  el_wset(m_editline, EL_ADDFN, EditLineConstString("lldb-shadow-suggestion"),
+          EditLineConstString("Provide shadow sugg"),
+          (EditlineCommandCallbackType)([](EditLine *editline, int ch) {
+            return Editline::InstanceFor(editline)->ShadowSuggestionCommand(ch);
+          }));
+  el_wset(m_editline, EL_ADDFN, EditLineConstString("lldb-apply-shadow-suggestion"),
+          EditLineConstString("Apply shadow sugg"),
+          (EditlineCommandCallbackType)([](EditLine *editline, int ch) {
+            return Editline::InstanceFor(editline)->ApplyShadowSuggestionCommand(ch);
+          }));
 
   // Register the complete callback under two names for compatibility with
   // older clients using custom .editrc files (largely because libedit has a
@@ -1104,6 +1162,7 @@ void Editline::ConfigureEditor(bool multiline) {
          NULL); // Delete previous word, behave like bash in emacs mode
   el_set(m_editline, EL_BIND, "\t", "lldb-complete",
          NULL); // Bind TAB to auto complete
+  el_set(m_editline, EL_BIND, "^f", "lldb-apply-shadow-suggestion", NULL);
 
   // Allow user-specific customization prior to registering bindings we
   // absolutely require
@@ -1123,6 +1182,16 @@ void Editline::ConfigureEditor(bool multiline) {
     while (*indent_chars) {
       bind_key[0] = *indent_chars;
       el_set(m_editline, EL_BIND, bind_key, "lldb-fix-indentation", NULL);
+      ++indent_chars;
+    }
+  }
+
+  if (true) {
+    char bind_key[2] = {0, 0};
+    const char *indent_chars = "abcdefghijklmnopqrstuvwxzyABCDEFGHIJKLMNOPQRSTUVWXZY1234567890 ";
+    while (*indent_chars) {
+      bind_key[0] = *indent_chars;
+      el_set(m_editline, EL_BIND, bind_key, "lldb-shadow-suggestion", NULL);
       ++indent_chars;
     }
   }
@@ -1295,6 +1364,11 @@ bool Editline::Cancel() {
   }
   m_editor_status = EditorStatus::Interrupted;
   return result;
+}
+
+void Editline::SetShadowSuggestionCallback(ShadowSuggestionCallbackType callback, void *baton) {
+  m_shadow_callback = callback;
+  m_shadow_callback_baton = baton;
 }
 
 void Editline::SetAutoCompleteCallback(CompleteCallbackType callback,

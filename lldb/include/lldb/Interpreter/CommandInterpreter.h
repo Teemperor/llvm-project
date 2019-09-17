@@ -311,6 +311,8 @@ public:
   // This handles command line completion.
   void HandleCompletion(CompletionRequest &request);
 
+  void HandleShadowSuggestion(llvm::StringRef line, std::string &result);
+
   // This version just returns matches, and doesn't compute the substring. It
   // is here so the Help command can call it for the first argument.
   void HandleCompletionMatches(CompletionRequest &request);

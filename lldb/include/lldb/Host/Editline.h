@@ -98,6 +98,8 @@ typedef int (*FixIndentationCallbackType)(Editline *editline,
                                           const StringList &lines,
                                           int cursor_position, void *baton);
 
+typedef void (*ShadowSuggestionCallbackType)(llvm::StringRef line, std::string &result, void *baton);
+
 typedef void (*CompleteCallbackType)(CompletionRequest &request, void *baton);
 
 /// Status used to decide when and how to start editing another line in
@@ -176,6 +178,8 @@ public:
 
   /// Cancel this edit and oblitarate all trace of it
   bool Cancel();
+
+  void SetShadowSuggestionCallback(ShadowSuggestionCallbackType callback, void *baton);
 
   /// Register a callback for the tab key
   void SetAutoCompleteCallback(CompleteCallbackType callback, void *baton);
@@ -312,6 +316,10 @@ private:
   /// Respond to normal character insertion by fixing line indentation
   unsigned char FixIndentationCommand(int ch);
 
+  unsigned char ApplyShadowSuggestionCommand(int ch);
+
+  unsigned char ShadowSuggestionCommand(int ch);
+
   /// Revert line command used when moving between lines.
   unsigned char RevertLineCommand(int ch);
 
@@ -353,6 +361,8 @@ private:
   FixIndentationCallbackType m_fix_indentation_callback = nullptr;
   void *m_fix_indentation_callback_baton = nullptr;
   const char *m_fix_indentation_callback_chars = nullptr;
+  ShadowSuggestionCallbackType m_shadow_callback = nullptr;
+  void *m_shadow_callback_baton = nullptr;
   CompleteCallbackType m_completion_callback = nullptr;
   void *m_completion_callback_baton = nullptr;
 

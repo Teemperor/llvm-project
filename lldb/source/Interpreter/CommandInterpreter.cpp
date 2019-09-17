@@ -1821,6 +1821,17 @@ void CommandInterpreter::HandleCompletion(CompletionRequest &request) {
   HandleCompletionMatches(request);
 }
 
+void CommandInterpreter::HandleShadowSuggestion(llvm::StringRef line, std::string &result) {
+  const size_t s = m_command_history.GetSize();
+  for (size_t i = 0; i < s; ++i) {
+    llvm::StringRef entry = m_command_history.GetStringAtIndex(i);
+    if (entry.startswith(line)) {
+      result = entry.substr(line.size());
+      //return;
+    }
+  }
+}
+
 CommandInterpreter::~CommandInterpreter() {}
 
 void CommandInterpreter::UpdatePrompt(llvm::StringRef new_prompt) {
