@@ -649,6 +649,18 @@ void ClangASTSource::FindExternalLexicalDecls(
         QualType copied_field_type = copied_field->getType();
 
         m_ast_importer_sp->RequireCompleteType(copied_field_type);
+
+        DeclContext *decl_context_non_const =
+        const_cast<DeclContext *>(decl_context);
+
+        if (copied_decl->getDeclContext() != decl_context) {
+          if (copied_decl->getDeclContext()->containsDecl(copied_decl))
+            copied_decl->getDeclContext()->removeDecl(copied_decl);
+          copied_decl->setDeclContext(decl_context_non_const);
+        }
+
+        if (!decl_context_non_const->containsDecl(copied_decl))
+              decl_context_non_const->addDeclInternal(copied_decl);
       }
     } else {
       SkippedDecls = true;
