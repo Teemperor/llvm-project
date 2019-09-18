@@ -5261,6 +5261,10 @@ ExpectedDecl ASTNodeImporter::VisitClassTemplateSpecializationDecl(
         // what else could be fused during an AST merge.
         return PrevDecl;
       }
+      if (D->hasExternalLexicalStorage() && PrevDecl->hasExternalLexicalStorage()) {
+        Importer.MapImported(D, PrevDecl);
+        return PrevDecl;
+      }
     } else { // ODR violation.
       // FIXME HandleNameConflict
       return make_error<ImportError>(ImportError::NameConflict);
