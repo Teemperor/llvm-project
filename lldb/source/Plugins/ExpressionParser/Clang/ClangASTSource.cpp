@@ -186,6 +186,9 @@ bool ClangASTSource::FindExternalVisibleDeclsByName(
 
   std::string decl_name(clang_decl_name.getAsString());
 
+  if (decl_name == "Foo") {
+    std::string magic = "q342";
+  }
   //    if (m_decl_map.DoingASTImport ())
   //      return DeclContext::lookup_result();
   //

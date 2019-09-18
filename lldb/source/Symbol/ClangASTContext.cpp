@@ -10011,6 +10011,8 @@ CompilerType ClangASTContext::DeclGetFunctionArgumentType(void *opaque_decl,
 
 std::vector<CompilerDecl> ClangASTContext::DeclContextFindDeclByName(
     void *opaque_decl_ctx, ConstString name, const bool ignore_using_decls) {
+  if (name == "Foo")
+    llvm::errs() << __PRETTY_FUNCTION__ << "\n";
   std::vector<CompilerDecl> found_decls;
   if (opaque_decl_ctx) {
     DeclContext *root_decl_ctx = (DeclContext *)opaque_decl_ctx;
@@ -10027,6 +10029,11 @@ std::vector<CompilerDecl> ClangASTContext::DeclContextFindDeclByName(
            it++) {
         if (!searched.insert(it->second).second)
           continue;
+        if (name == "Foo") {
+
+            llvm::errs() << "Looking at context: " << it->second->getDeclKindName() << " " << it->second << " " << symbol_file->GetObjectFile()->GetFileSpec().GetPath() << "\n";
+
+          }
         symbol_file->ParseDeclsForContext(
             CompilerDeclContext(this, it->second));
 
@@ -10056,13 +10063,19 @@ std::vector<CompilerDecl> ClangASTContext::DeclContextFindDeclByName(
           } else if (clang::NamedDecl *nd =
                          llvm::dyn_cast<clang::NamedDecl>(child)) {
             IdentifierInfo *ii = nd->getIdentifier();
-            if (ii != nullptr && ii->getName().equals(name.AsCString(nullptr)))
+            if (ii != nullptr && ii->getName().equals(name.AsCString(nullptr))) {
               found_decls.push_back(CompilerDecl(this, nd));
+              if (name == "Foo") {
+                nd->dumpColor();
+              }
+            }
           }
         }
       }
     }
   }
+  std::reverse(found_decls.begin(), found_decls.end());
+  found_decls.resize(1);
   return found_decls;
 }
 
