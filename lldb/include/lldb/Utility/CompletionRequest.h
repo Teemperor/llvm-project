@@ -146,6 +146,17 @@ public:
     m_result.AddResult(completion, description, mode);
   }
 
+  template <CompletionMode M = CompletionMode::Normal>
+  void TryCompleteCurrentArg(llvm::StringRef completion,
+                             llvm::StringRef description = "") {
+    // Trying to rewrite the current line makes while checking for the current
+    // argument makes no sense.
+    static_assert(M != CompletionMode::RewriteLine,
+                  "Shouldn't rewrite line with this function");
+    if (completion.startswith(GetCursorArgumentPrefix()))
+      AddCompletion(completion, description, M);
+  }
+
   /// Adds multiple possible completion strings.
   ///
   /// \param completions The list of completions.
