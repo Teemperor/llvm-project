@@ -543,7 +543,7 @@ static bool ReadUTFBufferAndDumpToStream(
   bool is_truncated = false;
   const auto max_size = process_sp->GetTarget().GetMaximumSizeOfStringSummary();
 
-  if (!sourceSize) {
+  if (options.GetReadMaxLength()) {
     sourceSize = max_size;
     needs_zero_terminator = true;
   } else if (!options.GetIgnoreMaxLength()) {
@@ -557,7 +557,7 @@ static bool ReadUTFBufferAndDumpToStream(
 
   lldb::DataBufferSP buffer_sp(new DataBufferHeap(bufferSPSize, 0));
 
-  if (!buffer_sp->GetBytes())
+  if (!buffer_sp->GetBytes() && sourceSize != 0)
     return false;
 
   Status error;

@@ -117,6 +117,13 @@ public:
 
     bool GetIgnoreMaxLength() const { return m_ignore_max_length; }
 
+    ReadStringAndDumpToStreamOptions &SetReadMaxLength(bool e) {
+      m_read_max_length = e;
+      return *this;
+    }
+
+    bool GetReadMaxLength() const { return m_read_max_length; }
+
     ReadStringAndDumpToStreamOptions &SetLanguage(lldb::LanguageType l) {
       m_language_type = l;
       return *this;
@@ -138,6 +145,7 @@ public:
     bool m_needs_zero_termination = true;
     bool m_escape_non_printables = true;
     bool m_ignore_max_length = false;
+    bool m_read_max_length = true;
     bool m_zero_is_terminator = true;
     lldb::LanguageType m_language_type = lldb::eLanguageTypeUnknown;
   };
