@@ -349,6 +349,86 @@ inline bool operator!=(const ProcessModID &lhs, const ProcessModID &rhs) {
   return (!lhs.StopIDEqual(rhs) || !lhs.MemoryIDEqual(rhs));
 }
 
+struct MemorySource {
+  virtual ~MemorySource() = default;
+
+  /// Read a NULL terminated string from memory
+  ///
+  /// This function will read a cache page at a time until a NULL string
+  /// terminator is found. It will stop reading if an aligned sequence of NULL
+  /// termination \a type_width bytes is not found before reading \a
+  /// cstr_max_len bytes.  The results are always guaranteed to be NULL
+  /// terminated, and that no more than (max_bytes - type_width) bytes will be
+  /// read.
+  ///
+  /// \param[in] vm_addr
+  ///     The virtual load address to start the memory read.
+  ///
+  /// \param[in] str
+  ///     A character buffer containing at least max_bytes.
+  ///
+  /// \param[in] max_bytes
+  ///     The maximum number of bytes to read.
+  ///
+  /// \param[in] error
+  ///     The error status of the read operation.
+  ///
+  /// \param[in] type_width
+  ///     The size of the null terminator (1 to 4 bytes per
+  ///     character).  Defaults to 1.
+  ///
+  /// \return
+  ///     The error status or the number of bytes prior to the null terminator.
+  virtual size_t ReadStringFromMemory(lldb::addr_t vm_addr, char *str,
+                                      size_t max_bytes, Status &error,
+                                      size_t type_width = 1) = 0;
+
+  /// Read a NULL terminated C string from memory
+  ///
+  /// This function will read a cache page at a time until the NULL
+  /// C string terminator is found. It will stop reading if the NULL
+  /// termination byte isn't found before reading \a cstr_max_len bytes, and
+  /// the results are always guaranteed to be NULL terminated (at most
+  /// cstr_max_len - 1 bytes will be read).
+  virtual size_t ReadCStringFromMemory(lldb::addr_t vm_addr, char *cstr,
+                                       size_t cstr_max_len, Status &error) = 0;
+
+  /// Read of memory from a process.
+  ///
+  /// This function has the same semantics of ReadMemory except that it
+  /// bypasses caching.
+  ///
+  /// \param[in] vm_addr
+  ///     A virtual load address that indicates where to start reading
+  ///     memory from.
+  ///
+  /// \param[out] buf
+  ///     A byte buffer that is at least \a size bytes long that
+  ///     will receive the memory bytes.
+  ///
+  /// \param[in] size
+  ///     The number of bytes to read.
+  ///
+  /// \param[out] error
+  ///     An error that indicates the success or failure of this
+  ///     operation. If error indicates success (error.Success()),
+  ///     then the value returned can be trusted, otherwise zero
+  ///     will be returned.
+  ///
+  /// \return
+  ///     The number of bytes that were actually read into \a buf. If
+  ///     the returned number is greater than zero, yet less than \a
+  ///     size, then this function will get called again with \a
+  ///     vm_addr, \a buf, and \a size updated appropriately. Zero is
+  ///     returned in the case of an error.
+  virtual size_t ReadMemoryFromInferior(lldb::addr_t vm_addr, void *buf,
+                                        size_t size, Status &error) = 0;
+
+  virtual lldb::ByteOrder GetByteOrder() const = 0;
+
+  virtual uint32_t GetAddressByteSize() const = 0;
+};
+
 /// \class Process Process.h "lldb/Target/Process.h"
 /// A plug-in interface definition class for debugging a process.
 class Process : public std::enable_shared_from_this<Process>,
@@ -356,7 +436,8 @@ class Process : public std::enable_shared_from_this<Process>,
                 public UserID,
                 public Broadcaster,
                 public ExecutionContextScope,
-                public PluginInterface {
+                public PluginInterface,
+                public MemorySource {
   friend class FunctionCaller; // For WaitForStateChangeEventsPrivate
   friend class Debugger; // For PopProcessIOHandler and ProcessIOHandlerIsActive
   friend class DynamicLoader; // For LoadOperatingSystemPlugin
@@ -550,9 +631,9 @@ public:
                        int signo,   // Zero for no signal
                        int status); // Exit value of process if signal is zero
 
-  lldb::ByteOrder GetByteOrder() const;
+  lldb::ByteOrder GetByteOrder() const override;
 
-  uint32_t GetAddressByteSize() const;
+  uint32_t GetAddressByteSize() const override;
 
   uint32_t GetUniqueID() const { return m_process_unique_id; }
 
@@ -1488,7 +1569,7 @@ public:
   ///     vm_addr, \a buf, and \a size updated appropriately. Zero is
   ///     returned in the case of an error.
   size_t ReadMemoryFromInferior(lldb::addr_t vm_addr, void *buf, size_t size,
-                                Status &error);
+                                Status &error) override;
 
   /// Read a NULL terminated string from memory
   ///
@@ -1518,7 +1599,7 @@ public:
   /// \return
   ///     The error status or the number of bytes prior to the null terminator.
   size_t ReadStringFromMemory(lldb::addr_t vm_addr, char *str, size_t max_bytes,
-                              Status &error, size_t type_width = 1);
+                              Status &error, size_t type_width = 1) override;
 
   /// Read a NULL terminated C string from memory
   ///
@@ -1528,7 +1609,7 @@ public:
   /// the results are always guaranteed to be NULL terminated (at most
   /// cstr_max_len - 1 bytes will be read).
   size_t ReadCStringFromMemory(lldb::addr_t vm_addr, char *cstr,
-                               size_t cstr_max_len, Status &error);
+                               size_t cstr_max_len, Status &error) override;
 
   size_t ReadCStringFromMemory(lldb::addr_t vm_addr, std::string &out_str,
                                Status &error);

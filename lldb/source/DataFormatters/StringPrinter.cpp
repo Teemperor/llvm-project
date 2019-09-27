@@ -387,6 +387,13 @@ lldb_private::formatters::StringPrinter::ReadStringAndDumpToStreamOptions::
       valobj.GetTargetSP()->GetDebugger().GetEscapeNonPrintables());
 }
 
+void StringPrinter::ReadStringAndDumpToStreamOptions::SetProcessSP(
+    ProcessSP p) {
+  m_memory_source = p.get();
+  if (m_memory_source)
+    m_max_size = p->GetTarget().GetMaximumSizeOfStringSummary();
+}
+
 lldb_private::formatters::StringPrinter::ReadBufferAndDumpToStreamOptions::
     ReadBufferAndDumpToStreamOptions(ValueObject &valobj)
     : ReadBufferAndDumpToStreamOptions() {
@@ -418,13 +425,14 @@ bool StringPrinter::ReadStringAndDumpToStream<
   assert(options.GetStream() && "need a Stream to print the string to");
   Status my_error;
 
-  ProcessSP process_sp(options.GetProcessSP());
+  MemorySource *m_source = options.GetMemorySource();
 
-  if (process_sp.get() == nullptr || options.GetLocation() == 0)
+  if (m_source == nullptr || options.GetLocation() == 0 ||
+      options.GetLocation() == LLDB_INVALID_ADDRESS)
     return false;
 
   size_t size;
-  const auto max_size = process_sp->GetTarget().GetMaximumSizeOfStringSummary();
+  const auto max_size = options.GetMaxSize();
   bool is_truncated = false;
 
   if (options.GetSourceSize() == 0)
@@ -440,7 +448,7 @@ bool StringPrinter::ReadStringAndDumpToStream<
 
   lldb::DataBufferSP buffer_sp(new DataBufferHeap(size, 0));
 
-  process_sp->ReadCStringFromMemory(
+  m_source->ReadCStringFromMemory(
       options.GetLocation(), (char *)buffer_sp->GetBytes(), size, my_error);
 
   if (my_error.Fail())
@@ -521,9 +529,9 @@ static bool ReadUTFBufferAndDumpToStream(
       options.GetLocation() == LLDB_INVALID_ADDRESS)
     return false;
 
-  lldb::ProcessSP process_sp(options.GetProcessSP());
+  MemorySource *m_source = options.GetMemorySource();
 
-  if (!process_sp)
+  if (!m_source)
     return false;
 
   const int type_width = sizeof(SourceDataType);
@@ -541,7 +549,7 @@ static bool ReadUTFBufferAndDumpToStream(
   bool needs_zero_terminator = options.GetNeedsZeroTermination();
 
   bool is_truncated = false;
-  const auto max_size = process_sp->GetTarget().GetMaximumSizeOfStringSummary();
+  const auto max_size = options.GetMaxSize();
 
   if (!sourceSize) {
     sourceSize = max_size;
@@ -564,20 +572,20 @@ static bool ReadUTFBufferAndDumpToStream(
   char *buffer = reinterpret_cast<char *>(buffer_sp->GetBytes());
 
   if (needs_zero_terminator)
-    process_sp->ReadStringFromMemory(options.GetLocation(), buffer,
-                                     bufferSPSize, error, type_width);
+    m_source->ReadStringFromMemory(options.GetLocation(), buffer, bufferSPSize,
+                                   error, type_width);
   else
-    process_sp->ReadMemoryFromInferior(options.GetLocation(),
-                                       (char *)buffer_sp->GetBytes(),
-                                       bufferSPSize, error);
+    m_source->ReadMemoryFromInferior(options.GetLocation(),
+                                     (char *)buffer_sp->GetBytes(),
+                                     bufferSPSize, error);
 
   if (error.Fail()) {
     options.GetStream()->Printf("unable to read data");
     return true;
   }
 
-  DataExtractor data(buffer_sp, process_sp->GetByteOrder(),
-                     process_sp->GetAddressByteSize());
+  DataExtractor data(buffer_sp, m_source->GetByteOrder(),
+                     m_source->GetAddressByteSize());
 
   StringPrinter::ReadBufferAndDumpToStreamOptions dump_options(options);
   dump_options.SetData(data);

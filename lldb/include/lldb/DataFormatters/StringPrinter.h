@@ -17,6 +17,7 @@
 #include "lldb/Utility/DataExtractor.h"
 
 namespace lldb_private {
+struct MemorySource;
 namespace formatters {
 class StringPrinter {
 public:
@@ -111,13 +112,22 @@ public:
 
     uint64_t GetLocation() const { return m_location; }
 
-    void SetProcessSP(lldb::ProcessSP p) { m_process_sp = p; }
+    void SetProcessSP(lldb::ProcessSP p);
 
-    lldb::ProcessSP GetProcessSP() const { return m_process_sp; }
+    void setMemorySourceAndMaxSize(MemorySource *memory_source,
+                                   size_t max_size) {
+      m_memory_source = memory_source;
+      m_max_size = max_size;
+    }
+
+    MemorySource *GetMemorySource() const { return m_memory_source; }
+
+    size_t GetMaxSize() const { return m_max_size; }
 
   private:
     uint64_t m_location = 0;
-    lldb::ProcessSP m_process_sp;
+    MemorySource *m_memory_source = nullptr;
+    size_t m_max_size = 1024;
   };
 
   class ReadBufferAndDumpToStreamOptions : public DumpToStreamOptions {
