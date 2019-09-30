@@ -101,7 +101,9 @@ private:
   ExternalASTMerger &Parent;
   ASTImporter Reverse;
   const ExternalASTMerger::OriginMap &FromOrigins;
-
+  bool Temporary;
+  llvm::DenseMap<Decl *, Decl *> ToOrigin;
+  ExternalASTMerger *Chained;
   llvm::raw_ostream &logs() { return Parent.logs(); }
 public:
   LazyASTImporter(ExternalASTMerger &_Parent, ASTContext &ToContext,
@@ -114,11 +116,52 @@ public:
         Parent(_Parent),
         Reverse(_Source.getASTContext(), _Source.getFileManager(), ToContext,
                 ToFileManager, /*MinimalImport=*/true),
-        FromOrigins(_Source.getOriginMap()) {}
+        FromOrigins(_Source.getOriginMap()), Temporary(_Source.isTemporary()),
+        Chained(_Source.getChained()) {}
+
+  llvm::Expected<Decl *> ImportImpl(Decl *FromD) override {
+    if (Temporary && Chained) {
+      // Find the persistent original decl of the one this merger wants to
+      // import.
+      Decl *Persistent = Chained->FindOriginalDecl(FromD);
+      if (Persistent) {
+        // Find out if this merger already imported this persistent original
+        // decl.
+        clang::Decl *AlreadyImported =
+            Parent.GetAlreadyImportedDecl(Persistent);
+        // Check if we already imported this persistent decl.
+        if (AlreadyImported) {
+          // We already imported this persistent decl, so just forward the
+          // import to the target.
+          assert(&AlreadyImported->getASTContext() == &this->getToContext());
+          MapImported(FromD, AlreadyImported);
+          return const_cast<clang::Decl *>(AlreadyImported);
+        } else {
+          // We didn't import this persistent decl yet. Try importing it
+          // and make sure we reuse it when we import later.
+          auto Result = ASTImporter::ImportImpl(FromD);
+          if (Result)
+            Parent.MarkIndirectlyImportedDecl(Persistent, *Result);
+          return Result;
+        }
+      }
+    }
+    return ASTImporter::ImportImpl(FromD);
+  }
+
+  Decl *GetOriginalDecl(Decl *To) override {
+    auto It = ToOrigin.find(To);
+    if (It != ToOrigin.end())
+      return It->second;
+    return nullptr;
+  }
 
   /// Whenever a DeclContext is imported, ensure that ExternalASTSource's origin
   /// map is kept up to date.  Also set the appropriate flags.
   void Imported(Decl *From, Decl *To) override {
+    if (!Temporary)
+      ToOrigin[To] = From;
+
     if (auto *ToDC = dyn_cast<DeclContext>(To)) {
       const bool LoggingEnabled = Parent.LoggingEnabled();
       if (LoggingEnabled)
@@ -320,6 +363,13 @@ ExternalASTMerger::ExternalASTMerger(const ImporterTarget &Target,
   SharedState = std::make_shared<ASTImporterSharedState>(
       *Target.AST.getTranslationUnitDecl());
   AddSources(Sources);
+}
+
+Decl *ExternalASTMerger::FindOriginalDecl(Decl *D) {
+  for (const auto &I : Importers)
+    if (auto Result = I->GetOriginalDecl(D))
+      return Result;
+  return nullptr;
 }
 
 void ExternalASTMerger::AddSources(llvm::ArrayRef<ImporterSource> Sources) {

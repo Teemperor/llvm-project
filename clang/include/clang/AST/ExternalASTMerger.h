@@ -64,6 +64,8 @@ private:
   OriginMap Origins;
   /// The installed log stream.
   llvm::raw_ostream *LogStream;
+  ///
+  std::map<Decl *, Decl *> FromPersistentToImported;
 
 public:
   /// The target for an ExternalASTMerger.
@@ -84,13 +86,20 @@ public:
     ASTContext &AST;
     FileManager &FM;
     const OriginMap &OM;
+    bool Temporary;
+    ExternalASTMerger *Chained;
 
   public:
-    ImporterSource(ASTContext &_AST, FileManager &_FM, const OriginMap &_OM)
-        : AST(_AST), FM(_FM), OM(_OM) {}
+    ImporterSource(ASTContext &_AST, FileManager &_FM, const OriginMap &_OM,
+                   bool _Temporary = false,
+                   ExternalASTMerger *Chained = nullptr)
+        : AST(_AST), FM(_FM), OM(_OM), Temporary(_Temporary), Chained(Chained) {
+    }
     ASTContext &getASTContext() const { return AST; }
     FileManager &getFileManager() const { return FM; }
     const OriginMap &getOriginMap() const { return OM; }
+    bool isTemporary() const { return Temporary; }
+    ExternalASTMerger *getChained() const { return Chained; }
   };
 
 private:
@@ -105,6 +114,18 @@ private:
 public:
   ExternalASTMerger(const ImporterTarget &Target,
                     llvm::ArrayRef<ImporterSource> Sources);
+
+  void MarkIndirectlyImportedDecl(clang::Decl *Persistent, clang::Decl *Local) {
+    FromPersistentToImported[Persistent] = Local;
+  }
+  Decl *GetAlreadyImportedDecl(clang::Decl *Persistent) {
+    auto It = FromPersistentToImported.find(Persistent);
+    if (It != FromPersistentToImported.end())
+      return It->second;
+    return nullptr;
+  }
+
+  Decl *FindOriginalDecl(Decl *D);
 
   /// Add a set of ASTContexts as possible origins.
   ///
