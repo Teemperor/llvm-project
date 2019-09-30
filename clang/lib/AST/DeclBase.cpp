@@ -92,6 +92,9 @@ void *Decl::operator new(std::size_t Size, const ASTContext &Context,
 
 void *Decl::operator new(std::size_t Size, const ASTContext &Ctx,
                          DeclContext *Parent, std::size_t Extra) {
+  if (!(!Parent || &Parent->getParentASTContext() == &Ctx)) {
+    llvm::errs() << Parent << " | " << &Parent->getParentASTContext() << "=="<< &Ctx << "\n";
+  }
   assert(!Parent || &Parent->getParentASTContext() == &Ctx);
   // With local visibility enabled, we track the owning module even for local
   // declarations. We create the TU decl early and may not yet know what the

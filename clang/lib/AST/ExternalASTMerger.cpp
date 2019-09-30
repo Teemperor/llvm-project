@@ -101,23 +101,69 @@ private:
   ExternalASTMerger &Parent;
   ASTImporter Reverse;
   const ExternalASTMerger::OriginMap &FromOrigins;
-
+  bool Temporary;
   llvm::raw_ostream &logs() { return Parent.logs(); }
 public:
   LazyASTImporter(ExternalASTMerger &_Parent, ASTContext &ToContext,
                   FileManager &ToFileManager, ASTContext &FromContext,
                   FileManager &FromFileManager,
                   const ExternalASTMerger::OriginMap &_FromOrigins,
-                  std::shared_ptr<ASTImporterSharedState> SharedState)
+                  std::shared_ptr<ASTImporterSharedState> SharedState,
+                  bool Temporary)
       : ASTImporter(ToContext, ToFileManager, FromContext, FromFileManager,
                     /*MinimalImport=*/true, SharedState),
         Parent(_Parent), Reverse(FromContext, FromFileManager, ToContext,
                                  ToFileManager, /*MinimalImport=*/true),
-        FromOrigins(_FromOrigins) {}
+        FromOrigins(_FromOrigins), Temporary(Temporary) {
+  }
+
+
+  llvm::Expected<Decl *> ImportImpl(Decl *FromD) override {
+    if (Temporary && Parent.Chained) {
+      auto ND = dyn_cast<NamedDecl>(FromD);
+      llvm::errs() << "Checking if we skip importing " << ND->getQualifiedNameAsString() << "\n";
+      // Find the persistent original decl of the one this merger wants to
+      // import.
+      auto it = Parent.Chained->FromImportedToPersistent.find(FromD);
+      if (it != Parent.Chained->FromImportedToPersistent.end()) {
+        // Find out if this merger already imported this persistent original
+        // decl.
+        clang::Decl *Persistent = it->second;
+        llvm::errs() << "Found Persistent\n";
+        auto Target = Parent.FromPersistentToImported.find(Persistent);
+        // Check if we already imported this persistent decl.
+        if (Target != Parent.FromPersistentToImported.end()) {
+          // We already imported this persistent decl, so just forward the
+          // import to the target.
+          clang::Decl *TargetD = Target->second;
+          assert(&TargetD->getASTContext() == &this->getToContext());
+          llvm::errs() << "Reusing imported decl " << ND->getQualifiedNameAsString() << "\n";
+          MapImported(FromD, TargetD);
+          return const_cast<clang::Decl *>(TargetD);
+        } else {
+          llvm::errs() << "Importing decl " << ND->getQualifiedNameAsString() << "\n";
+          // We didn't import this persistent decl yet. Try importing it
+          // and make sure we reuse it when we import later.
+          auto Result = ASTImporter::ImportImpl(FromD);
+          if (Result) {
+            Parent.FromImportedToPersistent[*Result] = Persistent;
+            Parent.FromPersistentToImported[Persistent] = *Result;
+          }
+          return Result;
+        }
+      }
+    }
+    return ASTImporter::ImportImpl(FromD);
+  }
 
   /// Whenever a DeclContext is imported, ensure that ExternalASTSource's origin
   /// map is kept up to date.  Also set the appropriate flags.
   void Imported(Decl *From, Decl *To) override {
+    if (!Temporary) {
+      Parent.FromImportedToPersistent[To] = From;
+      Parent.FromPersistentToImported[From] = To;
+    }
+
     if (auto *ToDC = dyn_cast<DeclContext>(To)) {
       const bool LoggingEnabled = Parent.LoggingEnabled();
       if (LoggingEnabled)
@@ -325,7 +371,8 @@ void ExternalASTMerger::AddSources(llvm::ArrayRef<ImporterSource> Sources) {
   for (const ImporterSource &S : Sources) {
     assert(&S.AST != &Target.AST);
     Importers.push_back(std::make_unique<LazyASTImporter>(
-        *this, Target.AST, Target.FM, S.AST, S.FM, S.OM, SharedState));
+        *this, Target.AST, Target.FM, S.AST, S.FM, S.OM, SharedState,
+                          S.Temporary));
   }
 }
 

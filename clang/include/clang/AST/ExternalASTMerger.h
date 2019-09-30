@@ -53,6 +53,10 @@ public:
     DeclContext *DC;
     ASTContext *AST;
   };
+  struct DeclOrigin {
+    Decl *Origin;
+    Decl *Imported;
+  };
 
   typedef std::map<const DeclContext *, DCOrigin> OriginMap;
   typedef std::vector<std::unique_ptr<ASTImporter>> ImporterVector;
@@ -84,6 +88,7 @@ public:
     ASTContext &AST;
     FileManager &FM;
     const OriginMap &OM;
+    bool Temporary = false;
   };
 
 private:
@@ -98,6 +103,11 @@ private:
 public:
   ExternalASTMerger(const ImporterTarget &Target,
                     llvm::ArrayRef<ImporterSource> Sources);
+
+  bool RecordOriginalDecls = false;
+  ExternalASTMerger *Chained = nullptr;
+  std::map<Decl *, Decl*> FromImportedToPersistent;
+  std::map<Decl *, Decl*> FromPersistentToImported;
 
   /// Add a set of ASTContexts as possible origins.
   ///
