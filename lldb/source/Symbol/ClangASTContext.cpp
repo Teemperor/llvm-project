@@ -712,9 +712,7 @@ void ClangASTContext::RemoveExternalSource() {
 }
 
 void ClangASTContext::setASTContext(clang::ASTContext *ast_ctx) {
-  if (!m_ast_owned) {
-    m_ast_up.release();
-  }
+  assert(!m_ast_up);
   m_ast_owned = false;
   m_ast_up.reset(ast_ctx);
   GetASTMap().Insert(ast_ctx, this);
