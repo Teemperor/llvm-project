@@ -579,6 +579,7 @@ lldb::TypeSystemSP ClangASTContext::CreateInstance(lldb::LanguageType language,
         if (ast_sp) {
           ast_sp->SetArchitecture(fixed_arch);
         }
+        ast_sp->CreateASTContext();
         return ast_sp;
       } else if (target && target->IsValid()) {
         std::shared_ptr<ClangASTContextForExpressions> ast_sp(
@@ -588,8 +589,10 @@ lldb::TypeSystemSP ClangASTContext::CreateInstance(lldb::LanguageType language,
           ast_sp->m_scratch_ast_source_up.reset(
               new ClangASTSource(target->shared_from_this()));
           lldbassert(ast_sp->getFileManager());
+          ast_sp->CreateASTContext(/*setup_external_source*/ false);
           ast_sp->m_scratch_ast_source_up->InstallASTContext(
               *ast_sp->getASTContext(), *ast_sp->getFileManager(), true);
+          ast_sp->SetupCallbacks();
           llvm::IntrusiveRefCntPtr<clang::ExternalASTSource> proxy_ast_source(
               ast_sp->m_scratch_ast_source_up->CreateProxy());
           ast_sp->SetExternalSource(proxy_ast_source);
@@ -698,36 +701,43 @@ void ClangASTContext::SetExternalSource(
 }
 
 ASTContext *ClangASTContext::getASTContext() {
-  if (m_ast_up == nullptr) {
-    m_ast_owned = true;
-    m_ast_up.reset(new ASTContext(*getLanguageOptions(), *getSourceManager(),
-                                  *getIdentifierTable(), *getSelectorTable(),
-                                  *getBuiltinContext()));
-
-    m_ast_up->getDiagnostics().setClient(getDiagnosticConsumer(), false);
-
-    // This can be NULL if we don't know anything about the architecture or if
-    // the target for an architecture isn't enabled in the llvm/clang that we
-    // built
-    TargetInfo *target_info = getTargetInfo();
-    if (target_info)
-      m_ast_up->InitBuiltinTypes(*target_info);
-
-    if ((m_callback_tag_decl || m_callback_objc_decl) && m_callback_baton) {
-      m_ast_up->getTranslationUnitDecl()->setHasExternalLexicalStorage();
-      // m_ast_up->getTranslationUnitDecl()->setHasExternalVisibleStorage();
-    }
-
-    GetASTMap().Insert(m_ast_up.get(), this);
-
-    llvm::IntrusiveRefCntPtr<clang::ExternalASTSource> ast_source_up(
-        new ClangExternalASTSourceCallbacks(
-            ClangASTContext::CompleteTagDecl,
-            ClangASTContext::CompleteObjCInterfaceDecl, nullptr,
-            ClangASTContext::LayoutRecordType, this));
-    SetExternalSource(ast_source_up);
-  }
+  assert(m_ast_up);
   return m_ast_up.get();
+}
+
+void ClangASTContext::CreateASTContext(bool setup_external_source) {
+  assert(!m_ast_up);
+  m_ast_owned = true;
+  m_ast_up.reset(new ASTContext(*getLanguageOptions(), *getSourceManager(),
+                                *getIdentifierTable(), *getSelectorTable(),
+                                *getBuiltinContext()));
+
+  m_ast_up->getDiagnostics().setClient(getDiagnosticConsumer(), false);
+
+  // This can be NULL if we don't know anything about the architecture or if
+  // the target for an architecture isn't enabled in the llvm/clang that we
+  // built
+  TargetInfo *target_info = getTargetInfo();
+  if (target_info)
+    m_ast_up->InitBuiltinTypes(*target_info);
+
+  if ((m_callback_tag_decl || m_callback_objc_decl) && m_callback_baton) {
+    m_ast_up->getTranslationUnitDecl()->setHasExternalLexicalStorage();
+    // m_ast_up->getTranslationUnitDecl()->setHasExternalVisibleStorage();
+  }
+
+  GetASTMap().Insert(m_ast_up.get(), this);
+  if (setup_external_source)
+    SetupCallbacks();
+}
+
+void ClangASTContext::SetupCallbacks() {
+  llvm::IntrusiveRefCntPtr<clang::ExternalASTSource> ast_source_up(
+      new ClangExternalASTSourceCallbacks(
+          ClangASTContext::CompleteTagDecl,
+          ClangASTContext::CompleteObjCInterfaceDecl, nullptr,
+          ClangASTContext::LayoutRecordType, this));
+  SetExternalSource(ast_source_up);
 }
 
 ClangASTContext *ClangASTContext::GetASTContext(clang::ASTContext *ast) {

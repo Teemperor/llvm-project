@@ -162,6 +162,7 @@ AppleObjCDeclVendor::AppleObjCDeclVendor(ObjCLanguageRuntime &runtime)
   m_external_source = new AppleObjCExternalASTSource(*this);
   llvm::IntrusiveRefCntPtr<clang::ExternalASTSource> external_source_owning_ptr(
       m_external_source);
+  m_ast_ctx.CreateASTContext();
   m_ast_ctx.getASTContext()->setExternalSource(external_source_owning_ptr);
 }
 

@@ -22,13 +22,15 @@ using namespace lldb_private;
 AppleObjCTypeEncodingParser::AppleObjCTypeEncodingParser(
     ObjCLanguageRuntime &runtime)
     : ObjCLanguageRuntime::EncodingToType(), m_runtime(runtime) {
-  if (!m_scratch_ast_ctx_up)
+  if (!m_scratch_ast_ctx_up) {
     m_scratch_ast_ctx_up.reset(new ClangASTContext(runtime.GetProcess()
                                                        ->GetTarget()
                                                        .GetArchitecture()
                                                        .GetTriple()
                                                        .str()
                                                        .c_str()));
+    m_scratch_ast_ctx_up->CreateASTContext();
+  }
 }
 
 std::string AppleObjCTypeEncodingParser::ReadStructName(StringLexer &type) {

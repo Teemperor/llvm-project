@@ -85,6 +85,9 @@ public:
 
   clang::ASTContext *getASTContext();
 
+  void CreateASTContext(bool setup_callbacks = true);
+  void SetupCallbacks();
+
   clang::Builtin::Context *getBuiltinContext();
 
   clang::IdentifierTable *getIdentifierTable();

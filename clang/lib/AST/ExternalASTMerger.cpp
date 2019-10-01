@@ -317,6 +317,7 @@ void ExternalASTMerger::RecordOriginImpl(const DeclContext *ToDC, DCOrigin Origi
 
 ExternalASTMerger::ExternalASTMerger(const ImporterTarget &Target,
                                      llvm::ArrayRef<ImporterSource> Sources) : LogStream(&llvm::nulls()), Target(Target) {
+  assert(Target.AST.getExternalSource() == nullptr);
   SharedState = std::make_shared<ASTImporterSharedState>(
       *Target.AST.getTranslationUnitDecl());
   AddSources(Sources);
