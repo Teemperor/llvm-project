@@ -304,7 +304,7 @@ void ExternalASTMerger::ForEachMatchingDC(const DeclContext *DC,
 }
 
 void ExternalASTMerger::CompleteType(TagDecl *Tag) {
-  assert(Tag->hasExternalLexicalStorage());
+  //assert(Tag->hasExternalLexicalStorage());
   ForEachMatchingDC(Tag, [&](ASTImporter &Forward, ASTImporter &Reverse,
                              Source<const DeclContext *> SourceDC) -> bool {
     auto *SourceTag = const_cast<TagDecl *>(cast<TagDecl>(SourceDC.get()));
@@ -321,7 +321,7 @@ void ExternalASTMerger::CompleteType(TagDecl *Tag) {
 }
 
 void ExternalASTMerger::CompleteType(ObjCInterfaceDecl *Interface) {
-  assert(Interface->hasExternalLexicalStorage());
+  //assert(Interface->hasExternalLexicalStorage());
   ForEachMatchingDC(
       Interface, [&](ASTImporter &Forward, ASTImporter &Reverse,
                      Source<const DeclContext *> SourceDC) -> bool {
