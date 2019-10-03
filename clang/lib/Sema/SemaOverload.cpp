@@ -13124,6 +13124,12 @@ Sema::BuildCallToMemberFunction(Scope *S, Expr *MemExprE,
       return ExprError();
 
     case OR_Ambiguous:
+        for (auto &C : CandidateSet)
+          if (C.FoundDecl.getDecl())
+            C.FoundDecl.getDecl()->dumpColor();
+        for (auto &C : CandidateSet)
+          if (C.Function)
+            C.Function->dumpColor();
       CandidateSet.NoteCandidates(
           PartialDiagnosticAt(UnresExpr->getMemberLoc(),
                               PDiag(diag::err_ovl_ambiguous_member_call)

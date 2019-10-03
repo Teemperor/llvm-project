@@ -16,10 +16,7 @@
 using namespace lldb_private;
 using namespace clang;
 
-CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
-    : m_importer(&importer),
-      m_sema(ClangASTContext::GetASTContext(target)->getSema()) {
-
+CxxModuleHandler::CxxModuleHandler() {
   std::initializer_list<const char *> supported_names = {
       // containers
       "deque",
@@ -275,9 +272,15 @@ llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
   return result;
 }
 
-llvm::Optional<Decl *> CxxModuleHandler::Import(Decl *d) {
+llvm::Optional<Decl *> CxxModuleHandler::Import(clang::ASTImporter &importer, Decl *d) {
+  m_importer = &importer;
+  ClangASTContext *ClangCtxt = ClangASTContext::GetASTContext(&importer.getToContext());
+  if (!ClangCtxt)
+    return {};
+  m_sema = ClangCtxt->getSema();
   if (!isValid())
     return {};
+
 
   return tryInstantiateStdTemplate(d);
 }

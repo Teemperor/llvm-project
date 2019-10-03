@@ -70,6 +70,7 @@ ClangExpressionDeclMap::ClangExpressionDeclMap(
       m_struct_members(), m_keep_result_in_memory(keep_result_in_memory),
       m_result_delegate(result_delegate), m_ctx_obj(ctx_obj), m_parser_vars(),
       m_struct_vars() {
+  disable_handler = true;
   EnableStructVars();
 }
 

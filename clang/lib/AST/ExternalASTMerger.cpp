@@ -54,6 +54,9 @@ LookupSameContext(Source<TranslationUnitDecl *> SourceTU, const DeclContext *DC,
     // If we couldn't find the parent DC in this TranslationUnit, give up.
     return nullptr;
   }
+  if (const ExternCContextDecl *L = dyn_cast<ExternCContextDecl>(DC))
+    return SourceTU.t->getASTContext().getExternCContextDecl();
+
   auto *ND = cast<NamedDecl>(DC);
   DeclarationName Name = ND->getDeclName();
   auto SourceNameOrErr = ReverseImporter.Import(Name);
@@ -108,6 +111,7 @@ private:
   llvm::DenseMap<Decl *, Decl *> ToOrigin;
   /// @see ExternalASTMerger::ImporterSource::Merger
   ExternalASTMerger *SourceMerger;
+  Interceptor *Int = nullptr;
   llvm::raw_ostream &logs() { return Parent.logs(); }
 public:
   LazyASTImporter(ExternalASTMerger &_Parent, ASTContext &ToContext,
@@ -116,15 +120,21 @@ public:
                   std::shared_ptr<ASTImporterSharedState> SharedState)
       : ASTImporter(ToContext, ToFileManager, _Source.getASTContext(),
                     _Source.getFileManager(),
-                    /*MinimalImport=*/true, SharedState),
+                    /*MinimalImport=*/!_Source.isTemporary(), SharedState),
         Parent(_Parent),
         Reverse(_Source.getASTContext(), _Source.getFileManager(), ToContext,
                 ToFileManager, /*MinimalImport=*/true),
         FromOrigins(_Source.getOriginMap()),
         TemporarySource(_Source.isTemporary()),
-        SourceMerger(_Source.getMerger()) {}
+        SourceMerger(_Source.getMerger()),
+        Int(_Source.getInterceptor()) {}
 
   llvm::Expected<Decl *> ImportImpl(Decl *FromD) override {
+    if (Int) {
+      auto D = Int->Import(*this, FromD);
+      if (D)
+        return *D;
+    }
     if (!TemporarySource || !SourceMerger)
       return ASTImporter::ImportImpl(FromD);
 
@@ -294,12 +304,15 @@ void ExternalASTMerger::ForEachMatchingDC(const DeclContext *DC,
           break;
       }
     }
+    if (!DidCallback)
+      if (const clang::Decl *D = dyn_cast<const Decl>(DC))
+        D->dumpColor();
     if (!DidCallback && LoggingEnabled())
       logs() << "(ExternalASTMerger*)" << (void*)this
              << " asserting for (DeclContext*)" << (const void*)DC
              << ", (ASTContext*)" << (void*)&Target.AST
              << "\n";
-    assert(DidCallback && "Couldn't find a source context matching our DC");
+    //assert(DidCallback && "Couldn't find a source context matching our DC");
   }
 }
 

@@ -20,6 +20,11 @@
 
 namespace clang {
 
+struct Interceptor {
+  virtual ~Interceptor() =  default;
+  virtual llvm::Optional<clang::Decl *> Import(clang::ASTImporter &importer, clang::Decl *d) = 0;
+};
+
 /// ExternalASTSource implementation that merges information from several
 /// ASTContexts.
 ///
@@ -86,20 +91,25 @@ public:
     const OriginMap &OM;
     /// True iff the source only exists temporary, i.e. it will be removed from
     /// the ExternalASTMerger during the life time of the ExternalASTMerger.
-    bool Temporary;
+    bool Temporary = false;
     /// If the ASTContext of this source has an ExternalASTMerger that imports
     /// into this source, then this will point to that other ExternalASTMerger.
-    ExternalASTMerger *Merger;
+    ExternalASTMerger *Merger = nullptr;
+    Interceptor *Inter = nullptr;
 
   public:
     ImporterSource(ASTContext &_AST, FileManager &_FM, const OriginMap &_OM,
                    bool _Temporary = false, ExternalASTMerger *Merger = nullptr)
         : AST(_AST), FM(_FM), OM(_OM), Temporary(_Temporary), Merger(Merger) {}
+    ImporterSource(ASTContext &_AST, FileManager &_FM, const OriginMap &_OM,
+                   Interceptor *Interceptor)
+        : AST(_AST), FM(_FM), OM(_OM), Inter(Interceptor) {}
     ASTContext &getASTContext() const { return AST; }
     FileManager &getFileManager() const { return FM; }
     const OriginMap &getOriginMap() const { return OM; }
     bool isTemporary() const { return Temporary; }
     ExternalASTMerger *getMerger() const { return Merger; }
+    Interceptor *getInterceptor() const { return Inter; }
   };
 
 private:

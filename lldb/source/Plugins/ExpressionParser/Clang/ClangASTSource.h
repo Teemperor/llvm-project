@@ -33,6 +33,8 @@ namespace lldb_private {
 class ClangASTSource : public ClangExternalASTSourceCommon,
                        public ClangASTImporter::MapCompleter {
 public:
+  bool disable_handler = false;
+  std::unique_ptr<CxxModuleHandler> std_handler;
   /// Constructor
   ///
   /// Initializes class variables.

@@ -279,7 +279,6 @@ public:
         // If the delegate doesn't have a CxxModuleHandler yet, create one
         // and attach it.
         if (!delegate.m_std_handler) {
-          m_handler = CxxModuleHandler(delegate, dst_ctx);
           m_valid = true;
           delegate.m_std_handler = &m_handler;
         }

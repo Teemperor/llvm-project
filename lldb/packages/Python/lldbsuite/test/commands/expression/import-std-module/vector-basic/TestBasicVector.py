@@ -20,9 +20,9 @@ class TestBasicVector(TestBase):
 
         self.runCmd("settings set target.import-std-module true")
 
-        self.expect("expr (size_t)a.size()", substrs=['(size_t) $0 = 3'])
-        self.expect("expr (int)a.front()", substrs=['(int) $1 = 3'])
-        self.expect("expr (int)a[1]", substrs=['(int) $2 = 1'])
+        self.expect("expr a.size()", substrs=['(size_t) $0 = 3'])
+        self.expect("expr a.front()", substrs=['(int) $1 = 3'])
+        self.expect("expr a[1]", substrs=['(int) $2 = 1'])
         self.expect("expr (int)a.back()", substrs=['(int) $3 = 2'])
 
         self.expect("expr std::sort(a.begin(), a.end())")

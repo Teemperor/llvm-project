@@ -53,6 +53,7 @@ private:
 ClangASTSource::ClangASTSource(const lldb::TargetSP &target)
     : m_import_in_progress(false), m_lookups_enabled(false), m_target(target),
       m_ast_context(nullptr), m_active_lexical_decls(), m_active_lookups() {
+  std_handler.reset(new CxxModuleHandler);
   if (!target->GetUseModernTypeLookup()) {
     m_ast_importer_sp = m_target->GetClangASTImporter();
   }
@@ -82,11 +83,12 @@ void ClangASTSource::InstallASTContext(clang::ASTContext &ast_context,
             std::move(err), "Failed to get ClangASTContext");
       } else if (auto *module_ast_ctx = llvm::cast_or_null<ClangASTContext>(
                      &type_system_or_err.get())) {
+        CxxModuleHandler *handler = std_handler.get();
         lldbassert(module_ast_ctx->getASTContext());
         lldbassert(module_ast_ctx->getFileManager());
         sources.emplace_back(*module_ast_ctx->getASTContext(),
                              *module_ast_ctx->getFileManager(),
-                             module_ast_ctx->GetOriginMap());
+                             module_ast_ctx->GetOriginMap(), handler);
       }
     }
 
@@ -292,7 +294,8 @@ void ClangASTSource::CompleteType(TagDecl *tag_decl) {
 
   if (!m_ast_importer_sp) {
     if (HasMerger()) {
-      GetMergerUnchecked().CompleteType(tag_decl);
+      if (tag_decl->getLocation().isInvalid())
+        GetMergerUnchecked().CompleteType(tag_decl);
     }
     return;
   }

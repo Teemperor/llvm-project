@@ -3400,6 +3400,9 @@ ExpectedDecl ASTNodeImporter::VisitFunctionDecl(FunctionDecl *D) {
 }
 
 ExpectedDecl ASTNodeImporter::VisitCXXMethodDecl(CXXMethodDecl *D) {
+  if (D->getNameAsString() == "size" && D->getLocation().isInvalid()) {
+    D->dumpColor();
+  }
   return VisitFunctionDecl(D);
 }
 
@@ -8818,6 +8821,11 @@ void ASTImporter::CompleteDecl (Decl *D) {
 
 Decl *ASTImporter::MapImported(Decl *From, Decl *To) {
   llvm::DenseMap<Decl *, Decl *>::iterator Pos = ImportedDecls.find(From);
+  if (!(Pos == ImportedDecls.end() || Pos->second == To)) {
+      From->dumpColor();
+      To->dumpColor();
+      Pos->second->dumpColor();
+    }
   assert((Pos == ImportedDecls.end() || Pos->second == To) &&
       "Try to import an already imported Decl");
   if (Pos != ImportedDecls.end())
