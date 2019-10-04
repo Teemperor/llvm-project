@@ -191,7 +191,7 @@ public:
   ///
   /// \param[in] context
   ///     The NameSearchContext to use when filing results.
-  virtual void FindExternalVisibleDecls(NameSearchContext &context);
+  virtual bool FindExternalVisibleDecls(NameSearchContext &context);
 
   clang::Sema *getSema();
 

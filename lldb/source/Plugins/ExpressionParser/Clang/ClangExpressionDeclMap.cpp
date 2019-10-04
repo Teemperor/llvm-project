@@ -683,7 +683,7 @@ ClangASTContext *ClangExpressionDeclMap::GetClangASTContext() {
 
 // Interface for ClangASTSource
 
-void ClangExpressionDeclMap::FindExternalVisibleDecls(
+bool ClangExpressionDeclMap::FindExternalVisibleDecls(
     NameSearchContext &context) {
   assert(m_ast_context);
 
@@ -696,7 +696,7 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
   if (GetImportInProgress()) {
     if (log && log->GetVerbose())
       LLDB_LOGF(log, "Ignoring a query during an import");
-    return;
+    return false;
   }
 
   static unsigned int invocation_id = 0;
@@ -732,32 +732,34 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
                                     context.m_decl_context)));
       FindExternalVisibleDecls(context, lldb::ModuleSP(), compiler_decl_ctx,
                                current_id);
-      return;
+      return context.m_decls.size() != 0;
     }
 
-    ClangASTImporter::NamespaceMapSP namespace_map =
-        m_ast_importer_sp
-            ? m_ast_importer_sp->GetNamespaceMap(namespace_context)
-            : ClangASTImporter::NamespaceMapSP();
+    // Only do this when we have a ClangASTImporter.
+    if (m_ast_importer_sp) {
+      ClangASTImporter::NamespaceMapSP namespace_map =
+          m_ast_importer_sp->GetNamespaceMap(namespace_context);
 
-    if (!namespace_map)
-      return;
+      if (!namespace_map)
+        return context.m_decls.size() != 0;
 
-    if (log && log->GetVerbose())
-      log->Printf("  CEDM::FEVD[%u] Inspecting (NamespaceMap*)%p (%d entries)",
-                  current_id, static_cast<void *>(namespace_map.get()),
-                  (int)namespace_map->size());
+      if (log && log->GetVerbose())
+        log->Printf("  CEDM::FEVD[%u] Inspecting (NamespaceMap*)%p (%d entries)",
+                    current_id, static_cast<void *>(namespace_map.get()),
+                    (int)namespace_map->size());
 
-    for (ClangASTImporter::NamespaceMap::iterator i = namespace_map->begin(),
-                                                  e = namespace_map->end();
-         i != e; ++i) {
-      if (log)
-        log->Printf("  CEDM::FEVD[%u] Searching namespace %s in module %s",
-                    current_id, i->second.GetName().AsCString(),
-                    i->first->GetFileSpec().GetFilename().GetCString());
+      for (ClangASTImporter::NamespaceMap::iterator i = namespace_map->begin(),
+                                                    e = namespace_map->end();
+           i != e; ++i) {
+        if (log)
+          log->Printf("  CEDM::FEVD[%u] Searching namespace %s in module %s",
+                      current_id, i->second.GetName().AsCString(),
+                      i->first->GetFileSpec().GetFilename().GetCString());
 
-      FindExternalVisibleDecls(context, i->first, i->second, current_id);
+        FindExternalVisibleDecls(context, i->first, i->second, current_id);
+      }
     }
+
   } else if (isa<TranslationUnitDecl>(context.m_decl_context)) {
     CompilerDeclContext namespace_decl;
 
@@ -768,7 +770,7 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
                              current_id);
   }
 
-  ClangASTSource::FindExternalVisibleDecls(context);
+  return ClangASTSource::FindExternalVisibleDecls(context);
 }
 
 void ClangExpressionDeclMap::FindExternalVisibleDecls(

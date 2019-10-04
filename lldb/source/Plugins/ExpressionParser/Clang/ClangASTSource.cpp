@@ -259,10 +259,17 @@ bool ClangASTSource::FindExternalVisibleDeclsByName(
   llvm::SmallVector<NamedDecl *, 4> name_decls;
   NameSearchContext name_search_context(*this, name_decls, clang_decl_name,
                                         decl_ctx);
-  FindExternalVisibleDecls(name_search_context);
+  bool success = FindExternalVisibleDecls(name_search_context);
   SetExternalVisibleDeclsForName(decl_ctx, clang_decl_name, name_decls);
   //  --g_depth;
   m_active_lookups.erase(uniqued_const_decl_name);
+  // The merger properly implements FindExternalVisibleDecls and returns
+  // true/false when it found something. There is still some non-modern-type
+  // lookup code in FindExternalVisibleDecls that could return a wrong value
+  // for success, so let's not trust the return value when we don't use
+  // modern-type-lookup.
+  if (HasMerger())
+    return success || (name_decls.size() != 0);
   return (name_decls.size() != 0);
 }
 
@@ -680,7 +687,7 @@ void ClangASTSource::FindExternalLexicalDecls(
   return;
 }
 
-void ClangASTSource::FindExternalVisibleDecls(NameSearchContext &context) {
+bool ClangASTSource::FindExternalVisibleDecls(NameSearchContext &context) {
   assert(m_ast_context);
 
   ClangASTMetrics::RegisterVisibleQuery();
@@ -715,8 +722,7 @@ void ClangASTSource::FindExternalVisibleDecls(NameSearchContext &context) {
                 name.GetCString(), context.m_decl_context->getDeclKindName());
   }
 
-  if (HasMerger() && !isa<TranslationUnitDecl>(context.m_decl_context)
-      /* possibly handle NamespaceDecls here? */) {
+  if (HasMerger()) {
     if (auto *interface_decl =
     dyn_cast<ObjCInterfaceDecl>(context.m_decl_context)) {
       ObjCInterfaceDecl *complete_iface_decl =
@@ -729,9 +735,9 @@ void ClangASTSource::FindExternalVisibleDecls(NameSearchContext &context) {
       }
     }
 
-    GetMergerUnchecked().FindExternalVisibleDeclsByName(context.m_decl_context,
-                                                context.m_decl_name);
-    return; // otherwise we may need to fall back
+    if (GetMergerUnchecked().FindExternalVisibleDeclsByName(
+            context.m_decl_context, context.m_decl_name))
+      return true;
   }
 
   context.m_namespace_map = std::make_shared<ClangASTImporter::NamespaceMap>();
@@ -747,7 +753,7 @@ void ClangASTSource::FindExternalVisibleDecls(NameSearchContext &context) {
                 static_cast<int>(namespace_map->size()));
 
     if (!namespace_map)
-      return;
+      return false;
 
     for (ClangASTImporter::NamespaceMap::iterator i = namespace_map->begin(),
                                                   e = namespace_map->end();
@@ -762,7 +768,7 @@ void ClangASTSource::FindExternalVisibleDecls(NameSearchContext &context) {
     FindObjCPropertyAndIvarDecls(context);
   } else if (!isa<TranslationUnitDecl>(context.m_decl_context)) {
     // we shouldn't be getting FindExternalVisibleDecls calls for these
-    return;
+    return false;
   } else {
     CompilerDeclContext namespace_decl;
 
@@ -785,6 +791,7 @@ void ClangASTSource::FindExternalVisibleDecls(NameSearchContext &context) {
     if (clang_namespace_decl)
       clang_namespace_decl->setHasExternalVisibleStorage();
   }
+  return false;
 }
 
 clang::Sema *ClangASTSource::getSema() {
