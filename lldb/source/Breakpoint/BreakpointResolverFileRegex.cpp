@@ -97,7 +97,7 @@ BreakpointResolverFileRegex::SerializeToStructuredData() {
 Searcher::CallbackReturn
 BreakpointResolverFileRegex::SearchCallback(SearchFilter &filter,
                                             SymbolContext &context,
-                                            Address *addr, bool containing) {
+                                            Address *addr) {
 
   assert(m_breakpoint != nullptr);
   if (!context.target_sp)

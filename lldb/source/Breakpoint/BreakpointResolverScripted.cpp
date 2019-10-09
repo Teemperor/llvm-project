@@ -125,8 +125,7 @@ ScriptInterpreter *BreakpointResolverScripted::GetScriptInterpreter() {
 
 Searcher::CallbackReturn
 BreakpointResolverScripted::SearchCallback(SearchFilter &filter,
-                                          SymbolContext &context, Address *addr,
-                                          bool containing) {
+                                          SymbolContext &context, Address *addr) {
   assert(m_breakpoint != nullptr);
   bool should_continue = true;
   if (!m_implementation_sp)

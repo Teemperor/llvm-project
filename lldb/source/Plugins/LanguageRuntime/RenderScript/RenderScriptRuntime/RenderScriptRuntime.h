@@ -67,8 +67,7 @@ public:
   void Dump(Stream *s) const override {}
 
   Searcher::CallbackReturn SearchCallback(SearchFilter &filter,
-                                          SymbolContext &context, Address *addr,
-                                          bool containing) override;
+                                          SymbolContext &context, Address *addr) override;
 
   lldb::SearchDepth GetDepth() override { return lldb::eSearchDepthModule; }
 
@@ -117,8 +116,8 @@ public:
   void Dump(Stream *s) const override {}
 
   Searcher::CallbackReturn SearchCallback(SearchFilter &filter,
-                                          SymbolContext &context, Address *addr,
-                                          bool containing) override;
+                                          SymbolContext &context, Address *addr
+                                          ) override;
 
   lldb::SearchDepth GetDepth() override { return lldb::eSearchDepthModule; }
 
@@ -262,8 +261,7 @@ public:
   void Dump(Stream *s) const override {}
 
   Searcher::CallbackReturn SearchCallback(SearchFilter &filter,
-                                          SymbolContext &context, Address *addr,
-                                          bool containing) override;
+                                          SymbolContext &context, Address *addr) override;
 
   lldb::SearchDepth GetDepth() override { return lldb::eSearchDepthModule; }
 

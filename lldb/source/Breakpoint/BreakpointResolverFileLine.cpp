@@ -201,7 +201,7 @@ void BreakpointResolverFileLine::FilterContexts(SymbolContextList &sc_list,
 Searcher::CallbackReturn
 BreakpointResolverFileLine::SearchCallback(SearchFilter &filter,
                                            SymbolContext &context,
-                                           Address *addr, bool containing) {
+                                           Address *addr) {
   SymbolContextList sc_list;
 
   assert(m_breakpoint != nullptr);
