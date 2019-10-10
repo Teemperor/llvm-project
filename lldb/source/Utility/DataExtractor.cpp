@@ -817,24 +817,24 @@ DataExtractor::CopyByteOrderedData(offset_t src_offset, offset_t src_len,
 // and "offset_ptr" will not be updated.
 const char *DataExtractor::GetCStr(offset_t *offset_ptr) const {
   const char *cstr = reinterpret_cast<const char *>(PeekData(*offset_ptr, 1));
-  if (cstr) {
-    const char *cstr_end = cstr;
-    const char *end = reinterpret_cast<const char *>(m_end);
-    while (cstr_end < end && *cstr_end)
-      ++cstr_end;
+  // Already at the end of the data.
+  if (!cstr)
+    return nullptr;
 
-    // Now we are either at the end of the data or we point to the
-    // NULL C string terminator with cstr_end...
-    if (*cstr_end == '\0') {
-      // Advance the offset with one extra byte for the NULL terminator
-      *offset_ptr += (cstr_end - cstr + 1);
+  const char *end = reinterpret_cast<const char *>(m_end);
+  // Check all following bytes for a null terminator that indicates the end of
+  // a valid C string.
+  for (const char *to_check = cstr; to_check < end; ++to_check) {
+    if (*to_check == '\0') {
+      // Update offset_ptr for the caller to point to the data behind the
+      // terminator (which is 1 byte long).
+      *offset_ptr += (to_check - cstr + 1UL);
       return cstr;
     }
-
-    // We reached the end of the data without finding a NULL C string
-    // terminator. Fall through and return nullptr otherwise anyone that would
-    // have used the result as a C string can wander into unknown memory...
   }
+
+  // We didn't find a null terminator, so return nullptr to indicate that there
+  // is no valid C string at that offset.
   return nullptr;
 }
 
