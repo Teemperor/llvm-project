@@ -3,6 +3,7 @@ add_lldb_unittest(LLDBCoreTests
   RichManglingContextTest.cpp
   StreamCallbackTest.cpp
   UniqueCStringMapTest.cpp
+  ValueTest.cpp
 
   LINK_LIBS
     lldbCore
