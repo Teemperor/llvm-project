@@ -1,4 +1,5 @@
 add_lldb_unittest(SymbolTests
+  CompilerTypeTest.cpp
   LocateSymbolFileTest.cpp
   PostfixExpressionTest.cpp
   TestClangASTContext.cpp
@@ -10,6 +11,7 @@ add_lldb_unittest(SymbolTests
     lldbHost
     lldbSymbol
     lldbUtilityHelpers
+    lldbSymbolHelpers
     lldbPluginObjectFileELF
     lldbPluginObjectFileMachO
     lldbPluginSymbolFileDWARF
