@@ -1,10 +1,16 @@
+if(LLDB_ENABLE_SWIFT_SUPPORT)
+  set(LLDB_SYMBOL_TEST_SWIFT_SOURCES
+    TestSwiftASTContext.cpp
+  )
+endif()
+
 add_lldb_unittest(SymbolTests
   LocateSymbolFileTest.cpp
   PostfixExpressionTest.cpp
   TestClangASTContext.cpp
   TestDWARFCallFrameInfo.cpp
+  ${LLDB_SYMBOL_TEST_SWIFT_SOURCES}
   TestType.cpp
-  TestSwiftASTContext.cpp
   TestLineEntry.cpp
 
   LINK_LIBS

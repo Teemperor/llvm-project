@@ -2186,6 +2186,7 @@ Target::GetScratchTypeSystemForLanguage(lldb::LanguageType language,
   if (!type_system_or_err)
     return std::move(type_system_or_err.takeError());
 
+#ifdef LLDB_ENABLE_SWIFT
   if (language == eLanguageTypeSwift) {
     if (auto *swift_ast_ctx =
             llvm::dyn_cast_or_null<SwiftASTContext>(&*type_system_or_err)) {
@@ -2265,6 +2266,7 @@ Target::GetScratchTypeSystemForLanguage(lldb::LanguageType language,
       }
     }
   }
+#endif
   return type_system_or_err;
 }
 
@@ -2313,6 +2315,7 @@ Target::GetPersistentExpressionStateForLanguage(lldb::LanguageType language) {
   return type_system_or_err->GetPersistentExpressionState();
 }
 
+#ifdef LLDB_ENABLE_SWIFT
 SwiftPersistentExpressionState *
 Target::GetSwiftPersistentExpressionState(ExecutionContextScope &exe_scope) {
   Status error;
@@ -2322,6 +2325,7 @@ Target::GetSwiftPersistentExpressionState(ExecutionContextScope &exe_scope) {
   return (SwiftPersistentExpressionState *)
       swift_ast_context->GetPersistentExpressionState();
 }
+#endif
 
 UserExpression *Target::GetUserExpressionForLanguage(
     llvm::StringRef expr, llvm::StringRef prefix, lldb::LanguageType language,
@@ -2417,6 +2421,7 @@ ClangASTImporterSP Target::GetClangASTImporter() {
   return ClangASTImporterSP();
 }
 
+#ifdef LLDB_ENABLE_SWIFT
 SwiftASTContextReader Target::GetScratchSwiftASTContext(
     Status &error, ExecutionContextScope &exe_scope, bool create_on_demand) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_TARGET));
@@ -2536,6 +2541,7 @@ void Target::DisplayFallbackSwiftContextErrors(SwiftASTContext *swift_ast_ctx) {
       swift_ast_ctx->GetFatalErrors().AsCString("unknown error"));
   errs->Flush();
 }
+#endif // LLDB_ENABLE_SWIFT
 
 void Target::SettingsInitialize() { Process::SettingsInitialize(); }
 
@@ -3872,7 +3878,7 @@ bool TargetProperties::GetUseModernTypeLookup() const {
   else
     return true;
 }
-
+#ifdef LLDB_ENABLE_SWIFT
 bool TargetProperties::GetSwiftCreateModuleContextsInParallel() const {
   const Property *exp_property = m_collection_sp->GetPropertyAtIndex(
       nullptr, false, ePropertyExperimental);
@@ -3884,6 +3890,7 @@ bool TargetProperties::GetSwiftCreateModuleContextsInParallel() const {
   else
     return true;
 }
+#endif
 
 ArchSpec TargetProperties::GetDefaultArchitecture() const {
   OptionValueArch *value = m_collection_sp->GetPropertyAtIndexAsOptionValueArch(
@@ -4068,6 +4075,7 @@ FileSpec &TargetProperties::GetSDKPath() {
   return option_value->GetCurrentValue();
 }
 
+#ifdef LLDB_ENABLE_SWIFT
 FileSpecList TargetProperties::GetSwiftFrameworkSearchPaths() {
   const uint32_t idx = ePropertySwiftFrameworkSearchPaths;
   OptionValueFileSpecList *option_value =
@@ -4091,6 +4099,7 @@ llvm::StringRef TargetProperties::GetSwiftExtraClangFlags() const {
   return m_collection_sp->GetPropertyAtIndexAsString(nullptr, idx,
                                                      llvm::StringRef());
 }
+#endif
 
 FileSpecList TargetProperties::GetClangModuleSearchPaths() {
   const uint32_t idx = ePropertyClangModuleSearchPaths;
