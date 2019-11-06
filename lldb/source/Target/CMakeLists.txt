@@ -6,6 +6,18 @@ lldb_tablegen(TargetPropertiesEnum.inc -gen-lldb-property-enum-defs
   SOURCE TargetProperties.td
   TARGET LLDBTargetPropertiesEnumGen)
 
+if (LLDB_ENABLE_SWIFT_SUPPORT)
+  set(LLDB_TARGET_SWIFT_LIBS
+    swiftAST
+    swiftBasic
+    swiftReflection
+    swiftRemoteAST
+  )
+  set(LLDB_TARGET_SWIFT_SOURCES
+    SwiftLanguageRuntime.cpp
+  )
+endif()
+
 add_lldb_library(lldbTarget
   ABI.cpp
   ExecutionContext.cpp
@@ -37,7 +49,7 @@ add_lldb_library(lldbTarget
   StackID.cpp
   StopInfo.cpp
   StructuredDataPlugin.cpp
-  SwiftLanguageRuntime.cpp
+  ${LLDB_TARGET_SWIFT_SOURCES}
   SystemRuntime.cpp
   Target.cpp
   TargetList.cpp
@@ -67,10 +79,7 @@ add_lldb_library(lldbTarget
   UnwindAssembly.cpp
 
   LINK_LIBS
-    swiftAST
-    swiftBasic
-    swiftReflection
-    swiftRemoteAST
+    ${LLDB_TARGET_SWIFT_LIBS}
     lldbBreakpoint
     lldbCore
     lldbExpression
