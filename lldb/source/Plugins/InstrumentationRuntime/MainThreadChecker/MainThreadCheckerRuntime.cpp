@@ -23,9 +23,12 @@
 #include "lldb/Target/Thread.h"
 #include "lldb/Utility/RegularExpression.h"
 #include "Plugins/Process/Utility/HistoryThread.h"
+
+#ifdef LLDB_ENABLE_SWIFT
 #include "swift/AST/ASTContext.h"
 #include "swift/AST/NameLookup.h"
 #include "swift/ClangImporter/ClangImporter.h"
+#endif
 
 #include <memory>
 
