@@ -1630,6 +1630,7 @@ void Target::ModulesDidLoad(ModuleList &module_list) {
     }
 
     // Notify all the ASTContext(s).
+#ifdef LLDB_ENABLE_SWIFT
     auto notify_callback = [&](TypeSystem *type_system) {
       auto *swift_ast_ctx =
           llvm::dyn_cast_or_null<SwiftASTContext>(type_system);
@@ -1646,6 +1647,7 @@ void Target::ModulesDidLoad(ModuleList &module_list) {
       TypeSystemSP type_system = language.second;
       notify_callback(type_system.get());
     }
+#endif
 
     module_list.ClearModuleDependentCaches();
     BroadcastEvent(eBroadcastBitModulesLoaded,
