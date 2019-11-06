@@ -13,6 +13,7 @@ if (LLDB_ENABLE_SWIFT_SUPPORT)
     swiftFrontend
     swiftSIL
     swiftSerialization
+    lldbPluginExpressionParserSwift
   )
   set(LLDB_SYMBOL_SWIFT_SOURCES
     SwiftASTContext.cpp
@@ -68,7 +69,6 @@ add_lldb_library(lldbSymbol
     lldbTarget
     lldbUtility
     lldbPluginExpressionParserClang
-    lldbPluginExpressionParserSwift
     lldbPluginSymbolFileDWARF
     lldbPluginSymbolFilePDB
     lldbPluginObjCLanguage

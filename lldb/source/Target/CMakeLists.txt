@@ -12,6 +12,8 @@ if (LLDB_ENABLE_SWIFT_SUPPORT)
     swiftBasic
     swiftReflection
     swiftRemoteAST
+    lldbPluginExpressionParserSwift
+    lldbPluginSwiftLanguage
   )
   set(LLDB_TARGET_SWIFT_SOURCES
     SwiftLanguageRuntime.cpp
@@ -88,8 +90,6 @@ add_lldb_library(lldbTarget
     lldbSymbol
     lldbUtility
     lldbPluginExpressionParserClang
-    lldbPluginExpressionParserSwift
-    lldbPluginSwiftLanguage
     lldbPluginProcessUtility
 
   LINK_COMPONENTS
