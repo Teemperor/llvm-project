@@ -76,6 +76,7 @@ bool MainThreadCheckerRuntime::CheckIfRuntimeIsValid(
   return symbol != nullptr;
 }
 
+#ifdef LLDB_ENABLE_SWIFT
 static std::string TranslateObjCNameToSwiftName(std::string className,
                                                 std::string selector,
                                                 StackFrameSP swiftFrame) {
@@ -149,6 +150,7 @@ static std::string TranslateObjCNameToSwiftName(std::string className,
   llvm::SmallString<32> scratchSpace;
   return className + "." + consumer.result.getString(scratchSpace).str();
 }
+#endif
 
 StructuredData::ObjectSP
 MainThreadCheckerRuntime::RetrieveReportData(ExecutionContextRef exe_ctx_ref) {
@@ -216,12 +218,14 @@ MainThreadCheckerRuntime::RetrieveReportData(ExecutionContextRef exe_ctx_ref) {
   }
   
   if (responsible_frame) {
+#ifdef LLDB_ENABLE_SWIFT
     if (responsible_frame->GetLanguage() == eLanguageTypeSwift) {
       std::string swiftApiName =
           TranslateObjCNameToSwiftName(className, selector, responsible_frame);
       if (swiftApiName != "")
         apiName = swiftApiName;
     }
+#endif
   }
   
   auto *d = new StructuredData::Dictionary();
