@@ -31,10 +31,10 @@ class TestSwiftAddressOf(lldbtest.TestBase):
         var = self.frame().FindVariable(name)
         self.assertTrue(var.IsValid(), "Couldn't find %s var: %s"%(name, var.GetError().GetCString()))
         if is_reference:
-            self.assertTrue(var.GetType().IsReferenceType(), name + "was not supposed to be a reference.")
+            self.assertTrue(var.GetType().IsReferenceType(), name + " was supposed to be a reference.")
             addr_value = var.GetValueAsUnsigned()
         else:
-            self.assertFalse(var.GetType().IsReferenceType(), name + "was supposed to be a reference.")
+            self.assertFalse(var.GetType().IsReferenceType(), name + " was not supposed to be a reference.")
             addr_val = var.AddressOf()
             self.assertTrue(addr_val.GetError().Success(), "AddressOf didn't return a good variable: %s."%(addr_val.GetError().GetCString()))
             addr_value = addr_val.GetValueAsUnsigned()

@@ -5271,12 +5271,15 @@ bool SwiftASTContext::IsReferenceType(void *type, CompilerType *pointee_type,
   if (type) {
     swift::CanType swift_can_type(GetCanonicalSwiftType(type));
     const swift::TypeKind type_kind = swift_can_type->getKind();
+    llvm::errs() << "IsReferenceType: " << (int)type_kind << " = ";
     switch (type_kind) {
     case swift::TypeKind::LValue:
       if (pointee_type)
         *pointee_type = GetNonReferenceType(type);
+      llvm::errs() << " true\n";
       return true;
     default:
+      llvm::errs() << " false\n";
       break;
     }
   }
