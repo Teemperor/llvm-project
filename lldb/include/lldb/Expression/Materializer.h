@@ -23,7 +23,11 @@ namespace lldb_private {
 class Materializer {
 public:
   Materializer();
-  ~Materializer();
+  virtual ~Materializer();
+
+  // LLVM RTTI support
+  static char ID;
+  virtual bool isA(const void *ClassID) const { return ClassID == &ID; }
 
   class Dematerializer {
   public:

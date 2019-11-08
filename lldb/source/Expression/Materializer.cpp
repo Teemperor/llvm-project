@@ -26,6 +26,8 @@
 
 using namespace lldb_private;
 
+char ObjectFile::ID;
+
 uint32_t Materializer::AddStructMember(Entity &entity) {
   uint32_t size = entity.GetSize();
   uint32_t alignment = entity.GetAlignment();
