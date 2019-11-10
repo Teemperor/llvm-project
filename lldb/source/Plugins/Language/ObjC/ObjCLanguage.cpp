@@ -883,10 +883,12 @@ ObjCLanguage::GetPossibleFormattersMatches(ValueObject &valobj,
 
   const bool check_cpp = false;
   const bool check_objc = true;
-  bool canBeObjCDynamic =
-      compiler_type.IsPossibleDynamicType(nullptr, check_cpp, check_objc);
+  const bool check_swift = false;
+  bool canBeObjCDynamic = compiler_type.IsPossibleDynamicType(
+      nullptr, check_cpp, check_objc, check_swift);
 
-  if (canBeObjCDynamic) {
+  bool is_clang_type = llvm::isa<ClangASTContext>(compiler_type.GetTypeSystem());
+  if (canBeObjCDynamic && is_clang_type) {
     do {
       lldb::ProcessSP process_sp = valobj.GetProcessSP();
       if (!process_sp)
