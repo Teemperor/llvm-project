@@ -5314,10 +5314,10 @@ bool SwiftASTContext::IsPolymorphicClass(void *type) { return false; }
 bool SwiftASTContext::IsPossibleDynamicType(void *type,
                                             CompilerType *dynamic_pointee_type,
                                             bool check_cplusplus,
-                                            bool check_objc) {
+                                            bool check_objc, bool check_swift) {
   VALID_OR_RETURN(false);
 
-  if (type) {
+  if (type && check_swift) {
     auto can_type = GetCanonicalSwiftType(type);
 
     if (can_type->getClassOrBoundGenericClass() ||

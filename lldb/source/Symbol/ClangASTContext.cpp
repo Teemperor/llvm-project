@@ -3714,7 +3714,7 @@ bool ClangASTContext::IsPolymorphicClass(lldb::opaque_compiler_type_t type) {
 bool ClangASTContext::IsPossibleDynamicType(lldb::opaque_compiler_type_t type,
                                             CompilerType *dynamic_pointee_type,
                                             bool check_cplusplus,
-                                            bool check_objc) {
+                                            bool check_objc, bool check_swift) {
   clang::QualType pointee_qual_type;
   if (type) {
     clang::QualType qual_type(GetCanonicalQualType(type));
@@ -3770,26 +3770,26 @@ bool ClangASTContext::IsPossibleDynamicType(lldb::opaque_compiler_type_t type,
                                        ->getUnderlyingType()
                                        .getAsOpaquePtr(),
                                    dynamic_pointee_type, check_cplusplus,
-                                   check_objc);
+                                   check_objc, check_swift);
 
     case clang::Type::Auto:
       return IsPossibleDynamicType(llvm::cast<clang::AutoType>(qual_type)
                                        ->getDeducedType()
                                        .getAsOpaquePtr(),
                                    dynamic_pointee_type, check_cplusplus,
-                                   check_objc);
+                                   check_objc, check_swift);
 
     case clang::Type::Elaborated:
       return IsPossibleDynamicType(llvm::cast<clang::ElaboratedType>(qual_type)
                                        ->getNamedType()
                                        .getAsOpaquePtr(),
                                    dynamic_pointee_type, check_cplusplus,
-                                   check_objc);
+                                   check_objc, check_swift);
 
     case clang::Type::Paren:
       return IsPossibleDynamicType(
           llvm::cast<clang::ParenType>(qual_type)->desugar().getAsOpaquePtr(),
-          dynamic_pointee_type, check_cplusplus, check_objc);
+          dynamic_pointee_type, check_cplusplus, check_objc, check_swift);
     default:
       break;
     }

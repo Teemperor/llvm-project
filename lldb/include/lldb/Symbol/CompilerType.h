@@ -112,11 +112,12 @@ public:
 
   bool
   IsPossibleCPlusPlusDynamicType(CompilerType *target_type = nullptr) const {
-    return IsPossibleDynamicType(target_type, true, false);
+    return IsPossibleDynamicType(target_type, true, false, false);
   }
 
   bool IsPossibleDynamicType(CompilerType *target_type, // Can pass nullptr
-                             bool check_cplusplus, bool check_objc) const;
+                             bool check_cplusplus, bool check_objc,
+                             bool check_swift) const;
 
   bool IsPointerToScalarType() const;
 

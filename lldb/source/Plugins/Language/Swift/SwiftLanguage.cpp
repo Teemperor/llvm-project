@@ -886,8 +886,9 @@ std::vector<ConstString> SwiftLanguage::GetPossibleFormattersMatches(
 
   const bool check_cpp = false;
   const bool check_objc = false;
+  const bool check_swift = true;
   bool canBeSwiftDynamic = compiler_type.IsPossibleDynamicType(
-      nullptr, check_cpp, check_objc);
+      nullptr, check_cpp, check_objc, check_swift);
 
   if (canBeSwiftDynamic) {
     do {

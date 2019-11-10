@@ -247,7 +247,8 @@ bool AppleObjCRuntime::CouldHaveDynamicValue(ValueObject &in_value,
   return in_value.GetCompilerType().IsPossibleDynamicType(
       nullptr,
       false, // do not check C++
-      true);  // check ObjC
+      true,  // check ObjC
+      allow_swift);
 }
 
 bool AppleObjCRuntime::GetDynamicTypeAndAddress(
