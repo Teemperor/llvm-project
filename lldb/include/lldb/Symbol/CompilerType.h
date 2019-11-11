@@ -337,7 +337,6 @@ public:
   CompilerType GetTypeTemplateArgument(size_t idx) const;
 
   lldb::GenericKind GetGenericArgumentKind(size_t idx) const;
-  CompilerType GetGenericArgumentType(size_t idx) const;
 
   // Returns the value of the template argument and its type.
   llvm::Optional<IntegralTemplateArgument>
