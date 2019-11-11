@@ -3493,10 +3493,11 @@ VariableSP SymbolFileDWARF::ParseVariableDIE(const SymbolContext &sc,
                                type_sp->GetType()->GetByteSize().getValueOr(0),
                                die.GetCU()->GetAddressByteSize());
 
+        bool is_constant = false;
         var_sp = std::make_shared<Variable>(
             die.GetID(), name, mangled, type_sp, scope, symbol_context_scope,
             scope_ranges, &decl, location, is_external, is_artificial,
-            is_static_member);
+            is_static_member, is_constant);
 
         var_sp->SetLocationIsConstantValueData(location_is_const_value_data);
       } else {

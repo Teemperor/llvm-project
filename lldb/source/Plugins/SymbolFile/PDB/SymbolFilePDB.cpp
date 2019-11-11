@@ -1018,9 +1018,11 @@ VariableSP SymbolFilePDB::ParseVariableForPDBData(
   DWARFExpression location = ConvertPDBLocationToDWARFExpression(
       GetObjectFile()->GetModule(), pdb_data, ranges, is_constant);
 
+  bool is_constant_var = false;
   var_sp = std::make_shared<Variable>(
       var_uid, var_name.c_str(), mangled_cstr, type_sp, scope, context_scope,
-      ranges, &decl, location, is_external, is_artificial, is_static_member);
+      ranges, &decl, location, is_external, is_artificial, is_static_member,
+      is_constant_var);
   var_sp->SetLocationIsConstantValueData(is_constant);
 
   m_variables.insert(std::make_pair(var_uid, var_sp));
