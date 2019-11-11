@@ -375,12 +375,8 @@ public:
                          uint32_t bitfield_bit_offset, bool show_types,
                          bool show_summary, bool verbose, uint32_t depth) = 0;
 
-  virtual bool DumpTypeValue(lldb::opaque_compiler_type_t type, Stream *s,
-                             lldb::Format format, const DataExtractor &data,
-                             lldb::offset_t data_offset, size_t data_byte_size,
-                             uint32_t bitfield_bit_size,
-                             uint32_t bitfield_bit_offset,
-                             ExecutionContextScope *exe_scope) = 0;
+  virtual bool DumpTypeValue(lldb::opaque_compiler_type_t type,
+                             CompilerType::DumpTypeValueOpts opts) = 0;
 
   virtual void
   DumpTypeDescription(lldb::opaque_compiler_type_t type) = 0; // Dump to stdout

@@ -9468,11 +9468,8 @@ static bool DumpEnumValue(const clang::QualType &qual_type, Stream *s,
   return true;
 }
 
-bool ClangASTContext::DumpTypeValue(
-    lldb::opaque_compiler_type_t type, Stream *s, lldb::Format format,
-    const DataExtractor &data, lldb::offset_t byte_offset, size_t byte_size,
-    uint32_t bitfield_bit_size, uint32_t bitfield_bit_offset,
-    ExecutionContextScope *exe_scope) {
+bool ClangASTContext::DumpTypeValue(lldb::opaque_compiler_type_t type,
+                                    CompilerType::DumpTypeValueOpts opts) {
   if (!type)
     return false;
   if (IsAggregateType(type)) {
@@ -9484,8 +9481,7 @@ bool ClangASTContext::DumpTypeValue(
 
     if (type_class == clang::Type::Elaborated) {
       qual_type = llvm::cast<clang::ElaboratedType>(qual_type)->getNamedType();
-      return DumpTypeValue(qual_type.getAsOpaquePtr(), s, format, data, byte_offset, byte_size,
-                           bitfield_bit_size, bitfield_bit_offset, exe_scope);
+      return DumpTypeValue(qual_type.getAsOpaquePtr(), opts);
     }
 
     switch (type_class) {
@@ -9495,32 +9491,24 @@ bool ClangASTContext::DumpTypeValue(
               ->getDecl()
               ->getUnderlyingType();
       CompilerType typedef_clang_type(this, typedef_qual_type.getAsOpaquePtr());
-      if (format == eFormatDefault)
-        format = typedef_clang_type.GetFormat();
+      if (opts.format == eFormatDefault)
+        opts.format = typedef_clang_type.GetFormat();
       clang::TypeInfo typedef_type_info =
           getASTContext()->getTypeInfo(typedef_qual_type);
       uint64_t typedef_byte_size = typedef_type_info.Width / 8;
 
-      return typedef_clang_type.DumpTypeValue(
-          s,
-          format,            // The format with which to display the element
-          data,              // Data buffer containing all bytes for this type
-          byte_offset,       // Offset into "data" where to grab value from
-          typedef_byte_size, // Size of this type in bytes
-          bitfield_bit_size, // Size in bits of a bitfield value, if zero don't
-                             // treat as a bitfield
-          bitfield_bit_offset, // Offset in bits of a bitfield value if
-                               // bitfield_bit_size != 0
-          exe_scope);
+      opts.data_byte_size = typedef_byte_size;
+      return typedef_clang_type.DumpTypeValue(opts);
     } break;
 
     case clang::Type::Enum:
       // If our format is enum or default, show the enumeration value as its
       // enumeration string value, else just display it as requested.
-      if ((format == eFormatEnum || format == eFormatDefault) &&
+      if ((opts.format == eFormatEnum || opts.format == eFormatDefault) &&
           GetCompleteType(type))
-        return DumpEnumValue(qual_type, s, data, byte_offset, byte_size,
-                             bitfield_bit_offset, bitfield_bit_size);
+        return DumpEnumValue(qual_type, opts.stream, *opts.data,
+                             opts.data_offset, opts.data_byte_size,
+                             opts.bitfield_bit_offset, opts.bitfield_bit_size);
       // format was not enum, just fall through and dump the value as
       // requested....
       LLVM_FALLTHROUGH;
@@ -9532,7 +9520,7 @@ bool ClangASTContext::DumpTypeValue(
         // A few formats, we might need to modify our size and count for
         // depending
         // on how we are trying to display the value...
-        switch (format) {
+        switch (opts.format) {
         default:
         case eFormatBoolean:
         case eFormatBinary:
@@ -9566,24 +9554,25 @@ bool ClangASTContext::DumpTypeValue(
         case eFormatCharArray:
         case eFormatBytes:
         case eFormatBytesWithASCII:
-          item_count = byte_size;
-          byte_size = 1;
+          item_count = opts.data_byte_size;
+          opts.data_byte_size = 1;
           break;
 
         case eFormatUnicode16:
-          item_count = byte_size / 2;
-          byte_size = 2;
+          item_count = opts.data_byte_size / 2;
+          opts.data_byte_size = 2;
           break;
 
         case eFormatUnicode32:
-          item_count = byte_size / 4;
-          byte_size = 4;
+          item_count = opts.data_byte_size / 4;
+          opts.data_byte_size = 4;
           break;
         }
-        return DumpDataExtractor(data, s, byte_offset, format, byte_size,
-                                 item_count, UINT32_MAX, LLDB_INVALID_ADDRESS,
-                                 bitfield_bit_size, bitfield_bit_offset,
-                                 exe_scope);
+
+        return DumpDataExtractor(
+            *opts.data, opts.stream, opts.data_offset, opts.format,
+            opts.data_byte_size, item_count, UINT32_MAX, LLDB_INVALID_ADDRESS,
+            opts.bitfield_bit_size, opts.bitfield_bit_offset, opts.exe_scope);
       }
       break;
     }

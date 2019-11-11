@@ -99,15 +99,15 @@ bool TypeFormatImpl_Format::FormatObject(ValueObject *valobj,
         if (!size)
           return false;
         StreamString sstr;
-        compiler_type.DumpTypeValue(
-            &sstr,                          // The stream to use for display
-            GetFormat(),                    // Format to display this type with
-            data,                           // Data to extract from
-            0,                              // Byte offset into "m_data"
-            *size,                          // Byte size of item in "m_data"
-            valobj->GetBitfieldBitSize(),   // Bitfield bit size
-            valobj->GetBitfieldBitOffset(), // Bitfield bit offset
-            exe_scope);
+        CompilerType::DumpTypeValueOpts o;
+        o.data = &data;
+        o.stream = &sstr;
+        o.format = GetFormat();
+        o.data_byte_size = *size;
+        o.bitfield_bit_size = valobj->GetBitfieldBitSize();
+        o.bitfield_bit_offset = valobj->GetBitfieldBitOffset();
+        o.exe_scope = exe_scope;
+        compiler_type.DumpTypeValue(o);
         // Given that we do not want to set the ValueObject's m_error for a
         // formatting error (or else we wouldn't be able to reformat until a
         // next update), an empty string is treated as a "false" return from
@@ -187,9 +187,13 @@ bool TypeFormatImpl_EnumType::FormatObject(ValueObject *valobj,
     return false;
   ExecutionContext exe_ctx(valobj->GetExecutionContextRef());
   StreamString sstr;
-  valobj_enum_type.DumpTypeValue(&sstr, lldb::eFormatEnum, data, 0,
-                                 data.GetByteSize(), 0, 0,
-                                 exe_ctx.GetBestExecutionContextScope());
+  CompilerType::DumpTypeValueOpts o;
+  o.data = &data;
+  o.stream = &sstr;
+  o.format = lldb::eFormatEnum;
+  o.data_byte_size = data.GetByteSize();
+  o.exe_scope = exe_ctx.GetBestExecutionContextScope();
+  valobj_enum_type.DumpTypeValue(o);
   if (!sstr.GetString().empty())
     dest = sstr.GetString();
   return !dest.empty();

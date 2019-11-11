@@ -346,10 +346,24 @@ public:
                  uint32_t bitfield_bit_offset, bool show_types,
                  bool show_summary, bool verbose, uint32_t depth);
 
-  bool DumpTypeValue(Stream *s, lldb::Format format, const DataExtractor &data,
-                     lldb::offset_t data_offset, size_t data_byte_size,
-                     uint32_t bitfield_bit_size, uint32_t bitfield_bit_offset,
-                     ExecutionContextScope *exe_scope);
+  struct DumpTypeValueOpts {
+    /// Data buffer containing all bytes for this type.
+    const DataExtractor *data = nullptr;
+    Stream *stream = nullptr;
+    /// The format with which to display the type.
+    lldb::Format format = lldb::Format::eFormatDefault;
+    /// Offset into "data" where to grab value from.
+    lldb::offset_t data_offset = 0U;
+    /// Size of this type in bytes.
+    size_t data_byte_size = 0U;
+    /// Size in bits of a bitfield value, if zero don't treat as a bitfield.
+    uint32_t bitfield_bit_size = 0U;
+    /// Offset in bits of a bitfield value if bitfield_bit_size != 0
+    uint32_t bitfield_bit_offset = 0U;
+    ExecutionContextScope *exe_scope = nullptr;
+  };
+
+  bool DumpTypeValue(DumpTypeValueOpts opts);
 
   void DumpSummary(ExecutionContext *exe_ctx, Stream *s,
                    const DataExtractor &data, lldb::offset_t data_offset,

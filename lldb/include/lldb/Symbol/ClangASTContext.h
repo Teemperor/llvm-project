@@ -901,11 +901,8 @@ public:
                  bool show_types, bool show_summary, bool verbose,
                  uint32_t depth) override;
 
-  bool DumpTypeValue(lldb::opaque_compiler_type_t type, Stream *s,
-                     lldb::Format format, const DataExtractor &data,
-                     lldb::offset_t data_offset, size_t data_byte_size,
-                     uint32_t bitfield_bit_size, uint32_t bitfield_bit_offset,
-                     ExecutionContextScope *exe_scope) override;
+  bool DumpTypeValue(lldb::opaque_compiler_type_t type,
+                     CompilerType::DumpTypeValueOpts opts) override;
 
   void DumpSummary(lldb::opaque_compiler_type_t type, ExecutionContext *exe_ctx,
                    Stream *s, const DataExtractor &data,
