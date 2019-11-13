@@ -207,6 +207,14 @@ public:
   // TypeSystems can support more than one language
   virtual bool SupportsLanguage(lldb::LanguageType language) = 0;
 
+  /// Check if the current module or target that was used to create this
+  /// type system is compatible with the TypeSystem plug-in.
+  ///
+  /// \return A Status object that is either describing any potential errors
+  ///         that make the module/target incompatible or contains no errors
+  ///         when the module/target is compatible.
+  virtual Status IsCompatible();
+
   // Type Completion
 
   virtual bool GetCompleteType(lldb::opaque_compiler_type_t type) = 0;

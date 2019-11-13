@@ -288,6 +288,22 @@ public:
   lldb::SBAddress GetObjectFileHeaderAddress() const;
   lldb::SBAddress GetObjectFileEntryPointAddress() const;
 
+  /// Checks if debug info in the module is compatible with the language
+  /// support that LLDB implements for the given language.
+  ///
+  /// A module may be incompatible with LLDB's language version if the language
+  /// version that is used in the module isn't supported by LLDB even though
+  /// the language itself is supported. This can happen if the language itself
+  /// evolved but LLDB's only supports a newer or older version of the language.
+  ///
+  /// \param[in] language
+  ///     The language that should be checked for compability with this module.
+  ///
+  /// \return
+  ///     An error object that describes the errors that were encounterd when
+  ///     checking if LLDB's language support is compatible.
+  lldb::SBError IsDebugInfoCompatible(lldb::LanguageType language);
+
 private:
   friend class SBAddress;
   friend class SBFrame;

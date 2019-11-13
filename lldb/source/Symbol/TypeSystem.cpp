@@ -147,6 +147,12 @@ bool TypeSystem::IsMeaninglessWithoutDynamicResolution(void *type) {
   return false;
 }
 
+Status TypeSystem::IsCompatible() {
+  // Assume a language is compatible. Override this virtual function
+  // in your TypeSystem plug-in if version checking is desired.
+  return Status();
+}
+
 ConstString TypeSystem::DeclGetMangledName(void *opaque_decl) {
   return ConstString();
 }

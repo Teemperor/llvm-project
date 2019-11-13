@@ -342,6 +342,9 @@ public:
     lldb::SBAddress
     GetObjectFileEntryPointAddress() const;
 
+    lldb::SBError
+    IsDebugInfoCompatible(lldb::LanguageType language);
+
     %pythoncode %{
         def __len__(self):
             '''Return the number of symbols in a lldb.SBModule object.'''

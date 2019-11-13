@@ -23,6 +23,7 @@
 #include "lldb/Symbol/Symtab.h"
 #include "lldb/Symbol/TypeSystem.h"
 #include "lldb/Symbol/VariableList.h"
+#include "lldb/Target/Language.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/StreamString.h"
 
@@ -685,6 +686,24 @@ lldb::SBAddress SBModule::GetObjectFileEntryPointAddress() const {
       sb_addr.ref() = objfile_ptr->GetEntryPointAddress();
   }
   return LLDB_RECORD_RESULT(sb_addr);
+}
+
+lldb::SBError SBModule::IsDebugInfoCompatible(lldb::LanguageType language) {
+  SBError sb_error;
+  ModuleSP module_sp(GetSP());
+  if (!module_sp) {
+    sb_error.SetErrorString("invalid module");
+    return sb_error;
+  }
+
+  auto type_system_or_err = module_sp->GetTypeSystemForLanguage(language);
+  if (!type_system_or_err) {
+    sb_error.ref() = type_system_or_err.takeError();
+    return sb_error;
+  }
+
+  sb_error.SetError(type_system_or_err->IsCompatible());
+  return sb_error;
 }
 
 namespace lldb_private {
