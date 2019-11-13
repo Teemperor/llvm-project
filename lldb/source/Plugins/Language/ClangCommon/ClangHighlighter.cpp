@@ -139,6 +139,16 @@ void ClangHighlighter::Highlight(const HighlightStyle &options,
   FileManager file_mgr(file_opts,
                        FileSystem::Instance().GetVirtualFileSystem());
 
+  // The line might end in a backslash which would cause Clang to drop the
+  // backslash and the terminating line feed. This makes sense when parsing C++,
+  // but when highlighting we care about preserving the backslash/newline. To
+  // not lose this information we remove the line feed here so that Clang knows
+  // this is just a single line we are highlighting. We add back the newline
+  // after tokenizing.
+  const bool line_had_cr_lf = line.endswith("\r\n");
+  const bool line_had_lf = line.endswith("\n") && !line_had_cr_lf;
+  line = line.trim("\r\n");
+
   unsigned line_number = previous_lines.count('\n') + 1U;
 
   // Let's build the actual source code Clang needs and setup some utility
@@ -226,6 +236,11 @@ void ClangHighlighter::Highlight(const HighlightStyle &options,
 
     color.Apply(result, to_print);
   }
+
+  if (line_had_cr_lf)
+    result << "\r\n";
+  else if (line_had_lf)
+    result << "\n";
 
   // If we went over the whole file but couldn't find our own file, then
   // somehow our setup was wrong. When we're in release mode we just give the
