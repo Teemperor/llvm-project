@@ -904,7 +904,7 @@ public:
   bool DumpTypeValue(lldb::opaque_compiler_type_t type, Stream *s,
                      lldb::Format format, const DataExtractor &data,
                      lldb::offset_t data_offset, size_t data_byte_size,
-                     uint32_t bitfield_bit_size, uint32_t bitfield_bit_offset,
+                     ValueObject &value_object,
                      ExecutionContextScope *exe_scope) override;
 
   void DumpSummary(lldb::opaque_compiler_type_t type, ExecutionContext *exe_ctx,

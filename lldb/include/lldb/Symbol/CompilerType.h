@@ -343,7 +343,7 @@ public:
 
   bool DumpTypeValue(Stream *s, lldb::Format format, const DataExtractor &data,
                      lldb::offset_t data_offset, size_t data_byte_size,
-                     uint32_t bitfield_bit_size, uint32_t bitfield_bit_offset,
+                     ValueObject &value_object,
                      ExecutionContextScope *exe_scope);
 
   void DumpSummary(ExecutionContext *exe_ctx, Stream *s,

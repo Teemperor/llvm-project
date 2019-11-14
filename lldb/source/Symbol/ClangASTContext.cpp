@@ -9471,7 +9471,7 @@ static bool DumpEnumValue(const clang::QualType &qual_type, Stream *s,
 bool ClangASTContext::DumpTypeValue(
     lldb::opaque_compiler_type_t type, Stream *s, lldb::Format format,
     const DataExtractor &data, lldb::offset_t byte_offset, size_t byte_size,
-    uint32_t bitfield_bit_size, uint32_t bitfield_bit_offset,
+    ValueObject &value_object,
     ExecutionContextScope *exe_scope) {
   if (!type)
     return false;
@@ -9485,7 +9485,7 @@ bool ClangASTContext::DumpTypeValue(
     if (type_class == clang::Type::Elaborated) {
       qual_type = llvm::cast<clang::ElaboratedType>(qual_type)->getNamedType();
       return DumpTypeValue(qual_type.getAsOpaquePtr(), s, format, data, byte_offset, byte_size,
-                           bitfield_bit_size, bitfield_bit_offset, exe_scope);
+                           value_object, exe_scope);
     }
 
     switch (type_class) {
@@ -9507,10 +9507,7 @@ bool ClangASTContext::DumpTypeValue(
           data,              // Data buffer containing all bytes for this type
           byte_offset,       // Offset into "data" where to grab value from
           typedef_byte_size, // Size of this type in bytes
-          bitfield_bit_size, // Size in bits of a bitfield value, if zero don't
-                             // treat as a bitfield
-          bitfield_bit_offset, // Offset in bits of a bitfield value if
-                               // bitfield_bit_size != 0
+          value_object,
           exe_scope);
     } break;
 
@@ -9520,7 +9517,8 @@ bool ClangASTContext::DumpTypeValue(
       if ((format == eFormatEnum || format == eFormatDefault) &&
           GetCompleteType(type))
         return DumpEnumValue(qual_type, s, data, byte_offset, byte_size,
-                             bitfield_bit_offset, bitfield_bit_size);
+                             value_object.GetBitfieldBitOffset(),
+                             value_object.GetBitfieldBitSize());
       // format was not enum, just fall through and dump the value as
       // requested....
       LLVM_FALLTHROUGH;
@@ -9582,7 +9580,8 @@ bool ClangASTContext::DumpTypeValue(
         }
         return DumpDataExtractor(data, s, byte_offset, format, byte_size,
                                  item_count, UINT32_MAX, LLDB_INVALID_ADDRESS,
-                                 bitfield_bit_size, bitfield_bit_offset,
+                                 value_object.GetBitfieldBitSize(),
+                                 value_object.GetBitfieldBitOffset(),
                                  exe_scope);
       }
       break;

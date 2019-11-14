@@ -734,14 +734,12 @@ void CompilerType::DumpValue(ExecutionContext *exe_ctx, Stream *s,
 bool CompilerType::DumpTypeValue(Stream *s, lldb::Format format,
                                  const DataExtractor &data,
                                  lldb::offset_t byte_offset, size_t byte_size,
-                                 uint32_t bitfield_bit_size,
-                                 uint32_t bitfield_bit_offset,
+                                 ValueObject &value_object,
                                  ExecutionContextScope *exe_scope) {
   if (!IsValid())
     return false;
   return m_type_system->DumpTypeValue(m_type, s, format, data, byte_offset,
-                                      byte_size, bitfield_bit_size,
-                                      bitfield_bit_offset, exe_scope);
+                                      byte_size, value_object, exe_scope);
 }
 
 void CompilerType::DumpSummary(ExecutionContext *exe_ctx, Stream *s,

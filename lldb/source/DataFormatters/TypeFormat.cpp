@@ -105,8 +105,7 @@ bool TypeFormatImpl_Format::FormatObject(ValueObject *valobj,
             data,                           // Data to extract from
             0,                              // Byte offset into "m_data"
             *size,                          // Byte size of item in "m_data"
-            valobj->GetBitfieldBitSize(),   // Bitfield bit size
-            valobj->GetBitfieldBitOffset(), // Bitfield bit offset
+            *valobj,
             exe_scope);
         // Given that we do not want to set the ValueObject's m_error for a
         // formatting error (or else we wouldn't be able to reformat until a
@@ -187,8 +186,10 @@ bool TypeFormatImpl_EnumType::FormatObject(ValueObject *valobj,
     return false;
   ExecutionContext exe_ctx(valobj->GetExecutionContextRef());
   StreamString sstr;
+  assert(valobj->GetBitfieldBitSize() == 0);
+  assert(valobj->GetBitfieldBitOffset() == 0);
   valobj_enum_type.DumpTypeValue(&sstr, lldb::eFormatEnum, data, 0,
-                                 data.GetByteSize(), 0, 0,
+                                 data.GetByteSize(), *valobj,
                                  exe_ctx.GetBestExecutionContextScope());
   if (!sstr.GetString().empty())
     dest = sstr.GetString();
