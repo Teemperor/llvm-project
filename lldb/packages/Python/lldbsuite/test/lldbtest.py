@@ -2366,6 +2366,121 @@ FileCheck output:
         self.assertTrue(matched if matching else not matched,
                         msg if msg else EXP_MSG(str, output, exe))
 
+
+    class ExpressionCommandType:
+        EXPRESSION = object()
+        FRAME_VAR = object()
+        # FIXME: SBFRAME_EVALUATE
+
+    def expect_expr(
+            self,
+            expr,
+            result_value=None,
+            result_type=None,
+            error_msg=None,
+            run_type=ExpressionCommandType.EXPRESSION
+            ):
+        """
+        Evaluates the given expression with the expression command or optionally 'frame var'
+        :param expr: The expression as a string.
+        :param result_value: The value that the expression should have. None if the value should not be checked.
+        :param result_type: The type that the expression result should have. None if the type should not be checked.
+        :param error_msg: The error message the expression should return. None if the error output should not be checked.
+        :param run_type: How the expression should be run.
+
+        result_value, result_type and error_message can have the following types which influences how
+        their values are compared to their respective output:
+          * A list of strings: expect_expr will search for the list of strings in the respective output.
+                               The output is expected to contain these strings in the listed order.
+          * Any string type: expect_expr will assume that the respective output is equal to the given string.
+        """
+        self.assertTrue(expr.strip() == expr, "Expression contains trailing/leading whitespace: '" + expr + "'")
+
+        # Run the command and extract the output.
+        if run_type in (self.ExpressionCommandType.FRAME_VAR,
+                        self.ExpressionCommandType.EXPRESSION):
+            if run_type is self.ExpressionCommandType.EXPRESSION:
+                run_cmd = "expr -- "
+            elif run_type is self.ExpressionCommandType.FRAME_VAR:
+                run_cmd = "frame var "
+            else:
+                self.assertTrue(False, "Shouldn't end up here: " + str(run_type))
+            self.ci.HandleCommand(run_cmd + expr, self.res, False)
+            err_out = self.res.GetError()
+            out = self.res.GetOutput()
+            success = self.res.Succeeded()
+            # Both 'frame var' and 'expr' have results in the format:
+            #   (<type>) <variable> = <result>
+            # This extracts these parts out of these two commands.
+            self.assertTrue(" = " in out, "No result in output: '" + out + "'")
+            var, result = out.split(" = ", 1)
+            var_name = var.split(" ")[-1]
+            var_type = var[:-len(var_name)]
+
+            # Turn '(type) ' into just 'type'
+            self.assertTrue(var_type.startswith("("))
+            self.assertTrue(var_type.endswith(") "))
+            var_type = var_type[len("("):-len(") ")]
+
+            self.assertTrue(result.endswith("\n"))
+            result = result[:-1]
+        else:
+            self.assertTrue(False, "Unknown expression type: " + str(run_type))
+
+        # Utility method that checks result_value, result_type and error_message.
+        def check_str(outer_self, expected, got):
+            # We got a list, so treat is as a list of needles we need to find in the given order.
+            if type(expected) is list:
+                remaining = got
+                for expected_part in expected:
+                    # Find the expected string.
+                    i = remaining.find(expected_part)
+                    # Assert that we found the string.
+                    outer_self.assertTrue(i != -1, "Couldn't find '" + expected_part
+                                          + "' in remaining output '" + remaining +
+                                          "'.\nFull string was: '" + got + "'")
+                    # Keep searching only the rest of the string to ensure the
+                    # strings are found in the given order.
+                    remaining = remaining[i + len(expected_part):]
+            else: # Otherwise we probably got one of Python's many string classes.
+                outer_self.assertEqual(got, expected)
+
+        # If we have a error_msg, then check that and make sure no result was specified.
+        if error_msg is not None:
+            self.assertTrue(result_value is None, "Setting result_value and error_msg doesn't make sense. Only set one of the two.")
+            self.assertTrue(result_type is None, "Setting result_type and error_msg doesn't make sense. Only set one of the two.")
+            self.assertFalse(success)
+            # Use the helper function to check the error output.
+            check_str(self, error_msg, err_out)
+            # We can exit, the rest is result checking.
+            return
+
+        # Check that we didn't get an unexpected error.
+        self.assertEqual(err_out, "", "Unexpected error output?")
+        self.assertTrue(success)
+
+        # Check result_value and result_type with check_str helper.
+        if result_value is not None:
+            check_str(self, result_value, result)
+        if result_type is not None:
+            check_str(self, result_type, var_type)
+
+    def expect_simple_expr(self, var, result_value=None, result_type=None):
+        """
+        Takes a simple expression such as a plain variable or accessing a member ('instance.member')
+        and adds it to all commands that accept these kinds of expressions ('frame var' and 'expr'
+        at the moment).
+        See expect_expr for documentation for result_value and result_type.
+        """
+        # Run the expression first with 'expr', then with 'frame var' and then with 'expr' again.
+        # We start with 'expr' as this is testing type importing to the temporary ASTContext and then
+        # importing those types to the scratch ASTContext. Frame var tests only tests importing to
+        # the persistent ASTContext which is similar to the import process to the temporary ASTContext
+        # when running 'expr'.
+        self.expect_expr(var, result_value=result_value, result_type=result_type, run_type=self.ExpressionCommandType.EXPRESSION)
+        self.expect_expr(var, result_value=result_value, result_type=result_type, run_type=self.ExpressionCommandType.FRAME_VAR)
+        self.expect_expr(var, result_value=result_value, result_type=result_type, run_type=self.ExpressionCommandType.EXPRESSION)
+
     def invoke(self, obj, name, trace=False):
         """Use reflection to call a method dynamically with no argument."""
         trace = (True if traceAlways else trace)

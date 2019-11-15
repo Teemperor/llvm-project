@@ -52,28 +52,11 @@ class LibcxxMapDataFormatterTestCase(TestBase):
         self.addTearDownHook(cleanup)
 
         ns = self.namespace
-        self.expect('p ii',
-                    substrs=['%s::map' % ns,
-                             'size=0',
-                             '{}'])
-        self.expect('frame var ii',
-                    substrs=['%s::map' % ns,
-                             'size=0',
-                             '{}'])
+        self.expect_simple_expr('ii', result_type=['%s::map' % ns], result_value=['size=0', '{}'])
 
         lldbutil.continue_to_breakpoint(self.process(), bkpt)
 
-        self.expect('p ii',
-                    substrs=['%s::map' % ns, 'size=2',
-                             '[0] = ',
-                             'first = 0',
-                             'second = 0',
-                             '[1] = ',
-                             'first = 1',
-                             'second = 1'])
-
-        self.expect('frame variable ii',
-                    substrs=['%s::map' % ns, 'size=2',
+        self.expect_simple_expr('ii', result_type=['%s::map' % ns], result_value=['size=2',
                              '[0] = ',
                              'first = 0',
                              'second = 0',
@@ -83,8 +66,7 @@ class LibcxxMapDataFormatterTestCase(TestBase):
 
         lldbutil.continue_to_breakpoint(self.process(), bkpt)
 
-        self.expect('frame variable ii',
-                    substrs=['%s::map' % ns, 'size=4',
+        self.expect_simple_expr('ii', result_type=['%s::map' % ns], result_value=['size=4',
                              '[2] = ',
                              'first = 2',
                              'second = 0',
@@ -94,17 +76,7 @@ class LibcxxMapDataFormatterTestCase(TestBase):
 
         lldbutil.continue_to_breakpoint(self.process(), bkpt)
 
-        self.expect("p ii",
-                    substrs=['%s::map' % ns, 'size=8',
-                             '[5] = ',
-                             'first = 5',
-                             'second = 0',
-                             '[7] = ',
-                             'first = 7',
-                             'second = 1'])
-
-        self.expect("frame var ii",
-                    substrs=['%s::map' % ns, 'size=8',
+        self.expect_simple_expr('ii', result_type=['%s::map' % ns], result_value=['size=8',
                              '[5] = ',
                              'first = 5',
                              'second = 0',
