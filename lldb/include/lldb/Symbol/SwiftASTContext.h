@@ -160,8 +160,6 @@ public:
 
   bool SupportsLanguage(lldb::LanguageType language) override;
 
-  Status IsCompatible() override;
-
   swift::SourceManager &GetSourceManager();
 
   swift::LangOptions &GetLanguageOptions();

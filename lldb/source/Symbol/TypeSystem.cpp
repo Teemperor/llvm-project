@@ -18,7 +18,6 @@
 
 #include <set>
 
-#include "lldb/Utility/Status.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Target/Language.h"
@@ -156,12 +155,6 @@ bool TypeSystem::IsMeaninglessWithoutDynamicResolution(void *type) {
 }
 
 void TypeSystem::DiagnoseWarnings(Process &process, Module &module) const {}
-
-Status TypeSystem::IsCompatible() {
-  // Assume a language is compatible. Override this virtual function
-  // in your TypeSystem plug-in if version checking is desired.
-  return Status();
-}
 
 ConstString TypeSystem::GetDisplayTypeName(void *type,
                                            const SymbolContext *sc) {

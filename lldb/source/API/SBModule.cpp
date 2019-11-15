@@ -26,10 +26,6 @@
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/StreamString.h"
 
-// BEGIN SWIFT
-#include "lldb/Target/Language.h"
-// END SWIFT
-
 using namespace lldb;
 using namespace lldb_private;
 
@@ -676,26 +672,6 @@ lldb::SBAddress SBModule::GetObjectFileHeaderAddress() const {
   }
   return LLDB_RECORD_RESULT(sb_addr);
 }
-
-// BEGIN SWIFT
-lldb::SBError SBModule::IsTypeSystemCompatible(lldb::LanguageType language) {
-  SBError sb_error;
-  ModuleSP module_sp(GetSP());
-  if (module_sp) {
-    auto type_system_or_err = module_sp->GetTypeSystemForLanguage(language);
-    if (!type_system_or_err) {
-      sb_error.SetErrorStringWithFormat("no type system for language %s",
-          Language::GetNameForLanguageType(language));
-      llvm::consumeError(type_system_or_err.takeError());
-      return sb_error;
-    }
-    sb_error.SetError(type_system_or_err->IsCompatible());
-  } else {
-    sb_error.SetErrorString("invalid module");
-  }
-  return sb_error;
-}
-// END SWIFT
 
 lldb::SBAddress SBModule::GetObjectFileEntryPointAddress() const {
   LLDB_RECORD_METHOD_CONST_NO_ARGS(lldb::SBAddress, SBModule,

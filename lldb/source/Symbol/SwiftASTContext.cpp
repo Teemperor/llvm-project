@@ -2313,8 +2313,6 @@ bool SwiftASTContext::SupportsLanguage(lldb::LanguageType language) {
   return SwiftASTContextSupportsLanguage(language);
 }
 
-Status SwiftASTContext::IsCompatible() { return GetFatalErrors(); }
-
 Status SwiftASTContext::GetFatalErrors() {
   Status error;
   if (HasFatalErrors()) {
