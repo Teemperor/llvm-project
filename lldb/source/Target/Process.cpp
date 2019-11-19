@@ -5228,90 +5228,88 @@ Process::RunThreadPlan(ExecutionContext &exe_ctx,
     // Now do some processing on the results of the run:
     if (return_value == eExpressionInterrupted ||
         return_value == eExpressionHitBreakpoint) {
-      if (log) {
-        StreamString s;
-        if (event_sp)
-          event_sp->Dump(&s);
-        else {
-          log->PutCString("Process::RunThreadPlan(): Stop event that "
-                          "interrupted us is NULL.");
-        }
-
-        StreamString ts;
-
-        const char *event_explanation = nullptr;
-
-        do {
-          if (!event_sp) {
-            event_explanation = "<no event>";
-            break;
-          } else if (event_sp->GetType() == eBroadcastBitInterrupt) {
-            event_explanation = "<user interrupt>";
-            break;
-          } else {
-            const Process::ProcessEventData *event_data =
-                Process::ProcessEventData::GetEventDataFromEvent(
-                    event_sp.get());
-
-            if (!event_data) {
-              event_explanation = "<no event data>";
-              break;
-            }
-
-            Process *process = event_data->GetProcessSP().get();
-
-            if (!process) {
-              event_explanation = "<no process>";
-              break;
-            }
-
-            ThreadList &thread_list = process->GetThreadList();
-
-            uint32_t num_threads = thread_list.GetSize();
-            uint32_t thread_index;
-
-            ts.Printf("<%u threads> ", num_threads);
-
-            for (thread_index = 0; thread_index < num_threads; ++thread_index) {
-              Thread *thread = thread_list.GetThreadAtIndex(thread_index).get();
-
-              if (!thread) {
-                ts.Printf("<?> ");
-                continue;
-              }
-
-              ts.Printf("<0x%4.4" PRIx64 " ", thread->GetID());
-              RegisterContext *register_context =
-                  thread->GetRegisterContext().get();
-
-              if (register_context)
-                ts.Printf("[ip 0x%" PRIx64 "] ", register_context->GetPC());
-              else
-                ts.Printf("[ip unknown] ");
-
-              // Show the private stop info here, the public stop info will be
-              // from the last natural stop.
-              lldb::StopInfoSP stop_info_sp = thread->GetPrivateStopInfo();
-              if (stop_info_sp) {
-                const char *stop_desc = stop_info_sp->GetDescription();
-                if (stop_desc)
-                  ts.PutCString(stop_desc);
-              }
-              ts.Printf(">");
-            }
-
-            event_explanation = ts.GetData();
-          }
-        } while (false);
-
-        if (event_explanation)
-          LLDB_LOGF(log,
-                    "Process::RunThreadPlan(): execution interrupted: %s %s",
-                    s.GetData(), event_explanation);
-        else
-          LLDB_LOGF(log, "Process::RunThreadPlan(): execution interrupted: %s",
-                    s.GetData());
+      StreamString s;
+      if (event_sp)
+        event_sp->Dump(&s);
+      else {
+        log->PutCString("Process::RunThreadPlan(): Stop event that "
+                        "interrupted us is NULL.");
       }
+
+      StreamString ts;
+
+      const char *event_explanation = nullptr;
+
+      do {
+        if (!event_sp) {
+          event_explanation = "<no event>";
+          break;
+        } else if (event_sp->GetType() == eBroadcastBitInterrupt) {
+          event_explanation = "<user interrupt>";
+          break;
+        } else {
+          const Process::ProcessEventData *event_data =
+              Process::ProcessEventData::GetEventDataFromEvent(event_sp.get());
+
+          if (!event_data) {
+            event_explanation = "<no event data>";
+            break;
+          }
+
+          Process *process = event_data->GetProcessSP().get();
+
+          if (!process) {
+            event_explanation = "<no process>";
+            break;
+          }
+
+          ThreadList &thread_list = process->GetThreadList();
+
+          uint32_t num_threads = thread_list.GetSize();
+          uint32_t thread_index;
+
+          ts.Printf("<%u threads> ", num_threads);
+
+          for (thread_index = 0; thread_index < num_threads; ++thread_index) {
+            Thread *thread = thread_list.GetThreadAtIndex(thread_index).get();
+
+            if (!thread) {
+              ts.Printf("<?> ");
+              continue;
+            }
+
+            ts.Printf("<0x%4.4" PRIx64 " ", thread->GetID());
+            RegisterContext *register_context =
+                thread->GetRegisterContext().get();
+
+            if (register_context)
+              ts.Printf("[ip 0x%" PRIx64 "] ", register_context->GetPC());
+            else
+              ts.Printf("[ip unknown] ");
+
+            // Show the private stop info here, the public stop info will be
+            // from the last natural stop.
+            lldb::StopInfoSP stop_info_sp = thread->GetPrivateStopInfo();
+            if (stop_info_sp) {
+              const char *stop_desc = stop_info_sp->GetDescription();
+              if (stop_desc)
+                ts.PutCString(stop_desc);
+            }
+            ts.Printf(">");
+          }
+
+          event_explanation = ts.GetData();
+        }
+      } while (false);
+
+      std::string error = s.GetString();
+      if (event_explanation)
+        error += " " + std::string(event_explanation);
+
+      diagnostic_manager.PutString(eDiagnosticSeverityError,
+                                   "Execution interrupted: " + error);
+      LLDB_LOGF(log, "Process::RunThreadPlan(): execution interrupted: %s",
+                error.c_str());
 
       if (should_unwind) {
         LLDB_LOGF(log,

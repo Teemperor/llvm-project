@@ -1378,8 +1378,10 @@ lldb_private::Status ClangExpressionParser::RunStaticInitializers(
             exe_ctx, call_static_initializer, options, execution_errors);
 
     if (results != lldb::eExpressionCompleted) {
-      err.SetErrorStringWithFormat("couldn't run static initializer: %s",
-                                   execution_errors.GetString().c_str());
+      if (execution_errors.Diagnostics().empty())
+        err.SetErrorStringWithFormatv("ExpressionResults: {0}", results);
+      else
+        err.SetErrorStringWithFormatv("{0}", execution_errors.GetString());
       return err;
     }
   }
