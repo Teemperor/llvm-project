@@ -434,20 +434,6 @@ CompilerType CompilerType::AddConstModifier() const {
     return CompilerType();
 }
 
-CompilerType CompilerType::AddVolatileModifier() const {
-  if (IsValid())
-    return m_type_system->AddVolatileModifier(m_type);
-  else
-    return CompilerType();
-}
-
-CompilerType CompilerType::AddRestrictModifier() const {
-  if (IsValid())
-    return m_type_system->AddRestrictModifier(m_type);
-  else
-    return CompilerType();
-}
-
 CompilerType
 CompilerType::CreateTypedef(const char *name,
                             const CompilerDeclContext &decl_ctx) const {

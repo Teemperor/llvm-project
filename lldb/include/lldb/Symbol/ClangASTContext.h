@@ -649,10 +649,6 @@ public:
 
   CompilerType AddConstModifier(lldb::opaque_compiler_type_t type) override;
 
-  CompilerType AddVolatileModifier(lldb::opaque_compiler_type_t type) override;
-
-  CompilerType AddRestrictModifier(lldb::opaque_compiler_type_t type) override;
-
   CompilerType CreateTypedef(lldb::opaque_compiler_type_t type,
                              const char *name,
                              const CompilerDeclContext &decl_ctx) override;

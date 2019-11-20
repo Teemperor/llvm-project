@@ -213,16 +213,6 @@ public:
   // invalid type.
   CompilerType AddConstModifier() const;
 
-  // Return a new CompilerType adds a volatile modifier to this type if this
-  // type is valid and the type system supports volatile modifiers, else return
-  // an invalid type.
-  CompilerType AddVolatileModifier() const;
-
-  // Return a new CompilerType adds a restrict modifier to this type if this
-  // type is valid and the type system supports restrict modifiers, else return
-  // an invalid type.
-  CompilerType AddRestrictModifier() const;
-
   // Create a typedef to this type using "name" as the name of the typedef this
   // type is valid and the type system supports typedefs, else return an
   // invalid type.
