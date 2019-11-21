@@ -735,6 +735,13 @@ ASTNodeImporter::import(TemplateParameterList *From) {
       *ToRequiresClause);
 }
 
+static RecordDecl * RecordDeclForQualType(QualType QT) {
+  const RecordType *T = llvm::dyn_cast_or_null<RecordType>(QT.getTypePtrOrNull());
+  if (!T)
+    return nullptr;
+  return T->getDecl();
+}
+
 template <>
 Expected<TemplateArgument>
 ASTNodeImporter::import(const TemplateArgument &From) {
@@ -746,6 +753,15 @@ ASTNodeImporter::import(const TemplateArgument &From) {
     ExpectedType ToTypeOrErr = import(From.getAsType());
     if (!ToTypeOrErr)
       return ToTypeOrErr.takeError();
+    From.getAsType().dump();
+    RecordDecl *FromRD = RecordDeclForQualType(From.getAsType());
+    RecordDecl *ToRD = RecordDeclForQualType(*ToTypeOrErr);
+    if (FromRD && ToRD) {
+      if (auto Err = ImportDefinition(FromRD, ToRD)) {
+        return std::move(Err);
+      }
+    }
+    llvm::errs() << "IMPORTED!\n";
     return TemplateArgument(*ToTypeOrErr);
   }
 
