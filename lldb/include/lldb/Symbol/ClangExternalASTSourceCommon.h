@@ -33,7 +33,7 @@
 #include <assert.h>
 #endif
 
-#include "clang/AST/ExternalASTSource.h"
+#include "clang/Sema/ExternalSemaSource.h"
 
 #include "lldb/Core/dwarf.h"
 #include "lldb/lldb-defines.h"
@@ -121,7 +121,7 @@ private:
       m_is_self : 1, m_is_dynamic_cxx : 1;
 };
 
-class ClangExternalASTSourceCommon : public clang::ExternalASTSource {
+class ClangExternalASTSourceCommon : public clang::ExternalSemaSource {
 public:
   ClangExternalASTSourceCommon();
   ~ClangExternalASTSourceCommon() override;

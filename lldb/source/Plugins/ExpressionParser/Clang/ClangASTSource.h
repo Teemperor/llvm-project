@@ -265,7 +265,7 @@ public:
     ClangASTSource &m_original;
   };
 
-  clang::ExternalASTSource *CreateProxy() {
+  clang::ExternalSemaSource *CreateProxy() {
     return new ClangASTSourceProxy(*this);
   }
 

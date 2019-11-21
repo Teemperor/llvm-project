@@ -982,20 +982,16 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
   if (decl_map) {
     decl_map->InstallCodeGenerator(&m_compiler->getASTConsumer());
 
-    clang::ExternalASTSource *ast_source = decl_map->CreateProxy();
+    clang::ExternalSemaSource *sema_source = decl_map->CreateProxy();
 
     if (ast_context.getExternalSource()) {
-      auto module_wrapper =
-          new ExternalASTSourceWrapper(ast_context.getExternalSource());
-
-      auto ast_source_wrapper = new ExternalASTSourceWrapper(ast_source);
-
-      auto multiplexer =
-          new SemaSourceWithPriorities(*module_wrapper, *ast_source_wrapper);
+      assert(m_compiler->getSema().getExternalSource());
+      auto multiplexer = new SemaSourceWithPriorities(
+          *m_compiler->getSema().getExternalSource(), *sema_source);
       IntrusiveRefCntPtr<ExternalASTSource> Source(multiplexer);
       ast_context.setExternalSource(Source);
     } else {
-      ast_context.setExternalSource(ast_source);
+      ast_context.setExternalSource(sema_source);
     }
     decl_map->InstallASTContext(ast_context, m_compiler->getFileManager());
   }

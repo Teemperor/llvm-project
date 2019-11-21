@@ -8,12 +8,6 @@
 
 #include "ASTUtils.h"
 
-lldb_private::ExternalASTSourceWrapper::~ExternalASTSourceWrapper() {}
-
-void lldb_private::ExternalASTSourceWrapper::PrintStats() {
-  m_Source->PrintStats();
-}
-
 lldb_private::ASTConsumerForwarder::~ASTConsumerForwarder() {}
 
 void lldb_private::ASTConsumerForwarder::PrintStats() { m_c->PrintStats(); }

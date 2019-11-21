@@ -43,7 +43,7 @@ ClangExternalASTSourceCommon::Lookup(clang::ExternalASTSource *source) {
 }
 
 ClangExternalASTSourceCommon::ClangExternalASTSourceCommon()
-    : clang::ExternalASTSource() {
+    : clang::ExternalSemaSource() {
   g_TotalSizeOfMetadata += m_metadata.size();
   std::unique_lock<std::mutex> guard;
   GetSourceMap(guard)[this] = this;
