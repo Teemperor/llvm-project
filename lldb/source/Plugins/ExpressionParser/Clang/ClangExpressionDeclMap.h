@@ -458,6 +458,10 @@ private:
                            unsigned current_id, SymbolContext &sym_ctx,
                            CompilerDeclContext &namespace_decl);
 
+  void LookupFunction(NameSearchContext &context, lldb::ModuleSP module_sp,
+                      ConstString name, CompilerDeclContext &namespace_decl,
+                      unsigned current_id);
+
   /// Given a target, find a variable that matches the given name and type.
   ///
   /// \param[in] target
