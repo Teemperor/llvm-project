@@ -3071,6 +3071,8 @@ Sema::SpecialMemberOverloadResult Sema::LookupSpecialMember(CXXRecordDecl *RD,
                                                            bool RValueThis,
                                                            bool ConstThis,
                                                            bool VolatileThis) {
+  if (RD->hasExternalLexicalStorage() && !RD->getDefinition())
+    getASTContext().getExternalSource()->CompleteType(RD);
   assert(CanDeclareSpecialMemberFunction(RD) &&
          "doing special member lookup into record that isn't fully complete");
   RD = RD->getDefinition();
