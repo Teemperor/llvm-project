@@ -753,7 +753,6 @@ ASTNodeImporter::import(const TemplateArgument &From) {
     ExpectedType ToTypeOrErr = import(From.getAsType());
     if (!ToTypeOrErr)
       return ToTypeOrErr.takeError();
-    From.getAsType().dump();
     RecordDecl *FromRD = RecordDeclForQualType(From.getAsType());
     RecordDecl *ToRD = RecordDeclForQualType(*ToTypeOrErr);
     if (FromRD && ToRD) {
@@ -761,7 +760,6 @@ ASTNodeImporter::import(const TemplateArgument &From) {
         return std::move(Err);
       }
     }
-    llvm::errs() << "IMPORTED!\n";
     return TemplateArgument(*ToTypeOrErr);
   }
 
@@ -3390,7 +3388,10 @@ ExpectedDecl ASTNodeImporter::VisitFieldDecl(FieldDecl *D) {
 
   // Determine whether we've already imported this field.
   auto FoundDecls = Importer.findDeclsInToCtx(DC, Name);
+  llvm::errs() << "IMPORTING\n";
+  D->dumpColor();
   for (auto *FoundDecl : FoundDecls) {
+      FoundDecl->dumpColor();
     if (FieldDecl *FoundField = dyn_cast<FieldDecl>(FoundDecl)) {
       // For anonymous fields, match up by index.
       if (!Name &&
@@ -3416,10 +3417,12 @@ ExpectedDecl ASTNodeImporter::VisitFieldDecl(FieldDecl *D) {
               // since we already mapped D as imported.
               // FIXME: warning message?
               consumeError(ToInitializerOrErr.takeError());
+              llvm::errs() << "FOUND\n";
               return FoundField;
             }
           }
         }
+        llvm::errs() << "FOUND\n";
         return FoundField;
       }
 
@@ -3432,6 +3435,7 @@ ExpectedDecl ASTNodeImporter::VisitFieldDecl(FieldDecl *D) {
       return make_error<ImportError>(ImportError::NameConflict);
     }
   }
+  llvm::errs() << "DONE IMPORTING\n";
 
   QualType ToType;
   TypeSourceInfo *ToTInfo;

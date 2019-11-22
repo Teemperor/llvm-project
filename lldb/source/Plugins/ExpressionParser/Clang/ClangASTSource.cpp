@@ -660,6 +660,8 @@ void ClangASTSource::FindExternalLexicalDecls(
         copied_decl->setDeclContext(decl_context_non_const);
         assert(!decl_context_non_const->containsDecl(copied_decl));
         decl_context_non_const->addDeclInternal(copied_decl);
+        llvm::errs() << "STEALING DECL\n";
+        copied_decl->dumpColor();
       }
     } else {
       SkippedDecls = true;
@@ -1793,6 +1795,7 @@ bool ClangASTSource::layoutRecordType(const RecordDecl *record, uint64_t &size,
   DeclFromUser<const CXXRecordDecl> origin_cxx_record(
       DynCast<const CXXRecordDecl>(origin_record));
 
+  record->dumpColor();
   if (origin_cxx_record.IsValid()) {
     if (!ExtractBaseOffsets<false>(record_layout, origin_cxx_record,
                                    origin_base_offsets) ||
