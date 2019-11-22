@@ -407,6 +407,14 @@ void ClangASTSource::CompleteType(TagDecl *tag_decl) {
     }
   }
 
+  if (RecordDecl *rd = dyn_cast<RecordDecl>(tag_decl)) {
+      for (FieldDecl *fd : rd->fields()) {
+        if (const RecordType *field_type = fd->getType()->getAs<RecordType>()) {
+            CompleteType(field_type->getDecl());
+        }
+      }
+  }
+
   if (log) {
     LLDB_LOGF(log, "      [CTD] After:");
     ASTDumper dumper((Decl *)tag_decl);
