@@ -442,10 +442,9 @@ TEST_F(TestClangASTContext, TemplateArguments) {
     EXPECT_EQ(m_ast->GetTemplateArgumentKind(t.GetOpaqueQualType(), 1),
               eTemplateArgumentKindIntegral);
     EXPECT_EQ(m_ast->GetTypeTemplateArgument(t.GetOpaqueQualType(), 1),
-              CompilerType());
+              int_type);
     auto result = m_ast->GetIntegralTemplateArgument(t.GetOpaqueQualType(), 1);
     ASSERT_NE(llvm::None, result);
-    EXPECT_EQ(arg, result->value);
-    EXPECT_EQ(int_type, result->type);
+    EXPECT_EQ(arg, result);
   }
 }

@@ -532,19 +532,8 @@ lldb::SBType SBType::GetTemplateArgumentType(uint32_t idx) {
   if (!IsValid())
     return LLDB_RECORD_RESULT(SBType());
 
-  CompilerType type;
-  switch(GetTemplateArgumentKind(idx)) {
-    case eTemplateArgumentKindType:
-      type = m_opaque_sp->GetCompilerType(false).GetTypeTemplateArgument(idx);
-      break;
-    case eTemplateArgumentKindIntegral:
-      type = m_opaque_sp->GetCompilerType(false)
-                 .GetIntegralTemplateArgument(idx)
-                 ->type;
-      break;
-    default:
-      break;
-  }
+  CompilerType type =
+      m_opaque_sp->GetCompilerType(false).GetTypeTemplateArgument(idx);
   if (type.IsValid())
     return LLDB_RECORD_RESULT(SBType(type));
   return LLDB_RECORD_RESULT(SBType());

@@ -65,8 +65,12 @@ bool BitsetFrontEnd::Update() {
   size_t capping_size = target_sp->GetMaximumNumberOfChildrenToDisplay();
 
   size_t size = 0;
-  if (auto arg = m_backend.GetCompilerType().GetIntegralTemplateArgument(0))
-    size = arg->value.getLimitedValue(capping_size);
+
+  CompilerType ct = m_backend.GetCompilerType();
+  ClangASTContext *ast = llvm::cast<ClangASTContext>(ct.GetTypeSystem());
+
+  if (auto arg = ast->GetIntegralTemplateArgument(ct.GetOpaqueQualType(), 0))
+   size = arg->getLimitedValue(capping_size);
 
   m_elements.assign(size, ValueObjectSP());
 

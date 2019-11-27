@@ -133,12 +133,6 @@ CompilerType TypeSystem::GetTypeTemplateArgument(opaque_compiler_type_t type,
   return CompilerType();
 }
 
-llvm::Optional<CompilerType::IntegralTemplateArgument>
-TypeSystem::GetIntegralTemplateArgument(opaque_compiler_type_t type,
-                                        size_t idx) {
-  return llvm::None;
-}
-
 LazyBool TypeSystem::ShouldPrintAsOneLiner(void *type, ValueObject *valobj) {
   return eLazyBoolCalculate;
 }

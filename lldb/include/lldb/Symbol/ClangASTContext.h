@@ -760,9 +760,9 @@ public:
                           size_t idx) override;
   CompilerType GetTypeTemplateArgument(lldb::opaque_compiler_type_t type,
                                        size_t idx) override;
-  llvm::Optional<CompilerType::IntegralTemplateArgument>
-  GetIntegralTemplateArgument(lldb::opaque_compiler_type_t type,
-                              size_t idx) override;
+
+  llvm::Optional<llvm::APSInt>
+  GetIntegralTemplateArgument(lldb::opaque_compiler_type_t type, size_t idx);
 
   CompilerType GetTypeForFormatters(void *type) override;
 

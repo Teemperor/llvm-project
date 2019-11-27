@@ -675,13 +675,6 @@ CompilerType CompilerType::GetTypeTemplateArgument(size_t idx) const {
   return CompilerType();
 }
 
-llvm::Optional<CompilerType::IntegralTemplateArgument>
-CompilerType::GetIntegralTemplateArgument(size_t idx) const {
-  if (IsValid())
-    return m_type_system->GetIntegralTemplateArgument(m_type, idx);
-  return llvm::None;
-}
-
 CompilerType CompilerType::GetTypeForFormatters() const {
   if (IsValid())
     return m_type_system->GetTypeForFormatters(m_type);

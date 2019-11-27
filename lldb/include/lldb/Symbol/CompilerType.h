@@ -317,10 +317,6 @@ public:
   lldb::TemplateArgumentKind GetTemplateArgumentKind(size_t idx) const;
   CompilerType GetTypeTemplateArgument(size_t idx) const;
 
-  // Returns the value of the template argument and its type.
-  llvm::Optional<IntegralTemplateArgument>
-  GetIntegralTemplateArgument(size_t idx) const;
-
   CompilerType GetTypeForFormatters() const;
 
   LazyBool ShouldPrintAsOneLiner(ValueObject *valobj) const;
@@ -369,11 +365,6 @@ private:
 
 bool operator==(const CompilerType &lhs, const CompilerType &rhs);
 bool operator!=(const CompilerType &lhs, const CompilerType &rhs);
-
-struct CompilerType::IntegralTemplateArgument {
-  llvm::APSInt value;
-  CompilerType type;
-};
 
 } // namespace lldb_private
 
