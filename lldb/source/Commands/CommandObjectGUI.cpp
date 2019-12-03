@@ -12,6 +12,8 @@
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "lldb/lldb-private.h"
 
+#include "lldb/Core/CursesInterface.h"
+
 using namespace lldb;
 using namespace lldb_private;
 
