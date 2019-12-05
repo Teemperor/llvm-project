@@ -819,13 +819,12 @@ public:
                                    uint32_t property_attributes,
                                    ClangASTMetadata *metadata);
 
-  static clang::ObjCMethodDecl *AddMethodToObjCObjectType(
-      const CompilerType &type,
+  static clang::ObjCMethodDecl *AddMethodToObjCObjectType(const CompilerType &type,
       const char *name, // the full symbol name as seen in the symbol table
                         // (lldb::opaque_compiler_type_t type, "-[NString
                         // stringWithCString:]")
       const CompilerType &method_compiler_type, lldb::AccessType access,
-      bool is_artificial, bool is_variadic);
+      bool is_artificial, bool is_variadic, bool is_direct_call);
 
   static bool SetHasExternalStorage(lldb::opaque_compiler_type_t type,
                                     bool has_extern);

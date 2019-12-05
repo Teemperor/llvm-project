@@ -8485,7 +8485,7 @@ clang::ObjCMethodDecl *ClangASTContext::AddMethodToObjCObjectType(
                       // (lldb::opaque_compiler_type_t type, "-[NString
                       // stringWithCString:]")
     const CompilerType &method_clang_type, lldb::AccessType access,
-    bool is_artificial, bool is_variadic) {
+    bool is_artificial, bool is_variadic, bool is_direct_call) {
   if (!type || !method_clang_type.IsValid())
     return nullptr;
 
@@ -8589,6 +8589,11 @@ clang::ObjCMethodDecl *ClangASTContext::AddMethodToObjCObjectType(
     objc_method_decl->setMethodParams(
         *ast, llvm::ArrayRef<clang::ParmVarDecl *>(params),
         llvm::ArrayRef<clang::SourceLocation>());
+  }
+
+  if (is_direct_call) {
+    objc_method_decl->addAttr(clang::ObjCDirectAttr::CreateImplicit(*ast, SourceLocation()));
+    objc_method_decl->createImplicitParams(*ast, class_interface_decl);
   }
 
   class_interface_decl->addDecl(objc_method_decl);

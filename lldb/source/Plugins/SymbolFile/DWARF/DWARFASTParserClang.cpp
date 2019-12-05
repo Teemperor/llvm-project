@@ -951,10 +951,12 @@ TypeSP DWARFASTParserClang::ParseSubroutine(const DWARFDIE &die,
           if (attrs.accessibility == eAccessNone)
             attrs.accessibility = eAccessPublic;
 
+          const bool is_direct_call = containing_decl_kind == clang::Decl::ObjCInterface;
           clang::ObjCMethodDecl *objc_method_decl =
               m_ast.AddMethodToObjCObjectType(
                   class_opaque_type, attrs.name.GetCString(), clang_type,
-                  attrs.accessibility, attrs.is_artificial, is_variadic);
+                  attrs.accessibility, attrs.is_artificial, is_variadic,
+                  is_direct_call);
           type_handled = objc_method_decl != NULL;
           if (type_handled) {
             LinkDeclContextToDIE(objc_method_decl, die);
