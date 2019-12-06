@@ -4010,6 +4010,11 @@ ExpectedDecl ASTNodeImporter::VisitObjCMethodDecl(ObjCMethodDecl *D) {
 
   ToMethod->setLexicalDeclContext(LexicalDC);
   LexicalDC->addDeclInternal(ToMethod);
+
+  if (D->getSelfDecl() && ToMethod->getClassInterface()) {
+    ToMethod->createImplicitParams(Importer.getToContext(), ToMethod->getClassInterface());
+  }
+
   return ToMethod;
 }
 
