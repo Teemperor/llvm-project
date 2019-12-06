@@ -5599,6 +5599,28 @@ TEST_P(ASTImporterOptionSpecificTestBase, ImportDefaultConstructibleLambdas) {
             2u);
 }
 
+TEST_P(ASTImporterOptionSpecificTestBase, ImplicitlyDeclareSelf) {
+  Decl *FromTU = getTuDecl("__attribute__((objc_root_class))\n"
+                           "@interface Root\n"
+                           "@end\n"
+                           "@interface C : Root\n"
+                           "-(void)method;\n"
+                           "@end\n"
+                           "@implementation C\n"
+                           "-(void)method {}\n"
+                           "@end\n",
+                           Lang_OBJCXX, "input.mm");
+  auto *FromMethod = LastDeclMatcher<ObjCMethodDecl>().match(
+      FromTU, namedDecl(hasName("method")));
+  ASSERT_TRUE(FromMethod);
+  auto ToMethod = Import(FromMethod, Lang_OBJCXX);
+  ASSERT_TRUE(ToMethod);
+
+  // Both methods should have their implicit parameters.
+  EXPECT_TRUE(FromMethod->getSelfDecl() != nullptr);
+  EXPECT_TRUE(ToMethod->getSelfDecl() != nullptr);
+}
+
 INSTANTIATE_TEST_CASE_P(ParameterizedTests, ASTImporterLookupTableTest,
                         DefaultTestValuesForRunOptions, );
 
