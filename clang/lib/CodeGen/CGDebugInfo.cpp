@@ -3506,6 +3506,9 @@ llvm::DISubprogram *CGDebugInfo::getObjCMethodDeclaration(
   if (It == TypeCache.end())
     return nullptr;
   auto *InterfaceType = cast<llvm::DICompositeType>(It->second);
+  if (OMD->isDirectMethod())
+    SPFlags |= llvm::DISubprogram::SPFlagDirect;
+
   llvm::DISubprogram *FD = DBuilder.createFunction(
       InterfaceType, getObjCMethodName(OMD), StringRef(),
       InterfaceType->getFile(), LineNo, FnType, LineNo, Flags, SPFlags);

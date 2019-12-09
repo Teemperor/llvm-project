@@ -19,3 +19,4 @@ __attribute__((objc_root_class))
 // CHECK-SAME:             runtimeLang: DW_LANG_ObjC)
 // CHECK: ![[MEMBERS]] = !{![[GETTER:[0-9]+]]}
 // CHECK: ![[GETTER]] = !DISubprogram(name: "-[Root getInt]",
+// CHECK-SAME: spFlags: DISPFlagDirect
