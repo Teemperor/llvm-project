@@ -126,14 +126,16 @@ public:
   ClangExternalASTSourceCommon();
   ~ClangExternalASTSourceCommon() override;
 
-  ClangASTMetadata *GetMetadata(const void *object);
-  void SetMetadata(const void *object, ClangASTMetadata &metadata);
-  bool HasMetadata(const void *object);
+  ClangASTMetadata *GetMetadata(const clang::Decl *object);
+  void SetMetadata(const clang::Decl *object, ClangASTMetadata &metadata);
+  bool HasMetadata(const clang::Decl *object);
+  void SetMetadata(const clang::Type *object, ClangASTMetadata &metadata);
+  bool HasMetadata(const clang::Type *object);
 
   static ClangExternalASTSourceCommon *Lookup(clang::ExternalASTSource *source);
 
 private:
-  typedef llvm::DenseMap<const void *, ClangASTMetadata> MetadataMap;
+  typedef llvm::DenseMap<const clang::Decl *, ClangASTMetadata> MetadataMap;
 
   MetadataMap m_metadata;
 };

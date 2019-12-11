@@ -249,15 +249,15 @@ public:
       return m_original.StartTranslationUnit(Consumer);
     }
 
-    ClangASTMetadata *GetMetadata(const void *object) {
+    ClangASTMetadata *GetMetadata(const clang::Decl *object) {
       return m_original.GetMetadata(object);
     }
 
-    void SetMetadata(const void *object, ClangASTMetadata &metadata) {
+    void SetMetadata(const clang::Decl *object, ClangASTMetadata &metadata) {
       return m_original.SetMetadata(object, metadata);
     }
 
-    bool HasMetadata(const void *object) {
+    bool HasMetadata(const clang::Decl *object) {
       return m_original.HasMetadata(object);
     }
 

@@ -449,3 +449,14 @@ TEST_F(TestClangASTContext, TemplateArguments) {
     EXPECT_EQ(int_type, result->type);
   }
 }
+
+
+TEST_F(TestClangASTContext, TestMetadata) {
+  auto *TU = m_ast->getASTContext()->getTranslationUnitDecl();
+  lldb::user_id_t value = 1234567;
+  m_ast->SetMetadataAsUserID(TU, value);
+  // A TranslationUnitDecl is both a Decl and a DeclContext but a
+  // TranslationUnitDecl as a Decl has a different pointer value than a
+  // TranslationUnitDecl as a DeclContext.
+  EXPECT_EQ(value, m_ast->GetMetadataAsUserID(static_cast<clang::Decl *>(TU)));
+}

@@ -56,14 +56,14 @@ ClangExternalASTSourceCommon::~ClangExternalASTSourceCommon() {
 }
 
 ClangASTMetadata *
-ClangExternalASTSourceCommon::GetMetadata(const void *object) {
+ClangExternalASTSourceCommon::GetMetadata(const clang::Decl *object) {
   if (HasMetadata(object))
     return &m_metadata[object];
   else
     return nullptr;
 }
 
-void ClangExternalASTSourceCommon::SetMetadata(const void *object,
+void ClangExternalASTSourceCommon::SetMetadata(const clang::Decl *object,
                                                ClangASTMetadata &metadata) {
   uint64_t orig_size = m_metadata.size();
   m_metadata[object] = metadata;
@@ -71,7 +71,7 @@ void ClangExternalASTSourceCommon::SetMetadata(const void *object,
   g_TotalSizeOfMetadata += (new_size - orig_size);
 }
 
-bool ClangExternalASTSourceCommon::HasMetadata(const void *object) {
+bool ClangExternalASTSourceCommon::HasMetadata(const clang::Decl *object) {
   return m_metadata.find(object) != m_metadata.end();
 }
 
