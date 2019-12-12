@@ -9408,7 +9408,7 @@ bool ClangASTContext::DeclContextIsClassMethod(
     } else if (clang::FunctionDecl *function_decl =
                    llvm::dyn_cast<clang::FunctionDecl>(decl_ctx)) {
       ClangASTMetadata *metadata =
-          GetMetadata(&decl_ctx->getParentASTContext(), function_decl);
+          GetMetadata(&decl_ctx->getParentASTContext(), decl_ctx);
       if (metadata && metadata->HasObjectPtr()) {
         if (is_instance_method_ptr)
           *is_instance_method_ptr = true;
