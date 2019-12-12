@@ -2407,22 +2407,16 @@ void ClangASTContext::SetMetadataAsUserID(const void *object,
 
 void ClangASTContext::SetMetadata(clang::ASTContext *ast, const void *object,
                                   ClangASTMetadata &metadata) {
-  ClangExternalASTSourceCommon *external_source =
-      ClangExternalASTSourceCommon::Lookup(ast->getExternalSource());
-
-  if (external_source)
-    external_source->SetMetadata(object, metadata);
+  if (auto *A = llvm::dyn_cast_or_null<ClangExternalASTSourceCommon>(ast->getExternalSource()))
+    A->SetMetadata(object, metadata);
 }
 
 ClangASTMetadata *ClangASTContext::GetMetadata(clang::ASTContext *ast,
                                                const void *object) {
-  ClangExternalASTSourceCommon *external_source =
-      ClangExternalASTSourceCommon::Lookup(ast->getExternalSource());
 
-  if (external_source)
-    return external_source->GetMetadata(object);
-  else
-    return nullptr;
+  if (auto *A = llvm::dyn_cast_or_null<ClangExternalASTSourceCommon>(ast->getExternalSource()))
+    return A->GetMetadata(object);
+  return nullptr;
 }
 
 bool ClangASTContext::SetTagTypeKind(clang::QualType tag_qual_type,

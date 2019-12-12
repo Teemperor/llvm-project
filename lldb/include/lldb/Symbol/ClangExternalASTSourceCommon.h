@@ -122,15 +122,17 @@ private:
 };
 
 class ClangExternalASTSourceCommon : public clang::ExternalASTSource {
+  static char ID;
 public:
-  ClangExternalASTSourceCommon();
+  ClangExternalASTSourceCommon() = default;
   ~ClangExternalASTSourceCommon() override;
 
   ClangASTMetadata *GetMetadata(const void *object);
   void SetMetadata(const void *object, ClangASTMetadata &metadata);
 
-  static ClangExternalASTSourceCommon *Lookup(clang::ExternalASTSource *source);
-
+  // LLVM-style RTTI.
+  bool isA(const void *ClassID) const override { return ClassID == &ID; }
+  static bool classof(const ExternalASTSource *S) { return S->isA(&ID); }
 private:
   typedef llvm::DenseMap<const void *, ClangASTMetadata> MetadataMap;
 
