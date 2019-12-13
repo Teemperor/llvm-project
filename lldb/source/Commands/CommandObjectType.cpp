@@ -31,7 +31,6 @@
 #include "lldb/Target/ThreadList.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/RegularExpression.h"
-#include "lldb/Utility/State.h"
 #include "lldb/Utility/StringList.h"
 
 #include "llvm/ADT/STLExtras.h"
