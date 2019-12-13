@@ -25,7 +25,6 @@
 #include "lldb/DataFormatters/FormatManager.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Utility/FileSpec.h"
 
 #include "lldb/Target/Language.h"
 
