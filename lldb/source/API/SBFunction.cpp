@@ -8,7 +8,6 @@
 
 #include "lldb/API/SBFunction.h"
 #include "SBReproducerPrivate.h"
-#include "lldb/API/SBProcess.h"
 #include "lldb/API/SBStream.h"
 #include "lldb/Core/Disassembler.h"
 #include "lldb/Core/Module.h"
