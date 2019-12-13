@@ -39,7 +39,6 @@
 #include "lldb/Utility/Scalar.h"
 #include "lldb/Utility/Stream.h"
 
-#include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBExpressionOptions.h"
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBProcess.h"
