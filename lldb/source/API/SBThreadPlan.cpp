@@ -17,7 +17,6 @@
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Core/StructuredDataImpl.h"
-#include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Target/Thread.h"
 #include "lldb/Target/ThreadPlan.h"
