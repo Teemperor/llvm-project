@@ -8,7 +8,6 @@
 
 // C includes
 #include <errno.h>
-#include <limits.h>
 #include <stdlib.h>
 #ifndef _WIN32
 #include <dlfcn.h>
