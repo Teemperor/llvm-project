@@ -14,7 +14,6 @@
 #ifndef _WIN32
 #include <dlfcn.h>
 #include <grp.h>
-#include <netdb.h>
 #include <unistd.h>
 #endif
 
