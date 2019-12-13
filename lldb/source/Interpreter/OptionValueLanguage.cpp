@@ -8,7 +8,6 @@
 
 #include "lldb/Interpreter/OptionValueLanguage.h"
 
-#include "lldb/DataFormatters/FormatManager.h"
 #include "lldb/Target/Language.h"
 #include "lldb/Symbol/TypeSystem.h"
 #include "lldb/Utility/Stream.h"
