@@ -8,7 +8,6 @@
 
 #include "lldb/Interpreter/OptionValueFormatEntity.h"
 
-#include "lldb/Core/Module.h"
 #include "lldb/Utility/Stream.h"
 using namespace lldb;
 using namespace lldb_private;
