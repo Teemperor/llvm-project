@@ -28,7 +28,6 @@
 #include "lldb/Symbol/Declaration.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/Type.h"
-#include "lldb/Symbol/Variable.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/StackFrame.h"
