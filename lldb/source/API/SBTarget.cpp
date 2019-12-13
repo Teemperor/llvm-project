@@ -9,7 +9,6 @@
 #include "lldb/API/SBTarget.h"
 #include "SBReproducerPrivate.h"
 
-#include "lldb/lldb-public.h"
 
 #include "lldb/API/SBBreakpoint.h"
 #include "lldb/API/SBDebugger.h"
