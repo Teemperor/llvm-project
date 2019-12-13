@@ -20,7 +20,6 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
-#include <sstream>
 #include <csignal>
 
 #ifdef __ANDROID__
