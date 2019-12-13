@@ -16,7 +16,6 @@
 #include "lldb/Utility/DataExtractor.h"
 #include "lldb/Utility/Stream.h"
 
-#include <cinttypes>
 #include <memory>
 
 using namespace lldb;
