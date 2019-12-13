@@ -22,7 +22,6 @@
 #include "lldb/Target/Thread.h"
 #include "lldb/Utility/State.h"
 
-#include "llvm/ADT/STLExtras.h"
 
 using namespace lldb;
 using namespace lldb_private;
