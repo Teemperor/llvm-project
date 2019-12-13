@@ -21,7 +21,6 @@
 #include "lldb/Utility/Status.h"
 #include "lldb/Utility/StreamString.h"
 #include "lldb/Utility/StringList.h"
-#include "lldb/Utility/Timeout.h"
 
 #include "llvm/Support/FileSystem.h"
 
