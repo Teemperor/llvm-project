@@ -17,7 +17,6 @@
 
 #include <grp.h>
 #include <limits.h>
-#include <mutex>
 #include <pwd.h>
 #include <stdlib.h>
 #include <sys/types.h>
