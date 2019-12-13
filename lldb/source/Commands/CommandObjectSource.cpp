@@ -14,7 +14,6 @@
 #include "lldb/Core/ModuleSpec.h"
 #include "lldb/Core/SourceManager.h"
 #include "lldb/Host/OptionParser.h"
-#include "lldb/Interpreter/CommandCompletions.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Interpreter/Options.h"
