@@ -40,7 +40,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <utility>
 
 namespace lldb_private {
 class Function;
