@@ -15,7 +15,6 @@
 #include <ctype.h>
 #include <stdlib.h>
 
-#include "lldb/Core/Address.h"
 #include "lldb/Interpreter/Options.h"
 #include "lldb/Utility/ArchSpec.h"
 
