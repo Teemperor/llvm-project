@@ -8,7 +8,6 @@
 
 #include "CommandObjectLog.h"
 #include "lldb/Core/Debugger.h"
-#include "lldb/Core/Module.h"
 #include "lldb/Host/OptionParser.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "lldb/Interpreter/OptionArgParser.h"
