@@ -23,7 +23,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdlib.h>
-#include <string.h>
 
 #ifndef LLDB_DISABLE_POSIX
 #include <termios.h>
