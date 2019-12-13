@@ -124,7 +124,6 @@
 #include "llvm/ExecutionEngine/MCJIT.h"
 #pragma clang diagnostic pop
 
-#include <string>
 
 using namespace lldb_private;
 
