@@ -25,7 +25,6 @@
 #ifndef LLDB_DISABLE_POSIX
 #include "lldb/Host/posix/DomainSocket.h"
 
-#include <arpa/inet.h>
 #include <sys/socket.h>
 #include <unistd.h>
 #endif
