@@ -50,7 +50,6 @@
 
 #include "lldb/Host/Config.h"
 #if LLDB_ENABLE_LIBEDIT
-#include "lldb/Host/Editline.h"
 #endif
 #include "lldb/Host/HostInfo.h"
 
