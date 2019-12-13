@@ -11,7 +11,6 @@
 #include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBEvent.h"
 #include "lldb/API/SBProcess.h"
-#include "lldb/API/SBStream.h"
 #include "lldb/API/SBThread.h"
 
 #include "lldb/Breakpoint/StoppointCallbackContext.h"
