@@ -27,7 +27,6 @@
 #include <assert.h>
 #include <string.h>
 
-#include "lldb/Host/PosixApi.h"
 
 // WindowsXP needs an inet_ntop implementation
 #ifdef _WIN32
