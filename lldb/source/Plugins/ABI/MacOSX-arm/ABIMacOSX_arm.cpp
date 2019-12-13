@@ -8,12 +8,10 @@
 
 #include "ABIMacOSX_arm.h"
 
-#include <vector>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Triple.h"
 
-#include "lldb/Core/Module.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/Value.h"
 #include "lldb/Core/ValueObjectConstResult.h"

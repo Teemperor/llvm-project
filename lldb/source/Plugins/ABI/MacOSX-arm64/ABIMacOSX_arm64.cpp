@@ -8,19 +8,16 @@
 
 #include "ABIMacOSX_arm64.h"
 
-#include <vector>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Triple.h"
 
-#include "lldb/Core/Module.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/Value.h"
 #include "lldb/Core/ValueObjectConstResult.h"
 #include "lldb/Symbol/UnwindPlan.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/RegisterContext.h"
-#include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/Log.h"
