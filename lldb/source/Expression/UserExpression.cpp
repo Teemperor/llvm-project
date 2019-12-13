@@ -22,7 +22,6 @@
 #include "lldb/Core/ValueObjectConstResult.h"
 #include "lldb/Expression/DiagnosticManager.h"
 #include "lldb/Expression/ExpressionVariable.h"
-#include "lldb/Expression/IRExecutionUnit.h"
 #include "lldb/Expression/UserExpression.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
