@@ -40,7 +40,6 @@
 #include "lldb/Utility/Args.h"
 #include "lldb/Utility/LLDBAssert.h"
 #include "lldb/Utility/StreamString.h"
-#include "lldb/Utility/Timer.h"
 
 #include <memory>
 #include <string>
