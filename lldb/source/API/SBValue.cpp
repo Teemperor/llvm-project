@@ -18,7 +18,6 @@
 
 #include "lldb/Breakpoint/Watchpoint.h"
 #include "lldb/Core/Module.h"
-#include "lldb/Core/Section.h"
 #include "lldb/Core/ValueObject.h"
 #include "lldb/DataFormatters/DataVisualization.h"
 #include "lldb/Symbol/Declaration.h"
