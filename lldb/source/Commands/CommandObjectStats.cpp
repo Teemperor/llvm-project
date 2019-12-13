@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "CommandObjectStats.h"
-#include "lldb/Host/Host.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "lldb/Target/Target.h"
 
