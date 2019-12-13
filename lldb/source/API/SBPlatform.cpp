@@ -19,7 +19,6 @@
 #include "lldb/Utility/Args.h"
 #include "lldb/Utility/Status.h"
 
-#include "llvm/Support/FileSystem.h"
 
 #include <functional>
 
