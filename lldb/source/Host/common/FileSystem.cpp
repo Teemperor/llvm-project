@@ -22,7 +22,6 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
-#include <stdarg.h>
 
 #ifdef _WIN32
 #include "lldb/Host/windows/windows.h"
