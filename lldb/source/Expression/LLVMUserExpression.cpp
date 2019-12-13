@@ -8,7 +8,6 @@
 
 
 #include "lldb/Expression/LLVMUserExpression.h"
-#include "lldb/Core/Module.h"
 #include "lldb/Expression/DiagnosticManager.h"
 #include "lldb/Expression/ExpressionVariable.h"
 #include "lldb/Expression/IRExecutionUnit.h"
