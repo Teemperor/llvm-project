@@ -16,7 +16,6 @@
 #include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Interpreter/Options.h"
 #include "lldb/Symbol/LineTable.h"
-#include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Utility/Args.h"
 #include "lldb/Utility/FileSpec.h"
 #include "lldb/Utility/Log.h"
