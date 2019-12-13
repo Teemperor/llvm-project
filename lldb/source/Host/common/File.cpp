@@ -33,7 +33,6 @@
 #include "lldb/Host/Host.h"
 #include "lldb/Utility/DataBufferHeap.h"
 #include "lldb/Utility/FileSpec.h"
-#include "lldb/Utility/Log.h"
 
 using namespace lldb;
 using namespace lldb_private;
