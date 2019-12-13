@@ -24,7 +24,6 @@
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/Support/Compiler.h"
 
-#include <mutex>
 #include <string>
 #include <utility>
 
