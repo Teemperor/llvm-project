@@ -10,7 +10,6 @@
 #include "SBReproducerPrivate.h"
 #include "Utils.h"
 #include "lldb/API/SBStream.h"
-#include "lldb/Core/Module.h"
 #include "lldb/Core/ModuleSpec.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Symbol/ObjectFile.h"
