@@ -25,7 +25,6 @@
 #include <mutex>
 
 #include "llvm/ADT/SmallString.h"
-#include "llvm/Support/Threading.h"
 
 using namespace lldb;
 using namespace lldb_private;
