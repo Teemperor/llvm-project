@@ -17,7 +17,6 @@
 #include <map>
 #include <string>
 
-#include "lldb/Core/Module.h"
 #include "lldb/Core/ValueObjectConstResult.h"
 #include "lldb/Expression/DiagnosticManager.h"
 #include "lldb/Expression/ExpressionVariable.h"
