@@ -23,7 +23,6 @@
 #include <unistd.h>
 #endif
 
-#include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/Errno.h"
 #include "llvm/Support/Process.h"
 
