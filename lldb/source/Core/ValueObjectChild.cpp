@@ -17,7 +17,6 @@
 #include "lldb/Utility/Status.h"
 #include "lldb/lldb-forward.h"
 
-#include <functional>
 #include <memory>
 #include <vector>
 
