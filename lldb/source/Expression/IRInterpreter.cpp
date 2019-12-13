@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "lldb/Expression/IRInterpreter.h"
-#include "lldb/Core/Module.h"
 #include "lldb/Core/ValueObject.h"
 #include "lldb/Expression/DiagnosticManager.h"
 #include "lldb/Expression/IRExecutionUnit.h"
