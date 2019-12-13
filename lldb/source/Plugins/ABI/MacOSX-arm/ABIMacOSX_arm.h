@@ -10,7 +10,6 @@
 #define liblldb_ABIMacOSX_arm_h_
 
 #include "lldb/Target/ABI.h"
-#include "lldb/lldb-private.h"
 
 class ABIMacOSX_arm : public lldb_private::ABI {
 public:
