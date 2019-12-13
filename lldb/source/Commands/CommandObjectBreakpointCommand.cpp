@@ -19,7 +19,6 @@
 #include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Interpreter/OptionGroupPythonClassWithDict.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Target/Thread.h"
 
 
 using namespace lldb;
