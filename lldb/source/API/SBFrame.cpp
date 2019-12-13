@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <algorithm>
 #include <set>
 
 #include "lldb/API/SBFrame.h"
