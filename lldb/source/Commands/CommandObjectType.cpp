@@ -37,7 +37,6 @@
 #include "llvm/ADT/STLExtras.h"
 
 #include <algorithm>
-#include <cctype>
 #include <functional>
 #include <memory>
 
