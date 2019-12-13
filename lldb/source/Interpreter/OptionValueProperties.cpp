@@ -8,7 +8,6 @@
 
 #include "lldb/Interpreter/OptionValueProperties.h"
 
-#include "lldb/Utility/Flags.h"
 
 #include "lldb/Core/UserSettingsController.h"
 #include "lldb/Interpreter/OptionValues.h"
