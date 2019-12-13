@@ -8,7 +8,6 @@
 
 #include "lldb/Interpreter/OptionValueFileSpec.h"
 
-#include "lldb/DataFormatters/FormatManager.h"
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Interpreter/CommandCompletions.h"
 
