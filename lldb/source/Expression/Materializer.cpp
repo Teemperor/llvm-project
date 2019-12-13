@@ -14,7 +14,6 @@
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Symbol/Type.h"
 #include "lldb/Symbol/Variable.h"
-#include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/RegisterContext.h"
 #include "lldb/Target/StackFrame.h"
 #include "lldb/Target/Target.h"
