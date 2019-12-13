@@ -8,14 +8,12 @@
 
 #include "lldb/Interpreter/OptionValueProperties.h"
 
-#include "lldb/Utility/Flags.h"
 
 #include "lldb/Core/UserSettingsController.h"
 #include "lldb/Interpreter/OptionValues.h"
 #include "lldb/Interpreter/Property.h"
 #include "lldb/Utility/Args.h"
 #include "lldb/Utility/Stream.h"
-#include "lldb/Utility/StringList.h"
 
 using namespace lldb;
 using namespace lldb_private;

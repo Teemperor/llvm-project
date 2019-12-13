@@ -9,7 +9,6 @@
 #include "lldb/Interpreter/OptionGroupFormat.h"
 
 #include "lldb/Host/OptionParser.h"
-#include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Target.h"
 

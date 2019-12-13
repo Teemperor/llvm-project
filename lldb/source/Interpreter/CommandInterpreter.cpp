@@ -41,7 +41,6 @@
 #include "Commands/CommandObjectWatchpoint.h"
 
 #include "lldb/Core/Debugger.h"
-#include "lldb/Core/PluginManager.h"
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/State.h"
@@ -50,9 +49,7 @@
 
 #include "lldb/Host/Config.h"
 #if LLDB_ENABLE_LIBEDIT
-#include "lldb/Host/Editline.h"
 #endif
-#include "lldb/Host/Host.h"
 #include "lldb/Host/HostInfo.h"
 
 #include "lldb/Interpreter/CommandCompletions.h"

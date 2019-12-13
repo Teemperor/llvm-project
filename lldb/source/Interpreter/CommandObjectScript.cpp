@@ -9,11 +9,9 @@
 #include "CommandObjectScript.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/DataFormatters/DataVisualization.h"
-#include "lldb/Host/Config.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "lldb/Interpreter/ScriptInterpreter.h"
-#include "lldb/Utility/Args.h"
 
 using namespace lldb;
 using namespace lldb_private;

@@ -9,7 +9,6 @@
 #include "lldb/Interpreter/Options.h"
 
 #include <algorithm>
-#include <bitset>
 #include <map>
 #include <set>
 

@@ -9,7 +9,6 @@
 
 #include "lldb/Interpreter/OptionValueString.h"
 
-#include "lldb/Host/OptionParser.h"
 #include "lldb/Utility/Args.h"
 #include "lldb/Utility/Stream.h"
 

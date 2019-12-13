@@ -8,7 +8,6 @@
 
 #include "lldb/Interpreter/CommandOptionValidators.h"
 
-#include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Target/Platform.h"
 
 using namespace lldb;

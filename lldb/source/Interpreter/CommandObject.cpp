@@ -8,24 +8,19 @@
 
 #include "lldb/Interpreter/CommandObject.h"
 
-#include <map>
 #include <sstream>
 #include <string>
 
-#include <ctype.h>
 #include <stdlib.h>
 
-#include "lldb/Core/Address.h"
 #include "lldb/Interpreter/Options.h"
 #include "lldb/Utility/ArchSpec.h"
 
 // These are for the Sourcename completers.
 // FIXME: Make a separate file for the completers.
-#include "lldb/Core/FileSpecList.h"
 #include "lldb/DataFormatters/FormatManager.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Utility/FileSpec.h"
 
 #include "lldb/Target/Language.h"
 

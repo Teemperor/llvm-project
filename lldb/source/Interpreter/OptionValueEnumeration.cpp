@@ -8,7 +8,6 @@
 
 #include "lldb/Interpreter/OptionValueEnumeration.h"
 
-#include "lldb/Utility/StringList.h"
 
 using namespace lldb;
 using namespace lldb_private;

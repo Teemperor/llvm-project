@@ -8,7 +8,6 @@
 
 #include "lldb/Interpreter/Property.h"
 
-#include "lldb/Core/UserSettingsController.h"
 #include "lldb/Host/StringConvert.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/OptionArgParser.h"
