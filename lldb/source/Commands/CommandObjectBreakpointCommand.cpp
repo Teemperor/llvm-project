@@ -20,7 +20,6 @@
 #include "lldb/Interpreter/OptionGroupPythonClassWithDict.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
-#include "lldb/Utility/State.h"
 
 
 using namespace lldb;
