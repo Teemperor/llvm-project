@@ -13,7 +13,6 @@
 #include <sys/types.h>
 #endif
 
-#include <cstdlib>
 #include <string>
 
 #include "lldb/Core/ValueObjectConstResult.h"
