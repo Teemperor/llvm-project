@@ -9,7 +9,6 @@
 #include "lldb/API/SBWatchpoint.h"
 #include "SBReproducerPrivate.h"
 #include "lldb/API/SBAddress.h"
-#include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBEvent.h"
 #include "lldb/API/SBStream.h"
 
