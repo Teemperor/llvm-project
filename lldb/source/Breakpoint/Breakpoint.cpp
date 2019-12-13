@@ -19,7 +19,6 @@
 #include "lldb/Core/ModuleList.h"
 #include "lldb/Core/SearchFilter.h"
 #include "lldb/Core/Section.h"
-#include "lldb/Target/SectionLoadList.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/Symbol.h"
