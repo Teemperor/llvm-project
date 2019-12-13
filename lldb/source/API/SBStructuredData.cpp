@@ -15,7 +15,6 @@
 #include "lldb/Target/StructuredDataPlugin.h"
 #include "lldb/Utility/Event.h"
 #include "lldb/Utility/Status.h"
-#include "lldb/Utility/Stream.h"
 #include "lldb/Utility/StructuredData.h"
 
 using namespace lldb;
