@@ -40,7 +40,6 @@
 #include <assert.h>
 #include <ctype.h>
 #include <errno.h>
-#include <locale.h>
 #include <stdint.h>
 #include <stdio.h>
 
