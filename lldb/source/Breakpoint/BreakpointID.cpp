@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <stdio.h>
 
 #include "lldb/Breakpoint/BreakpointID.h"
 #include "lldb/Utility/Status.h"
