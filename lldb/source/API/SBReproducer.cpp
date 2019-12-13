@@ -14,7 +14,6 @@
 #include "lldb/API/SBAttachInfo.h"
 #include "lldb/API/SBBlock.h"
 #include "lldb/API/SBBreakpoint.h"
-#include "lldb/API/SBCommandInterpreter.h"
 #include "lldb/API/SBReproducer.h"
 #include "lldb/lldb-private.h"
 
