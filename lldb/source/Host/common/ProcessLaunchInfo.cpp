@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <climits>
 
 #include "lldb/Host/FileAction.h"
 #include "lldb/Host/FileSystem.h"
