@@ -26,7 +26,6 @@
 #include "lldb/Utility/StreamString.h"
 
 #include "llvm/Support/Errno.h"
-#include "llvm/Support/FileSystem.h"
 
 using namespace lldb;
 using namespace lldb_private;
