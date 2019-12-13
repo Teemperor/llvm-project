@@ -17,7 +17,6 @@
 #include "lldb/API/SBCommandInterpreter.h"
 #include "lldb/API/SBData.h"
 #include "lldb/API/SBDebugger.h"
-#include "lldb/API/SBDeclaration.h"
 #include "lldb/API/SBReproducer.h"
 #include "lldb/lldb-private.h"
 
