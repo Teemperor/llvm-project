@@ -37,7 +37,6 @@
 #include "lldb/Target/Thread.h"
 #include "lldb/Target/ThreadPlan.h"
 #include "lldb/Target/ThreadPlanStepInRange.h"
-#include "lldb/Target/ThreadPlanStepInstruction.h"
 #include "lldb/Target/UnixSignals.h"
 #include "lldb/Utility/State.h"
 #include "lldb/Utility/Stream.h"
