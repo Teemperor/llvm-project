@@ -8,7 +8,6 @@
 
 #include "ABIMacOSX_arm64.h"
 
-#include <vector>
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/Triple.h"
