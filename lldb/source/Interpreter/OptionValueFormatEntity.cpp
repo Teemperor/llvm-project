@@ -11,7 +11,6 @@
 #include "lldb/Core/Module.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Utility/Stream.h"
-#include "lldb/Utility/StringList.h"
 using namespace lldb;
 using namespace lldb_private;
 
