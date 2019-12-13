@@ -12,7 +12,6 @@
 #include <stdlib.h>
 #include <string>
 
-#include "lldb/Host/PseudoTerminal.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "lldb/Utility/Status.h"
 
