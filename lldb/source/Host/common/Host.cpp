@@ -16,7 +16,6 @@
 #include <grp.h>
 #include <netdb.h>
 #include <pwd.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
