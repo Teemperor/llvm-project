@@ -9,14 +9,11 @@
 #include "lldb/API/SBAddress.h"
 #include "SBReproducerPrivate.h"
 #include "Utils.h"
-#include "lldb/API/SBProcess.h"
 #include "lldb/API/SBSection.h"
 #include "lldb/API/SBStream.h"
 #include "lldb/Core/Address.h"
-#include "lldb/Core/Module.h"
 #include "lldb/Symbol/LineEntry.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Utility/StreamString.h"
 
 using namespace lldb;
 using namespace lldb_private;

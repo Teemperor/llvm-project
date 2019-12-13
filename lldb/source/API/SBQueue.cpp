@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <inttypes.h>
 
 #include "SBReproducerPrivate.h"
 #include "lldb/API/SBQueue.h"

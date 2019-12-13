@@ -13,7 +13,6 @@
 #include "lldb/API/SBFrame.h"
 #include "lldb/API/SBFile.h"
 
-#include "lldb/API/SBInstruction.h"
 #include "lldb/API/SBStream.h"
 #include "lldb/API/SBTarget.h"
 #include "lldb/Core/Disassembler.h"
@@ -25,7 +24,6 @@
 #include "lldb/Target/StackFrame.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/ArchSpec.h"
-#include "lldb/Utility/DataBufferHeap.h"
 #include "lldb/Utility/DataExtractor.h"
 
 #include <memory>

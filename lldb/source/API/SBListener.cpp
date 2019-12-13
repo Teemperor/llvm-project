@@ -11,11 +11,9 @@
 #include "lldb/API/SBBroadcaster.h"
 #include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBEvent.h"
-#include "lldb/API/SBStream.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Utility/Broadcaster.h"
 #include "lldb/Utility/Listener.h"
-#include "lldb/Utility/StreamString.h"
 
 using namespace lldb;
 using namespace lldb_private;

@@ -8,21 +8,8 @@
 
 #include "SBReproducerPrivate.h"
 
-#include "SBReproducerPrivate.h"
 #include "lldb/API/LLDB.h"
-#include "lldb/API/SBAddress.h"
-#include "lldb/API/SBAttachInfo.h"
-#include "lldb/API/SBBlock.h"
-#include "lldb/API/SBBreakpoint.h"
-#include "lldb/API/SBCommandInterpreter.h"
-#include "lldb/API/SBData.h"
-#include "lldb/API/SBDebugger.h"
-#include "lldb/API/SBDeclaration.h"
-#include "lldb/API/SBError.h"
-#include "lldb/API/SBFileSpec.h"
-#include "lldb/API/SBHostOS.h"
 #include "lldb/API/SBReproducer.h"
-#include "lldb/Host/FileSystem.h"
 #include "lldb/lldb-private.h"
 
 using namespace lldb;

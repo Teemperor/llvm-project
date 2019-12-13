@@ -13,13 +13,11 @@
 
 #include "lldb/lldb-private.h"
 
-#include "lldb/API/SBBroadcaster.h"
 #include "lldb/API/SBCommandInterpreter.h"
 #include "lldb/API/SBCommandReturnObject.h"
 #include "lldb/API/SBError.h"
 #include "lldb/API/SBEvent.h"
 #include "lldb/API/SBFile.h"
-#include "lldb/API/SBFrame.h"
 #include "lldb/API/SBListener.h"
 #include "lldb/API/SBProcess.h"
 #include "lldb/API/SBSourceManager.h"
@@ -27,7 +25,6 @@
 #include "lldb/API/SBStringList.h"
 #include "lldb/API/SBStructuredData.h"
 #include "lldb/API/SBTarget.h"
-#include "lldb/API/SBThread.h"
 #include "lldb/API/SBTypeCategory.h"
 #include "lldb/API/SBTypeFilter.h"
 #include "lldb/API/SBTypeFormat.h"
@@ -48,10 +45,8 @@
 #include "lldb/Interpreter/OptionGroupPlatform.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/TargetList.h"
-#include "lldb/Utility/Args.h"
 #include "lldb/Utility/State.h"
 
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/ManagedStatic.h"

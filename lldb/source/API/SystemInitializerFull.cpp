@@ -7,24 +7,19 @@
 //===----------------------------------------------------------------------===//
 
 #include "SystemInitializerFull.h"
-#include "lldb/API/SBCommandInterpreter.h"
-#include "lldb/Host/Config.h"
 
 #if !defined(LLDB_DISABLE_PYTHON)
 #include "Plugins/ScriptInterpreter/Python/ScriptInterpreterPython.h"
 #endif
 
 #include "lldb/Core/Debugger.h"
-#include "lldb/Host/Host.h"
 #include "lldb/Initialization/SystemInitializerCommon.h"
-#include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Utility/Timer.h"
 
 #include "Plugins/ABI/MacOSX-arm/ABIMacOSX_arm.h"
 #include "Plugins/ABI/MacOSX-arm64/ABIMacOSX_arm64.h"
 #include "Plugins/ABI/MacOSX-i386/ABIMacOSX_i386.h"
-#include "Plugins/ABI/SysV-arc/ABISysV_arc.h"
 #include "Plugins/ABI/SysV-arm/ABISysV_arm.h"
 #include "Plugins/ABI/SysV-arm64/ABISysV_arm64.h"
 #include "Plugins/ABI/SysV-hexagon/ABISysV_hexagon.h"
@@ -121,10 +116,8 @@
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wglobal-constructors"
-#include "llvm/ExecutionEngine/MCJIT.h"
 #pragma clang diagnostic pop
 
-#include <string>
 
 using namespace lldb_private;
 

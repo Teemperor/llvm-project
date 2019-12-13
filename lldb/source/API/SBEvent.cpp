@@ -11,10 +11,6 @@
 #include "lldb/API/SBBroadcaster.h"
 #include "lldb/API/SBStream.h"
 
-#include "lldb/Breakpoint/Breakpoint.h"
-#include "lldb/Core/StreamFile.h"
-#include "lldb/Interpreter/CommandInterpreter.h"
-#include "lldb/Target/Process.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/Event.h"
 #include "lldb/Utility/Stream.h"

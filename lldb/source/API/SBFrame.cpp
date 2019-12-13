@@ -6,9 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <algorithm>
 #include <set>
-#include <string>
 
 #include "lldb/API/SBFrame.h"
 
@@ -17,12 +15,8 @@
 #include "SBReproducerPrivate.h"
 #include "Utils.h"
 #include "lldb/Core/Address.h"
-#include "lldb/Core/StreamFile.h"
 #include "lldb/Core/ValueObjectRegister.h"
-#include "lldb/Core/ValueObjectVariable.h"
 #include "lldb/Expression/ExpressionVariable.h"
-#include "lldb/Expression/UserExpression.h"
-#include "lldb/Host/Host.h"
 #include "lldb/Symbol/Block.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/Symbol.h"
@@ -36,12 +30,10 @@
 #include "lldb/Target/StackFrameRecognizer.h"
 #include "lldb/Target/StackID.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Target/Thread.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/Stream.h"
 
 #include "lldb/API/SBAddress.h"
-#include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBExpressionOptions.h"
 #include "lldb/API/SBStream.h"
 #include "lldb/API/SBSymbolContext.h"

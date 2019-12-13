@@ -9,38 +9,27 @@
 #include "lldb/API/SBBreakpoint.h"
 #include "SBReproducerPrivate.h"
 #include "lldb/API/SBBreakpointLocation.h"
-#include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBEvent.h"
-#include "lldb/API/SBProcess.h"
 #include "lldb/API/SBStream.h"
 #include "lldb/API/SBStringList.h"
 #include "lldb/API/SBStructuredData.h"
-#include "lldb/API/SBThread.h"
 
 #include "lldb/Breakpoint/Breakpoint.h"
 #include "lldb/Breakpoint/BreakpointIDList.h"
-#include "lldb/Breakpoint/BreakpointLocation.h"
-#include "lldb/Breakpoint/BreakpointResolver.h"
 #include "lldb/Breakpoint/BreakpointResolverScripted.h"
-#include "lldb/Breakpoint/StoppointCallbackContext.h"
 #include "lldb/Core/Address.h"
 #include "lldb/Core/Debugger.h"
-#include "lldb/Core/StreamFile.h"
 #include "lldb/Core/StructuredDataImpl.h"
-#include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/ScriptInterpreter.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/SectionLoadList.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Target/Thread.h"
 #include "lldb/Target/ThreadSpec.h"
-#include "lldb/Utility/Stream.h"
 
 #include "SBBreakpointOptionCommon.h"
 
 #include "lldb/lldb-enumerations.h"
 
-#include "llvm/ADT/STLExtras.h"
 
 using namespace lldb;
 using namespace lldb_private;

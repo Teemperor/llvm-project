@@ -6,34 +6,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "lldb/API/SBBreakpointName.h"
 #include "lldb/API/SBBreakpointLocation.h"
-#include "lldb/API/SBDebugger.h"
-#include "lldb/API/SBEvent.h"
 #include "lldb/API/SBProcess.h"
-#include "lldb/API/SBStream.h"
-#include "lldb/API/SBStringList.h"
 #include "lldb/API/SBThread.h"
 
-#include "lldb/Breakpoint/BreakpointName.h"
 #include "lldb/Breakpoint/StoppointCallbackContext.h"
-#include "lldb/Core/Address.h"
-#include "lldb/Core/Debugger.h"
-#include "lldb/Core/StreamFile.h"
-#include "lldb/Interpreter/CommandInterpreter.h"
-#include "lldb/Interpreter/ScriptInterpreter.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
-#include "lldb/Target/ThreadSpec.h"
-#include "lldb/Utility/Log.h"
-#include "lldb/Utility/Stream.h"
 
 #include "lldb/lldb-enumerations.h"
 
 #include "SBBreakpointOptionCommon.h"
 
-#include "llvm/ADT/STLExtras.h"
 
 using namespace lldb;
 using namespace lldb_private;

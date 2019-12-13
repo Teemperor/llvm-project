@@ -13,18 +13,15 @@
 #include "lldb/Interpreter/CommandObjectMultiword.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Utility/Listener.h"
 
 #include "lldb/API/SBBroadcaster.h"
 #include "lldb/API/SBCommandInterpreter.h"
 #include "lldb/API/SBCommandReturnObject.h"
 #include "lldb/API/SBEvent.h"
 #include "lldb/API/SBExecutionContext.h"
-#include "lldb/API/SBListener.h"
 #include "lldb/API/SBProcess.h"
 #include "lldb/API/SBStream.h"
 #include "lldb/API/SBStringList.h"
-#include "lldb/API/SBTarget.h"
 
 #include <memory>
 
