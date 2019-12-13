@@ -28,7 +28,6 @@
 #include "lldb/Utility/StringList.h"
 #include "lldb/lldb-forward.h"
 
-#include "lldb/Interpreter/CommandCompletions.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 
 #if LLDB_ENABLE_CURSES
