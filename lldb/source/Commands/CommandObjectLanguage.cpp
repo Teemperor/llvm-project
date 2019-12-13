@@ -8,7 +8,6 @@
 
 #include "CommandObjectLanguage.h"
 
-#include "lldb/Host/Host.h"
 
 
 #include "lldb/Target/LanguageRuntime.h"
