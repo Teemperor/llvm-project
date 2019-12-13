@@ -39,7 +39,6 @@
 #include "lldb/Target/StackFrame.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/ThreadPlan.h"
-#include "lldb/Target/ThreadPlanCallUserExpression.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/Log.h"
 
