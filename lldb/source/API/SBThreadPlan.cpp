@@ -39,7 +39,6 @@
 #include "lldb/API/SBAddress.h"
 #include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBEvent.h"
-#include "lldb/API/SBFrame.h"
 #include "lldb/API/SBThreadPlan.h"
 
 #include <memory>
