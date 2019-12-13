@@ -10,7 +10,6 @@
 #include <errno.h>
 #include <limits.h>
 #include <stdlib.h>
-#include <sys/types.h>
 #ifndef _WIN32
 #include <dlfcn.h>
 #include <unistd.h>
