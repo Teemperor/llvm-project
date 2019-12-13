@@ -17,7 +17,6 @@
 
 #include "llvm/ADT/SmallString.h"
 
-#include <inttypes.h>
 #include <limits.h>
 
 using namespace lldb;
