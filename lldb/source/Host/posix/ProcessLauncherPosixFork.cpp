@@ -12,7 +12,6 @@
 #include "lldb/Host/Pipe.h"
 #include "lldb/Host/ProcessLaunchInfo.h"
 #include "lldb/Utility/FileSpec.h"
-#include "lldb/Utility/Log.h"
 #include "llvm/Support/Errno.h"
 
 #include <limits.h>
