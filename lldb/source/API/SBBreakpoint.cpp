@@ -15,7 +15,6 @@
 #include "lldb/API/SBStream.h"
 #include "lldb/API/SBStringList.h"
 #include "lldb/API/SBStructuredData.h"
-#include "lldb/API/SBThread.h"
 
 #include "lldb/Breakpoint/Breakpoint.h"
 #include "lldb/Breakpoint/BreakpointIDList.h"
