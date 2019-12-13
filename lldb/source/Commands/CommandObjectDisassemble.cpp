@@ -10,7 +10,6 @@
 #include "lldb/Core/AddressRange.h"
 #include "lldb/Core/Disassembler.h"
 #include "lldb/Core/Module.h"
-#include "lldb/Core/SourceManager.h"
 #include "lldb/Host/OptionParser.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
