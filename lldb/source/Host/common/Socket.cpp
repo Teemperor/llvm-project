@@ -20,7 +20,6 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Errno.h"
 #include "llvm/Support/Error.h"
-#include "llvm/Support/WindowsError.h"
 
 #ifndef LLDB_DISABLE_POSIX
 #include "lldb/Host/posix/DomainSocket.h"
