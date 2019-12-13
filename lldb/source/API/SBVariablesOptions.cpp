@@ -12,7 +12,6 @@
 #include "lldb/API/SBTarget.h"
 #include "lldb/Target/Target.h"
 
-#include "lldb/lldb-private.h"
 
 using namespace lldb;
 using namespace lldb_private;
