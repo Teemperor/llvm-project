@@ -8,7 +8,6 @@
 
 #include <algorithm>
 #include <set>
-#include <string>
 
 #include "lldb/API/SBFrame.h"
 
