@@ -19,7 +19,6 @@
 #include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBDeclaration.h"
 #include "lldb/API/SBError.h"
-#include "lldb/API/SBFileSpec.h"
 #include "lldb/API/SBReproducer.h"
 #include "lldb/lldb-private.h"
 
