@@ -37,7 +37,6 @@
 #include "lldb/Utility/StructuredData.h"
 
 #include "lldb/API/SBAddress.h"
-#include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBThreadPlan.h"
 
 #include <memory>
