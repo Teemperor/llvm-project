@@ -19,7 +19,6 @@
 
 #include "lldb/Core/Debugger.h"
 #include "lldb/DataFormatters/DataVisualization.h"
-#include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/ScriptInterpreter.h"
 
 using namespace lldb;
