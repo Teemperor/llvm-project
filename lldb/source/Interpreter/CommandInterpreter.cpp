@@ -52,7 +52,6 @@
 #if LLDB_ENABLE_LIBEDIT
 #include "lldb/Host/Editline.h"
 #endif
-#include "lldb/Host/Host.h"
 #include "lldb/Host/HostInfo.h"
 
 #include "lldb/Interpreter/CommandCompletions.h"
