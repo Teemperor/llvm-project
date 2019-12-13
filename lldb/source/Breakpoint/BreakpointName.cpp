@@ -11,7 +11,6 @@
 #include "lldb/Breakpoint/Breakpoint.h"
 #include "lldb/Breakpoint/BreakpointOptions.h"
 #include "lldb/Breakpoint/BreakpointLocationCollection.h"
-#include "lldb/Breakpoint/BreakpointResolver.h"
 #include "lldb/Utility/Stream.h"
 
 using namespace lldb;
