@@ -43,7 +43,6 @@
 #include <locale.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
 
 using namespace lldb;
 using namespace lldb_private;
