@@ -24,7 +24,6 @@
 #include "lldb/Utility/Timeout.h"
 
 #include "llvm/Support/FileSystem.h"
-#include "llvm/Support/Threading.h"
 
 using namespace lldb_private;
 using namespace lldb_private::line_editor;
