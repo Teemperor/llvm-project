@@ -23,7 +23,6 @@
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/ScriptInterpreter.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Target/ThreadSpec.h"
 #include "lldb/Utility/Stream.h"
 #include "lldb/lldb-defines.h"
 #include "lldb/lldb-types.h"
