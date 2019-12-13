@@ -12,7 +12,6 @@
 #include "lldb/API/SBAddress.h"
 #include "lldb/API/SBQueueItem.h"
 #include "lldb/API/SBThread.h"
-#include "lldb/Core/Address.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/QueueItem.h"
 
