@@ -11,7 +11,6 @@
 #include "lldb/API/SBError.h"
 #include "lldb/Host/Config.h"
 #include "lldb/Host/FileSystem.h"
-#include "lldb/Host/Host.h"
 #include "lldb/Host/HostInfo.h"
 #include "lldb/Host/HostNativeThread.h"
 #include "lldb/Host/HostThread.h"
