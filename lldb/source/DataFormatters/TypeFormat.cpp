@@ -17,7 +17,6 @@
 #include "lldb/Core/DumpDataExtractor.h"
 #include "lldb/DataFormatters/FormatManager.h"
 #include "lldb/Symbol/CompilerType.h"
-#include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Symbol/TypeList.h"
 #include "lldb/Target/Target.h"
