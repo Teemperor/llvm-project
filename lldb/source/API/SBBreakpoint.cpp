@@ -9,7 +9,6 @@
 #include "lldb/API/SBBreakpoint.h"
 #include "SBReproducerPrivate.h"
 #include "lldb/API/SBBreakpointLocation.h"
-#include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBEvent.h"
 #include "lldb/API/SBStream.h"
 #include "lldb/API/SBStringList.h"
