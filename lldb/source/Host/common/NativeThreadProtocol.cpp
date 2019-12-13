@@ -8,7 +8,6 @@
 
 #include "lldb/Host/common/NativeThreadProtocol.h"
 
-#include "lldb/Host/common/NativeProcessProtocol.h"
 
 using namespace lldb;
 using namespace lldb_private;
