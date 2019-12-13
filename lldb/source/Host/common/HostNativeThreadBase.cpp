@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "lldb/Host/HostNativeThreadBase.h"
-#include "lldb/Host/HostInfo.h"
 #include "lldb/Host/ThreadLauncher.h"
 #include "lldb/Utility/Log.h"
 
