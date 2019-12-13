@@ -10,7 +10,6 @@
 #include "lldb/Host/Config.h"
 
 #include "lldb/Host/MainLoop.h"
-#include "lldb/Host/PosixApi.h"
 #include "lldb/Utility/Status.h"
 #include <algorithm>
 #include <cassert>
