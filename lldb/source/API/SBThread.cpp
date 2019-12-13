@@ -19,7 +19,6 @@
 #include "lldb/API/SBStructuredData.h"
 #include "lldb/API/SBSymbolContext.h"
 #include "lldb/API/SBThreadCollection.h"
-#include "lldb/API/SBThreadPlan.h"
 #include "lldb/API/SBValue.h"
 #include "lldb/Breakpoint/BreakpointLocation.h"
 #include "lldb/Core/Debugger.h"
