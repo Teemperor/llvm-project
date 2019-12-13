@@ -35,7 +35,6 @@
 #endif
 
 #include <algorithm>
-#include <fstream>
 
 using namespace lldb;
 using namespace lldb_private;
