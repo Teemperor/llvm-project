@@ -10,7 +10,6 @@
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/UserIDResolver.h"
 
-#include "llvm/ADT/SmallString.h"
 
 #include <grp.h>
 #include <limits.h>
