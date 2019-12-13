@@ -16,7 +16,6 @@
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/StreamString.h"
 
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/Path.h"
