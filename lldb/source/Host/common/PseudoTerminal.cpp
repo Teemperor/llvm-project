@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "lldb/Host/PseudoTerminal.h"
-#include "lldb/Host/Config.h"
 
 #include "llvm/Support/Errno.h"
 
