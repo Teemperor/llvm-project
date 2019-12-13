@@ -23,10 +23,6 @@ class TestVarPath(TestBase):
         self.build()
         self.do_test()
 
-    def setUp(self):
-        # Call super's setUp().
-        TestBase.setUp(self)
-
     def verify_point(self, frame, var_name, var_typename, x_value, y_value):
         v = frame.GetValueForVariablePath(var_name)
         self.assertTrue(v.GetError().Success(), "Make sure we find '%s'" % (var_name))
