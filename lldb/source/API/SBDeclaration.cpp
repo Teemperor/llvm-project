@@ -10,7 +10,6 @@
 #include "SBReproducerPrivate.h"
 #include "Utils.h"
 #include "lldb/API/SBStream.h"
-#include "lldb/Host/PosixApi.h"
 #include "lldb/Symbol/Declaration.h"
 #include "lldb/Utility/Stream.h"
 
