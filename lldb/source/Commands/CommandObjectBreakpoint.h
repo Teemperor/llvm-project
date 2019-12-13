@@ -15,7 +15,6 @@
 #include "lldb/Breakpoint/BreakpointName.h"
 #include "lldb/Core/Address.h"
 #include "lldb/Interpreter/CommandObjectMultiword.h"
-#include "lldb/Interpreter/Options.h"
 
 namespace lldb_private {
 
