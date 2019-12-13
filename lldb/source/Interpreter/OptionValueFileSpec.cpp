@@ -12,7 +12,6 @@
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Interpreter/CommandCompletions.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
-#include "lldb/Utility/Args.h"
 
 using namespace lldb;
 using namespace lldb_private;
