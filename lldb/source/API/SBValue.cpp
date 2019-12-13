@@ -36,7 +36,6 @@
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
 #include "lldb/Utility/DataExtractor.h"
-#include "lldb/Utility/Scalar.h"
 #include "lldb/Utility/Stream.h"
 
 #include "lldb/API/SBExpressionOptions.h"
