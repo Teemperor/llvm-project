@@ -60,7 +60,6 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <assert.h>
-#include <cstdint>
 #include <inttypes.h>
 #include <map>
 #include <stdarg.h>
