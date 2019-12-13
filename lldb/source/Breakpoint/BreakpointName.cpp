@@ -15,7 +15,6 @@
 #include "lldb/Breakpoint/BreakpointResolverFileLine.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/Stream.h"
-#include "lldb/Utility/StreamString.h"
 
 using namespace lldb;
 using namespace lldb_private;
