@@ -25,7 +25,6 @@
 
 #include <memory>
 #include <mutex>
-#include <string>
 
 #include <inttypes.h>
 #include <string.h>
