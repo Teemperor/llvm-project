@@ -13,7 +13,6 @@
 #include "lldb/Core/Module.h"
 #include "lldb/Core/Section.h"
 #include "lldb/Symbol/ObjectFile.h"
-#include "lldb/Utility/DataBuffer.h"
 #include "lldb/Utility/DataExtractor.h"
 
 using namespace lldb;
