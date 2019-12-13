@@ -7,7 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "lldb/Host/Config.h"
-#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
 
 #if LLDB_ENABLE_LZMA
