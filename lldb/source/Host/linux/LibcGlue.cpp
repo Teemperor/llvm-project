@@ -11,7 +11,6 @@
 #include <cerrno>
 #include <lldb/Host/linux/Uio.h>
 #include <sys/syscall.h>
-#include <unistd.h>
 
 #if !HAVE_PROCESS_VM_READV
 // If the syscall wrapper is not available, provide one.
