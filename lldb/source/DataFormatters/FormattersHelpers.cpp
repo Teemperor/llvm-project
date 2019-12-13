@@ -12,7 +12,6 @@
 
 #include "lldb/DataFormatters/FormattersHelpers.h"
 
-#include "lldb/Target/StackFrame.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/RegularExpression.h"
 
