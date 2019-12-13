@@ -17,7 +17,6 @@
 
 #include "lldb/Breakpoint/BreakpointName.h"
 #include "lldb/Breakpoint/StoppointCallbackContext.h"
-#include "lldb/Core/Address.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
