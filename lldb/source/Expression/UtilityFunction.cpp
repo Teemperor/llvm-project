@@ -24,7 +24,6 @@
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Utility/ConstString.h"
 
 using namespace lldb_private;
 using namespace lldb;
