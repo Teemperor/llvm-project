@@ -27,7 +27,6 @@
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Core/StructuredDataImpl.h"
-#include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/ScriptInterpreter.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/SectionLoadList.h"
