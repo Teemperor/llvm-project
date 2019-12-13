@@ -23,7 +23,6 @@
 #include "lldb/Interpreter/ScriptInterpreter.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/ThreadSpec.h"
-#include "lldb/Utility/Stream.h"
 
 #include "SBBreakpointOptionCommon.h"
 
