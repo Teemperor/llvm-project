@@ -17,7 +17,6 @@
 #include "lldb/Utility/SharingPtr.h"
 #include "lldb/Utility/Status.h"
 
-#include "llvm/ADT/STLExtras.h"
 
 namespace lldb_private {
 class Declaration;
