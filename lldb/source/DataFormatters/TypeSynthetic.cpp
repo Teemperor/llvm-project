@@ -11,7 +11,6 @@
 
 
 #include "lldb/lldb-enumerations.h"
-#include "lldb/lldb-public.h"
 
 #include "lldb/Core/Debugger.h"
 #include "lldb/DataFormatters/TypeSynthetic.h"
