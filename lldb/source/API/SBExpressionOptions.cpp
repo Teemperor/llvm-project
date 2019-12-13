@@ -10,7 +10,6 @@
 #include "lldb/API/SBExpressionOptions.h"
 #include "SBReproducerPrivate.h"
 #include "Utils.h"
-#include "lldb/API/SBStream.h"
 #include "lldb/Target/Target.h"
 
 using namespace lldb;
