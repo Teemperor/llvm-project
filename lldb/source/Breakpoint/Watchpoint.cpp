@@ -8,7 +8,6 @@
 
 #include "lldb/Breakpoint/Watchpoint.h"
 
-#include "lldb/Breakpoint/StoppointCallbackContext.h"
 #include "lldb/Core/ValueObject.h"
 #include "lldb/Core/ValueObjectMemory.h"
 #include "lldb/Expression/UserExpression.h"
