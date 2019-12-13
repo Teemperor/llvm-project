@@ -9,7 +9,6 @@
 #include "lldb/API/SBMemoryRegionInfoList.h"
 #include "SBReproducerPrivate.h"
 #include "lldb/API/SBMemoryRegionInfo.h"
-#include "lldb/API/SBStream.h"
 #include "lldb/Target/MemoryRegionInfo.h"
 
 #include <vector>
