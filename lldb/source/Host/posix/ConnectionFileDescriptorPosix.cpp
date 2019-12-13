@@ -44,7 +44,6 @@
 #include "lldb/Host/common/TCPSocket.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/StreamString.h"
-#include "lldb/Utility/Timer.h"
 
 using namespace lldb;
 using namespace lldb_private;
