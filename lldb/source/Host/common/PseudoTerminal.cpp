@@ -13,7 +13,6 @@
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #if defined(TIOCSCTTY)
 #include <sys/ioctl.h>
 #endif
