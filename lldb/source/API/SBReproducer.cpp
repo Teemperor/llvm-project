@@ -8,7 +8,6 @@
 
 #include "SBReproducerPrivate.h"
 
-#include "SBReproducerPrivate.h"
 #include "lldb/API/LLDB.h"
 #include "lldb/API/SBReproducer.h"
 #include "lldb/lldb-private.h"
