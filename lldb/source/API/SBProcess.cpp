@@ -23,7 +23,6 @@
 #include "lldb/Target/RegisterContext.h"
 #include "lldb/Target/SystemRuntime.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Target/Thread.h"
 #include "lldb/Utility/Args.h"
 #include "lldb/Utility/ProcessInfo.h"
 #include "lldb/Utility/State.h"
