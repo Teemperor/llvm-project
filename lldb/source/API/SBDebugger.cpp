@@ -51,7 +51,6 @@
 #include "lldb/Utility/Args.h"
 #include "lldb/Utility/State.h"
 
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/DynamicLibrary.h"
 #include "llvm/Support/ManagedStatic.h"
