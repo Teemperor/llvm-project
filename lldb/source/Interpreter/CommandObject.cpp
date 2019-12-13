@@ -8,7 +8,6 @@
 
 #include "lldb/Interpreter/CommandObject.h"
 
-#include <map>
 #include <sstream>
 #include <string>
 
