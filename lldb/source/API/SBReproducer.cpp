@@ -11,7 +11,6 @@
 #include "SBReproducerPrivate.h"
 #include "lldb/API/LLDB.h"
 #include "lldb/API/SBAddress.h"
-#include "lldb/API/SBAttachInfo.h"
 #include "lldb/API/SBReproducer.h"
 #include "lldb/lldb-private.h"
 
