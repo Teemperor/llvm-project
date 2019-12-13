@@ -9,7 +9,6 @@
 #ifndef liblldb_CommandObjectLog_h_
 #define liblldb_CommandObjectLog_h_
 
-#include <map>
 
 #include "lldb/Interpreter/CommandObjectMultiword.h"
 
