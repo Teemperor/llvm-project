@@ -54,7 +54,6 @@
 #include "llvm/Support/Compiler.h"
 
 #include <algorithm>
-#include <cstdint>
 #include <memory>
 #include <tuple>
 
