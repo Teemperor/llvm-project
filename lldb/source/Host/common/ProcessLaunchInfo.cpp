@@ -8,7 +8,6 @@
 
 #include <climits>
 
-#include "lldb/Host/Config.h"
 #include "lldb/Host/FileAction.h"
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Host/HostInfo.h"
