@@ -11,7 +11,6 @@
 #include "lldb/Host/PosixApi.h"
 #include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Utility/Stream.h"
-#include "lldb/Utility/StringList.h"
 
 using namespace lldb;
 using namespace lldb_private;
