@@ -12,7 +12,6 @@
 #include "lldb/DataFormatters/FormatManager.h"
 #include "lldb/DataFormatters/TypeCategory.h"
 #include "lldb/DataFormatters/TypeFormat.h"
-#include "lldb/DataFormatters/TypeSummary.h"
 #include "lldb/Target/Language.h"
 
 using namespace lldb;
