@@ -13,7 +13,6 @@
 #include "lldb/DataFormatters/TypeCategory.h"
 #include "lldb/DataFormatters/TypeFormat.h"
 #include "lldb/DataFormatters/TypeSummary.h"
-#include "lldb/DataFormatters/TypeSynthetic.h"
 #include "lldb/Target/Language.h"
 
 using namespace lldb;
