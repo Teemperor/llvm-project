@@ -28,7 +28,6 @@
 #include "lldb/Interpreter/OptionValueSInt64.h"
 #include "lldb/Interpreter/OptionValueString.h"
 #include "lldb/Interpreter/Property.h"
-#include "lldb/Interpreter/ScriptInterpreter.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Symbol/SymbolContext.h"
