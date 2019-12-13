@@ -8,7 +8,6 @@
 
 #include "lldb/Host/Socket.h"
 
-#include "lldb/Host/Config.h"
 #include "lldb/Host/StringConvert.h"
 #include "lldb/Host/common/TCPSocket.h"
 #include "lldb/Host/common/UDPSocket.h"
