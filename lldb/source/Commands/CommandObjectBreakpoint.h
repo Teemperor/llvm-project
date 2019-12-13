@@ -9,7 +9,6 @@
 #ifndef liblldb_CommandObjectBreakpoint_h_
 #define liblldb_CommandObjectBreakpoint_h_
 
-#include <utility>
 
 #include "lldb/Breakpoint/BreakpointName.h"
 #include "lldb/Interpreter/CommandObjectMultiword.h"
