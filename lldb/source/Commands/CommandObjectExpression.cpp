@@ -11,7 +11,6 @@
 
 #include "CommandObjectExpression.h"
 #include "lldb/Core/Debugger.h"
-#include "lldb/Core/Value.h"
 #include "lldb/Expression/REPL.h"
 #include "lldb/Expression/UserExpression.h"
 #include "lldb/Host/OptionParser.h"
