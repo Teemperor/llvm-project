@@ -15,7 +15,6 @@
 #include <dlfcn.h>
 #include <grp.h>
 #include <netdb.h>
-#include <pwd.h>
 #include <unistd.h>
 #endif
 
