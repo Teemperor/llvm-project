@@ -12,7 +12,6 @@
 #include "lldb/DataFormatters/FormatManager.h"
 #include "lldb/Interpreter/OptionValueString.h"
 #include "lldb/Utility/Args.h"
-#include "lldb/Utility/State.h"
 
 using namespace lldb;
 using namespace lldb_private;
