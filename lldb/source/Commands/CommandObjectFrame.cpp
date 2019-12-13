@@ -26,7 +26,6 @@
 #include "lldb/Interpreter/Options.h"
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/Function.h"
-#include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Symbol/Variable.h"
 #include "lldb/Symbol/VariableList.h"
