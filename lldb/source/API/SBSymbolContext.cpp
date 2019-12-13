@@ -11,7 +11,6 @@
 #include "Utils.h"
 #include "lldb/API/SBStream.h"
 #include "lldb/Core/Module.h"
-#include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/SymbolContext.h"
 
 using namespace lldb;
