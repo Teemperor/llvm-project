@@ -42,7 +42,6 @@
 #include "lldb/Core/ValueObjectConstResult.h"
 #include "lldb/Core/ValueObjectList.h"
 #include "lldb/Core/ValueObjectVariable.h"
-#include "lldb/Host/Host.h"
 #include "lldb/Symbol/DeclVendor.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/SymbolFile.h"
