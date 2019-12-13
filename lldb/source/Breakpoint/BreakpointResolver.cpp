@@ -20,7 +20,6 @@
 #include "lldb/Core/Address.h"
 #include "lldb/Core/ModuleList.h"
 #include "lldb/Core/SearchFilter.h"
-#include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Utility/Log.h"
