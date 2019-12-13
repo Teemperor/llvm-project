@@ -20,7 +20,6 @@
 #include "lldb/Symbol/Block.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/ObjectFile.h"
-#include "lldb/Symbol/SymbolVendor.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
