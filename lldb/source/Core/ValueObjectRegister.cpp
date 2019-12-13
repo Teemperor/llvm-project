@@ -11,7 +11,6 @@
 #include "lldb/Core/Module.h"
 #include "lldb/Core/Value.h"
 #include "lldb/Symbol/CompilerType.h"
-#include "lldb/Symbol/TypeSystem.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/RegisterContext.h"
