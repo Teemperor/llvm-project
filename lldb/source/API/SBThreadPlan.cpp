@@ -14,7 +14,6 @@
 #include "lldb/API/SBStructuredData.h"
 #include "lldb/API/SBSymbolContext.h"
 #include "lldb/Breakpoint/BreakpointLocation.h"
-#include "lldb/Core/Debugger.h"
 #include "lldb/Core/StructuredDataImpl.h"
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Target/Thread.h"
