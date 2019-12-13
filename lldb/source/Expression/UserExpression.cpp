@@ -8,7 +8,6 @@
 
 #include "lldb/Host/Config.h"
 
-#include <stdio.h>
 #if HAVE_SYS_TYPES_H
 #endif
 
