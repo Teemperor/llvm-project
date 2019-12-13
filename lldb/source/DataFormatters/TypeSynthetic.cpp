@@ -15,7 +15,6 @@
 
 #include "lldb/Core/Debugger.h"
 #include "lldb/DataFormatters/TypeSynthetic.h"
-#include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/ScriptInterpreter.h"
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Target/Target.h"
