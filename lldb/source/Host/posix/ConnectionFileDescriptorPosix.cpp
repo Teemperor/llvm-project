@@ -40,7 +40,6 @@
 #include "llvm/ADT/SmallVector.h"
 #endif
 #include "lldb/Host/Host.h"
-#include "lldb/Host/Socket.h"
 #include "lldb/Host/common/TCPSocket.h"
 #include "lldb/Utility/Log.h"
 
