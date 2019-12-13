@@ -8,7 +8,6 @@
 
 #include <stdio.h>
 
-#include "lldb/Breakpoint/Breakpoint.h"
 #include "lldb/Breakpoint/BreakpointID.h"
 #include "lldb/Utility/Status.h"
 #include "lldb/Utility/Stream.h"
