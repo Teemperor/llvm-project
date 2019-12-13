@@ -41,7 +41,6 @@
 #include "lldb/Utility/Stream.h"
 
 #include "lldb/API/SBAddress.h"
-#include "lldb/API/SBDebugger.h"
 #include "lldb/API/SBExpressionOptions.h"
 #include "lldb/API/SBStream.h"
 #include "lldb/API/SBSymbolContext.h"
