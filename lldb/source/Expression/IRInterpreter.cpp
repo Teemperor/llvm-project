@@ -15,7 +15,6 @@
 #include "lldb/Expression/IRMemoryMap.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/DataExtractor.h"
-#include "lldb/Utility/Endian.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/Scalar.h"
 #include "lldb/Utility/Status.h"
