@@ -8,7 +8,6 @@
 
 #include "lldb/Interpreter/OptionValueArch.h"
 
-#include "lldb/DataFormatters/FormatManager.h"
 #include "lldb/Interpreter/CommandCompletions.h"
 
 using namespace lldb;
