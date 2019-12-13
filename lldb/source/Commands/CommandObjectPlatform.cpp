@@ -22,7 +22,6 @@
 #include "lldb/Target/Process.h"
 #include "lldb/Utility/Args.h"
 #include "lldb/Utility/DataExtractor.h"
-#include <mutex>
 
 #include "llvm/ADT/SmallString.h"
 
