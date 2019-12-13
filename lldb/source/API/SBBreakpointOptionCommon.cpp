@@ -20,7 +20,6 @@
 #include "lldb/Core/Address.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/StreamFile.h"
-#include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Target/Thread.h"
