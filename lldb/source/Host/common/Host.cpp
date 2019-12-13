@@ -30,7 +30,6 @@
     defined(__FreeBSD_kernel__) || defined(__APPLE__) ||                       \
     defined(__NetBSD__) || defined(__OpenBSD__)
 #if !defined(__ANDROID__)
-#include <spawn.h>
 #endif
 #include <sys/wait.h>
 #endif
