@@ -8,7 +8,6 @@
 
 #include "lldb/Interpreter/OptionValueBoolean.h"
 
-#include "lldb/Host/PosixApi.h"
 #include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Utility/Stream.h"
 
