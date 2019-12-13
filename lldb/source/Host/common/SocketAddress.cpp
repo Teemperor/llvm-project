@@ -17,7 +17,6 @@
 #endif
 
 #include "lldb/Host/SocketAddress.h"
-#include <stddef.h>
 
 #if !defined(_WIN32)
 #include <arpa/inet.h>
