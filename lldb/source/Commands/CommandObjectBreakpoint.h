@@ -13,7 +13,6 @@
 #include <vector>
 
 #include "lldb/Breakpoint/BreakpointName.h"
-#include "lldb/Core/Address.h"
 #include "lldb/Interpreter/CommandObjectMultiword.h"
 
 namespace lldb_private {
