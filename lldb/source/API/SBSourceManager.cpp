@@ -16,7 +16,6 @@
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/SourceManager.h"
 #include "lldb/Core/StreamFile.h"
-#include "lldb/Utility/Stream.h"
 
 #include "lldb/Target/Target.h"
 
