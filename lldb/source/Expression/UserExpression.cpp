@@ -14,7 +14,6 @@
 #endif
 
 #include <cstdlib>
-#include <map>
 #include <string>
 
 #include "lldb/Core/ValueObjectConstResult.h"
