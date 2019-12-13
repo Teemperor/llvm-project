@@ -24,7 +24,6 @@
 #include "lldb/DataFormatters/TypeSummary.h"
 #include "lldb/DataFormatters/ValueObjectPrinter.h"
 #include "lldb/Expression/ExpressionVariable.h"
-#include "lldb/Host/Config.h"
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/CompilerType.h"
@@ -54,8 +53,6 @@
 #include "llvm/Support/Compiler.h"
 
 #include <algorithm>
-#include <cstdint>
-#include <cstdlib>
 #include <memory>
 #include <tuple>
 

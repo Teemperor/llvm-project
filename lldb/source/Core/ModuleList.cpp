@@ -18,7 +18,6 @@
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Symbol/TypeList.h"
-#include "lldb/Symbol/VariableList.h"
 #include "lldb/Utility/ArchSpec.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/Log.h"
@@ -32,7 +31,6 @@
 
 #include "clang/Driver/Driver.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -40,7 +38,6 @@
 #include <memory>
 #include <mutex>
 #include <string>
-#include <utility>
 
 namespace lldb_private {
 class Function;

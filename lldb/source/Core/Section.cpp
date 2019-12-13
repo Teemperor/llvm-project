@@ -18,7 +18,6 @@
 
 #include <inttypes.h>
 #include <limits>
-#include <utility>
 
 namespace lldb_private {
 class DataExtractor;

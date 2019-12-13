@@ -15,7 +15,6 @@
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/FileSpec.h"
 #include "lldb/Utility/Status.h"
-#include "lldb/Utility/StringList.h"
 
 #if defined(_WIN32)
 #include "lldb/Host/windows/PosixApi.h"

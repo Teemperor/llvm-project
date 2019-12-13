@@ -20,15 +20,10 @@
 #include <string>
 
 #include "lldb/Core/Debugger.h"
-#include "lldb/Core/StreamFile.h"
-#include "lldb/Host/File.h"
-#include "lldb/Utility/Predicate.h"
-#include "lldb/Utility/Status.h"
 #include "lldb/Utility/StreamString.h"
 #include "lldb/Utility/StringList.h"
 #include "lldb/lldb-forward.h"
 
-#include "lldb/Interpreter/CommandCompletions.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 
 #if LLDB_ENABLE_CURSES
@@ -36,7 +31,6 @@
 #include "lldb/Core/Module.h"
 #include "lldb/Core/ValueObject.h"
 #include "lldb/Core/ValueObjectRegister.h"
-#include "lldb/Symbol/Block.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Symbol/VariableList.h"
@@ -58,14 +52,11 @@
 #include <memory>
 #include <mutex>
 
-#include <assert.h>
 #include <ctype.h>
-#include <errno.h>
 #include <locale.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
-#include <type_traits>
 
 using namespace lldb;
 using namespace lldb_private;

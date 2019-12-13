@@ -37,14 +37,10 @@
 #include <memory>
 #include <mutex>
 
-#include <assert.h>
 #include <ctype.h>
 #include <errno.h>
-#include <locale.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <string.h>
-#include <type_traits>
 
 using namespace lldb;
 using namespace lldb_private;

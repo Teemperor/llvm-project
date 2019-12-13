@@ -24,12 +24,10 @@
 #include "llvm/Demangle/Demangle.h"
 #include "llvm/Support/Compiler.h"
 
-#include <mutex>
 #include <string>
 #include <utility>
 
 #include <stdlib.h>
-#include <string.h>
 using namespace lldb_private;
 
 static inline bool cstring_is_mangled(llvm::StringRef s) {
