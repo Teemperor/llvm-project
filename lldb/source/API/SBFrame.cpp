@@ -22,7 +22,6 @@
 #include "lldb/Core/ValueObjectVariable.h"
 #include "lldb/Expression/ExpressionVariable.h"
 #include "lldb/Expression/UserExpression.h"
-#include "lldb/Host/Host.h"
 #include "lldb/Symbol/Block.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/Symbol.h"
