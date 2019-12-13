@@ -36,7 +36,6 @@
 #include "lldb/Target/StackFrameRecognizer.h"
 #include "lldb/Target/StackID.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Target/Thread.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/Stream.h"
 
