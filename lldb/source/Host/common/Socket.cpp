@@ -10,7 +10,6 @@
 
 #include "lldb/Host/Config.h"
 #include "lldb/Host/Host.h"
-#include "lldb/Host/SocketAddress.h"
 #include "lldb/Host/StringConvert.h"
 #include "lldb/Host/common/TCPSocket.h"
 #include "lldb/Host/common/UDPSocket.h"
