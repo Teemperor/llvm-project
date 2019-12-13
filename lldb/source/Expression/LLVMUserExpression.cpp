@@ -17,7 +17,6 @@
 #include "lldb/Expression/IRInterpreter.h"
 #include "lldb/Expression/Materializer.h"
 #include "lldb/Host/HostInfo.h"
-#include "lldb/Symbol/Block.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
