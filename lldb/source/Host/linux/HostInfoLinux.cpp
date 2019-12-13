@@ -20,7 +20,6 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <mutex>
 
 using namespace lldb_private;
 
