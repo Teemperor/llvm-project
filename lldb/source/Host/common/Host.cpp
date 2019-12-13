@@ -32,7 +32,6 @@
 #if !defined(__ANDROID__)
 #include <spawn.h>
 #endif
-#include <sys/syscall.h>
 #include <sys/wait.h>
 #endif
 
