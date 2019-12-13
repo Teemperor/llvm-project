@@ -11,7 +11,6 @@
 
 #include "lldb/Interpreter/CommandObject.h"
 #include "lldb/Interpreter/CommandObjectMultiword.h"
-#include "lldb/Interpreter/CommandReturnObject.h"
 
 namespace lldb_private {
 
