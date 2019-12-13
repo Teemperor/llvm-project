@@ -21,7 +21,6 @@
 #include "llvm/Support/raw_ostream.h"
 
 #ifndef LLDB_DISABLE_POSIX
-#include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #endif
