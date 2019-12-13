@@ -36,7 +36,6 @@
 
 #include <algorithm>
 #include <fstream>
-#include <vector>
 
 using namespace lldb;
 using namespace lldb_private;
