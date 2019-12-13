@@ -32,7 +32,6 @@
 #include "lldb/Target/Process.h"
 #include "lldb/Target/SectionLoadList.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Target/Thread.h"
 #include "lldb/Target/ThreadSpec.h"
 
 #include "SBBreakpointOptionCommon.h"
