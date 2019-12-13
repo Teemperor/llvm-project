@@ -15,7 +15,6 @@
 #endif
 
 #include "lldb/Core/Debugger.h"
-#include "lldb/Host/Host.h"
 #include "lldb/Initialization/SystemInitializerCommon.h"
 #include "lldb/Symbol/ClangASTContext.h"
 #include "lldb/Utility/Timer.h"
