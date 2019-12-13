@@ -24,7 +24,6 @@
 #include "Plugins/ABI/MacOSX-arm/ABIMacOSX_arm.h"
 #include "Plugins/ABI/MacOSX-arm64/ABIMacOSX_arm64.h"
 #include "Plugins/ABI/MacOSX-i386/ABIMacOSX_i386.h"
-#include "Plugins/ABI/SysV-arc/ABISysV_arc.h"
 #include "Plugins/ABI/SysV-arm/ABISysV_arm.h"
 #include "Plugins/ABI/SysV-arm64/ABISysV_arm64.h"
 #include "Plugins/ABI/SysV-hexagon/ABISysV_hexagon.h"
