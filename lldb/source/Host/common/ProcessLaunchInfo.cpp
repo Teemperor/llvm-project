@@ -16,7 +16,6 @@
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/StreamString.h"
 
-#include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/FileSystem.h"
 
 #if !defined(_WIN32)
