@@ -8,7 +8,6 @@
 
 #include "lldb/API/SBType.h"
 #include "SBReproducerPrivate.h"
-#include "lldb/API/SBDefines.h"
 #include "lldb/API/SBStream.h"
 #include "lldb/API/SBTypeEnumMember.h"
 #include "lldb/Core/Mangled.h"
