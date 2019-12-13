@@ -8,12 +8,7 @@
 
 #include <dirent.h>
 #include <errno.h>
-#include <fcntl.h>
 #include <stdio.h>
-#include <string.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/utsname.h>
 #include <unistd.h>
 
 #include "llvm/Object/ELF.h"
@@ -27,7 +22,6 @@
 #include "lldb/Host/Host.h"
 #include "lldb/Host/HostInfo.h"
 #include "lldb/Host/linux/Support.h"
-#include "lldb/Utility/DataExtractor.h"
 
 using namespace lldb;
 using namespace lldb_private;

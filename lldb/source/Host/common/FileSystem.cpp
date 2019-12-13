@@ -17,26 +17,16 @@
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
-#include "llvm/Support/Threading.h"
 
 #include <errno.h>
 #include <fcntl.h>
-#include <limits.h>
-#include <stdarg.h>
-#include <stdio.h>
 
 #ifdef _WIN32
 #include "lldb/Host/windows/windows.h"
 #else
-#include <sys/ioctl.h>
 #include <sys/stat.h>
-#include <termios.h>
-#include <unistd.h>
 #endif
 
-#include <algorithm>
-#include <fstream>
-#include <vector>
 
 using namespace lldb;
 using namespace lldb_private;

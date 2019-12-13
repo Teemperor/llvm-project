@@ -8,15 +8,9 @@
 
 // C includes
 #include <errno.h>
-#include <limits.h>
 #include <stdlib.h>
-#include <sys/types.h>
 #ifndef _WIN32
 #include <dlfcn.h>
-#include <grp.h>
-#include <netdb.h>
-#include <pwd.h>
-#include <sys/stat.h>
 #include <unistd.h>
 #endif
 
@@ -30,9 +24,7 @@
     defined(__FreeBSD_kernel__) || defined(__APPLE__) ||                       \
     defined(__NetBSD__) || defined(__OpenBSD__)
 #if !defined(__ANDROID__)
-#include <spawn.h>
 #endif
-#include <sys/syscall.h>
 #include <sys/wait.h>
 #endif
 
@@ -46,7 +38,6 @@
 
 #include <csignal>
 
-#include "lldb/Host/FileAction.h"
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Host/HostInfo.h"
@@ -61,9 +52,7 @@
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/Predicate.h"
 #include "lldb/Utility/Status.h"
-#include "lldb/lldb-private-forward.h"
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/Support/Errno.h"
 #include "llvm/Support/FileSystem.h"
 

@@ -7,13 +7,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "lldb/Host/PseudoTerminal.h"
-#include "lldb/Host/Config.h"
 
 #include "llvm/Support/Errno.h"
 
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
 #if defined(TIOCSCTTY)
 #include <sys/ioctl.h>
 #endif

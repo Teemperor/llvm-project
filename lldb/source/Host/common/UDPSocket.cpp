@@ -8,11 +8,9 @@
 
 #include "lldb/Host/common/UDPSocket.h"
 
-#include "lldb/Host/Config.h"
 #include "lldb/Utility/Log.h"
 
 #ifndef LLDB_DISABLE_POSIX
-#include <arpa/inet.h>
 #include <sys/socket.h>
 #endif
 

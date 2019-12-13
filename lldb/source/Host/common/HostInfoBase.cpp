@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "lldb/Host/Config.h"
 
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Host/Host.h"
@@ -14,18 +13,13 @@
 #include "lldb/Host/HostInfoBase.h"
 #include "lldb/Utility/ArchSpec.h"
 #include "lldb/Utility/Log.h"
-#include "lldb/Utility/StreamString.h"
 
-#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/Triple.h"
 #include "llvm/Support/Host.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/Threading.h"
-#include "llvm/Support/raw_ostream.h"
 
-#include <mutex>
-#include <thread>
 
 using namespace lldb;
 using namespace lldb_private;

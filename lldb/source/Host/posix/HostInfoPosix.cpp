@@ -10,14 +10,9 @@
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/UserIDResolver.h"
 
-#include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/Twine.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/raw_ostream.h"
 
 #include <grp.h>
 #include <limits.h>
-#include <mutex>
 #include <pwd.h>
 #include <stdlib.h>
 #include <sys/types.h>

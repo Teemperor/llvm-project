@@ -8,7 +8,6 @@
 
 #include "lldb/Host/common/NativeWatchpointList.h"
 
-#include "lldb/Utility/Log.h"
 
 using namespace lldb;
 using namespace lldb_private;

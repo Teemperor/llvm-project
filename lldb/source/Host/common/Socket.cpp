@@ -8,29 +8,19 @@
 
 #include "lldb/Host/Socket.h"
 
-#include "lldb/Host/Config.h"
-#include "lldb/Host/Host.h"
-#include "lldb/Host/SocketAddress.h"
 #include "lldb/Host/StringConvert.h"
 #include "lldb/Host/common/TCPSocket.h"
 #include "lldb/Host/common/UDPSocket.h"
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/RegularExpression.h"
 
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/Support/Errno.h"
 #include "llvm/Support/Error.h"
-#include "llvm/Support/WindowsError.h"
 
 #ifndef LLDB_DISABLE_POSIX
 #include "lldb/Host/posix/DomainSocket.h"
 
-#include <arpa/inet.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
 #include <sys/socket.h>
-#include <sys/un.h>
 #include <unistd.h>
 #endif
 

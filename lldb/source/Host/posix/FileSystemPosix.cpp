@@ -9,24 +9,16 @@
 #include "lldb/Host/FileSystem.h"
 
 // C includes
-#include <dirent.h>
 #include <fcntl.h>
-#include <sys/mount.h>
-#include <sys/param.h>
-#include <sys/stat.h>
-#include <sys/types.h>
 #include <unistd.h>
 #if defined(__NetBSD__)
 #include <sys/statvfs.h>
 #endif
 
 // lldb Includes
-#include "lldb/Host/Host.h"
 #include "lldb/Utility/Status.h"
-#include "lldb/Utility/StreamString.h"
 
 #include "llvm/Support/Errno.h"
-#include "llvm/Support/FileSystem.h"
 
 using namespace lldb;
 using namespace lldb_private;

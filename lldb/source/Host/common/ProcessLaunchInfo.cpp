@@ -6,9 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <climits>
 
-#include "lldb/Host/Config.h"
 #include "lldb/Host/FileAction.h"
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Host/HostInfo.h"
@@ -16,11 +14,9 @@
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/StreamString.h"
 
-#include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/FileSystem.h"
 
 #if !defined(_WIN32)
-#include <limits.h>
 #endif
 
 using namespace lldb;

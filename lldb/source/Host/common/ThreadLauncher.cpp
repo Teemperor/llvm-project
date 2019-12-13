@@ -10,13 +10,11 @@
 #include "lldb/Host/ThreadLauncher.h"
 #include "lldb/Host/HostNativeThread.h"
 #include "lldb/Host/HostThread.h"
-#include "lldb/Utility/Log.h"
 
 #if defined(_WIN32)
 #include "lldb/Host/windows/windows.h"
 #endif
 
-#include "llvm/Support/WindowsError.h"
 
 using namespace lldb;
 using namespace lldb_private;

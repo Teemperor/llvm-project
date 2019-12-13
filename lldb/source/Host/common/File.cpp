@@ -19,21 +19,13 @@
 #else
 #include <sys/ioctl.h>
 #include <sys/stat.h>
-#include <termios.h>
 #include <unistd.h>
 #endif
 
-#include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/Errno.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Process.h"
 
-#include "lldb/Host/Config.h"
-#include "lldb/Host/FileSystem.h"
-#include "lldb/Host/Host.h"
-#include "lldb/Utility/DataBufferHeap.h"
 #include "lldb/Utility/FileSpec.h"
-#include "lldb/Utility/Log.h"
 
 using namespace lldb;
 using namespace lldb_private;

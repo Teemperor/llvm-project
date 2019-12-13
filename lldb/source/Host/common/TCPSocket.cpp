@@ -12,16 +12,13 @@
 
 #include "lldb/Host/common/TCPSocket.h"
 
-#include "lldb/Host/Config.h"
 #include "lldb/Host/MainLoop.h"
 #include "lldb/Utility/Log.h"
 
-#include "llvm/Config/llvm-config.h"
 #include "llvm/Support/Errno.h"
 #include "llvm/Support/raw_ostream.h"
 
 #ifndef LLDB_DISABLE_POSIX
-#include <arpa/inet.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #endif

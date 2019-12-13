@@ -6,22 +6,17 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <iomanip>
 #include <iostream>
 #include <limits.h>
 
-#include "lldb/Host/ConnectionFileDescriptor.h"
 #include "lldb/Host/Editline.h"
-#include "lldb/Host/FileSystem.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Utility/CompletionRequest.h"
-#include "lldb/Utility/FileSpec.h"
 #include "lldb/Utility/LLDBAssert.h"
 #include "lldb/Utility/SelectHelper.h"
 #include "lldb/Utility/Status.h"
 #include "lldb/Utility/StreamString.h"
 #include "lldb/Utility/StringList.h"
-#include "lldb/Utility/Timeout.h"
 
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Threading.h"

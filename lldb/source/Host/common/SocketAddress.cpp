@@ -17,8 +17,6 @@
 #endif
 
 #include "lldb/Host/SocketAddress.h"
-#include <stddef.h>
-#include <stdio.h>
 
 #if !defined(_WIN32)
 #include <arpa/inet.h>
@@ -27,7 +25,6 @@
 #include <assert.h>
 #include <string.h>
 
-#include "lldb/Host/PosixApi.h"
 
 // WindowsXP needs an inet_ntop implementation
 #ifdef _WIN32
