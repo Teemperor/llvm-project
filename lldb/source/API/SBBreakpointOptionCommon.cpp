@@ -15,7 +15,6 @@
 #include "lldb/API/SBStringList.h"
 #include "lldb/API/SBThread.h"
 
-#include "lldb/Breakpoint/BreakpointName.h"
 #include "lldb/Breakpoint/StoppointCallbackContext.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
