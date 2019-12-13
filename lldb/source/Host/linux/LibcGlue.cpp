@@ -8,7 +8,6 @@
 
 // This file adds functions missing from libc on older versions of linux
 
-#include <cerrno>
 #include <lldb/Host/linux/Uio.h>
 
 #if !HAVE_PROCESS_VM_READV
