@@ -14,7 +14,6 @@
 
 #include <csignal>
 #include <limits.h>
-#include <unistd.h>
 
 using namespace lldb_private;
 
