@@ -11,7 +11,6 @@
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/Stream.h"
 
-#include <utility>
 
 #include <stdint.h>
 
