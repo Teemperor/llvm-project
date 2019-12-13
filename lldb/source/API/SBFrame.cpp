@@ -17,7 +17,6 @@
 #include "SBReproducerPrivate.h"
 #include "Utils.h"
 #include "lldb/Core/Address.h"
-#include "lldb/Core/StreamFile.h"
 #include "lldb/Core/ValueObjectRegister.h"
 #include "lldb/Expression/ExpressionVariable.h"
 #include "lldb/Symbol/Block.h"
