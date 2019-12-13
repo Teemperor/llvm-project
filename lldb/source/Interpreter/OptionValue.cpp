@@ -9,7 +9,6 @@
 #include "lldb/Interpreter/OptionValue.h"
 
 #include "lldb/Interpreter/OptionValues.h"
-#include "lldb/Utility/StringList.h"
 
 using namespace lldb;
 using namespace lldb_private;
