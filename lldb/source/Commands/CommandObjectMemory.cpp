@@ -38,7 +38,6 @@
 #include "lldb/Utility/DataBufferLLVM.h"
 #include "lldb/Utility/StreamString.h"
 
-#include "lldb/lldb-private.h"
 
 #include <cinttypes>
 #include <memory>
