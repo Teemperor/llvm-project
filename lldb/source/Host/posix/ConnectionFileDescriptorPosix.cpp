@@ -32,7 +32,6 @@
 #endif
 
 #include <memory>
-#include <sstream>
 
 #include "llvm/Support/Errno.h"
 #if defined(__APPLE__)
