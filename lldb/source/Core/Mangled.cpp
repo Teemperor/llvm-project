@@ -29,7 +29,6 @@
 #include <utility>
 
 #include <stdlib.h>
-#include <string.h>
 using namespace lldb_private;
 
 static inline bool cstring_is_mangled(llvm::StringRef s) {
