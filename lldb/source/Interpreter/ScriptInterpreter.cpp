@@ -8,7 +8,6 @@
 
 #include "lldb/Interpreter/ScriptInterpreter.h"
 
-#include <stdio.h>
 #include <string>
 
 #include "lldb/Interpreter/CommandReturnObject.h"
