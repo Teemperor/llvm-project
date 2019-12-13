@@ -22,7 +22,6 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/Threading.h"
-#include "llvm/Support/raw_ostream.h"
 
 
 using namespace lldb;
