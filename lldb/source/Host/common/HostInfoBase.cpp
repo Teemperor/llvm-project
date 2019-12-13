@@ -25,7 +25,6 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <mutex>
-#include <thread>
 
 using namespace lldb;
 using namespace lldb_private;
