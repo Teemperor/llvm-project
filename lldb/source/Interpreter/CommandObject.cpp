@@ -12,7 +12,6 @@
 #include <sstream>
 #include <string>
 
-#include <ctype.h>
 #include <stdlib.h>
 
 #include "lldb/Interpreter/Options.h"
