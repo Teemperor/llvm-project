@@ -8,7 +8,6 @@
 
 #include <sys/stat.h>
 #if defined(__APPLE__) || defined(__linux__)
-#include <pwd.h>
 #endif
 
 #include "llvm/ADT/SmallString.h"
