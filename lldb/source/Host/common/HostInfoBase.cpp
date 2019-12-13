@@ -14,7 +14,6 @@
 #include "lldb/Host/HostInfoBase.h"
 #include "lldb/Utility/ArchSpec.h"
 #include "lldb/Utility/Log.h"
-#include "lldb/Utility/StreamString.h"
 
 #include "llvm/ADT/Triple.h"
 #include "llvm/Support/Host.h"
