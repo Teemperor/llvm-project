@@ -23,7 +23,6 @@
 #include "lldb/Target/Process.h"
 #include "lldb/Target/Queue.h"
 #include "lldb/Target/StopInfo.h"
-#include "lldb/Target/SystemRuntime.h"
 #include "lldb/Target/Thread.h"
 #include "lldb/Target/ThreadPlan.h"
 #include "lldb/Target/ThreadPlanPython.h"
