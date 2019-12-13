@@ -12,7 +12,6 @@
 #include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Utility/Stream.h"
 #include "lldb/Utility/StringList.h"
-#include "llvm/ADT/STLExtras.h"
 
 using namespace lldb;
 using namespace lldb_private;
