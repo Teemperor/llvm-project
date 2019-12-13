@@ -19,7 +19,6 @@
 
 #include "lldb/Breakpoint/Breakpoint.h"
 #include "lldb/Breakpoint/BreakpointIDList.h"
-#include "lldb/Breakpoint/BreakpointLocation.h"
 #include "lldb/Breakpoint/BreakpointResolverScripted.h"
 #include "lldb/Core/Address.h"
 #include "lldb/Core/Debugger.h"
