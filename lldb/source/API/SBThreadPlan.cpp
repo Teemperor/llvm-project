@@ -20,7 +20,6 @@
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/SymbolContext.h"
-#include "lldb/Target/Process.h"
 #include "lldb/Target/Thread.h"
 #include "lldb/Target/ThreadPlan.h"
 #include "lldb/Target/ThreadPlanPython.h"
