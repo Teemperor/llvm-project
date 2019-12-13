@@ -18,7 +18,6 @@
 #include "lldb/Core/StreamFile.h"
 #include "lldb/Expression/DiagnosticManager.h"
 #include "lldb/Expression/FunctionCaller.h"
-#include "lldb/Expression/IRExecutionUnit.h"
 #include "lldb/Expression/UtilityFunction.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/Target/Process.h"
