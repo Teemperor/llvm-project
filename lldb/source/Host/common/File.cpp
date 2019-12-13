@@ -31,7 +31,6 @@
 #include "lldb/Host/Config.h"
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Host/Host.h"
-#include "lldb/Utility/DataBufferHeap.h"
 #include "lldb/Utility/FileSpec.h"
 
 using namespace lldb;
