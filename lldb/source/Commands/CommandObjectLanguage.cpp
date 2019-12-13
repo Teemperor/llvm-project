@@ -11,7 +11,6 @@
 #include "lldb/Host/Host.h"
 
 #include "lldb/Interpreter/CommandInterpreter.h"
-#include "lldb/Interpreter/CommandReturnObject.h"
 
 #include "lldb/Target/LanguageRuntime.h"
 
