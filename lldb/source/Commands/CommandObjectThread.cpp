@@ -10,7 +10,6 @@
 
 #include "lldb/Core/SourceManager.h"
 #include "lldb/Core/ValueObject.h"
-#include "lldb/Host/Host.h"
 #include "lldb/Host/OptionParser.h"
 #include "lldb/Host/StringConvert.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
