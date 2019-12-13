@@ -13,7 +13,6 @@
 #include <sys/types.h>
 #ifndef _WIN32
 #include <dlfcn.h>
-#include <grp.h>
 #include <unistd.h>
 #endif
 
