@@ -14,7 +14,6 @@
 #endif
 
 
-#include "lldb/Core/Module.h"
 #include "lldb/Expression/DiagnosticManager.h"
 #include "lldb/Expression/FunctionCaller.h"
 #include "lldb/Expression/UtilityFunction.h"
