@@ -9,7 +9,6 @@
 #include "lldb/API/SBHostOS.h"
 #include "SBReproducerPrivate.h"
 #include "lldb/API/SBError.h"
-#include "lldb/Host/Config.h"
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Host/HostInfo.h"
 #include "lldb/Host/HostNativeThread.h"
