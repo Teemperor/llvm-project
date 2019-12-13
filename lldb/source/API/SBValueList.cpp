@@ -10,7 +10,6 @@
 #include "SBReproducerPrivate.h"
 #include "lldb/API/SBStream.h"
 #include "lldb/API/SBValue.h"
-#include "lldb/Core/ValueObjectList.h"
 
 #include <vector>
 
