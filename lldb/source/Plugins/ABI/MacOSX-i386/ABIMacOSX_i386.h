@@ -11,7 +11,6 @@
 
 #include "lldb/Core/Value.h"
 #include "lldb/Target/ABI.h"
-#include "lldb/lldb-private.h"
 
 class ABIMacOSX_i386 : public lldb_private::ABI {
 public:
