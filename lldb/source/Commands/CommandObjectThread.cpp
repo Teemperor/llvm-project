@@ -8,7 +8,6 @@
 
 #include "CommandObjectThread.h"
 
-#include "lldb/Core/SourceManager.h"
 #include "lldb/Core/ValueObject.h"
 #include "lldb/Host/OptionParser.h"
 #include "lldb/Host/StringConvert.h"
