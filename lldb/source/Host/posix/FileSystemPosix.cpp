@@ -23,7 +23,6 @@
 // lldb Includes
 #include "lldb/Host/Host.h"
 #include "lldb/Utility/Status.h"
-#include "lldb/Utility/StreamString.h"
 
 #include "llvm/Support/Errno.h"
 
