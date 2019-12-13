@@ -19,7 +19,6 @@
 #include "llvm/Support/ConvertUTF.h"
 
 #include <ctype.h>
-#include <locale>
 #include <memory>
 
 using namespace lldb;

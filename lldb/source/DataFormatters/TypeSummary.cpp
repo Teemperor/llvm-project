@@ -12,13 +12,11 @@
 
 
 #include "lldb/lldb-enumerations.h"
-#include "lldb/lldb-public.h"
 
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/ValueObject.h"
 #include "lldb/DataFormatters/ValueObjectPrinter.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
-#include "lldb/Symbol/CompilerType.h"
 #include "lldb/Target/StackFrame.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/StreamString.h"
