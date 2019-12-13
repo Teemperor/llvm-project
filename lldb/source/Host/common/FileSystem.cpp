@@ -30,7 +30,6 @@
 #else
 #include <sys/ioctl.h>
 #include <sys/stat.h>
-#include <termios.h>
 #endif
 
 
