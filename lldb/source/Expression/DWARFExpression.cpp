@@ -22,7 +22,6 @@
 #include "lldb/Utility/StreamString.h"
 #include "lldb/Utility/VMRange.h"
 
-#include "lldb/Host/Host.h"
 #include "lldb/Utility/Endian.h"
 
 #include "lldb/Symbol/Function.h"
