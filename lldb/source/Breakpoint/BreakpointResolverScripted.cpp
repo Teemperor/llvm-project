@@ -16,7 +16,6 @@
 #include "lldb/Core/StructuredDataImpl.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/ScriptInterpreter.h"
-#include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
 
 using namespace lldb;
