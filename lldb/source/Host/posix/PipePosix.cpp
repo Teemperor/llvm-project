@@ -19,7 +19,6 @@
 #endif
 #endif
 
-#include <functional>
 #include <thread>
 
 #include <errno.h>
