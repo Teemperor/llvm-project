@@ -33,7 +33,6 @@
 #include "lldb/Target/ThreadPlanStepOut.h"
 #include "lldb/Target/ThreadPlanStepRange.h"
 #include "lldb/Utility/State.h"
-#include "lldb/Utility/Stream.h"
 #include "lldb/Utility/StructuredData.h"
 
 #include "lldb/API/SBAddress.h"
