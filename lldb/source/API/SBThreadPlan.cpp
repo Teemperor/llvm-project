@@ -9,7 +9,6 @@
 #include "SBReproducerPrivate.h"
 #include "lldb/API/SBThread.h"
 
-#include "lldb/API/SBFileSpec.h"
 #include "lldb/API/SBStream.h"
 #include "lldb/API/SBStructuredData.h"
 #include "lldb/Core/StructuredDataImpl.h"
