@@ -11,7 +11,6 @@
 #include "lldb/Utility/UserIDResolver.h"
 
 #include "llvm/ADT/SmallString.h"
-#include "llvm/ADT/Twine.h"
 
 #include <grp.h>
 #include <limits.h>
