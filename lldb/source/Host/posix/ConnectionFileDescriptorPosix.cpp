@@ -35,7 +35,6 @@
 #include <sstream>
 
 #include "llvm/Support/Errno.h"
-#include "llvm/Support/ErrorHandling.h"
 #if defined(__APPLE__)
 #include "llvm/ADT/SmallVector.h"
 #endif
