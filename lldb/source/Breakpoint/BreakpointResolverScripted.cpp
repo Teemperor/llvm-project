@@ -9,17 +9,10 @@
 #include "lldb/Breakpoint/BreakpointResolverScripted.h"
 
 
-#include "lldb/Breakpoint/BreakpointLocation.h"
 #include "lldb/Core/Debugger.h"
-#include "lldb/Core/Module.h"
-#include "lldb/Core/Section.h"
 #include "lldb/Core/StructuredDataImpl.h"
-#include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/ScriptInterpreter.h"
-#include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
-#include "lldb/Utility/Log.h"
-#include "lldb/Utility/StreamString.h"
 
 using namespace lldb;
 using namespace lldb_private;

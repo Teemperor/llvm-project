@@ -9,9 +9,6 @@
 #include "lldb/Breakpoint/WatchpointOptions.h"
 
 #include "lldb/Breakpoint/StoppointCallbackContext.h"
-#include "lldb/Core/Value.h"
-#include "lldb/Target/Process.h"
-#include "lldb/Target/Target.h"
 #include "lldb/Target/ThreadSpec.h"
 #include "lldb/Utility/Stream.h"
 #include "lldb/Utility/StringList.h"

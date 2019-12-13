@@ -8,7 +8,6 @@
 
 #include "lldb/Breakpoint/BreakpointResolverFileLine.h"
 
-#include "lldb/Breakpoint/BreakpointLocation.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/Function.h"
