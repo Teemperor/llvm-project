@@ -12,7 +12,6 @@
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/SharingPtr.h"
 
-#include <utility>
 
 using namespace lldb;
 using namespace lldb_private;
