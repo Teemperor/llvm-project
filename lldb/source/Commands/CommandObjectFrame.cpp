@@ -39,7 +39,6 @@
 #include "lldb/Target/Thread.h"
 #include "lldb/Utility/Args.h"
 #include "lldb/Utility/LLDBAssert.h"
-#include "lldb/Utility/StreamString.h"
 
 #include <memory>
 #include <string>
