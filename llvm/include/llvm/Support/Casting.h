@@ -403,6 +403,17 @@ LLVM_NODISCARD inline auto unique_dyn_cast_or_null(std::unique_ptr<Y> &&Val)
   return unique_dyn_cast_or_null<X, Y>(Val);
 }
 
+struct ClassID {
+  ClassID(const ClassID &) = delete;
+  const ClassID &operator=(const ClassID &) = delete;
+};
+class ClassIDRef {
+  const ClassID &ID;
+public:
+  ClassIDRef(const ClassID &ID) : ID(ID) {}
+  bool operator==(ClassIDRef Other) { return &ID == &Other.ID; }
+};
+
 } // end namespace llvm
 
 #endif // LLVM_SUPPORT_CASTING_H
