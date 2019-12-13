@@ -11,7 +11,6 @@
 #include "lldb/Core/Address.h"
 #include "lldb/Core/AddressRange.h"
 #include "lldb/Core/Debugger.h"
-#include "lldb/Core/FormatEntity.h"
 #include "lldb/Core/Highlighter.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/ModuleList.h"
