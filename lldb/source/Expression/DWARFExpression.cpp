@@ -20,7 +20,6 @@
 #include "lldb/Utility/RegisterValue.h"
 #include "lldb/Utility/Scalar.h"
 #include "lldb/Utility/StreamString.h"
-#include "lldb/Utility/VMRange.h"
 
 #include "lldb/Utility/Endian.h"
 
