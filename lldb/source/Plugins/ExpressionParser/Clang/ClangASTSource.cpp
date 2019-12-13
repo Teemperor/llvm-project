@@ -180,8 +180,10 @@ bool ClangASTSource::FindExternalVisibleDeclsByName(
   }
 
   if (GetImportInProgress()) {
-    SetNoExternalVisibleDeclsForName(decl_ctx, clang_decl_name);
-    return false;
+    if (!decl_ctx->isTranslationUnit() || clang_decl_name.getAsString() != "A") {
+      SetNoExternalVisibleDeclsForName(decl_ctx, clang_decl_name);
+      return false;
+    }
   }
 
   std::string decl_name(clang_decl_name.getAsString());

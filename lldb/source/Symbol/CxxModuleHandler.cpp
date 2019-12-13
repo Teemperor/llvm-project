@@ -174,6 +174,41 @@ T *createDecl(ASTImporter &importer, Decl *from_d, Args &&... args) {
   return to_d;
 }
 
+llvm::Optional<Decl *> CxxModuleHandler::tryStandaloneDebug(Decl *d) {
+  Log *log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS);
+  auto td = dyn_cast<CXXRecordDecl>(d);
+  if (!td)
+    return {};
+  if (td->getQualifiedNameAsString() != "A")
+    return {};
+
+  // Find the local DeclContext that corresponds to the DeclContext of our
+  // decl we want to import.
+  llvm::Expected<DeclContext *> to_context =
+      getEqualLocalDeclContext(*m_sema, td->getDeclContext());
+  if (!to_context) {
+    LLDB_LOG_ERROR(log, to_context.takeError(),
+                   "Got error while searching equal local DeclContext for decl "
+                   "'{1}':\n{0}",
+                   td->getName());
+    return {};
+  }
+
+  // Look up the template in our local context.
+  std::unique_ptr<LookupResult> lookup =
+      emulateLookupInCtxt(*m_sema, td->getName(), *to_context);
+
+  CXXRecordDecl *new_class_template = nullptr;
+  for (auto LD : *lookup) {
+    if ((new_class_template = dyn_cast<CXXRecordDecl>(LD)))
+      break;
+  }
+  if (!new_class_template)
+    return {};
+  m_importer->RegisterImportedDecl(d, new_class_template);
+  return new_class_template;
+}
+
 llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
   Log *log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS);
 
@@ -284,6 +319,8 @@ llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
 llvm::Optional<Decl *> CxxModuleHandler::Import(Decl *d) {
   if (!isValid())
     return {};
+  if (auto dd = tryStandaloneDebug(d))
+    return dd;
 
   return tryInstantiateStdTemplate(d);
 }

@@ -44,6 +44,7 @@ class CxxModuleHandler {
   /// Tries to manually instantiate the given foreign template in the target
   /// context (designated by m_sema).
   llvm::Optional<clang::Decl *> tryInstantiateStdTemplate(clang::Decl *d);
+  llvm::Optional<clang::Decl *> tryStandaloneDebug(clang::Decl *d);
 
 public:
   CxxModuleHandler() = default;
