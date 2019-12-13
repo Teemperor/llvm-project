@@ -27,7 +27,6 @@
 
 #include "llvm/ADT/StringRef.h"
 
-#include <cstring>
 #include <memory>
 
 #include <inttypes.h>
