@@ -8,7 +8,6 @@
 
 #include "lldb/Breakpoint/BreakpointResolverFileRegex.h"
 
-#include "lldb/Breakpoint/BreakpointLocation.h"
 #include "lldb/Core/SourceManager.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Target/Target.h"
