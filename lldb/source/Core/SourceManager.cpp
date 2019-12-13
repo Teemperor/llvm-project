@@ -29,7 +29,6 @@
 #include "lldb/Utility/Stream.h"
 #include "lldb/lldb-enumerations.h"
 
-#include "llvm/ADT/Twine.h"
 
 #include <memory>
 #include <utility>
