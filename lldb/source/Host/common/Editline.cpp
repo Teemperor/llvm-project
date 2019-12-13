@@ -12,7 +12,6 @@
 
 #include "lldb/Host/ConnectionFileDescriptor.h"
 #include "lldb/Host/Editline.h"
-#include "lldb/Host/FileSystem.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Utility/CompletionRequest.h"
 #include "lldb/Utility/LLDBAssert.h"
