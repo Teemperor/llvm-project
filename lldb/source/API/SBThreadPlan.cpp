@@ -29,7 +29,6 @@
 #include "lldb/Target/ThreadPlan.h"
 #include "lldb/Target/ThreadPlanPython.h"
 #include "lldb/Target/ThreadPlanStepInRange.h"
-#include "lldb/Target/ThreadPlanStepInstruction.h"
 #include "lldb/Utility/StructuredData.h"
 
 #include "lldb/API/SBAddress.h"
