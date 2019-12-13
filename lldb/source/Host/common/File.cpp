@@ -29,7 +29,6 @@
 #include "llvm/Support/Process.h"
 
 #include "lldb/Host/Config.h"
-#include "lldb/Host/FileSystem.h"
 #include "lldb/Utility/FileSpec.h"
 
 using namespace lldb;
