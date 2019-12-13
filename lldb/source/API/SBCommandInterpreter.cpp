@@ -24,7 +24,6 @@
 #include "lldb/API/SBProcess.h"
 #include "lldb/API/SBStream.h"
 #include "lldb/API/SBStringList.h"
-#include "lldb/API/SBTarget.h"
 
 #include <memory>
 
