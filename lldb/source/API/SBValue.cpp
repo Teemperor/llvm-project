@@ -24,7 +24,6 @@
 #include "lldb/Core/ValueObject.h"
 #include "lldb/Core/ValueObjectConstResult.h"
 #include "lldb/DataFormatters/DataVisualization.h"
-#include "lldb/Symbol/Block.h"
 #include "lldb/Symbol/Declaration.h"
 #include "lldb/Symbol/Type.h"
 #include "lldb/Target/ExecutionContext.h"
