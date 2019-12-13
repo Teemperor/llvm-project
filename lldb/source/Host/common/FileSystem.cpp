@@ -34,7 +34,6 @@
 #include <unistd.h>
 #endif
 
-#include <algorithm>
 
 using namespace lldb;
 using namespace lldb_private;
