@@ -10,7 +10,6 @@
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Host/posix/HostProcessPosix.h"
 
-#include "llvm/ADT/STLExtras.h"
 
 #include <csignal>
 #include <limits.h>
