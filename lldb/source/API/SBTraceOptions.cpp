@@ -11,7 +11,6 @@
 #include "lldb/API/SBError.h"
 #include "lldb/API/SBStructuredData.h"
 #include "lldb/Core/StructuredDataImpl.h"
-#include "lldb/Utility/Log.h"
 #include "lldb/Utility/TraceOptions.h"
 
 #include <memory>
