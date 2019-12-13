@@ -9,7 +9,6 @@
 #include "lldb/Host/FileSystem.h"
 
 // C includes
-#include <dirent.h>
 #include <fcntl.h>
 #include <unistd.h>
 #if defined(__NetBSD__)
