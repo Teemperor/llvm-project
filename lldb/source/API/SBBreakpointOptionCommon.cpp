@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "lldb/API/SBBreakpointName.h"
 #include "lldb/API/SBBreakpointLocation.h"
 #include "lldb/API/SBProcess.h"
 #include "lldb/API/SBThread.h"
