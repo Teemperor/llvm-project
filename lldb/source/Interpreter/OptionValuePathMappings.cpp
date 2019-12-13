@@ -11,7 +11,6 @@
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Host/StringConvert.h"
 #include "lldb/Utility/Args.h"
-#include "lldb/Utility/FileSpec.h"
 #include "lldb/Utility/Stream.h"
 
 using namespace lldb;
