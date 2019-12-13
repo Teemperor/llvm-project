@@ -32,7 +32,6 @@
 
 #include "clang/Driver/Driver.h"
 #include "llvm/ADT/StringRef.h"
-#include "llvm/Support/FileSystem.h"
 #include "llvm/Support/Threading.h"
 #include "llvm/Support/raw_ostream.h"
 
