@@ -18,7 +18,6 @@
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/Stream.h"
 
-#include "llvm/ADT/APSInt.h"
 
 #include <memory>
 
