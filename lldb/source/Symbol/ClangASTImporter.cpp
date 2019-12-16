@@ -518,6 +518,8 @@ bool ClangASTImporter::CompleteType(const CompilerType &compiler_type) {
   return false;
 }
 
+static llvm::SmallPtrSet<const clang::RecordDecl *, 16> already_laid_out;
+
 bool ClangASTImporter::LayoutRecordType(
     const clang::RecordDecl *record_decl, uint64_t &bit_size,
     uint64_t &alignment,
@@ -539,10 +541,13 @@ bool ClangASTImporter::LayoutRecordType(
     vbase_offsets.swap(pos->second.vbase_offsets);
     m_record_decl_to_layout_map.erase(pos);
     success = true;
+    already_laid_out.insert(record_decl);
   } else {
     bit_size = 0;
     alignment = 0;
     field_offsets.clear();
+    if (already_laid_out.count(record_decl) == 1)
+      abort();
   }
   return success;
 }
