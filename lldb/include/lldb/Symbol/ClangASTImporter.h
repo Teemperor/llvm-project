@@ -58,7 +58,7 @@ public:
   clang::Decl *DeportDecl(clang::ASTContext *dst_ctx,
                           clang::ASTContext *src_ctx, clang::Decl *decl);
 
-  void InsertRecordDecl(clang::RecordDecl *decl, const LayoutInfo &layout);
+  void SetRecordLayout(clang::RecordDecl *decl, const LayoutInfo &layout);
 
   bool LayoutRecordType(
       const clang::RecordDecl *record_decl, uint64_t &bit_size,
