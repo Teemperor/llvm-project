@@ -283,6 +283,9 @@ public:
                                 CompilerDeclContext &namespace_decl,
                                 unsigned int current_id);
 
+protected:
+  virtual clang::NamedDecl *GetPersistentDecl(ConstString name);
+
 private:
   ExpressionVariableList
       m_found_entities; ///< All entities that were looked up for the parser.
