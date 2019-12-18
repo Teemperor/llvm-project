@@ -6,6 +6,10 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <algorithm>
+#include <iostream>
+#include <numeric>
+#include <iomanip>
 #include "lldb/Utility/ConstString.h"
 
 #include "lldb/Utility/Stream.h"
@@ -14,6 +18,7 @@
 #include "llvm/ADT/iterator.h"
 #include "llvm/Support/Allocator.h"
 #include "llvm/Support/DJB.h"
+#include "llvm/ADT/Hashing.h"
 #include "llvm/Support/FormatProviders.h"
 #include "llvm/Support/RWMutex.h"
 #include "llvm/Support/Threading.h"
@@ -143,8 +148,24 @@ public:
     return mem_size;
   }
 
+  void PrintStats() {
+    std::array<long double, 256> counts;
+    for (size_t i = 0; i < 256; ++i)
+      counts[i] = m_string_pools[i].m_string_map.size();
+    const long double max = *std::max_element(counts.begin(), counts.end());
+    const long double sum = std::accumulate(counts.begin(), counts.end(), 0);
+    const long double mean = sum / (long double)counts.size();
+    const long double sq_sum = std::inner_product(counts.begin(), counts.end(), counts.begin(), 0.0l);
+    const long double stdev = std::sqrt(sq_sum / counts.size() - mean * mean);
+    //for (long double count : counts)
+    //  std::cerr << std::setw(4) << std::setprecision(3) << (mean - count)/mean*100.0l << "\n";
+    std::cerr << "STDDEV: " << stdev << "\n";
+  }
+
 protected:
-  uint8_t hash(const llvm::StringRef &s) const {
+  uint8_t hash(llvm::StringRef s) const {
+    //size_t h = llvm::hash_value(s);
+    //return h & 0xff;
     uint32_t h = llvm::djbHash(s);
     return ((h >> 24) ^ (h >> 16) ^ (h >> 8) ^ h) & 0xff;
   }
@@ -302,6 +323,10 @@ void ConstString::SetTrimmedCStringWithLength(const char *cstr,
 size_t ConstString::StaticMemorySize() {
   // Get the size of the static string pool
   return StringPool().MemorySize();
+}
+
+void ConstString::PrintBench() {
+  StringPool().PrintStats();
 }
 
 void llvm::format_provider<ConstString>::format(const ConstString &CS,

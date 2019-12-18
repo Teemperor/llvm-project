@@ -6,8 +6,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include <random>
+#include <iostream>
 #include "lldb/Utility/ConstString.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/DJB.h"
+#include "llvm/ADT/Hashing.h"
 #include "gtest/gtest.h"
 
 using namespace lldb_private;
@@ -136,4 +140,29 @@ TEST(ConstStringTest, CompareStringRef) {
   EXPECT_TRUE(null != "");
   EXPECT_TRUE(null == static_cast<const char *>(nullptr));
   EXPECT_TRUE(null != "bar");
+}
+
+static std::mt19937 rng(1234);
+
+std::string random_string( size_t length )
+{
+    auto randchar = []() -> char
+    {
+        const char charset[] =
+        "0123456789"
+        "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+        "abcdefghijklmnopqrstuvwxyz";
+        const size_t max_index = (sizeof(charset) - 1);
+        std::uniform_int_distribution<std::mt19937::result_type> dist(0,max_index);
+        return charset[ dist(rng) ];
+    };
+    std::string str(length,0);
+    std::generate_n( str.begin(), length, randchar );
+    return str;
+}
+
+TEST(ConstStringTest, HashQuality) {
+  for (size_t i = 0; i < 50000000; ++i)
+    ConstString(random_string((i + 4) % 80));
+  ConstString::PrintBench();
 }

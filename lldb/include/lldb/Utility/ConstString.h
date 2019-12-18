@@ -16,10 +16,10 @@
 #include <stddef.h>
 
 namespace lldb_private {
-class Stream;
+  class Stream;
 }
 namespace llvm {
-class raw_ostream;
+  class raw_ostream;
 }
 
 namespace lldb_private {
@@ -434,8 +434,9 @@ public:
   ///
   /// \return
   ///     The number of bytes that the global string pool occupies
-  ///     in memory.
   static size_t StaticMemorySize();
+
+  static void PrintBench();
 
 protected:
   template <typename T> friend struct ::llvm::DenseMapInfo;
