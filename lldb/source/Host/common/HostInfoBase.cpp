@@ -37,29 +37,43 @@ namespace {
 // each one should be static, but the work around is in place to avoid this
 // restriction. Ick.
 
+template<typename T>
+class LazyField {
+  llvm::once_flag once_flag;
+  T value;
+public:
+  const T &get(llvm::function_ref<T()> initialize) {
+    llvm::call_once(once_flag, [this, &initialize]() {
+      value = initialize;
+    });
+    return value;
+  }
+};
+
 struct HostInfoBaseFields {
   ~HostInfoBaseFields() {
-    if (FileSystem::Instance().Exists(m_lldb_process_tmp_dir)) {
+    FileSpec tmp_dir = HostInfoBase::GetProcessTempDir();
+    if (FileSystem::Instance().Exists(tmp_dir)) {
       // Remove the LLDB temporary directory if we have one. Set "recurse" to
       // true to all files that were created for the LLDB process can be
       // cleaned up.
-      llvm::sys::fs::remove_directories(m_lldb_process_tmp_dir.GetPath());
+      llvm::sys::fs::remove_directories(tmp_dir.GetPath());
     }
   }
 
-  std::string m_host_triple;
+  LazyField<std::string> m_host_triple;
 
-  ArchSpec m_host_arch_32;
-  ArchSpec m_host_arch_64;
+  LazyField<ArchSpec> m_host_arch_32;
+  LazyField<ArchSpec> m_host_arch_64;
 
-  FileSpec m_lldb_so_dir;
-  FileSpec m_lldb_support_exe_dir;
-  FileSpec m_lldb_headers_dir;
-  FileSpec m_lldb_clang_resource_dir;
-  FileSpec m_lldb_system_plugin_dir;
-  FileSpec m_lldb_user_plugin_dir;
-  FileSpec m_lldb_process_tmp_dir;
-  FileSpec m_lldb_global_tmp_dir;
+  LazyField<FileSpec> m_lldb_so_dir;
+  LazyField<FileSpec> m_lldb_support_exe_dir;
+  LazyField<FileSpec> m_lldb_headers_dir;
+  LazyField<FileSpec> m_lldb_clang_resource_dir;
+  LazyField<FileSpec> m_lldb_system_plugin_dir;
+  LazyField<FileSpec> m_lldb_user_plugin_dir;
+  LazyField<FileSpec> m_lldb_process_tmp_dir;
+  LazyField<FileSpec> m_lldb_global_tmp_dir;
 };
 
 HostInfoBaseFields *g_fields = nullptr;
