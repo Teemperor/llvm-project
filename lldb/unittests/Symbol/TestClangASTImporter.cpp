@@ -6,6 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
+#include "TestingSupport/SubsystemRAII.h"
 #include "gtest/gtest.h"
 
 #include "lldb/Host/FileSystem.h"
@@ -22,16 +23,7 @@ using namespace lldb;
 using namespace lldb_private;
 
 class TestClangASTImporter : public testing::Test {
-public:
-  static void SetUpTestCase() {
-    FileSystem::Initialize();
-    HostInfo::Initialize();
-  }
-
-  static void TearDownTestCase() {
-    HostInfo::Terminate();
-    FileSystem::Terminate();
-  }
+  SubsystemRAII<FileSystem, HostInfo> Subsystems;
 
 protected:
   std::unique_ptr<ClangASTContext> createAST() {
