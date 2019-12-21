@@ -179,7 +179,7 @@ TypeFromUser ClangExpressionDeclMap::DeportType(ClangASTContext &target,
                                                 TypeFromParser parser_type) {
   assert(&target == ClangASTContext::GetScratch(*m_target));
   assert((TypeSystem *)&source == parser_type.GetTypeSystem());
-  assert(source.getASTContext() == m_ast_context);
+  assert(&source.getASTContext() == m_ast_context);
 
   if (m_ast_importer_sp) {
     return TypeFromUser(m_ast_importer_sp->DeportType(target, parser_type));
@@ -741,16 +741,7 @@ clang::NamedDecl *ClangExpressionDeclMap::GetPersistentDecl(ConstString name) {
   if (!target)
     return nullptr;
 
-  ClangASTContext *scratch_clang_ast_context =
-      ClangASTContext::GetScratch(*target);
-
-  if (!scratch_clang_ast_context)
-    return nullptr;
-
-  ASTContext *scratch_ast_context = scratch_clang_ast_context->getASTContext();
-
-  if (!scratch_ast_context)
-    return nullptr;
+  ClangASTContext::GetScratch(*target);
 
   return m_parser_vars->m_persistent_vars->GetPersistentDecl(name);
 }
@@ -1528,14 +1519,7 @@ bool ClangExpressionDeclMap::GetVariableValue(VariableSP &var,
     return false;
   }
 
-  ASTContext *ast = clang_ast->getASTContext();
-
-  if (!ast) {
-    if (log)
-      log->PutCString(
-          "There is no AST context for the current execution context");
-    return false;
-  }
+  ASTContext &ast = clang_ast->getASTContext();
 
   DWARFExpression &var_location_expr = var->LocationExpression();
 
