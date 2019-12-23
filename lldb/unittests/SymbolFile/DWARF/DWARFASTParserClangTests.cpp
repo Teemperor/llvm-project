@@ -34,23 +34,28 @@ public:
 };
 } // namespace
 
-// If your implementation needs to dereference the dummy pointers we are
-// defining here, causing this test to fail, feel free to delete it.
 TEST_F(DWARFASTParserClangTests,
        EnsureAllDIEsInDeclContextHaveBeenParsedParsesOnlyMatchingEntries) {
   ClangASTContext ast_ctx;
   DWARFASTParserClangStub ast_parser(ast_ctx);
 
-  DWARFUnit *unit = nullptr;
-  std::vector<DWARFDIE> dies = {DWARFDIE(unit, (DWARFDebugInfoEntry *)1LL),
-                                DWARFDIE(unit, (DWARFDebugInfoEntry *)2LL),
-                                DWARFDIE(unit, (DWARFDebugInfoEntry *)3LL),
-                                DWARFDIE(unit, (DWARFDebugInfoEntry *)4LL)};
+  clang::TranslationUnitDecl *TU = ast_ctx.GetTranslationUnitDecl();
+  // Create several unique valid DeclContexts.
   std::vector<clang::DeclContext *> decl_ctxs = {
-      (clang::DeclContext *)1LL, (clang::DeclContext *)2LL,
-      (clang::DeclContext *)2LL, (clang::DeclContext *)3LL};
-  for (int i = 0; i < 4; ++i)
-    ast_parser.LinkDeclContextToDIE(decl_ctxs[i], dies[i]);
+    ast_ctx.GetUniqueNamespaceDeclaration("a", TU),
+    ast_ctx.GetUniqueNamespaceDeclaration("b", TU),
+    ast_ctx.GetUniqueNamespaceDeclaration("c", TU),
+    ast_ctx.GetUniqueNamespaceDeclaration("d", TU)
+  };
+
+  DWARFUnit *unit = nullptr;
+  std::vector<DWARFDIE> dies;
+  for (clang::DeclContext *d : decl_ctxs)
+    dies.emplace_back(unit, (DWARFDebugInfoEntry *)d);
+
+  for (size_t i = 0; i < dies.size(); ++i)
+    ast_parser.LinkDeclContextToDIE(decl_ctxs.at(i), dies.at(i));
+
   ast_parser.EnsureAllDIEsInDeclContextHaveBeenParsed(
       ast_ctx.CreateDeclContext(decl_ctxs[1]));
 
