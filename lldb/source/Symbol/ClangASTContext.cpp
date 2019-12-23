@@ -1206,6 +1206,7 @@ CompilerType ClangASTContext::GetTypeForDecl(void *opaque_decl) {
 }
 
 CompilerDeclContext ClangASTContext::CreateDeclContext(DeclContext *ctx) {
+  assert(&ctx->getParentASTContext() == &getASTContext());
   return CompilerDeclContext(this, ctx);
 }
 
