@@ -327,8 +327,13 @@ size_t SBThread::GetStopDescription(char *dst, size_t dst_len) {
       if (stop_info_sp) {
         const char *stop_desc = stop_info_sp->GetDescription();
         if (stop_desc) {
-          if (dst)
-            return ::snprintf(dst, dst_len, "%s", stop_desc);
+          if (dst) {
+            ::snprintf(dst, dst_len, "%s", stop_desc);
+            // The string we return is either as long as buffer length minus null
+            // terminator or the number of characters in the description (depending
+            // which of these two is shorter).
+            return std::min(dst_len - 1, strlen(stop_desc));
+          }
           else {
             // NULL dst passed in, return the length needed to contain the
             // description
