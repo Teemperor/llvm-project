@@ -37,7 +37,7 @@ public:
   ///
   /// \return
   ///     A const string object containing the host target triple.
-  static llvm::StringRef GetTargetTriple();
+  static llvm::Triple GetTargetTriple();
 
   enum ArchitectureKind {
     eArchKindDefault, // The overall default architecture that applications will
