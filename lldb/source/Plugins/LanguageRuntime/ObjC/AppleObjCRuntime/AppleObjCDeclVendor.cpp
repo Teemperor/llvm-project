@@ -143,7 +143,7 @@ private:
 
 AppleObjCDeclVendor::AppleObjCDeclVendor(ObjCLanguageRuntime &runtime)
     : ClangDeclVendor(eAppleObjCDeclVendor), m_runtime(runtime),
-      m_ast_ctx(runtime.GetProcess()
+      m_ast_ctx("AppleObjCDeclVendor AST", runtime.GetProcess()
                     ->GetTarget()
                     .GetArchitecture()
                     .GetTriple()),

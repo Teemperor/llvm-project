@@ -605,7 +605,7 @@ ClangExpressionParser::ClangExpressionParser(
   m_compiler->createASTContext();
   clang::ASTContext &ast_context = m_compiler->getASTContext();
 
-  m_ast_context.reset(new ClangASTContext(ast_context));
+  m_ast_context.reset(new ClangASTContext("Expression AST for '" + m_filename + "'", ast_context));
 
   std::string module_name("$__lldb_module");
 

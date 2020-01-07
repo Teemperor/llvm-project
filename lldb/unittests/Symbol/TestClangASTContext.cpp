@@ -26,7 +26,7 @@ public:
   SubsystemRAII<FileSystem, HostInfo> subsystems;
 
   void SetUp() override {
-    m_ast.reset(new ClangASTContext(HostInfo::GetTargetTriple()));
+    m_ast.reset(new ClangASTContext("test AST", HostInfo::GetTargetTriple()));
   }
 
   void TearDown() override { m_ast.reset(); }

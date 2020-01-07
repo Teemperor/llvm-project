@@ -160,7 +160,7 @@ ClangModulesDeclVendorImpl::ClangModulesDeclVendorImpl(
       m_parser(std::move(parser)) {
 
   // Initialize our ClangASTContext.
-  m_ast_context.reset(new ClangASTContext(m_compiler_instance->getASTContext()));
+  m_ast_context.reset(new ClangASTContext("ClangModulesDeclVendor AST", m_compiler_instance->getASTContext()));
 }
 
 void ClangModulesDeclVendorImpl::ReportModuleExportsHelper(

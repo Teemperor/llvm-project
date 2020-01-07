@@ -55,15 +55,17 @@ public:
   bool isA(const void *ClassID) const override { return ClassID == &ID; }
   static bool classof(const TypeSystem *ts) { return ts->isA(&ID); }
 
-  // Constructors and Destructors
-  explicit ClangASTContext(llvm::Triple triple = llvm::Triple());
-  explicit ClangASTContext(ArchSpec arch);
+  /// Creates a ClangASTContext with the given name and triple.
+  /// \param name The name for the ClangASTContext (for logging purposes)
+  /// \param triple The target triple for this ASTContext or an empty Triple.
+  explicit ClangASTContext(llvm::StringRef name, llvm::Triple triple = llvm::Triple());
 
   /// Constructs a ClangASTContext that uses an existing ASTContext internally.
   /// Useful when having an existing ASTContext created by Clang.
   ///
+  /// \param name The name for the ClangASTContext (for logging purposes)
   /// \param existing_ctxt An existing ASTContext.
-  explicit ClangASTContext(clang::ASTContext &existing_ctxt);
+  explicit ClangASTContext(llvm::StringRef name, clang::ASTContext &existing_ctxt);
 
   ~ClangASTContext() override;
 
@@ -99,6 +101,10 @@ public:
     }
     return llvm::dyn_cast<ClangASTContext>(&type_system_or_err.get());
   }
+
+  /// Returns the display name of this ClangASTContext that indicates what
+  /// purpose it serves in LLDB. Used for example in logs.
+  const std::string &getDisplayName() const { return m_display_name; }
 
   clang::ASTContext &getASTContext();
 
@@ -945,6 +951,10 @@ private:
   std::unique_ptr<clang::MangleContext> m_mangle_ctx_up;
   uint32_t m_pointer_byte_size = 0;
   bool m_ast_owned = false;
+  /// A string describing what this ClangASTContext represents (e.g.,
+  /// AST for debug information, an expression, some other utility ClangAST).
+  /// Useful for logging and debugging.
+  std::string m_display_name;
 
   typedef llvm::DenseMap<const clang::Decl *, ClangASTMetadata> DeclMetadataMap;
   /// Maps Decls to their associated ClangASTMetadata.
@@ -969,7 +979,7 @@ private:
 
 class ClangASTContextForExpressions : public ClangASTContext {
 public:
-  ClangASTContextForExpressions(Target &target, ArchSpec arch);
+  ClangASTContextForExpressions(Target &target, llvm::Triple triple);
 
   ~ClangASTContextForExpressions() override = default;
 
