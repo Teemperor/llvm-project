@@ -214,8 +214,13 @@ namespace {
 /// imported while completing the original Decls).
 class CompleteTagDeclsScope : public ClangASTImporter::NewDeclListener {
   ClangASTImporter::ImporterDelegateSP m_delegate;
-  llvm::SmallPtrSet<NamedDecl *, 32> m_decls_to_complete;
-  llvm::SmallPtrSet<NamedDecl *, 32> m_decls_already_completed;
+  struct DeclToCompletePair {
+    clang::Decl *m_from;
+    clang::NamedDecl *m_to;
+  };
+
+  llvm::SmallVector<DeclToCompletePair, 32> m_decls_to_complete;
+  llvm::SmallPtrSet<clang::NamedDecl *, 32> m_decls_already_completed;
   clang::ASTContext *m_dst_ctx;
   clang::ASTContext *m_src_ctx;
   ClangASTImporter &importer;
@@ -239,20 +244,14 @@ public:
 
     // Complete all decls we collected until now.
     while (!m_decls_to_complete.empty()) {
-      NamedDecl *decl = *m_decls_to_complete.begin();
+      DeclToCompletePair pair = m_decls_to_complete.pop_back_val();
 
-      m_decls_already_completed.insert(decl);
-      m_decls_to_complete.erase(decl);
-
-      // We should only complete decls coming from the source context.
-      assert(to_context_md->m_origins[decl].ctx == m_src_ctx);
-
-      Decl *original_decl = to_context_md->m_origins[decl].decl;
+      Decl *decl = pair.m_from;
 
       // Complete the decl now.
-      ClangASTContext::GetCompleteDecl(m_src_ctx, original_decl);
+      ClangASTContext::GetCompleteDecl(m_src_ctx, decl);
       if (auto *tag_decl = dyn_cast<TagDecl>(decl)) {
-        if (auto *original_tag_decl = dyn_cast<TagDecl>(original_decl)) {
+        if (auto *original_tag_decl = dyn_cast<TagDecl>(decl)) {
           if (original_tag_decl->isCompleteDefinition()) {
             m_delegate->ImportDefinitionTo(tag_decl, original_tag_decl);
             tag_decl->setCompleteDefinition(true);
@@ -287,7 +286,8 @@ public:
     // Check if we already completed this type.
     if (m_decls_already_completed.count(to_named_decl) != 0)
       return;
-    m_decls_to_complete.insert(to_named_decl);
+    m_decls_already_completed.insert(to_named_decl);
+    m_decls_to_complete.push_back({from, to_named_decl});
   }
 };
 } // namespace
