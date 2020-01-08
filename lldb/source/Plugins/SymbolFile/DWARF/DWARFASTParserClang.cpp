@@ -255,6 +255,22 @@ TypeSP DWARFASTParserClang::ParseTypeFromClangModule(const SymbolContext &sc,
   return type_sp;
 }
 
+clang::SourceLocation DWARFASTParserClang::getLocForDecl(const Declaration &decl) {
+  if (!decl.IsValid())
+    return clang::SourceLocation();
+
+  clang::SourceManager &sm = m_ast.getASTContext().getSourceManager();
+
+  std::string path = decl.GetFile().GetPath();
+  std::string fake_contents = "<contents of '" + path + "'>";
+
+  std::unique_ptr<llvm::MemoryBuffer> memory_buffer =
+      llvm::MemoryBuffer::getMemBufferCopy(fake_contents, path + "f");
+  clang::FileID id = sm.createFileID(std::move(memory_buffer));
+
+  return sm.getLocForStartOfFile(id);
+}
+
 static void CompleteExternalTagDeclType(ClangASTContext &ast,
                                         ClangASTImporter &ast_importer,
                                         clang::DeclContext *decl_ctx,
@@ -1204,6 +1220,7 @@ TypeSP DWARFASTParserClang::ParseSubroutine(const DWARFDIE &die,
                                       : containing_decl_ctx,
             attrs.name.GetCString(), clang_type, attrs.storage,
             attrs.is_inline);
+        function_decl->setLocation(getLocForDecl(attrs.decl));
 
         if (has_template_params) {
           ClangASTContext::TemplateParameterInfos template_param_infos;
@@ -1213,10 +1230,13 @@ TypeSP DWARFASTParserClang::ParseSubroutine(const DWARFDIE &die,
                                         : containing_decl_ctx,
               attrs.name.GetCString(), clang_type, attrs.storage,
               attrs.is_inline);
+          template_function_decl->setLocation(getLocForDecl(attrs.decl));
+
           clang::FunctionTemplateDecl *func_template_decl =
               m_ast.CreateFunctionTemplateDecl(
                   containing_decl_ctx, template_function_decl,
                   attrs.name.GetCString(), template_param_infos);
+          func_template_decl->setLocation(getLocForDecl(attrs.decl));
           m_ast.CreateFunctionTemplateSpecializationInfo(
               function_decl, func_template_decl, template_param_infos);
         }
@@ -1633,6 +1653,7 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
             m_ast.CreateClassTemplateSpecializationDecl(
                 decl_ctx, class_template_decl, tag_decl_kind,
                 template_param_infos);
+        class_specialization_decl->setLocation(getLocForDecl(attrs.decl));
         clang_type = m_ast.CreateClassTemplateSpecializationType(
             class_specialization_decl);
         clang_type_was_created = true;

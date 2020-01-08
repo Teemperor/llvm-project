@@ -200,6 +200,8 @@ private:
     }
   };
 
+  clang::SourceLocation getLocForDecl(const lldb_private::Declaration &decl);
+
   void
   ParseSingleMember(const DWARFDIE &die, const DWARFDIE &parent_die,
                     lldb_private::CompilerType &class_clang_type,
