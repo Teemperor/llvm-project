@@ -15,6 +15,9 @@
 #include "lldb/Symbol/Declaration.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/Basic/SourceManager.h"
+#include "clang/Basic/FileManager.h"
+#include "llvm/Support/SmallVectorMemoryBuffer.h"
 #include "gtest/gtest.h"
 
 using namespace clang;
@@ -42,6 +45,30 @@ protected:
   QualType GetBasicQualType(const char *name) const {
     return ClangUtil::GetQualType(
         m_ast->GetBuiltinTypeByName(ConstString(name)));
+  }
+
+  /// Creates a virtual file in the SourceManager of the current AST. The \b
+  /// path and \b contents parameters specify the path and content of the
+  /// virtual file.
+  void makeVirtualFile(llvm::StringRef path, llvm::StringRef contents) {
+    clang::SourceManager &sm = m_ast->getASTContext().getSourceManager();
+    FileManager &fm = sm.getFileManager();
+    const clang::FileEntry &fe =
+        *fm.getVirtualFile(path, static_cast<off_t>(contents.size()), 0);
+
+    llvm::SmallVector<char, 64> buffer;
+    buffer.append(contents.begin(), contents.end());
+    buffer.push_back('\0');
+    auto file_contents = std::make_unique<llvm::SmallVectorMemoryBuffer>(
+        std::move(buffer), path);
+    sm.overrideFileContents(&fe, std::move(file_contents));
+  }
+
+  /// Returns the textual representation of the given Declaration's source
+  /// location.
+  std::string GetLocAsStr(const lldb_private::Declaration &decl) {
+    clang::SourceLocation loc = m_ast->getLocForDecl(decl);
+    return loc.printToString(m_ast->getASTContext().getSourceManager());
   }
 };
 
@@ -655,4 +682,102 @@ TEST_F(TestTypeSystemClang, TestNotDeletingUserCopyCstrDueToMoveCStr) {
   m_ast->CompleteTagDeclarationDefinition(t);
   auto *record = llvm::cast<CXXRecordDecl>(ClangUtil::GetAsTagDecl(t));
   EXPECT_TRUE(record->hasUserDeclaredCopyConstructor());
+}
+
+/// Small utility function to create a Declaration with a given line without
+/// having to write down the other parameters that don't matter for most tests.
+static lldb_private::Declaration DeclWithLine(uint32_t line) {
+  return Declaration(FileSpec("main.cpp"), line, 0);
+}
+static lldb_private::Declaration DeclWithLineCol(uint32_t line, uint32_t col) {
+  return Declaration(FileSpec("main.cpp"), line, col);
+}
+
+static const char *invalid_loc = "<invalid loc>";
+
+TEST_F(TestTypeSystemClang, TestGetLocForDecl_InvalidDeclaration) {
+  // Invalid Declaration should produce an invalid location.
+  lldb_private::Declaration decl;
+  EXPECT_EQ(invalid_loc, GetLocAsStr(decl));
+}
+
+TEST_F(TestTypeSystemClang, TestGetLocForDecl_InvalidPath) {
+  // Invalid path in a declaration file should produce an invalid location.
+  lldb_private::Declaration decl(FileSpec("this/path/does/not.exist"), 1);
+  EXPECT_EQ(invalid_loc, GetLocAsStr(decl));
+}
+
+TEST_F(TestTypeSystemClang, TestGetLocForDecl_FirstLine) {
+  // Line of declaration is the first line of the file.
+  makeVirtualFile("main.cpp", "int main(){}\n");
+  EXPECT_EQ("main.cpp:1:1", GetLocAsStr(DeclWithLine(1)));
+}
+
+TEST_F(TestTypeSystemClang, TestGetLocForDecl_SecondLine) {
+  // Line of declaration is the second line of the file.
+  makeVirtualFile("main.cpp", "int main(){\n}\n");
+  EXPECT_EQ("main.cpp:2:1", GetLocAsStr(DeclWithLine(2)));
+}
+
+TEST_F(TestTypeSystemClang, TestGetLocForDecl_FirstLineEmptyFile) {
+  // Line of declaration is the first empty line of the file.
+  makeVirtualFile("main.cpp", "\n");
+  EXPECT_EQ("main.cpp:1:1", GetLocAsStr(DeclWithLine(1)));
+}
+
+TEST_F(TestTypeSystemClang, TestGetLocForDecl_SecondLineEmptyFile) {
+  // Line of declaration is the second empty line of the file.
+  makeVirtualFile("main.cpp", "\n\n");
+  EXPECT_EQ("main.cpp:2:1", GetLocAsStr(DeclWithLine(2)));
+}
+
+TEST_F(TestTypeSystemClang, TestGetLocForDecl_TruncatedFile) {
+  // Line is larger than the lines in the source file. Simulates a source file
+  // that has been truncated since the debug info has been generated.
+  makeVirtualFile("main.cpp", "int main(){}\n");
+  EXPECT_EQ(invalid_loc, GetLocAsStr(DeclWithLine(2)));
+  EXPECT_EQ(invalid_loc, GetLocAsStr(DeclWithLine(3)));
+  EXPECT_EQ(invalid_loc, GetLocAsStr(DeclWithLine(1024)));
+}
+
+TEST_F(TestTypeSystemClang, TestGetLocForDecl_FirstLineAndFirstColumn) {
+  // Line of declaration is the first line/col of the file.
+  makeVirtualFile("main.cpp", "int main(){}\n");
+  EXPECT_EQ("main.cpp:1:1", GetLocAsStr(DeclWithLineCol(1, 1)));
+}
+
+TEST_F(TestTypeSystemClang, TestGetLocForDecl_SecondLineFirstColumn) {
+  // Line of declaration is the second line of the file.
+  makeVirtualFile("main.cpp", "int main(){\n}\n");
+  EXPECT_EQ("main.cpp:2:1", GetLocAsStr(DeclWithLineCol(2, 1)));
+}
+
+TEST_F(TestTypeSystemClang, TestGetLocForDecl_FirstLineAndSecondColumn) {
+  // Line of declaration is the first line/col of the file.
+  makeVirtualFile("main.cpp", "int main(){}\n");
+  EXPECT_EQ("main.cpp:1:1", GetLocAsStr(DeclWithLineCol(1, 1)));
+}
+
+TEST_F(TestTypeSystemClang, TestGetLocForDecl_SecondLineSecondColumn) {
+  // Line of declaration is the second line of the file.
+  makeVirtualFile("main.cpp", "int main(){\n}dd ;\n");
+  //FIXME: No colum infirmation in decls....
+  EXPECT_EQ("main.cpp:2:1", GetLocAsStr(DeclWithLineCol(2, 2)));
+}
+
+TEST_F(TestTypeSystemClang, TestGetLocForDecl_ColumnTooLarge) {
+  // Line of declaration is the second line of the file.
+  makeVirtualFile("main.cpp", "int main(){\n");
+  EXPECT_EQ(invalid_loc, GetLocAsStr(DeclWithLineCol(2, 10)));
+}
+
+TEST_F(TestTypeSystemClang, TestMultipleLocs) {
+  makeVirtualFile("some_header.h", "int foo();\n\n");
+  makeVirtualFile("main.cpp", "int main(){\n\n");
+  Declaration header_decl(FileSpec("some_header.h"), 1, 1);
+  Declaration main_decl(FileSpec("main.cpp"), 2, 1);
+  SourceLocation header_loc = m_ast->getLocForDecl(header_decl);
+  SourceLocation main_loc = m_ast->getLocForDecl(main_decl);
+  m_ast->getASTContext().getSourceManager().isBeforeInTranslationUnit(header_loc, main_loc);
+  m_ast->getASTContext().getSourceManager().isBeforeInTranslationUnit(main_loc, header_loc);
 }

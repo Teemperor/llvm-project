@@ -70,23 +70,13 @@ class ExprDiagnosticsTestCase(TestBase):
         self.assertFalse(value.GetError().Success())
         self.assertIn("<user expression 5>:1:8: previous definition is here\nstruct SFoo{}; struct SFoo { int x; };\n       ^\n", value.GetError().GetCString())
 
-        # Declarations from the debug information currently have no debug information. It's not clear what
-        # we should do in this case, but we should at least not print anything that's wrong.
-        # In the future our declarations should have valid source locations.
-        value = frame.EvaluateExpression("struct FooBar { double x };", top_level_opts)
-        self.assertFalse(value.GetError().Success())
-        self.assertEqual("error: <user expression 6>:1:8: redefinition of 'FooBar'\nstruct FooBar { double x };\n       ^\n", value.GetError().GetCString())
-
-        value = frame.EvaluateExpression("foo(1, 2)")
-        self.assertFalse(value.GetError().Success())
-        self.assertEqual("error: <user expression 7>:1:1: no matching function for call to 'foo'\nfoo(1, 2)\n^~~\nnote: candidate function not viable: requires single argument 'x', but 2 arguments were provided\n\n", value.GetError().GetCString())
-
         # Redefine something that we defined in a user-expression. We should use the previous expression file name
         # for the original decl.
         value = frame.EvaluateExpression("struct Redef { double x; };", top_level_opts)
         value = frame.EvaluateExpression("struct Redef { float y; };", top_level_opts)
         self.assertFalse(value.GetError().Success())
-        self.assertIn("error: <user expression 9>:1:8: redefinition of 'Redef'\nstruct Redef { float y; };\n       ^\n<user expression 8>:1:8: previous definition is here\nstruct Redef { double x; };\n       ^", value.GetError().GetCString())
+        self.assertIn("error: <user expression 7>:1:8: redefinition of 'Redef'\nstruct Redef { float y; };\n       ^\n", value.GetError().GetCString())
+        self.assertIn("<user expression 6>:1:8: previous definition is here\nstruct Redef { double x; };\n       ^", value.GetError().GetCString())
 
     @skipUnlessDarwin
     def test_source_locations_from_objc_modules(self):
@@ -109,4 +99,33 @@ class ExprDiagnosticsTestCase(TestBase):
         # The NSLog definition source line should be printed. Return value and
         # the first argument are probably stable enough that this test can check for them.
         self.assertIn("void NSLog(NSString *format", value.GetError().GetCString())
+
+    def test_source_locations_from_debug_information(self):
+        """Test that the source locations from debug information are correct"""
+        self.build()
+
+        (target, process, thread, bkpt) = lldbutil.run_to_source_breakpoint(self,
+                                          '// Break here', self.main_source_spec)
+        frame = thread.GetFrameAtIndex(0)
+        top_level_opts = lldb.SBExpressionOptions();
+        top_level_opts.SetTopLevel(True)
+
+        # Source locations of records.
+        value = frame.EvaluateExpression("struct FooBar { double x; };", top_level_opts)
+        self.assertFalse(value.GetError().Success())
+        self.assertIn(":1:8: redefinition of 'FooBar'\nstruct FooBar { double x; };\n       ^\n", value.GetError().GetCString())
+        self.assertIn("diagnostics/main.cpp:3:1: previous definition is here\nstruct FooBar {\n^\n", value.GetError().GetCString())
+
+        # Source locations of functions.
+        value = frame.EvaluateExpression("foo(1, 2)")
+        self.assertFalse(value.GetError().Success())
+        self.assertIn(":1:1: no matching function for call to 'foo'\nfoo(1, 2)\n^~~", value.GetError().GetCString())
+        self.assertIn("diagnostics/main.cpp:1:1: candidate function not viable: requires single argument 'x', but 2 arguments were provided\nvoid foo(int x) {}\n^", value.GetError().GetCString())
+
+        # Source locations of enums.
+        value = frame.EvaluateExpression("enum class EnumInSource {};", top_level_opts)
+        self.assertFalse(value.GetError().Success())
+        # The error message here is kinda nonsensical so let's just check that we get a note
+        # pointing to the enum in our source file.
+        self.assertIn("diagnostics/main.cpp:7:1: previous declaration is here\nenum class EnumInSource {\n^\n", value.GetError().GetCString())
 

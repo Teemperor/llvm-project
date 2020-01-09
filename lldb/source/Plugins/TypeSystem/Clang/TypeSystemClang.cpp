@@ -1191,7 +1191,7 @@ CompilerType TypeSystemClang::CreateRecordType(DeclContext *decl_ctx,
                                                llvm::StringRef name, int kind,
                                                LanguageType language,
                                                ClangASTMetadata *metadata,
-                                               bool exports_symbols) {
+                                               bool exports_symbols, SourceLocation location) {
   ASTContext &ast = getASTContext();
 
   if (decl_ctx == nullptr)
@@ -2048,6 +2048,51 @@ CompilerType TypeSystemClang::GetOrCreateStructForIdentifier(
   return CreateStructForIdentifier(type_name, type_fields, packed);
 }
 
+SourceLocation TypeSystemClang::getLocForDecl(const Declaration &decl) {
+  // If the Declaration is invalid there is nothing to do.
+  if (!decl.IsValid())
+    return clang::SourceLocation();
+
+  clang::SourceManager &sm = getASTContext().getSourceManager();
+  clang::FileManager &fm = sm.getFileManager();
+
+  // Open the file if it exists.
+  llvm::ErrorOr<const clang::FileEntry *> fe =
+      fm.getFile(decl.GetFile().GetPath());
+  if (std::error_code ec = fe.getError())
+    return clang::SourceLocation();
+
+  // Translate the file to a FileID.
+  clang::FileID fid =
+      sm.getOrCreateFileID(*fe, clang::SrcMgr::CharacteristicKind::C_User);
+
+  // Calculate line/column.
+  uint32_t line = decl.GetLine();
+  // Can't be zero after we checked for IsValid() at the start.
+  assert(line != 0);
+  // Column may be zero if there is no column information so change it to a 1
+  // as 0 isn't a valid column for Clang.
+  uint32_t column = std::max<uint32_t>(1U, decl.GetColumn());
+
+  // Translate our line/column to a Clang SourceLocation.
+  SourceLocation result = sm.translateLineCol(fid, line, column);
+  if (result.isInvalid())
+    return result;
+
+  // Clang is very forgiving when the line/column doesn't exist in the
+  // loaded file and will just give it a SourceLocation that points
+  // to the end of the file buffer. This can happen very frequently in
+  // LLDB when a source file is truncated, so instead of giving all
+  // these declarations a SourceLocation that points at the end, mark
+  // these declarations as invalid to suppress diagnostics.
+  const clang::SrcMgr::ContentCache *cache =
+      sm.getSLocEntry(fid).getFile().getContentCache();
+  if (cache && sm.getFileOffset(result) >= cache->getSize() - 1) {
+    return clang::SourceLocation();
+  }
+  return result;
+}
+
 #pragma mark Enumeration Types
 
 CompilerType
@@ -2055,8 +2100,6 @@ TypeSystemClang::CreateEnumerationType(const char *name, DeclContext *decl_ctx,
                                        const Declaration &decl,
                                        const CompilerType &integer_clang_type,
                                        bool is_scoped) {
-  // TODO: Do something intelligent with the Declaration object passed in
-  // like maybe filling in the SourceLocation with it...
   ASTContext &ast = getASTContext();
 
   // TODO: ask about these...
@@ -2068,6 +2111,7 @@ TypeSystemClang::CreateEnumerationType(const char *name, DeclContext *decl_ctx,
   enum_decl->setScoped(is_scoped);
   enum_decl->setScopedUsingClassTag(is_scoped);
   enum_decl->setFixed(false);
+
   if (enum_decl) {
     if (decl_ctx)
       decl_ctx->addDecl(enum_decl);
@@ -7919,6 +7963,7 @@ clang::EnumConstantDecl *TypeSystemClang::AddEnumerationValueToEnumerationType(
     enumerator_decl->setDeclName(&getASTContext().Idents.get(name));
   enumerator_decl->setType(clang::QualType(enutype, 0));
   enumerator_decl->setInitVal(value);
+  enumerator_decl->setLocation(getLocForDecl(decl));
 
   if (!enumerator_decl)
     return nullptr;

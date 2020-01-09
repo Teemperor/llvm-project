@@ -279,6 +279,24 @@ public:
           &type_fields,
       bool packed = false);
 
+  /// Calculates the SourceLocation that points to the same file/line/col as the
+  /// given Declaration.
+  ///
+  /// Under some circumstances it might not be possible to translate the
+  /// given Declaration to a valid SourceLocation in which case an invalid
+  /// SourceLocation is returned:
+  ///   1. If the file path of the Declaration can't be opened.
+  ///   2. If the declaration is invalid (i.e., has no valid file/line).
+  ///   3. If the loaded file doesn't contain a matching line/column number,
+  ///   e.g.,
+  ///      because it doesn't contain enough lines or the matching line doesn't
+  ///      contain enough characters to get a matching column.
+  ///
+  /// \return A SourceLocation that points to the same file/line/col as the
+  ///         given Declaration or an invalid SourceLocation if it is not
+  ///         possible to find a matching SourceLocation.
+  clang::SourceLocation getLocForDecl(const Declaration &decl);
+
   static bool IsOperator(llvm::StringRef name,
                          clang::OverloadedOperatorKind &op_kind);
 
@@ -293,12 +311,12 @@ public:
   static uint32_t GetNumBaseClasses(const clang::CXXRecordDecl *cxx_record_decl,
                                     bool omit_empty_base_classes);
 
-  CompilerType CreateRecordType(clang::DeclContext *decl_ctx,
-                                lldb::AccessType access_type,
-                                llvm::StringRef name, int kind,
-                                lldb::LanguageType language,
-                                ClangASTMetadata *metadata = nullptr,
-                                bool exports_symbols = false);
+  CompilerType
+  CreateRecordType(clang::DeclContext *decl_ctx, lldb::AccessType access_type,
+                   llvm::StringRef name, int kind, lldb::LanguageType language,
+                   ClangASTMetadata *metadata = nullptr,
+                   bool exports_symbols = false,
+                   clang::SourceLocation location = clang::SourceLocation());
 
   class TemplateParameterInfos {
   public:

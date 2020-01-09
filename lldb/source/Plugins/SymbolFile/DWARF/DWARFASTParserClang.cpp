@@ -1185,6 +1185,7 @@ TypeSP DWARFASTParserClang::ParseSubroutine(const DWARFDIE &die,
             ignore_containing_context ? m_ast.GetTranslationUnitDecl()
                                       : containing_decl_ctx,
             name, clang_type, attrs.storage, attrs.is_inline);
+        function_decl->setLocation(m_ast.getLocForDecl(attrs.decl));
 
         if (has_template_params) {
           TypeSystemClang::TemplateParameterInfos template_param_infos;
@@ -1198,6 +1199,8 @@ TypeSP DWARFASTParserClang::ParseSubroutine(const DWARFDIE &die,
               m_ast.CreateFunctionTemplateDecl(containing_decl_ctx,
                                                template_function_decl, name,
                                                template_param_infos);
+          template_function_decl->setLocation(m_ast.getLocForDecl(attrs.decl));
+
           m_ast.CreateFunctionTemplateSpecializationInfo(
               template_function_decl, func_template_decl, template_param_infos);
         }
@@ -1613,6 +1616,7 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
             m_ast.CreateClassTemplateSpecializationDecl(
                 decl_ctx, class_template_decl, tag_decl_kind,
                 template_param_infos);
+        class_specialization_decl->setLocation(m_ast.getLocForDecl(attrs.decl));
         clang_type = m_ast.CreateClassTemplateSpecializationType(
             class_specialization_decl);
         clang_type_was_created = true;
@@ -1626,7 +1630,8 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
       clang_type_was_created = true;
       clang_type = m_ast.CreateRecordType(
           decl_ctx, attrs.accessibility, attrs.name.GetCString(), tag_decl_kind,
-          attrs.class_language, &metadata, attrs.exports_symbols);
+          attrs.class_language, &metadata, attrs.exports_symbols,
+          m_ast.getLocForDecl(attrs.decl));
     }
   }
 
