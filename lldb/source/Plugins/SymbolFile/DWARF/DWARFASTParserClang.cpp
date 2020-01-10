@@ -216,6 +216,7 @@ TypeSP DWARFASTParserClang::ParseTypeFromClangModule(const SymbolContext &sc,
     return TypeSP();
 
   lldb_private::CompilerType pcm_type = pcm_type_sp->GetForwardCompilerType();
+  pcm_type.dump();
   lldb_private::CompilerType type =
       GetClangASTImporter().CopyType(m_ast, pcm_type);
 
