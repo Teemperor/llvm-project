@@ -485,19 +485,60 @@ void MachThreadList::NotifyBreakpointChanged(const DNBBreakpoint *bp) {
 
 uint32_t
 MachThreadList::EnableHardwareBreakpoint(const DNBBreakpoint *bp) const {
+  uint32_t hw_index = INVALID_NUB_HW_INDEX;
   if (bp != NULL) {
+    PTHREAD_MUTEX_LOCKER(locker, m_threads_mutex);
     const size_t num_threads = m_threads.size();
-    for (uint32_t idx = 0; idx < num_threads; ++idx)
-      m_threads[idx]->EnableHardwareBreakpoint(bp);
+    // On Mac OS X we have to prime the control registers for new threads.  We
+    // do this
+    // using the control register data for the first thread, for lack of a
+    // better way of choosing.
+    bool also_set_on_task = true;
+    for (uint32_t idx = 0; idx < num_threads; ++idx) {
+      if ((hw_index = m_threads[idx]->EnableHardwareBreakpoint(
+               bp, also_set_on_task)) == INVALID_NUB_HW_INDEX) {
+        // We know that idx failed for some reason.  Let's rollback the
+        // transaction for [0, idx).
+        for (uint32_t i = 0; i < idx; ++i) {
+          m_threads[i]->RollbackTransForHWP();
+        }
+        return INVALID_NUB_HW_INDEX;
+      }
+      also_set_on_task = false;
+    }
+    // Notify each thread to commit the pending transaction.
+    for (uint32_t idx = 0; idx < num_threads; ++idx) {
+      m_threads[idx]->FinishTransForHWP();
+    }
   }
-  return INVALID_NUB_HW_INDEX;
+  return hw_index;
 }
 
 bool MachThreadList::DisableHardwareBreakpoint(const DNBBreakpoint *bp) const {
   if (bp != NULL) {
+    PTHREAD_MUTEX_LOCKER(locker, m_threads_mutex);
     const size_t num_threads = m_threads.size();
+
+    // On Mac OS X we have to prime the control registers for new threads.  We
+    // do this
+    // using the control register data for the first thread, for lack of a
+    // better way of choosing.
+    bool also_set_on_task = true;
+    for (uint32_t idx = 0; idx < num_threads; ++idx) {
+      if (!m_threads[idx]->DisableHardwareBreakpoint(bp, also_set_on_task)) {
+        // We know that idx failed for some reason.  Let's rollback the
+        // transaction for [0, idx).
+        for (uint32_t i = 0; i < idx; ++i)
+          m_threads[i]->RollbackTransForHWP();
+        return false;
+      }
+      also_set_on_task = false;
+    }
+    // Notify each thread to commit the pending transaction.
     for (uint32_t idx = 0; idx < num_threads; ++idx)
-      m_threads[idx]->DisableHardwareBreakpoint(bp);
+      m_threads[idx]->FinishTransForHWP();
+
+    return true;
   }
   return false;
 }

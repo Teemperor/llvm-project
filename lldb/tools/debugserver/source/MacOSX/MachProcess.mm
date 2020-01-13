@@ -2013,6 +2013,10 @@ bool MachProcess::EnableBreakpoint(nub_addr_t addr) {
       if (bp->HardwarePreferred()) {
         bp->SetHardwareIndex(m_thread_list.EnableHardwareBreakpoint(bp));
         if (bp->IsHardware()) {
+          DNBLogThreadedIf(LOG_BREAKPOINTS, "MachProcess::"
+                                            "EnableBreakpoint ( addr = "
+                                            "0x%8.8llx ) : hw bpt SUCCESS.",
+                                            (uint64_t)addr);
           bp->SetEnabled(true);
           return true;
         }
