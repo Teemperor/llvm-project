@@ -909,6 +909,18 @@ uint64_t DataExtractor::GetULEB128(offset_t *offset_ptr) const {
   return 0;
 }
 
+/// Extract an unsigned LEB128 number with a specified max value. If the
+/// extracted value exceeds "max_value" the offset will be left unchanged and
+/// llvm::None will be returned.
+llvm::Optional<uint64_t> DataExtractor::GetULEB128(offset_t *offset_ptr,
+                                                   uint64_t max_value) {
+  offset_t initial_offset = *offset_ptr;
+  uint64_t value = GetULEB128(offset_ptr);
+  if (*offset_ptr == initial_offset || value > max_value)
+    return llvm::None;
+  return value;
+}
+
 // Extracts an signed LEB128 number from this object's data starting at the
 // offset pointed to by "offset_ptr". The offset pointed to by "offset_ptr"
 // will be updated with the offset of the byte following the last extracted

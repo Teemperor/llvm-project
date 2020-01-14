@@ -809,6 +809,12 @@ public:
   ///     The extracted unsigned integer value.
   uint64_t GetULEB128(lldb::offset_t *offset_ptr) const;
 
+  /// Extract a ULEB128 number with a specified max value. If the extracted
+  /// value exceeds "max_value" the offset will be left unchanged and llvm::None
+  /// will be returned.
+  llvm::Optional<uint64_t> GetULEB128(lldb::offset_t *offset_ptr,
+                                      uint64_t max_value);
+
   lldb::DataBufferSP &GetSharedDataBuffer() { return m_data_sp; }
 
   /// Peek at a C string at \a offset.
