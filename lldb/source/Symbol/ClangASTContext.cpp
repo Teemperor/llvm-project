@@ -7770,6 +7770,13 @@ bool ClangASTContext::StartTagDeclarationDefinition(const CompilerType &type) {
   return false;
 }
 
+static void CheckCxxRecordIntegrity(clang::CXXRecordDecl *cxx_record_decl) {
+  cxx_record_decl->defaultedDestructorIsDeleted();
+  cxx_record_decl->defaultedDestructorIsConstexpr();
+  cxx_record_decl->defaultedDefaultConstructorIsConstexpr();
+  cxx_record_decl->defaultedCopyConstructorIsDeleted();
+}
+
 bool ClangASTContext::CompleteTagDeclarationDefinition(
     const CompilerType &type) {
   clang::QualType qual_type(ClangUtil::GetQualType(type));
@@ -7785,6 +7792,7 @@ bool ClangASTContext::CompleteTagDeclarationDefinition(
             llvm::dyn_cast_or_null<clang::CXXRecordDecl>(tag_decl);
 
         if (cxx_record_decl) {
+          CheckCxxRecordIntegrity(cxx_record_decl);
           if (!cxx_record_decl->isCompleteDefinition())
             cxx_record_decl->completeDefinition();
           cxx_record_decl->setHasLoadedFieldsFromExternalStorage(true);
