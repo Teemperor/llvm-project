@@ -99,7 +99,7 @@ add_lldb_library(liblldb SHARED ${option_framework}
     lldbDataFormatters
     lldbExpression
     lldbHost
-    lldbInitialization
+    lldbInitializationAllPlugins
     lldbInterpreter
     lldbSymbol
     lldbTarget

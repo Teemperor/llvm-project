@@ -9,7 +9,7 @@
 #ifndef LLDB_API_SYSTEM_INITIALIZER_TEST_H
 #define LLDB_API_SYSTEM_INITIALIZER_TEST_H
 
-#include "lldb/Initialization/SystemInitializerCommon.h"
+#include "lldb/Initialization/SystemInitializerAllPlugins.h"
 
 namespace lldb_private {
 /// Initializes lldb.
@@ -18,7 +18,7 @@ namespace lldb_private {
 /// services needed to use the full LLDB application.  This class is
 /// not intended to be used externally, but is instead used
 /// internally by SBDebugger to initialize the system.
-class SystemInitializerTest : public SystemInitializerCommon {
+class SystemInitializerTest : public SystemInitializerAllPlugins {
 public:
   SystemInitializerTest();
   ~SystemInitializerTest() override;

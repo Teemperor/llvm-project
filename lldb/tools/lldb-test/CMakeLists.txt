@@ -18,6 +18,7 @@ add_lldb_tool(lldb-test
     lldbTarget
     lldbUtility
     ${LLDB_ALL_PLUGINS}
+    lldbInitializationAllPlugins
     ${host_lib}
 
   LINK_COMPONENTS
