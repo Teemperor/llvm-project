@@ -1108,6 +1108,9 @@ TypeSP DWARFASTParserClang::ParseSubroutine(const DWARFDIE &die,
                     if (attrs.accessibility == eAccessNone)
                       attrs.accessibility = eAccessPublic;
 
+                    if (attrs.name.GetStringRef() == "error_category") {
+                      llvm::errs() << "Being defined " << class_opaque_type.IsBeingDefined() << "\n";
+                    }
                     clang::CXXMethodDecl *cxx_method_decl =
                         m_ast.AddMethodToCXXRecordType(
                             class_opaque_type.GetOpaqueQualType(),
@@ -1670,6 +1673,11 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
   unique_ast_entry_up->m_byte_size = attrs.byte_size.getValueOr(0);
   dwarf->GetUniqueDWARFASTTypeMap().Insert(unique_typename,
                                            *unique_ast_entry_up);
+
+  if (attrs.name.GetStringRef() == "error_category") {
+    llvm::errs() << "FILE:" << die.GetCU()->GetAbsolutePath().GetPath() << "\n";
+    llvm::errs() << "OFFSET:" << llvm::formatv("{0:x}", die.GetID()) << "\n";
+  }
 
   if (attrs.is_forward_declaration && die.HasChildren()) {
     // Check to see if the DIE actually has a definition, some version of

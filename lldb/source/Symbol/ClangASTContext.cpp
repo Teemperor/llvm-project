@@ -1230,6 +1230,9 @@ CompilerType ClangASTContext::CreateRecordType(DeclContext *decl_ctx,
     if (isa<CXXRecordDecl>(decl_ctx) && exports_symbols)
       decl->setAnonymousStructOrUnion(true);
   }
+  if (name == "error_category") {
+    decl->dumpColor();
+  }
 
   if (decl) {
     if (metadata)
@@ -7131,6 +7134,16 @@ clang::CXXMethodDecl *ClangASTContext::AddMethodToCXXRecordType(
   if (cxx_record_decl == nullptr)
     return nullptr;
 
+  if (cxx_record_decl->getName() == "error_category") {
+    cxx_record_decl->dumpColor();
+  }
+
+  bool custom_defined = false;
+  if (false && !cxx_record_decl->isBeingDefined()) {
+      custom_defined = true;
+    StartTagDeclarationDefinition(GetType(record_qual_type));
+  }
+
   clang::QualType method_qual_type(ClangUtil::GetQualType(method_clang_type));
 
   clang::CXXMethodDecl *cxx_method_decl = nullptr;
@@ -7293,6 +7306,10 @@ clang::CXXMethodDecl *ClangASTContext::AddMethodToCXXRecordType(
 #ifdef LLDB_CONFIGURATION_DEBUG
   VerifyDecl(cxx_method_decl);
 #endif
+
+  if (custom_defined) {
+     CompleteTagDeclarationDefinition(GetType(record_qual_type));
+  }
 
   return cxx_method_decl;
 }
