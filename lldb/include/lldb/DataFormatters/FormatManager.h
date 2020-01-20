@@ -198,9 +198,9 @@ private:
   NamedSummariesMap m_named_summaries_map;
   TypeCategoryMap m_categories_map;
 
-  ConstString m_default_category_name;
-  ConstString m_system_category_name;
-  ConstString m_vectortypes_category_name;
+  ConstString m_default_category_name = ConstString("default");
+  ConstString m_system_category_name = ConstString("system");
+  ConstString m_vectortypes_category_name = ConstString("VectorTypes");
 
   template <typename ImplSP>
   ImplSP Get(ValueObject &valobj, lldb::DynamicValueType use_dynamic);

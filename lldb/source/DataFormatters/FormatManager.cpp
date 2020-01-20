@@ -698,11 +698,7 @@ FormatManager::GetSyntheticChildren(ValueObject &valobj,
 }
 
 FormatManager::FormatManager()
-    : m_last_revision(0), m_format_cache(), m_language_categories_mutex(),
-      m_language_categories_map(), m_named_summaries_map(this),
-      m_categories_map(this), m_default_category_name(ConstString("default")),
-      m_system_category_name(ConstString("system")),
-      m_vectortypes_category_name(ConstString("VectorTypes")) {
+    : m_last_revision(0), m_named_summaries_map(this), m_categories_map(this) {
   LoadSystemFormatters();
   LoadVectorFormatters();
 

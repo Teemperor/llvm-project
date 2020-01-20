@@ -407,10 +407,7 @@ uint32_t Materializer::AddPersistentVariable(
 
 class EntityVariable : public Materializer::Entity {
 public:
-  EntityVariable(lldb::VariableSP &variable_sp)
-      : Entity(), m_variable_sp(variable_sp), m_is_reference(false),
-        m_temporary_allocation(LLDB_INVALID_ADDRESS),
-        m_temporary_allocation_size(0) {
+  EntityVariable(lldb::VariableSP &variable_sp) : m_variable_sp(variable_sp) {
     // Hard-coding to maximum size of a pointer since all variables are
     // materialized by reference
     m_size = 8;
@@ -744,9 +741,9 @@ public:
 
 private:
   lldb::VariableSP m_variable_sp;
-  bool m_is_reference;
-  lldb::addr_t m_temporary_allocation;
-  size_t m_temporary_allocation_size;
+  bool m_is_reference = false;
+  lldb::addr_t m_temporary_allocation = LLDB_INVALID_ADDRESS;
+  size_t m_temporary_allocation_size = 0;
   lldb::DataBufferSP m_original_data;
 };
 
