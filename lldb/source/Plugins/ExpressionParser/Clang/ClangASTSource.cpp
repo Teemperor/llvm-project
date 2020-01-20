@@ -530,6 +530,23 @@ void ClangASTSource::FindExternalLexicalDecls(
 
         m_ast_importer_sp->RequireCompleteType(copied_field_type);
       }
+      // The member might be a function with a covariant return type. In this
+      // case Clang's CodeGen expects that the underlying record of the
+      // reference/pointer is complete. This is true when parsing C++ code as
+      // there the type checking will complete those classes to verify that
+      // the user provided actually covariant return types. But when we import
+      // our own AST in LLDB we have to simulate that behavior and also
+      // complete the underlying type of the result type.
+      CXXMethodDecl *method_decl = dyn_cast<CXXMethodDecl>(copied_decl);
+      if (method_decl) {
+        QualType return_type = method_decl->getReturnType();
+
+        if (return_type->isReferenceType())
+          m_ast_importer_sp->RequireCompleteType(
+              return_type.getNonReferenceType());
+        if (return_type->isPointerType())
+          m_ast_importer_sp->RequireCompleteType(return_type->getPointeeType());
+      }
     } else {
       SkippedDecls = true;
     }
