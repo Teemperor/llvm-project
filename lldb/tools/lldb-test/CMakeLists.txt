@@ -1,5 +1,3 @@
-get_property(LLDB_ALL_PLUGINS GLOBAL PROPERTY LLDB_PLUGINS)
-
 add_lldb_tool(lldb-test
   FormatUtil.cpp
   lldb-test.cpp
@@ -17,7 +15,7 @@ add_lldb_tool(lldb-test
     lldbSymbol
     lldbTarget
     lldbUtility
-    ${LLDB_ALL_PLUGINS}
+    lldbInitializationAllPlugins
     ${host_lib}
 
   LINK_COMPONENTS

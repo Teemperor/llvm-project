@@ -9,7 +9,7 @@
 #ifndef LLDB_API_SYSTEM_INITIALIZER_FULL_H
 #define LLDB_API_SYSTEM_INITIALIZER_FULL_H
 
-#include "lldb/Initialization/SystemInitializerCommon.h"
+#include "lldb/Initialization/SystemInitializerAllPlugins.h"
 
 namespace lldb_private {
 /// Initializes lldb.
@@ -18,7 +18,7 @@ namespace lldb_private {
 /// services needed to use the full LLDB application.  This class is
 /// not intended to be used externally, but is instead used
 /// internally by SBDebugger to initialize the system.
-class SystemInitializerFull : public SystemInitializerCommon {
+class SystemInitializerFull : public SystemInitializerAllPlugins {
 public:
   SystemInitializerFull();
   ~SystemInitializerFull() override;

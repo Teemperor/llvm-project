@@ -2,8 +2,6 @@ if ( CMAKE_SYSTEM_NAME MATCHES "Windows" )
   add_definitions( -DEXPORT_LIBLLDB )
 endif()
 
-get_property(LLDB_ALL_PLUGINS GLOBAL PROPERTY LLDB_PLUGINS)
-
 if(LLDB_ENABLE_PYTHON)
   get_target_property(lldb_bindings_dir swig_wrapper BINARY_DIR)
   set(lldb_python_wrapper ${lldb_bindings_dir}/LLDBWrapPython.cpp)
@@ -99,12 +97,11 @@ add_lldb_library(liblldb SHARED ${option_framework}
     lldbDataFormatters
     lldbExpression
     lldbHost
-    lldbInitialization
+    lldbInitializationAllPlugins
     lldbInterpreter
     lldbSymbol
     lldbTarget
     lldbUtility
-    ${LLDB_ALL_PLUGINS}
   LINK_COMPONENTS
     Support
 
