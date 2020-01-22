@@ -88,6 +88,31 @@ TEST_F(TestClangASTImporter, CopyTypeTagDecl) {
   EXPECT_EQ(origin.decl, source.record_decl);
 }
 
+TEST_F(TestClangASTImporter, CompleteTagDecl) {
+  // Tests that the ClangASTImporter::CopyType can copy TagDecls types.
+  clang_utils::SourceASTWithRecord source;
+
+  std::unique_ptr<ClangASTContext> target_ast = clang_utils::createAST();
+
+  ClangASTImporter importer;
+  CompilerType imported = importer.CopyType(*target_ast, source.record_type);
+  ASSERT_TRUE(imported.IsValid());
+
+  // Check that we got the correct decl by just comparing their qualified name.
+  clang::TagDecl *imported_tag_decl = ClangUtil::GetAsTagDecl(imported);
+  EXPECT_NE(imported_tag_decl, nullptr);
+  EXPECT_EQ(source.record_decl->getQualifiedNameAsString(),
+            imported_tag_decl->getQualifiedNameAsString());
+  // We did a minimal import of the tag decl.
+  EXPECT_TRUE(imported_tag_decl->hasExternalLexicalStorage());
+
+  importer.CompleteDecl(imported_tag_decl);
+  EXPECT_FALSE(imported_tag_decl->hasExternalLexicalStorage());
+  clang::RecordDecl *rd = cast<RecordDecl>(imported_tag_decl);
+  ASSERT_FALSE(rd->field_empty());
+  EXPECT_TRUE(rd->field_begin()->getName() == source.field_decl->getName());
+}
+
 TEST_F(TestClangASTImporter, DeportDeclTagDecl) {
   // Tests that the ClangASTImporter::DeportDecl completely copies TagDecls.
   clang_utils::SourceASTWithRecord source;

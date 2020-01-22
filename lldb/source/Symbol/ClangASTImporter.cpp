@@ -562,7 +562,7 @@ void ClangASTImporter::CompleteDecl(clang::Decl *decl) {
     if (!protocol_decl->getDefinition())
       protocol_decl->startDefinition();
   } else if (TagDecl *tag_decl = dyn_cast<TagDecl>(decl)) {
-    if (!tag_decl->getDefinition() && !tag_decl->isBeingDefined()) {
+    if (tag_decl->hasExternalLexicalStorage() && !tag_decl->isBeingDefined()) {
       tag_decl->startDefinition();
       CompleteTagDecl(tag_decl);
       tag_decl->setCompleteDefinition(true);
@@ -929,34 +929,8 @@ void ClangASTImporter::ASTImporterDelegate::ImportDefinitionTo(
     return;
   }
 
-  if (clang::TagDecl *to_tag = dyn_cast<clang::TagDecl>(to)) {
-    if (clang::TagDecl *from_tag = dyn_cast<clang::TagDecl>(from)) {
-      assert(to_tag->isCompleteDefinition() == from_tag->isCompleteDefinition());
-      to_tag->setCompleteDefinition(from_tag->isCompleteDefinition());
-
-      if (Log *log_ast =
-              lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_AST)) {
-        std::string name_string;
-        if (NamedDecl *from_named_decl = dyn_cast<clang::NamedDecl>(from)) {
-          llvm::raw_string_ostream name_stream(name_string);
-          from_named_decl->printName(name_stream);
-          name_stream.flush();
-        }
-        LLDB_LOG(log_ast, "==== [ClangASTImporter][TUDecl: {0}] Imported "
-                          "({1}Decl*){2}, named {3} (from "
-                          "(Decl*){4})",
-                 static_cast<void *>(to->getTranslationUnitDecl()),
-                 from->getDeclKindName(), static_cast<void *>(to), name_string,
-                 static_cast<void *>(from));
-
-        // Log the AST of the TU.
-        std::string ast_string;
-        llvm::raw_string_ostream ast_stream(ast_string);
-        to->getTranslationUnitDecl()->dump(ast_stream);
-        LLDB_LOG(log_ast, "{0}", ast_string);
-      }
-    }
-  }
+  if (clang::DeclContext *DC = dyn_cast<clang::DeclContext>(to))
+    DC->setHasExternalLexicalStorage(false);
 
   // If we're dealing with an Objective-C class, ensure that the inheritance
   // has been set up correctly.  The ASTImporter may not do this correctly if
