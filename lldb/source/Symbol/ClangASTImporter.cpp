@@ -909,6 +909,7 @@ ClangASTImporter::ASTImporterDelegate::ImportImpl(Decl *From) {
 void ClangASTImporter::ASTImporterDelegate::ImportDefinitionTo(
     clang::Decl *to, clang::Decl *from) {
   ASTImporter::Imported(from, to);
+  MapImported(from, to);
 
   /*
   if (to_objc_interface)
@@ -930,6 +931,7 @@ void ClangASTImporter::ASTImporterDelegate::ImportDefinitionTo(
 
   if (clang::TagDecl *to_tag = dyn_cast<clang::TagDecl>(to)) {
     if (clang::TagDecl *from_tag = dyn_cast<clang::TagDecl>(from)) {
+      assert(to_tag->isCompleteDefinition() == from_tag->isCompleteDefinition());
       to_tag->setCompleteDefinition(from_tag->isCompleteDefinition());
 
       if (Log *log_ast =
