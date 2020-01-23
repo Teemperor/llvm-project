@@ -573,8 +573,38 @@ void Thread::SetState(StateType state) {
   m_state = state;
 }
 
+void Thread::ApplyMostRelevantFrames() {
+  auto cur_frame = m_curr_frames_sp->GetFrameAtIndex(0);
+  SymbolContext sym_ctx = cur_frame->GetSymbolContext(eSymbolContextEverything);
+
+  auto recognized_frame_sp = cur_frame->GetRecognizedFrame();
+
+  if (!recognized_frame_sp)
+    return;
+
+  Log *log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_TARGET);
+
+  if (StackFrameSP most_relevant_frame_sp =
+          recognized_frame_sp->GetMostRelevantFrame()) {
+    LLDB_LOG(log, "Found most relevant frame {0}",
+             most_relevant_frame_sp->GetFrameIndex());
+    SetSelectedFrame(most_relevant_frame_sp.get());
+  } else {
+    LLDB_LOG(log, "No relevant frame!");
+  }
+
+  if (StopInfoSP stop_info_sp = recognized_frame_sp->GetStopInfo()) {
+    LLDB_LOG(log, "Found stop reason {0}", stop_info_sp->GetStopReason());
+    SetStopInfo(stop_info_sp);
+  } else {
+    LLDB_LOG(log, "No stop reason for recognized frame!");
+  }
+}
+
 void Thread::WillStop() {
   ThreadPlan *current_plan = GetCurrentPlan();
+
+  ApplyMostRelevantFrames();
 
   // FIXME: I may decide to disallow threads with no plans.  In which
   // case this should go to an assert.

@@ -1016,6 +1016,23 @@ public:
   }
 };
 
+// StopInfoRecognizedFrame
+
+class StopInfoRecognizedFrame : public StopInfoException {
+public:
+  StopInfoRecognizedFrame(Thread &thread, const char *description)
+      : StopInfoException(thread, description) {}
+
+  ~StopInfoRecognizedFrame() override = default;
+
+  const char *GetDescription() override {
+    if (m_description.empty())
+      return "recognized frame:";
+    else
+      return m_description.c_str();
+  }
+};
+
 // StopInfoThreadPlan
 
 class StopInfoThreadPlan : public StopInfo {
@@ -1131,6 +1148,12 @@ StopInfoSP StopInfo::CreateStopReasonWithPlan(
 StopInfoSP StopInfo::CreateStopReasonWithException(Thread &thread,
                                                    const char *description) {
   return StopInfoSP(new StopInfoException(thread, description));
+}
+
+StopInfoSP
+StopInfo::CreateStopReasonForRecognizedFrame(Thread &thread,
+                                             const char *description) {
+  return StopInfoSP(new StopInfoRecognizedFrame(thread, description));
 }
 
 StopInfoSP StopInfo::CreateStopReasonWithExec(Thread &thread) {

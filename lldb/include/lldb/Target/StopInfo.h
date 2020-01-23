@@ -127,6 +127,9 @@ public:
   static lldb::StopInfoSP
   CreateStopReasonWithException(Thread &thread, const char *description);
 
+  static lldb::StopInfoSP
+  CreateStopReasonForRecognizedFrame(Thread &thread, const char *description);
+
   static lldb::StopInfoSP CreateStopReasonWithExec(Thread &thread);
 
   static lldb::ValueObjectSP
