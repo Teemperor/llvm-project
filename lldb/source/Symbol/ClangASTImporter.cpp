@@ -1031,8 +1031,7 @@ void ClangASTImporter::ASTImporterDelegate::Imported(clang::Decl *from,
       ImporterDelegateSP direct_completer =
           m_master.GetDelegate(&to->getASTContext(), origin_iter->second.ctx);
 
-      if (direct_completer.get() != this)
-        direct_completer->ASTImporter::Imported(origin_iter->second.decl, to);
+      assert(direct_completer.get() == this);
 
       LLDB_LOGF(log,
                 "    [ClangASTImporter] Propagated origin "
