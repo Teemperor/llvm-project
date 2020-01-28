@@ -20,9 +20,9 @@ class TestUniquePtr(TestBase):
 
         self.runCmd("settings set target.import-std-module true")
 
-        self.expect("expr (int)*s", substrs=['(int) $0 = 3'])
-        self.expect("expr (int)(*s = 5)", substrs=['(int) $1 = 5'])
-        self.expect("expr (int)*s", substrs=['(int) $2 = 5'])
+        self.expect("expr *s", substrs=['(int) $0 = 3'])
+        self.expect("expr *s = 5", substrs=['(int) $1 = 5'])
+        self.expect("expr *s", substrs=['(int) $2 = 5'])
         self.expect("expr (bool)s", substrs=['(bool) $3 = true'])
         self.expect("expr s.reset()")
         self.expect("expr (bool)s", substrs=['(bool) $4 = false'])
