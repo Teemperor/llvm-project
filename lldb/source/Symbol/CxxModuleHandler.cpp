@@ -25,6 +25,7 @@ CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
       "deque",
       "forward_list",
       "list",
+      "map",
       "queue",
       "stack",
       "vector",
@@ -34,6 +35,8 @@ CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
       "weak_ptr",
       // utility
       "allocator",
+      "pair",
+      "less"
   };
   m_supported_templates.insert(supported_names.begin(), supported_names.end());
 }
