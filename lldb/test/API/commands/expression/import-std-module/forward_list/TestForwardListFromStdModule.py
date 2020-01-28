@@ -20,11 +20,11 @@ class TestBasicForwardList(TestBase):
 
         self.runCmd("settings set target.import-std-module true")
 
-        self.expect("expr (size_t)std::distance(a.begin(), a.end())", substrs=['(size_t) $0 = 3'])
-        self.expect("expr (int)a.front()", substrs=['(int) $1 = 3'])
+        self.expect("expr std::distance(a.begin(), a.end())", substrs=['(ptrdiff_t) $0 = 3'])
+        self.expect("expr a.front()", substrs=['(int) $1 = 3'])
 
         self.expect("expr a.sort()")
-        self.expect("expr (int)a.front()", substrs=['(int) $2 = 1'])
+        self.expect("expr a.front()", substrs=['(int) $2 = 1'])
 
-        self.expect("expr (int)(*a.begin())", substrs=['(int) $3 = 1'])
+        self.expect("expr *a.begin()", substrs=['(int) $3 = 1'])
 

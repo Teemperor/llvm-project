@@ -20,9 +20,9 @@ class TestDbgInfoContentWeakPtr(TestBase):
 
         self.runCmd("settings set target.import-std-module true")
 
-        self.expect("expr (int)w.lock()->a", substrs=['(int) $0 = 3'])
-        self.expect("expr (int)(w.lock()->a = 5)", substrs=['(int) $1 = 5'])
-        self.expect("expr (int)w.lock()->a", substrs=['(int) $2 = 5'])
+        self.expect("expr w.lock()->a", substrs=['(int) $0 = 3'])
+        self.expect("expr w.lock()->a = 5", substrs=['(int) $1 = 5'])
+        self.expect("expr w.lock()->a", substrs=['(int) $2 = 5'])
         self.expect("expr w.use_count()", substrs=['(long) $3 = 1'])
         self.expect("expr w.reset()")
         self.expect("expr w.use_count()", substrs=['(long) $4 = 0'])

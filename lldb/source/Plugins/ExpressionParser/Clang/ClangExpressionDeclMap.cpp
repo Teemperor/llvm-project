@@ -174,6 +174,74 @@ ClangExpressionDeclMap::TargetInfo ClangExpressionDeclMap::GetTargetInfo() {
   return ret;
 }
 
+/// Return true if the given QualType should be desugared to get rid of any
+/// references to complicated declarations that the ASTImporter might not
+/// handle.
+static bool shouldDesugarModuleType(QualType qt) {
+  const clang::Type *type = qt.getTypePtrOrNull();
+  if (!type)
+    return false;
+
+  if (const auto *elaborated_type = dyn_cast<ElaboratedType>(type))
+    return true;
+  if (const auto *templ_type = dyn_cast<SubstTemplateTypeParmType>(type))
+    return true;
+
+  // Typedefs can pull in a lot of complicated declarations if they are
+  // declared inside them (e.g., the 'value_type' typedefs in STL containers).
+  // These typedefs should be desugared to simpler types (e.g. size_t,
+  // ptrdiff_t) so
+
+  // We might not want to strip away everything as some types are safe to
+  // copy such as the 'size_t' typedefs and similar simple types. Detect these
+  // simple typedefs by checking if we have a typedef that is inside a
+  // DeclContext the ASTImporter might not handle.
+  if (const auto *typedef_type = dyn_cast<TypedefType>(type)) {
+    clang::TypedefNameDecl *decl = typedef_type->getDecl();
+    clang::DeclContext *decl_context = decl->getDeclContext();
+
+    // Strip away things such as 'extern "C"' which are safe to copy.
+    while (decl_context->getDeclKind() == clang::Decl::Kind::LinkageSpec)
+      decl_context = decl_context->getParent();
+
+    // The DeclContext of the decl is trivial to copy if it is a FileContext
+    // (i.e., TranslationUnit or any namespace).
+    bool in_trivial_context = decl_context->isFileContext();
+    if (decl->getUnderlyingType()->isBuiltinType() && in_trivial_context)
+      return false;
+
+    if (NamespaceDecl *NS = dyn_cast_or_null<NamespaceDecl>(decl_context->getParent()))
+      if (NS->isStdNamespace())
+        return true;
+
+    if (decl->isFromASTFile())
+      return true;
+    if (decl->getDeclContext()->isRecord()) {
+      auto *record = llvm::cast<RecordDecl>(decl->getDeclContext());
+      if (record->isFromASTFile())
+        return true;
+    }
+  }
+
+  return type->isFromAST();
+}
+
+/// Desugars the QualType until it is either free of references to complicated
+/// declarations that the ASTImporter might not be able to handle (or until
+/// the type can't be further desugared)
+///
+/// For example the type 'std::__1::deque<struct C, class
+/// std::__1::allocator<struct C> >::size_type' which requires importing
+/// several hundred templates will be desugared to simply 'size_t'.
+static TypeFromParser desugarModuleTypes(TypeFromParser in) {
+  TypeSystemClang *ts = static_cast<TypeSystemClang *>(in.GetTypeSystem());
+  QualType qt = ClangUtil::GetQualType(in);
+  // Keep desugaring until we reach a type that is safe to copy.
+  while (shouldDesugarModuleType(qt))
+    qt = qt.getSingleStepDesugaredType(ts->getASTContext());
+  return TypeFromParser(ts->GetType(qt));
+}
+
 TypeFromUser ClangExpressionDeclMap::DeportType(TypeSystemClang &target,
                                                 TypeSystemClang &source,
                                                 TypeFromParser parser_type) {
@@ -181,6 +249,8 @@ TypeFromUser ClangExpressionDeclMap::DeportType(TypeSystemClang &target,
   assert((TypeSystem *)&source == parser_type.GetTypeSystem());
   assert(&source.getASTContext() == m_ast_context);
 
+  // Simplify the type before deporting it to the scratch context.
+  parser_type = desugarModuleTypes(parser_type);
   return TypeFromUser(m_ast_importer_sp->DeportType(target, parser_type));
 }
 
