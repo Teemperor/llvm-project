@@ -20,7 +20,7 @@ class TestVectorOfVectors(TestBase):
 
         self.runCmd("settings set target.import-std-module true")
 
-        self.expect("expr (size_t)a.size()", substrs=['(size_t) $0 = 2'])
-        self.expect("expr (int)a.front().front()", substrs=['(int) $1 = 1'])
-        self.expect("expr (int)a[1][1]", substrs=['(int) $2 = 2'])
-        self.expect("expr (int)a.back().at(0)", substrs=['(int) $3 = 3'])
+        self.expect("expr a.size()", substrs=['(size_t) $0 = 2'])
+        self.expect("expr a.front().front()", substrs=['(int) $1 = 1'])
+        self.expect("expr a[1][1]", substrs=['(int) $2 = 2'])
+        self.expect("expr a.back().at(0)", substrs=['(int) $3 = 3'])

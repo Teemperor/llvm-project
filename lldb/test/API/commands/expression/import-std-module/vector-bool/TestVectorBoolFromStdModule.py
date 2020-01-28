@@ -20,11 +20,11 @@ class TestBoolVector(TestBase):
 
         self.runCmd("settings set target.import-std-module true")
 
-        self.expect("expr (size_t)a.size()", substrs=['(size_t) $0 = 4'])
+        self.expect("expr a.size()", substrs=['(size_t) $0 = 4'])
         self.expect("expr (bool)a.front()", substrs=['(bool) $1 = false'])
         self.expect("expr (bool)a[1]", substrs=['(bool) $2 = true'])
         self.expect("expr (bool)a.back()", substrs=['(bool) $3 = true'])
 
-        self.expect("expr (bool)(*a.begin())", substrs=['(bool) $4 = false'])
-        self.expect("expr (bool)(*a.rbegin())", substrs=['(bool) $5 = true'])
+        self.expect("expr (bool)*a.begin()", substrs=['(bool) $4 = false'])
+        self.expect("expr (bool)*a.rbegin()", substrs=['(bool) $5 = true'])
 

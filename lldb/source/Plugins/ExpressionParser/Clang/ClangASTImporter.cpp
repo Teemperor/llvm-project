@@ -245,6 +245,8 @@ public:
       m_decls_already_completed.insert(decl);
 
       // We should only complete decls coming from the source context.
+      if (to_context_md->m_origins[decl].ctx != m_src_ctx)
+        continue;
       assert(to_context_md->m_origins[decl].ctx == m_src_ctx);
 
       Decl *original_decl = to_context_md->m_origins[decl].decl;
