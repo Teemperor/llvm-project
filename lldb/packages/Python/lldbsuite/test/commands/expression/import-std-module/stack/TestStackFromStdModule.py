@@ -12,6 +12,7 @@ class TestStack(TestBase):
 
     @add_test_categories(["libc++"])
     @skipIf(compiler=no_match("clang"))
+#    @skipIf(debug_info=no_match("dsym"))
     def test(self):
         self.build()
 
