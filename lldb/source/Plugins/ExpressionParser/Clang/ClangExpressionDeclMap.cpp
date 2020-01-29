@@ -1255,7 +1255,7 @@ void ClangExpressionDeclMap::LookupFunction(NameSearchContext &context,
     //   instance methods for eFunctionNameTypeBase.
 
     target->GetImages().FindFunctions(
-        name, eFunctionNameTypeFull, include_symbols,
+        name, eFunctionNameTypeFull | eFunctionNameTypeBase, include_symbols,
         include_inlines, sc_list);
   }
 
