@@ -60,14 +60,14 @@ void ClangASTSource::InstallASTContext(TypeSystemClang &clang_ast_context) {
   m_ast_context = &clang_ast_context.getASTContext();
   m_clang_ast_context = &clang_ast_context;
   m_file_manager = &m_ast_context->getSourceManager().getFileManager();
-  m_ast_importer_sp->InstallMapCompleter(m_ast_context, *this);
+  m_ast_importer_sp->InstallMapCompleter(*m_clang_ast_context, *this);
 }
 
 ClangASTSource::~ClangASTSource() {
   if (!m_ast_importer_sp)
     return;
 
-  m_ast_importer_sp->ForgetDestination(m_ast_context);
+  m_ast_importer_sp->ForgetDestination(*m_clang_ast_context);
 
   if (!m_target)
     return;
@@ -84,7 +84,7 @@ ClangASTSource::~ClangASTSource() {
       scratch_clang_ast_context->getASTContext();
 
   if (m_ast_context != &scratch_ast_context && m_ast_importer_sp)
-    m_ast_importer_sp->ForgetSource(&scratch_ast_context, m_ast_context);
+    m_ast_importer_sp->ForgetSource(*scratch_clang_ast_context, m_ast_context);
 }
 
 void ClangASTSource::StartTranslationUnit(ASTConsumer *Consumer) {
@@ -220,7 +220,7 @@ void ClangASTSource::CompleteType(TagDecl *tag_decl) {
     return;
   }
 
-  if (!m_ast_importer_sp->CompleteTagDecl(tag_decl)) {
+  if (!m_ast_importer_sp->CompleteTagDecl(*m_clang_ast_context, tag_decl)) {
     // We couldn't complete the type.  Maybe there's a definition somewhere
     // else that can be completed.
 
@@ -236,7 +236,8 @@ void ClangASTSource::CompleteType(TagDecl *tag_decl) {
     if (const NamespaceDecl *namespace_context =
             dyn_cast<NamespaceDecl>(decl_ctx)) {
       ClangASTImporter::NamespaceMapSP namespace_map =
-          m_ast_importer_sp->GetNamespaceMap(namespace_context);
+          m_ast_importer_sp->GetNamespaceMap(*m_clang_ast_context,
+                                             namespace_context);
 
       if (log && log->GetVerbose())
         LLDB_LOG(log,
@@ -279,8 +280,8 @@ void ClangASTSource::CompleteType(TagDecl *tag_decl) {
           TagDecl *candidate_tag_decl =
               const_cast<TagDecl *>(tag_type->getDecl());
 
-          if (m_ast_importer_sp->CompleteTagDeclWithOrigin(tag_decl,
-                                                           candidate_tag_decl))
+          if (m_ast_importer_sp->CompleteTagDeclWithOrigin(
+                  *m_clang_ast_context, tag_decl, candidate_tag_decl))
             found = true;
         }
       }
@@ -322,8 +323,8 @@ void ClangASTSource::CompleteType(TagDecl *tag_decl) {
         if (!TypeSystemClang::DeclsAreEquivalent(tag_decl, candidate_tag_decl))
           continue;
 
-        if (m_ast_importer_sp->CompleteTagDeclWithOrigin(tag_decl,
-                                                         candidate_tag_decl))
+        if (m_ast_importer_sp->CompleteTagDeclWithOrigin(
+                *m_clang_ast_context, tag_decl, candidate_tag_decl))
           found = true;
       }
     }
@@ -348,7 +349,8 @@ void ClangASTSource::CompleteType(clang::ObjCInterfaceDecl *interface_decl) {
     return;
   }
 
-  ClangASTImporter::DeclOrigin original = m_ast_importer_sp->GetDeclOrigin(interface_decl);
+  ClangASTImporter::DeclOrigin original =
+      m_ast_importer_sp->GetDeclOrigin(*m_clang_ast_context, interface_decl);
 
   if (original.Valid()) {
     if (ObjCInterfaceDecl *original_iface_decl =
@@ -357,12 +359,14 @@ void ClangASTSource::CompleteType(clang::ObjCInterfaceDecl *interface_decl) {
           GetCompleteObjCInterface(original_iface_decl);
 
       if (complete_iface_decl && (complete_iface_decl != original_iface_decl)) {
-        m_ast_importer_sp->SetDeclOrigin(interface_decl, complete_iface_decl);
+        m_ast_importer_sp->SetDeclOrigin(*m_clang_ast_context, interface_decl,
+                                         complete_iface_decl);
       }
     }
   }
 
-  m_ast_importer_sp->CompleteObjCInterfaceDecl(interface_decl);
+  m_ast_importer_sp->CompleteObjCInterfaceDecl(*m_clang_ast_context,
+                                               interface_decl);
 
   if (interface_decl->getSuperClass() &&
       interface_decl->getSuperClass() != interface_decl)
@@ -463,7 +467,8 @@ void ClangASTSource::FindExternalLexicalDecls(
                m_clang_ast_context->getDisplayName());
   }
 
-  ClangASTImporter::DeclOrigin original = m_ast_importer_sp->GetDeclOrigin(context_decl);
+  ClangASTImporter::DeclOrigin original =
+      m_ast_importer_sp->GetDeclOrigin(*m_clang_ast_context, context_decl);
 
   if (!original.Valid())
     return;
@@ -482,7 +487,8 @@ void ClangASTSource::FindExternalLexicalDecls(
       original.decl = complete_iface_decl;
       original.ctx = &complete_iface_decl->getASTContext();
 
-      m_ast_importer_sp->SetDeclOrigin(context_decl, complete_iface_decl);
+      m_ast_importer_sp->SetDeclOrigin(*m_clang_ast_context, context_decl,
+                                       complete_iface_decl);
     }
   }
 
@@ -530,7 +536,8 @@ void ClangASTSource::FindExternalLexicalDecls(
       if (FieldDecl *copied_field = dyn_cast<FieldDecl>(copied_decl)) {
         QualType copied_field_type = copied_field->getType();
 
-        m_ast_importer_sp->RequireCompleteType(copied_field_type);
+        m_ast_importer_sp->RequireCompleteType(*m_clang_ast_context,
+                                               copied_field_type);
       }
     } else {
       SkippedDecls = true;
@@ -587,8 +594,10 @@ void ClangASTSource::FindExternalVisibleDecls(NameSearchContext &context) {
 
   if (const NamespaceDecl *namespace_context =
           dyn_cast<NamespaceDecl>(context.m_decl_context)) {
-    ClangASTImporter::NamespaceMapSP namespace_map =  m_ast_importer_sp ?
-        m_ast_importer_sp->GetNamespaceMap(namespace_context) : nullptr;
+    ClangASTImporter::NamespaceMapSP namespace_map =
+        m_ast_importer_sp ? m_ast_importer_sp->GetNamespaceMap(
+                                *m_clang_ast_context, namespace_context)
+                          : nullptr;
 
     if (log && log->GetVerbose())
       LLDB_LOG(log,
@@ -1011,7 +1020,8 @@ void ClangASTSource::FindObjCMethodDecls(NameSearchContext &context) {
     return;
 
   do {
-    ClangASTImporter::DeclOrigin original = m_ast_importer_sp->GetDeclOrigin(interface_decl);
+    ClangASTImporter::DeclOrigin original =
+        m_ast_importer_sp->GetDeclOrigin(*m_clang_ast_context, interface_decl);
 
     if (!original.Valid())
       break;
@@ -1784,15 +1794,15 @@ NamespaceDecl *ClangASTSource::AddNamespace(
 
   context.m_decls.push_back(copied_namespace_decl);
 
-  m_ast_importer_sp->RegisterNamespaceMap(copied_namespace_decl,
-                                          namespace_decls);
+  m_ast_importer_sp->RegisterNamespaceMap(
+      *m_clang_ast_context, copied_namespace_decl, namespace_decls);
 
   return dyn_cast<NamespaceDecl>(copied_decl);
 }
 
 clang::Decl *ClangASTSource::CopyDecl(Decl *src_decl) {
   if (m_ast_importer_sp) {
-    return m_ast_importer_sp->CopyDecl(m_ast_context, src_decl);
+    return m_ast_importer_sp->CopyDecl(*m_clang_ast_context, src_decl);
   } else {
     lldbassert(0 && "No mechanism for copying a decl!");
     return nullptr;
@@ -1801,7 +1811,7 @@ clang::Decl *ClangASTSource::CopyDecl(Decl *src_decl) {
 
 ClangASTImporter::DeclOrigin ClangASTSource::GetDeclOrigin(const clang::Decl *decl) {
   if (m_ast_importer_sp) {
-    return m_ast_importer_sp->GetDeclOrigin(decl);
+    return m_ast_importer_sp->GetDeclOrigin(*m_clang_ast_context, decl);
   } else {
     // this can happen early enough that no ExternalASTSource is installed.
     return ClangASTImporter::DeclOrigin();

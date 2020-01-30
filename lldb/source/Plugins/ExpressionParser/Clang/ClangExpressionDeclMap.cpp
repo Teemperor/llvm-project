@@ -684,9 +684,9 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
     }
 
     ClangASTImporter::NamespaceMapSP namespace_map =
-        m_ast_importer_sp
-            ? m_ast_importer_sp->GetNamespaceMap(namespace_context)
-            : ClangASTImporter::NamespaceMapSP();
+        m_ast_importer_sp ? m_ast_importer_sp->GetNamespaceMap(
+                                *m_clang_ast_context, namespace_context)
+                          : ClangASTImporter::NamespaceMapSP();
 
     if (!namespace_map)
       return;

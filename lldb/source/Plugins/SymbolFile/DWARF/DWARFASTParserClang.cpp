@@ -204,7 +204,8 @@ TypeSP DWARFASTParserClang::ParseTypeFromClangModule(const SymbolContext &sc,
   // which does extra work for Objective-C classes. This would result
   // in only the forward declaration to be visible.
   if (pcm_type.IsDefined())
-    GetClangASTImporter().RequireCompleteType(ClangUtil::GetQualType(type));
+    GetClangASTImporter().RequireCompleteType(m_ast,
+                                              ClangUtil::GetQualType(type));
 
   SymbolFileDWARF *dwarf = die.GetDWARF();
   TypeSP type_sp(new Type(
@@ -241,7 +242,7 @@ static void CompleteExternalTagDeclType(TypeSystemClang &ast,
     return;
 
   auto qual_type = ClangUtil::GetQualType(type);
-  if (!ast_importer.RequireCompleteType(qual_type)) {
+  if (!ast_importer.RequireCompleteType(ast, qual_type)) {
     die.GetDWARF()->GetObjectFile()->GetModule()->ReportError(
         "Unable to complete the Decl context for DIE '%s' at offset "
         "0x%8.8x.\nPlease file a bug report.",

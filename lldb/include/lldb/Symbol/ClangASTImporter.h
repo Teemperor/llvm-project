@@ -24,6 +24,7 @@
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Symbol/CompilerDeclContext.h"
 #include "lldb/Symbol/CxxModuleHandler.h"
+#include "lldb/Symbol/TypeSystemClang.h"
 #include "lldb/lldb-types.h"
 
 #include "llvm/ADT/DenseMap.h"
@@ -50,11 +51,11 @@ public:
 
   CompilerType CopyType(TypeSystemClang &dst, const CompilerType &src_type);
 
-  clang::Decl *CopyDecl(clang::ASTContext *dst_ctx, clang::Decl *decl);
+  clang::Decl *CopyDecl(TypeSystemClang &dst_ctx, clang::Decl *decl);
 
   CompilerType DeportType(TypeSystemClang &dst, const CompilerType &src_type);
 
-  clang::Decl *DeportDecl(clang::ASTContext *dst_ctx, clang::Decl *decl);
+  clang::Decl *DeportDecl(TypeSystemClang &dst_ctx, clang::Decl *decl);
 
   /// Sets the layout for the given RecordDecl. The layout will later be
   /// used by Clang's during code generation. Not calling this function for
@@ -80,19 +81,23 @@ public:
 
   bool CompleteType(const CompilerType &compiler_type);
 
-  bool CompleteTagDecl(clang::TagDecl *decl);
+  bool CompleteTagDecl(TypeSystemClang &ts, clang::TagDecl *decl);
 
-  bool CompleteTagDeclWithOrigin(clang::TagDecl *decl, clang::TagDecl *origin);
+  bool CompleteTagDeclWithOrigin(TypeSystemClang &ts, clang::TagDecl *decl,
+                                 clang::TagDecl *origin);
 
-  bool CompleteObjCInterfaceDecl(clang::ObjCInterfaceDecl *interface_decl);
+  bool CompleteObjCInterfaceDecl(TypeSystemClang &ts,
+                                 clang::ObjCInterfaceDecl *interface_decl);
 
-  bool CompleteAndFetchChildren(clang::QualType type);
+  bool CompleteAndFetchChildren(TypeSystemClang &ts, clang::QualType type);
 
-  bool RequireCompleteType(clang::QualType type);
+  bool RequireCompleteType(TypeSystemClang &ts, clang::QualType type);
 
-  void SetDeclOrigin(const clang::Decl *decl, clang::Decl *original_decl);
+  void SetDeclOrigin(TypeSystemClang &ts, const clang::Decl *decl,
+                     clang::Decl *original_decl);
 
-  ClangASTMetadata *GetDeclMetadata(const clang::Decl *decl);
+  ClangASTMetadata *GetDeclMetadata(TypeSystemClang &ts,
+                                    const clang::Decl *decl);
 
   //
   // Namespace maps
@@ -102,12 +107,14 @@ public:
       NamespaceMap;
   typedef std::shared_ptr<NamespaceMap> NamespaceMapSP;
 
-  void RegisterNamespaceMap(const clang::NamespaceDecl *decl,
+  void RegisterNamespaceMap(TypeSystemClang &ts,
+                            const clang::NamespaceDecl *decl,
                             NamespaceMapSP &namespace_map);
 
-  NamespaceMapSP GetNamespaceMap(const clang::NamespaceDecl *decl);
+  NamespaceMapSP GetNamespaceMap(TypeSystemClang &ts,
+                                 const clang::NamespaceDecl *decl);
 
-  void BuildNamespaceMap(const clang::NamespaceDecl *decl);
+  void BuildNamespaceMap(TypeSystemClang &ts, const clang::NamespaceDecl *decl);
 
   //
   // Completers for maps
@@ -122,14 +129,13 @@ public:
                                       NamespaceMapSP &parent_map) const = 0;
   };
 
-  void InstallMapCompleter(clang::ASTContext *dst_ctx,
-                           MapCompleter &completer) {
+  void InstallMapCompleter(TypeSystemClang &dst, MapCompleter &completer) {
     ASTContextMetadataSP context_md;
-    ContextMetadataMap::iterator context_md_iter = m_metadata_map.find(dst_ctx);
+    ContextMetadataMap::iterator context_md_iter = m_metadata_map.find(&dst);
 
     if (context_md_iter == m_metadata_map.end()) {
-      context_md = ASTContextMetadataSP(new ASTContextMetadata(dst_ctx));
-      m_metadata_map[dst_ctx] = context_md;
+      context_md = ASTContextMetadataSP(new ASTContextMetadata(dst));
+      m_metadata_map[&dst] = context_md;
     } else {
       context_md = context_md_iter->second;
     }
@@ -137,8 +143,8 @@ public:
     context_md->m_map_completer = &completer;
   }
 
-  void ForgetDestination(clang::ASTContext *dst_ctx);
-  void ForgetSource(clang::ASTContext *dst_ctx, clang::ASTContext *src_ctx);
+  void ForgetDestination(TypeSystemClang &dst);
+  void ForgetSource(TypeSystemClang &dst, clang::ASTContext *src_ctx);
 
 public:
   struct DeclOrigin {
@@ -184,11 +190,12 @@ public:
   /// CxxModuleHandler to replace any missing or malformed declarations with
   /// their counterpart from a C++ module.
   struct ASTImporterDelegate : public clang::ASTImporter {
-    ASTImporterDelegate(ClangASTImporter &master, clang::ASTContext *target_ctx,
+    ASTImporterDelegate(ClangASTImporter &master, TypeSystemClang &target,
                         clang::ASTContext *source_ctx)
-        : clang::ASTImporter(*target_ctx, master.m_file_manager, *source_ctx,
-                             master.m_file_manager, true /*minimal*/),
-          m_master(master), m_source_ctx(source_ctx) {
+        : clang::ASTImporter(target.getASTContext(), master.m_file_manager,
+                             *source_ctx, master.m_file_manager,
+                             true /*minimal*/),
+          m_master(master), m_target_ts(target), m_source_ctx(source_ctx) {
       setODRHandling(clang::ASTImporter::ODRHandlingType::Liberal);
     }
 
@@ -245,6 +252,7 @@ public:
     /// tries to sync them with the broken equivalent in the debug info AST.
     llvm::SmallPtrSet<clang::Decl *, 16> m_decls_to_ignore;
     ClangASTImporter &m_master;
+    TypeSystemClang &m_target_ts;
     clang::ASTContext *m_source_ctx;
     CxxModuleHandler *m_std_handler = nullptr;
     /// The currently attached listener.
@@ -257,11 +265,11 @@ public:
       NamespaceMetaMap;
 
   struct ASTContextMetadata {
-    ASTContextMetadata(clang::ASTContext *dst_ctx)
-        : m_dst_ctx(dst_ctx), m_delegates(), m_origins(), m_namespace_maps(),
+    ASTContextMetadata(TypeSystemClang &dst)
+        : m_dst_ctx(&dst), m_delegates(), m_origins(), m_namespace_maps(),
           m_map_completer(nullptr) {}
 
-    clang::ASTContext *m_dst_ctx;
+    TypeSystemClang *m_dst_ctx;
     DelegateMap m_delegates;
     OriginMap m_origins;
 
@@ -270,32 +278,32 @@ public:
   };
 
   typedef std::shared_ptr<ASTContextMetadata> ASTContextMetadataSP;
-  typedef llvm::DenseMap<const clang::ASTContext *, ASTContextMetadataSP>
+  typedef llvm::DenseMap<const TypeSystemClang *, ASTContextMetadataSP>
       ContextMetadataMap;
 
   ContextMetadataMap m_metadata_map;
 
-  ASTContextMetadataSP GetContextMetadata(clang::ASTContext *dst_ctx) {
-    ContextMetadataMap::iterator context_md_iter = m_metadata_map.find(dst_ctx);
+  ASTContextMetadataSP GetContextMetadata(TypeSystemClang &dst) {
+    ContextMetadataMap::iterator context_md_iter = m_metadata_map.find(&dst);
 
     if (context_md_iter == m_metadata_map.end()) {
       ASTContextMetadataSP context_md =
-          ASTContextMetadataSP(new ASTContextMetadata(dst_ctx));
-      m_metadata_map[dst_ctx] = context_md;
+          ASTContextMetadataSP(new ASTContextMetadata(dst));
+      m_metadata_map[&dst] = context_md;
       return context_md;
     }
     return context_md_iter->second;
   }
 
-  ASTContextMetadataSP MaybeGetContextMetadata(clang::ASTContext *dst_ctx) {
-    ContextMetadataMap::iterator context_md_iter = m_metadata_map.find(dst_ctx);
+  ASTContextMetadataSP MaybeGetContextMetadata(TypeSystemClang &dst) {
+    ContextMetadataMap::iterator context_md_iter = m_metadata_map.find(&dst);
 
     if (context_md_iter != m_metadata_map.end())
       return context_md_iter->second;
     return ASTContextMetadataSP();
   }
 
-  ImporterDelegateSP GetDelegate(clang::ASTContext *dst_ctx,
+  ImporterDelegateSP GetDelegate(TypeSystemClang &dst_ctx,
                                  clang::ASTContext *src_ctx) {
     ASTContextMetadataSP context_md = GetContextMetadata(dst_ctx);
 
@@ -312,7 +320,7 @@ public:
   }
 
 public:
-  DeclOrigin GetDeclOrigin(const clang::Decl *decl);
+  DeclOrigin GetDeclOrigin(TypeSystemClang &ts, const clang::Decl *decl);
 
   clang::FileManager m_file_manager;
   typedef llvm::DenseMap<const clang::RecordDecl *, LayoutInfo>
