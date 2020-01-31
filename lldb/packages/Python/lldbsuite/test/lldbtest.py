@@ -2261,6 +2261,7 @@ FileCheck output:
             substrs=None,
             trace=False,
             error=False,
+            ordered=True,
             matching=True,
             exe=True,
             inHistory=False):
@@ -2341,8 +2342,11 @@ FileCheck output:
         # Look for sub strings, if specified.
         keepgoing = matched if matching else not matched
         if substrs and keepgoing:
+            start = 0
             for substr in substrs:
-                matched = output.find(substr) != -1
+                index = output[start:].find(substr)
+                start = start + index if ordered and matching else 0
+                matched = index != -1
                 with recording(self, trace) as sbuf:
                     print("%s sub string: %s" % (heading, substr), file=sbuf)
                     print("Matched" if matched else "Not matched", file=sbuf)
