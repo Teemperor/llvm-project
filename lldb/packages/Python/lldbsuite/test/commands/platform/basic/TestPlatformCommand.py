@@ -39,11 +39,11 @@ class PlatformCommandTestCase(TestBase):
         self.expect(
             "platform status",
             substrs=[
-                'Platform',
-                'Triple',
-                'OS Version',
-                'Kernel',
-                'Hostname'])
+                'Platform: ',
+                'Triple: ',
+                'OS Version: ',
+                'Kernel: '
+                'Hostname: '])
 
     @expectedFailureAll(oslist=["windows"])
     @no_debug_info_test
