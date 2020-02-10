@@ -46,7 +46,7 @@ let Definition = "target" in {
     DefaultTrue,
     Desc<"Automatically load Clang modules referred to by the program.">;
   def ImportStdModule: Property<"import-std-module", "Boolean">,
-    DefaultFalse,
+    DefaultTrue,
     Desc<"Import the C++ std module to improve debugging STL containers.">;
   def AutoApplyFixIts: Property<"auto-apply-fixits", "Boolean">,
     DefaultTrue,
