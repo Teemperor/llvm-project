@@ -26,6 +26,7 @@ namespace clang {
 class CodeGenerator;
 class CodeCompleteConsumer;
 class CompilerInstance;
+class Type;
 } // namespace clang
 
 namespace lldb_private {
@@ -141,6 +142,10 @@ public:
   ///     A string representing target ABI for the current architecture.
   std::string GetClangTargetABI(const ArchSpec &target_arch);
 
+  const clang::Type *GetResultType() const {
+    return m_result_type;
+  }
+
 private:
   /// Parses the expression.
   ///
@@ -182,6 +187,7 @@ private:
   std::vector<std::string> m_include_directories;
   /// File name used for the user expression.
   std::string m_filename;
+  const clang::Type *m_result_type = nullptr;
 };
 }
 

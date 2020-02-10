@@ -345,6 +345,7 @@ bool ASTResultSynthesizer::SynthesizeBodyResult(CompoundStmt *Body,
 
     ExprResult address_of_expr =
         m_sema->CreateBuiltinUnaryOp(SourceLocation(), UO_AddrOf, last_expr);
+    m_result_type = last_expr->getType().getTypePtrOrNull();
     if (address_of_expr.get())
       m_sema->AddInitializerToDecl(result_decl, address_of_expr.get(), true);
     else
@@ -360,6 +361,7 @@ bool ASTResultSynthesizer::SynthesizeBodyResult(CompoundStmt *Body,
       return false;
 
     m_sema->AddInitializerToDecl(result_decl, last_expr, true);
+    m_result_type = last_expr->getType().getTypePtrOrNull();
   }
 
   DC->addDecl(result_decl);
