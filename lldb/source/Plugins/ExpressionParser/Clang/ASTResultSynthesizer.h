@@ -17,6 +17,7 @@ class CompoundStmt;
 class DeclContext;
 class NamedDecl;
 class ObjCMethodDecl;
+class Type;
 class TypeDecl;
 } // namespace clang
 
@@ -101,6 +102,10 @@ public:
   /// The parse has succeeded, so record its persistent decls
   void CommitPersistentDecls();
 
+  const clang::Type *GetResultType() const {
+    return m_result_type;
+  }
+
 private:
   /// Hunt the given Decl for FunctionDecls named $__lldb_expr, recursing as
   /// necessary through LinkageSpecDecls, and calling SynthesizeResult on
@@ -166,6 +171,7 @@ private:
                        ///store and the
   clang::Sema *m_sema; ///< The Sema to use.
   bool m_top_level;
+  const clang::Type *m_result_type = nullptr;
 };
 
 } // namespace lldb_private

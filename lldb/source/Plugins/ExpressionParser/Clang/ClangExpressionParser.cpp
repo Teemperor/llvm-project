@@ -1132,6 +1132,9 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
 
   adapter->ResetManager();
 
+  if (auto syn = llvm::dyn_cast_or_null<ASTResultSynthesizer>(ast_transformer))
+    m_result_type = syn->GetResultType();
+
   return num_errors;
 }
 
