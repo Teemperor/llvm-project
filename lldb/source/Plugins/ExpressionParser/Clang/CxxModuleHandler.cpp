@@ -34,6 +34,15 @@ CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
       "weak_ptr",
       // utility
       "allocator",
+      "basic_string",
+      "multiset",
+    "iterator_traits",
+    "map",
+    "multimap",
+    "binary_function"
+    "set",
+    "less"
+
   };
   m_supported_templates.insert(supported_names.begin(), supported_names.end());
 }
@@ -193,8 +202,9 @@ llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
   // Early check if we even support instantiating this template. We do this
   // before we import anything into the target AST.
   auto &foreign_args = td->getTemplateInstantiationArgs();
-  if (!templateArgsAreSupported(foreign_args.asArray()))
+  if (!templateArgsAreSupported(foreign_args.asArray())) {
     return {};
+  }
 
   // Find the local DeclContext that corresponds to the DeclContext of our
   // decl we want to import.
