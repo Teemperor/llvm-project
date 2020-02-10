@@ -67,7 +67,8 @@ public:
   ClangExpressionParser(ExecutionContextScope *exe_scope, Expression &expr,
                         bool generate_debug_info,
                         std::vector<std::string> include_directories = {},
-                        std::string filename = "<clang expression>");
+                        std::string filename = "<clang expression>",
+                        bool actually_use_modules = false);
 
   /// Destructor
   ~ClangExpressionParser() override;
