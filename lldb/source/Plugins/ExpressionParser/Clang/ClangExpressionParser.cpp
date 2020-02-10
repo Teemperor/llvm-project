@@ -306,10 +306,9 @@ static void SetupModuleHeaderPaths(CompilerInstance *compiler,
 // Implementation of ClangExpressionParser
 //===----------------------------------------------------------------------===//
 
-ClangExpressionParser::ClangExpressionParser(
-    ExecutionContextScope *exe_scope, Expression &expr,
+ClangExpressionParser::ClangExpressionParser(ExecutionContextScope *exe_scope, Expression &expr,
     bool generate_debug_info, std::vector<std::string> include_directories,
-    std::string filename)
+    std::string filename, bool actually_use_modules)
     : ExpressionParser(exe_scope, expr, generate_debug_info), m_compiler(),
       m_pp_callbacks(nullptr),
       m_include_directories(std::move(include_directories)),
@@ -538,7 +537,7 @@ ClangExpressionParser::ClangExpressionParser(
   lang_opts.SpellChecking = false;
 
   auto *clang_expr = dyn_cast<ClangUserExpression>(&m_expr);
-  if (clang_expr && clang_expr->DidImportCxxModules()) {
+  if (clang_expr && clang_expr->DidImportCxxModules() && actually_use_modules) {
     LLDB_LOG(log, "Adding lang options for importing C++ modules");
 
     lang_opts.Modules = true;

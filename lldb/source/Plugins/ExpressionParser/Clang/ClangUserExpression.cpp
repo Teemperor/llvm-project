@@ -568,6 +568,62 @@ bool ClangUserExpression::PrepareForParsing(
   return true;
 }
 
+std::unique_ptr<ClangExpressionParser> ClangUserExpression::CreateParser(DiagnosticManager &diagnostic_manager, ExecutionContext &exe_ctx, ExecutionContextScope *exe_scope,
+                                                                         lldb_private::ExecutionPolicy execution_policy,
+                                                           bool generate_debug_info, bool use_modules) {
+  // We use a shared pointer here so we can use the original parser - if it
+  // succeeds or the rewrite parser we might make if it fails.  But the
+  // parser_sp will never be empty.
+
+  auto parser = std::make_unique<ClangExpressionParser>(exe_scope, *this, generate_debug_info,
+                               m_include_directories, m_filename, use_modules);
+
+  unsigned num_errors = parser->Parse(diagnostic_manager);
+
+  // Check here for FixItHints.  If there are any try to apply the fixits and
+  // set the fixed text in m_fixed_text before returning an error.
+  if (num_errors) {
+    if (diagnostic_manager.HasFixIts()) {
+      if (parser->RewriteExpression(diagnostic_manager)) {
+        size_t fixed_start;
+        size_t fixed_end;
+        const std::string &fixed_expression =
+            diagnostic_manager.GetFixedExpression();
+        // Retrieve the original expression in case we don't have a top level
+        // expression (which has no surrounding source code).
+        if (m_source_code &&
+            m_source_code->GetOriginalBodyBounds(fixed_expression, m_expr_lang,
+                                                 fixed_start, fixed_end))
+          m_fixed_text =
+              fixed_expression.substr(fixed_start, fixed_end - fixed_start);
+      }
+    }
+    return nullptr;
+  }
+
+  //////////////////////////////////////////////////////////////////////////////
+  // Prepare the output of the parser for execution, evaluating it statically
+  // if possible
+  //
+
+  {
+    Status jit_error = parser->PrepareForExecution(
+        m_jit_start_addr, m_jit_end_addr, m_execution_unit_sp, exe_ctx,
+        m_can_interpret, execution_policy);
+
+    if (!jit_error.Success()) {
+      const char *error_cstr = jit_error.AsCString();
+      if (error_cstr && error_cstr[0])
+        diagnostic_manager.PutString(eDiagnosticSeverityError, error_cstr);
+      else
+        diagnostic_manager.PutString(eDiagnosticSeverityError,
+                                     "expression can't be interpreted or run");
+      return nullptr;
+    }
+  }
+  return parser;
+}
+
 bool ClangUserExpression::Parse(DiagnosticManager &diagnostic_manager,
                                 ExecutionContext &exe_ctx,
                                 lldb_private::ExecutionPolicy execution_policy,
@@ -618,6 +674,7 @@ bool ClangUserExpression::Parse(DiagnosticManager &diagnostic_manager,
   if (!exe_scope)
     exe_scope = exe_ctx.GetTargetPtr();
 
+  /*
   // We use a shared pointer here so we can use the original parser - if it
   // succeeds or the rewrite parser we might make if it fails.  But the
   // parser_sp will never be empty.
@@ -643,33 +700,19 @@ bool ClangUserExpression::Parse(DiagnosticManager &diagnostic_manager,
               m_fixed_text.substr(fixed_start, fixed_end - fixed_start);
       }
     }
+    return false; */
+  std::unique_ptr<ClangExpressionParser> parser = CreateParser(diagnostic_manager, exe_ctx, exe_scope, execution_policy, generate_debug_info, false);
+  if (!parser) {
+    diagnostic_manager.Clear();
+    parser = CreateParser(diagnostic_manager, exe_ctx, exe_scope, execution_policy, generate_debug_info, true);
+  }
+
+  if (!parser)
     return false;
-  }
-
-  //////////////////////////////////////////////////////////////////////////////
-  // Prepare the output of the parser for execution, evaluating it statically
-  // if possible
-  //
-
-  {
-    Status jit_error = parser.PrepareForExecution(
-        m_jit_start_addr, m_jit_end_addr, m_execution_unit_sp, exe_ctx,
-        m_can_interpret, execution_policy);
-
-    if (!jit_error.Success()) {
-      const char *error_cstr = jit_error.AsCString();
-      if (error_cstr && error_cstr[0])
-        diagnostic_manager.PutString(eDiagnosticSeverityError, error_cstr);
-      else
-        diagnostic_manager.PutString(eDiagnosticSeverityError,
-                                     "expression can't be interpreted or run");
-      return false;
-    }
-  }
 
   if (exe_ctx.GetProcessPtr() && execution_policy == eExecutionPolicyTopLevel) {
     Status static_init_error =
-        parser.RunStaticInitializers(m_execution_unit_sp, exe_ctx);
+        parser->RunStaticInitializers(m_execution_unit_sp, exe_ctx);
 
     if (!static_init_error.Success()) {
       const char *error_cstr = static_init_error.AsCString();

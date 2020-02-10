@@ -171,6 +171,10 @@ public:
   bool DidImportCxxModules() const { return m_imported_cpp_modules; }
 
 private:
+  std::unique_ptr<ClangExpressionParser> CreateParser(DiagnosticManager &diagnostic_manager, ExecutionContext &exe_ctx, ExecutionContextScope *exe_scope,
+                                                                           lldb_private::ExecutionPolicy execution_policy,
+                                                             bool generate_debug_info, bool use_modules);
+
   /// Populate m_in_cplusplus_method and m_in_objectivec_method based on the
   /// environment.
 
