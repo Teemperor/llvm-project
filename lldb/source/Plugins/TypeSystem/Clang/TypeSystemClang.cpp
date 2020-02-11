@@ -3508,6 +3508,7 @@ ConstString TypeSystemClang::GetTypeName(lldb::opaque_compiler_type_t type) {
 
   clang::PrintingPolicy printing_policy(getASTContext().getPrintingPolicy());
   printing_policy.SuppressTagKeyword = true;
+  printing_policy.SuppressUnwrittenScope = true;
   return ConstString(qual_type.getAsString(printing_policy));
 }
 
