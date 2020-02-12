@@ -216,7 +216,7 @@ public:
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
     CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eDiskFileCompletion,
+        GetCommandInterpreter(), CompletionTypes::DiskFile,
         request, nullptr);
   }
 
@@ -1383,7 +1383,7 @@ public:
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
     CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eDiskFileCompletion,
+        GetCommandInterpreter(), CompletionTypes::DiskFile,
         request, nullptr);
   }
 

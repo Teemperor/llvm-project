@@ -81,7 +81,7 @@ public:
   {
     lldb::CommandArgumentType arg_type;
     const char *arg_name;
-    CommandCompletions::CommonCompletionTypes completion_type;
+    std::vector<CompletionTypes> completion_types;
     ArgumentHelpCallback help_function;
     const char *help_text;
   };

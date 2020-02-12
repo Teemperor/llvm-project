@@ -445,7 +445,7 @@ public:
                            OptionElementVector &opt_element_vector) override {
     // Arguments are the standard source file completer.
     CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eVariablePathCompletion,
+        GetCommandInterpreter(), CompletionTypes::VariablePath,
         request, nullptr);
   }
 

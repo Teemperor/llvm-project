@@ -21,27 +21,12 @@
 
 namespace lldb_private {
 class TildeExpressionResolver;
+
 class CommandCompletions {
 public:
-  enum CommonCompletionTypes {
-    eNoCompletion = 0u,
-    eSourceFileCompletion = (1u << 0),
-    eDiskFileCompletion = (1u << 1),
-    eDiskDirectoryCompletion = (1u << 2),
-    eSymbolCompletion = (1u << 3),
-    eModuleCompletion = (1u << 4),
-    eSettingsNameCompletion = (1u << 5),
-    ePlatformPluginCompletion = (1u << 6),
-    eArchitectureCompletion = (1u << 7),
-    eVariablePathCompletion = (1u << 8),
-    // This item serves two purposes.  It is the last element in the enum, so
-    // you can add custom enums starting from here in your Option class. Also
-    // if you & in this bit the base code will not process the option.
-    eCustomCompletion = (1u << 9)
-  };
 
   static bool InvokeCommonCompletionCallbacks(
-      CommandInterpreter &interpreter, uint32_t completion_mask,
+      CommandInterpreter &interpreter, llvm::ArrayRef<CompletionTypes> completions,
       lldb_private::CompletionRequest &request, SearchFilter *searcher);
 
   // These are the generic completer functions:

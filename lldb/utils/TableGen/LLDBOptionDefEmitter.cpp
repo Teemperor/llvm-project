@@ -121,15 +121,13 @@ static void emitOption(const CommandOption &O, raw_ostream &OS) {
   OS << ", ";
 
   // Read the tab completions we offer for this option (if there are any)
-  if (!O.Completions.empty()) {
-    std::vector<std::string> CompletionArgs;
-    for (llvm::StringRef Completion : O.Completions)
-      CompletionArgs.push_back("CommandCompletions::e" + Completion.str() +
-                               "Completion");
+  std::vector<std::string> CompletionArgs;
+  for (llvm::StringRef Completion : O.Completions)
+    CompletionArgs.push_back("CompletionTypes::" + Completion.str());
 
-    OS << llvm::join(CompletionArgs.begin(), CompletionArgs.end(), " | ");
-  } else
-    OS << "CommandCompletions::eNoCompletion";
+  OS << "{";
+  OS << llvm::join(CompletionArgs.begin(), CompletionArgs.end(), ", ");
+  OS << "}";
 
   // Add the argument type.
   OS << ", eArgType";

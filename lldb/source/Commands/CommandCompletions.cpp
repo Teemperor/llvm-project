@@ -36,26 +36,25 @@ typedef void (*CompletionCallback)(CommandInterpreter &interpreter,
                                    lldb_private::SearchFilter *searcher);
 
 struct CommonCompletionElement {
-  uint32_t type;
+  CompletionTypes type;
   CompletionCallback callback;
 };
 
 bool CommandCompletions::InvokeCommonCompletionCallbacks(
-    CommandInterpreter &interpreter, uint32_t completion_mask,
+    CommandInterpreter &interpreter, llvm::ArrayRef<CompletionTypes> completions,
     CompletionRequest &request, SearchFilter *searcher) {
   bool handled = false;
 
   const CommonCompletionElement common_completions[] = {
-      {eSourceFileCompletion, CommandCompletions::SourceFiles},
-      {eDiskFileCompletion, CommandCompletions::DiskFiles},
-      {eDiskDirectoryCompletion, CommandCompletions::DiskDirectories},
-      {eSymbolCompletion, CommandCompletions::Symbols},
-      {eModuleCompletion, CommandCompletions::Modules},
-      {eSettingsNameCompletion, CommandCompletions::SettingsNames},
-      {ePlatformPluginCompletion, CommandCompletions::PlatformPluginNames},
-      {eArchitectureCompletion, CommandCompletions::ArchitectureNames},
-      {eVariablePathCompletion, CommandCompletions::VariablePath},
-      {eNoCompletion, nullptr} // This one has to be last in the list.
+      {CompletionTypes::SourceFile, CommandCompletions::SourceFiles},
+      {CompletionTypes::DiskFile, CommandCompletions::DiskFiles},
+      {CompletionTypes::DiskDirectory, CommandCompletions::DiskDirectories},
+      {CompletionTypes::Symbol, CommandCompletions::Symbols},
+      {CompletionTypes::Module, CommandCompletions::Modules},
+      {CompletionTypes::SettingsName, CommandCompletions::SettingsNames},
+      {CompletionTypes::PlatformPlugin, CommandCompletions::PlatformPluginNames},
+      {CompletionTypes::Architecture, CommandCompletions::ArchitectureNames},
+      {CompletionTypes::VariablePath, CommandCompletions::VariablePath},
   };
 
   for (int i = 0;; i++) {

@@ -139,7 +139,7 @@ insert-before or insert-after.");
     if (request.GetCursorIndex() == setting_var_idx) {
       // Attempting to complete setting variable name
       CommandCompletions::InvokeCommonCompletionCallbacks(
-          GetCommandInterpreter(), CommandCompletions::eSettingsNameCompletion,
+          GetCommandInterpreter(), CompletionTypes::SettingsName,
           request, nullptr);
       return;
     }
@@ -268,7 +268,7 @@ public:
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
     CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eSettingsNameCompletion,
+        GetCommandInterpreter(), CompletionTypes::,
         request, nullptr);
   }
 
@@ -518,7 +518,7 @@ public:
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
     CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eSettingsNameCompletion,
+        GetCommandInterpreter(), CompletionTypes::SettingsName,
         request, nullptr);
   }
 
@@ -606,7 +606,7 @@ public:
                            OptionElementVector &opt_element_vector) override {
     if (request.GetCursorIndex() < 2)
       CommandCompletions::InvokeCommonCompletionCallbacks(
-          GetCommandInterpreter(), CommandCompletions::eSettingsNameCompletion,
+          GetCommandInterpreter(), CompletionTypes::SettingsName,
           request, nullptr);
   }
 
@@ -717,7 +717,7 @@ public:
     // Attempting to complete variable name
     if (request.GetCursorIndex() < 2)
       CommandCompletions::InvokeCommonCompletionCallbacks(
-          GetCommandInterpreter(), CommandCompletions::eSettingsNameCompletion,
+          GetCommandInterpreter(), CompletionTypes::SettingsName,
           request, nullptr);
   }
 
@@ -811,7 +811,7 @@ public:
     // Attempting to complete variable name
     if (request.GetCursorIndex() < 2)
       CommandCompletions::InvokeCommonCompletionCallbacks(
-          GetCommandInterpreter(), CommandCompletions::eSettingsNameCompletion,
+          GetCommandInterpreter(), CompletionTypes::SettingsName,
           request, nullptr);
   }
 
@@ -910,7 +910,7 @@ public:
     // Attempting to complete variable name
     if (request.GetCursorIndex() < 2)
       CommandCompletions::InvokeCommonCompletionCallbacks(
-          GetCommandInterpreter(), CommandCompletions::eSettingsNameCompletion,
+          GetCommandInterpreter(), CompletionTypes::SettingsName,
           request, nullptr);
   }
 
@@ -998,7 +998,7 @@ public:
     // Attempting to complete variable name
     if (request.GetCursorIndex() < 2)
       CommandCompletions::InvokeCommonCompletionCallbacks(
-          GetCommandInterpreter(), CommandCompletions::eSettingsNameCompletion,
+          GetCommandInterpreter(), CompletionTypes::SettingsName,
           request, nullptr);
   }
 
@@ -1073,7 +1073,7 @@ public:
     // Attempting to complete variable name
     if (request.GetCursorIndex() < 2)
       CommandCompletions::InvokeCommonCompletionCallbacks(
-          GetCommandInterpreter(), CommandCompletions::eSettingsNameCompletion,
+          GetCommandInterpreter(), CompletionTypes::SettingsName,
           request, nullptr);
   }
 

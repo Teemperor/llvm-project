@@ -126,6 +126,18 @@ enum InstructionType {
 
 };
 
+enum class CompletionTypes {
+  SourceFile,
+  DiskFile,
+  DiskDirectory,
+  Symbol,
+  Module,
+  SettingsName,
+  PlatformPlugin,
+  Architecture,
+  VariablePath,
+};
+
 /// Format category entry types
 enum FormatCategoryItem {
   eFormatCategoryItemSummary = 0x0001,

@@ -260,7 +260,7 @@ public:
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
     CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eDiskFileCompletion,
+        GetCommandInterpreter(), CompletionTypes::DiskFile,
         request, nullptr);
   }
 
@@ -1814,7 +1814,7 @@ public:
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
     CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eModuleCompletion, request,
+        GetCommandInterpreter(), CompletionTypes::Module, request,
         nullptr);
   }
 };
@@ -1852,7 +1852,7 @@ public:
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
     CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eSourceFileCompletion,
+        GetCommandInterpreter(), CompletionTypes::SourceFile,
         request, nullptr);
   }
 };
@@ -2479,7 +2479,7 @@ public:
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
     CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eDiskFileCompletion,
+        GetCommandInterpreter(), CompletionTypes::DiskFile,
         request, nullptr);
   }
 
@@ -4006,7 +4006,7 @@ public:
         m_option_group(),
         m_file_option(
             LLDB_OPT_SET_1, false, "shlib", 's',
-            CommandCompletions::eModuleCompletion, eArgTypeShlibName,
+            {CompletionTypes::Module}, eArgTypeShlibName,
             "Locate the debug symbols for the shared library specified by "
             "name."),
         m_current_frame_option(
@@ -4029,7 +4029,7 @@ public:
   HandleArgumentCompletion(CompletionRequest &request,
                            OptionElementVector &opt_element_vector) override {
     CommandCompletions::InvokeCommonCompletionCallbacks(
-        GetCommandInterpreter(), CommandCompletions::eDiskFileCompletion,
+        GetCommandInterpreter(), CompletionTypes::DiskFile,
         request, nullptr);
   }
 

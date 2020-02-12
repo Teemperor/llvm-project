@@ -20,7 +20,7 @@ namespace lldb_private {
 class OptionGroupFile : public OptionGroup {
 public:
   OptionGroupFile(uint32_t usage_mask, bool required, const char *long_option,
-                  int short_option, uint32_t completion_type,
+                  int short_option, CompletionTypes completion_type,
                   lldb::CommandArgumentType argument_type,
                   const char *usage_text);
 

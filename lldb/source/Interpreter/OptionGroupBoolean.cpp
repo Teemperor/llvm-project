@@ -28,7 +28,7 @@ OptionGroupBoolean::OptionGroupBoolean(uint32_t usage_mask, bool required,
                                            ? OptionParser::eNoArgument
                                            : OptionParser::eRequiredArgument;
   m_option_definition.enum_values = {};
-  m_option_definition.completion_type = 0;
+  m_option_definition.completion_type = {};
   m_option_definition.argument_type = eArgTypeBoolean;
   m_option_definition.usage_text = usage_text;
 }

@@ -111,7 +111,7 @@ struct OptionDefinition {
   OptionValidator *validator; // If non-NULL, option is valid iff
                               // |validator->IsValid()|, otherwise always valid.
   OptionEnumValues enum_values; // If not empty, an array of enum values.
-  uint32_t completion_type; // Cookie the option class can use to do define the
+  std::vector<CompletionTypes> completion_type; // Cookie the option class can use to do define the
                             // argument completion.
   lldb::CommandArgumentType argument_type; // Type of argument this option takes
   const char *usage_text; // Full text explaining what this options does and
