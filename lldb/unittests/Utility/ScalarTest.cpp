@@ -130,6 +130,26 @@ TEST(ScalarTest, CastOperations) {
   ASSERT_EQ((long double)a2, a2_scalar.LongDouble());
 }
 
+TEST(ScalarTest, GetDataVoid) {
+  Scalar s;
+  std::string data = "data data data";
+  DataExtractor e(data.c_str(), data.size(), lldb::eByteOrderLittle, /*addr_size*/4);
+  EXPECT_FALSE(s.GetData(e));
+  // Extractor should have been cleared.
+  EXPECT_EQ(e.GetByteSize(), 0U);
+}
+
+TEST(ScalarTest, GetBytesVoid) {
+  Scalar s;
+  EXPECT_EQ(nullptr, s.GetBytes());
+}
+
+TEST(ScalarTest, GetBytesLongDouble) {
+  long double value = 1.23456;
+  Scalar s(value, true);
+  EXPECT_EQ(value, *reinterpret_cast<const long double *>(s.GetBytes()));
+}
+
 TEST(ScalarTest, ExtractBitfield) {
   uint32_t len = sizeof(long long) * 8;
 
