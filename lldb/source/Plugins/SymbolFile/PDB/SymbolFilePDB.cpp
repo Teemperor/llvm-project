@@ -1097,9 +1097,8 @@ SymbolFilePDB::ParseVariables(const lldb_private::SymbolContext &sc,
   return num_added;
 }
 
-void SymbolFilePDB::FindGlobalVariables(
-    lldb_private::ConstString name,
-    const lldb_private::CompilerDeclContext *parent_decl_ctx,
+void SymbolFilePDB::FindGlobalVariables(lldb_private::ConstString name,
+    const CompilerDeclContext &parent_decl_ctx,
     uint32_t max_matches, lldb_private::VariableList &variables) {
   std::lock_guard<std::recursive_mutex> guard(GetModuleMutex());
   if (!DeclContextMatchesThisSymbolFile(parent_decl_ctx))
@@ -1131,8 +1130,7 @@ void SymbolFilePDB::FindGlobalVariables(
     if (sc.comp_unit == nullptr)
       continue;
 
-    if (parent_decl_ctx && GetDeclContextContainingUID(
-                               result->getSymIndexId()) != *parent_decl_ctx)
+    if (GetDeclContextContainingUID(result->getSymIndexId()) != parent_decl_ctx)
       continue;
 
     ParseVariables(sc, *pdb_data, &variables);
@@ -1296,7 +1294,7 @@ void SymbolFilePDB::CacheFunctionNames() {
 
 void SymbolFilePDB::FindFunctions(
     lldb_private::ConstString name,
-    const lldb_private::CompilerDeclContext *parent_decl_ctx,
+    const lldb_private::CompilerDeclContext &parent_decl_ctx,
     FunctionNameType name_type_mask, bool include_inlines,
     lldb_private::SymbolContextList &sc_list) {
   std::lock_guard<std::recursive_mutex> guard(GetModuleMutex());
@@ -1325,8 +1323,7 @@ void SymbolFilePDB::FindFunctions(
         if (resolved_ids.find(id) != resolved_ids.end())
           continue;
 
-        if (parent_decl_ctx &&
-            GetDeclContextContainingUID(id) != *parent_decl_ctx)
+        if (GetDeclContextContainingUID(id) != parent_decl_ctx)
           continue;
 
         if (ResolveFunction(id, include_inlines, sc_list))
@@ -1423,9 +1420,8 @@ void SymbolFilePDB::AddSymbols(lldb_private::Symtab &symtab) {
   symtab.Finalize();
 }
 
-void SymbolFilePDB::FindTypes(
-    lldb_private::ConstString name,
-    const lldb_private::CompilerDeclContext *parent_decl_ctx,
+void SymbolFilePDB::FindTypes(lldb_private::ConstString name,
+    const CompilerDeclContext &parent_decl_ctx,
     uint32_t max_matches,
     llvm::DenseSet<lldb_private::SymbolFile *> &searched_symbol_files,
     lldb_private::TypeMap &types) {
@@ -1515,7 +1511,7 @@ void SymbolFilePDB::FindTypesByRegex(
 
 void SymbolFilePDB::FindTypesByName(
     llvm::StringRef name,
-    const lldb_private::CompilerDeclContext *parent_decl_ctx,
+    const lldb_private::CompilerDeclContext &parent_decl_ctx,
     uint32_t max_matches, lldb_private::TypeMap &types) {
   std::unique_ptr<IPDBEnumSymbols> results;
   if (name.empty())
@@ -1550,8 +1546,7 @@ void SymbolFilePDB::FindTypesByName(
     if (!ResolveTypeUID(result->getSymIndexId()))
       continue;
 
-    if (parent_decl_ctx && GetDeclContextContainingUID(
-                               result->getSymIndexId()) != *parent_decl_ctx)
+    if (GetDeclContextContainingUID(result->getSymIndexId()) != parent_decl_ctx)
       continue;
 
     auto iter = m_types.find(result->getSymIndexId());
@@ -1673,9 +1668,8 @@ PDBASTParser *SymbolFilePDB::GetPDBAstParser() {
 }
 
 
-lldb_private::CompilerDeclContext SymbolFilePDB::FindNamespace(
-    lldb_private::ConstString name,
-    const lldb_private::CompilerDeclContext *parent_decl_ctx) {
+lldb_private::CompilerDeclContext SymbolFilePDB::FindNamespace(lldb_private::ConstString name,
+    const CompilerDeclContext &parent_decl_ctx) {
   std::lock_guard<std::recursive_mutex> guard(GetModuleMutex());
   auto type_system_or_err =
       GetTypeSystemForLanguage(lldb::eLanguageTypeC_plus_plus);
@@ -1698,7 +1692,7 @@ lldb_private::CompilerDeclContext SymbolFilePDB::FindNamespace(
   clang::DeclContext *decl_context = nullptr;
   if (parent_decl_ctx)
     decl_context = static_cast<clang::DeclContext *>(
-        parent_decl_ctx->GetOpaqueDeclContext());
+        parent_decl_ctx.GetOpaqueDeclContext());
 
   auto namespace_decl =
       pdb->FindNamespaceDecl(decl_context, name.GetStringRef());
@@ -1972,11 +1966,11 @@ SymbolFilePDB::GetMangledForPDBFunc(const llvm::pdb::PDBSymbolFunc &pdb_func) {
 }
 
 bool SymbolFilePDB::DeclContextMatchesThisSymbolFile(
-    const lldb_private::CompilerDeclContext *decl_ctx) {
-  if (decl_ctx == nullptr || !decl_ctx->IsValid())
+    const lldb_private::CompilerDeclContext &decl_ctx) {
+  if (!decl_ctx.IsValid())
     return true;
 
-  TypeSystem *decl_ctx_type_system = decl_ctx->GetTypeSystem();
+  TypeSystem *decl_ctx_type_system = decl_ctx.GetTypeSystem();
   if (!decl_ctx_type_system)
     return false;
   auto type_system_or_err = GetTypeSystemForLanguage(

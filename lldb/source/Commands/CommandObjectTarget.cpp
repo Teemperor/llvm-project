@@ -1599,7 +1599,7 @@ static size_t LookupFunctionInModule(CommandInterpreter &interpreter,
                             include_inlines, sc_list);
     } else {
       ConstString function_name(name);
-      module->FindFunctions(function_name, nullptr, eFunctionNameTypeAuto,
+      module->FindFunctions(function_name, CompilerDeclContext(), eFunctionNameTypeAuto,
                             include_symbols, include_inlines, sc_list);
     }
     num_matches = sc_list.GetSize();
