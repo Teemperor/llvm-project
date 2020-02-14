@@ -600,9 +600,10 @@ void ClangASTSource::FindExternalVisibleDecls(NameSearchContext &context) {
     // we shouldn't be getting FindExternalVisibleDecls calls for these
     return;
   } else {
-    CompilerDeclContext namespace_decl;
+    CompilerDeclContext namespace_decl = m_clang_ast_context->CreateDeclContext(m_clang_ast_context->GetTranslationUnitDecl());
 
     LLDB_LOG(log, "  CAS::FEVD[{0}] Searching the root namespace", current_id);
+    llvm::errs() << "SEARCHING ROOT " <<namespace_decl.IsValid() << "\n";
 
     FindExternalVisibleDecls(context, lldb::ModuleSP(), namespace_decl,
                              current_id);

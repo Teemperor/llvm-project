@@ -36,8 +36,13 @@ void DWARFIndex::ProcessFunctionDIE(llvm::StringRef name, DIERef ref,
 
   // Otherwise, we need to also check that the context matches. If it does not
   // match, we do nothing.
-  if (!SymbolFileDWARF::DIEInDeclContext(&parent_decl_ctx, die))
+  llvm::errs() << __PRETTY_FUNCTION__ << " filtering " << name << " with filter " << parent_decl_ctx.IsValid() << "  ";
+  if (!SymbolFileDWARF::DIEInDeclContext(&parent_decl_ctx, die)) {
+      llvm::errs() << "FAILED\n";
     return;
+  }
+
+  llvm::errs() << "PASSED\n";
 
   // In case of a full match, we just insert everything we find.
   if (name_type_mask & eFunctionNameTypeFull) {

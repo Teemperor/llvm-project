@@ -351,7 +351,7 @@ ModuleSP ModuleList::GetModuleAtIndexUnlocked(size_t idx) const {
   return module_sp;
 }
 
-void ModuleList::FindFunctions(ConstString name,
+void ModuleList::FindFunctions(ConstString name, const CompilerDeclContext *parent_decl_ctx,
                                FunctionNameType name_type_mask,
                                bool include_symbols, bool include_inlines,
                                SymbolContextList &sc_list) const {
@@ -363,7 +363,7 @@ void ModuleList::FindFunctions(ConstString name,
     std::lock_guard<std::recursive_mutex> guard(m_modules_mutex);
     collection::const_iterator pos, end = m_modules.end();
     for (pos = m_modules.begin(); pos != end; ++pos) {
-      (*pos)->FindFunctions(lookup_info.GetLookupName(), nullptr,
+      (*pos)->FindFunctions(lookup_info.GetLookupName(), parent_decl_ctx,
                             lookup_info.GetNameTypeMask(), include_symbols,
                             include_inlines, sc_list);
     }
@@ -376,7 +376,7 @@ void ModuleList::FindFunctions(ConstString name,
     std::lock_guard<std::recursive_mutex> guard(m_modules_mutex);
     collection::const_iterator pos, end = m_modules.end();
     for (pos = m_modules.begin(); pos != end; ++pos) {
-      (*pos)->FindFunctions(name, nullptr, name_type_mask, include_symbols,
+      (*pos)->FindFunctions(name, parent_decl_ctx, name_type_mask, include_symbols,
                             include_inlines, sc_list);
     }
   }

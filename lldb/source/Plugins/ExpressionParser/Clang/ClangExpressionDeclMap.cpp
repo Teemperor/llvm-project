@@ -698,7 +698,7 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
       FindExternalVisibleDecls(context, i->first, i->second, current_id);
     }
   } else if (isa<TranslationUnitDecl>(context.m_decl_context)) {
-    CompilerDeclContext namespace_decl;
+    CompilerDeclContext namespace_decl = m_clang_ast_context->CreateDeclContext(m_clang_ast_context->GetTranslationUnitDecl());
 
     if (log)
       log->Printf("  CEDM::FEVD[%u] Searching the root namespace", current_id);
@@ -1234,19 +1234,22 @@ void ClangExpressionDeclMap::LookupFunction(NameSearchContext &context,
 
   const bool include_inlines = false;
   SymbolContextList sc_list;
+  llvm::errs() << "Found for name '" << namespace_decl.GetScopeQualifiedName().GetStringRef() << "' " << name.GetStringRef() << " " << namespace_decl.IsValid() << " BEFORE'\n";
   if (namespace_decl && module_sp) {
+    llvm::errs() << "MODULE CASE\n";
     const bool include_symbols = false;
 
-    module_sp->FindFunctions(name, &namespace_decl, eFunctionNameTypeBase,
+    module_sp->FindFunctions(name, &namespace_decl, eFunctionNameTypeFull,
                              include_symbols, include_inlines, sc_list);
   } else if (target && !namespace_decl) {
+      llvm::errs() << "Target CASE\n";
     const bool include_symbols = true;
 
     // TODO Fix FindFunctions so that it doesn't return
     //   instance methods for eFunctionNameTypeBase.
 
     target->GetImages().FindFunctions(
-        name, eFunctionNameTypeFull | eFunctionNameTypeBase, include_symbols,
+        name, &namespace_decl, eFunctionNameTypeFull, include_symbols,
         include_inlines, sc_list);
   }
 
@@ -1275,6 +1278,9 @@ void ClangExpressionDeclMap::LookupFunction(NameSearchContext &context,
       sc_list = SearchFunctionsInSymbolContexts(sc_list, frame_decl_context);
     }
   }
+
+  llvm::errs() << "Found for name '" << namespace_decl.GetScopeQualifiedName().GetStringRef() << "' " << name.GetStringRef() << " " << namespace_decl.IsValid() << " " << sc_list.GetSize() <<  "'\n";
+
 
   if (sc_list.GetSize()) {
     Symbol *extern_symbol = nullptr;

@@ -259,9 +259,18 @@ public:
   void FindCompileUnits(const FileSpec &path, SymbolContextList &sc_list) const;
 
   /// \see Module::FindFunctions ()
-  void FindFunctions(ConstString name, lldb::FunctionNameType name_type_mask,
+  void FindFunctions(ConstString name, const CompilerDeclContext *parent_decl_ctx,
+                     lldb::FunctionNameType name_type_mask,
                      bool include_symbols, bool include_inlines,
                      SymbolContextList &sc_list) const;
+
+  /// \see Module::FindFunctions ()
+  void FindFunctions(ConstString name,
+                     lldb::FunctionNameType name_type_mask,
+                     bool include_symbols, bool include_inlines,
+                     SymbolContextList &sc_list) const {
+    FindFunctions(name, nullptr, name_type_mask, include_symbols, include_inlines, sc_list);
+  }
 
   /// \see Module::FindFunctionSymbols ()
   void FindFunctionSymbols(ConstString name,
