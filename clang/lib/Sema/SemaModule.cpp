@@ -418,6 +418,9 @@ void Sema::BuildModuleInclude(SourceLocation DirectiveLoc, Module *Mod) {
 
   bool ShouldAddImport = !IsInModuleIncludes;
 
+  if (!LangOpts.ModulesLocalVisibility)
+    Mod = Mod->getTopLevelModule();
+
   // If this module import was due to an inclusion directive, create an
   // implicit import declaration to capture it in the AST.
   if (ShouldAddImport) {
