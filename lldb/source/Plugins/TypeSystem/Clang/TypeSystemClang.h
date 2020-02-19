@@ -452,6 +452,9 @@ public:
   /// The DeclContext has to come from the ASTContext of this
   /// TypeSystemClang.
   CompilerDeclContext CreateDeclContext(clang::DeclContext *ctx);
+  CompilerDeclContext GetTUCompilerDeclContext() {
+    return CreateDeclContext(GetTranslationUnitDecl());
+  }
 
   std::vector<CompilerDecl>
   DeclContextFindDeclByName(void *opaque_decl_ctx, ConstString name,
