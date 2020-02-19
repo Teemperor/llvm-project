@@ -24,3 +24,7 @@ class TestCase(TestBase):
         self.expect("expr ClassWithDeletedCtor(1).value", error=True, substrs=["Couldn't lookup symbols:"])
         self.expect("expr ClassWithDeletedDefaultCtor().value", error=True, substrs=["Couldn't lookup symbols:"])
 
+    @skipIfLinux # Fails on some Linux systems with SIGABRT.
+    def test_new(self):
+        self.expect_expr("expr new ClassWithOneCtor(1).value", result_type="int", result_value="1")
+
