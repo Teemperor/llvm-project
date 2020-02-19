@@ -1,7 +1,3 @@
-#include <stdio.h>
-
-int main()
-{
-    printf("This is a dummy\n"); // Set breakpoint here   
-    return 0;
+int main() {
+  return 0; // Set breakpoint here
 }

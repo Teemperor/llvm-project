@@ -6,11 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <cstdlib>
-#include <string>
-#include <fstream>
-#include <iostream>
-
 int
 product (int x, int y)
 {

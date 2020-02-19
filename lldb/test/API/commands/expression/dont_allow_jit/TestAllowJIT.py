@@ -32,14 +32,14 @@ class TestAllowJIT(TestBase):
 
     def expr_cmd_test(self):
         (target, process, thread, bkpt) = lldbutil.run_to_source_breakpoint(self,
-                                   "Set a breakpoint here", self.main_source_file)
+                                   "// Set a breakpoint here", self.main_source_file)
 
         frame = thread.GetFrameAtIndex(0)
 
         # First make sure we can call the function with 
         interp = self.dbg.GetCommandInterpreter()
         self.expect("expr --allow-jit 1 -- call_me(10)",
-                    substrs = ["(int) $", "= 18"])
+                    substrs = ["(int) $", "= 20"])
         # Now make sure it fails with the "can't IR interpret message" if allow-jit is false:
         self.expect("expr --allow-jit 0 -- call_me(10)",
                     error=True,
@@ -59,7 +59,7 @@ class TestAllowJIT(TestBase):
         # Now use the options:
         result = frame.EvaluateExpression("call_me(10)", options)
         self.assertTrue(result.GetError().Success(), "expression succeeded")
-        self.assertEqual(result.GetValueAsSigned(), 18, "got the right value.")
+        self.assertEqual(result.GetValueAsSigned(), 20, "got the right value.")
 
         # Now disallow JIT and make sure it fails:
         options.SetAllowJIT(False)
@@ -78,5 +78,5 @@ class TestAllowJIT(TestBase):
         # And again, make sure this works:
         result = frame.EvaluateExpression("call_me(10)", options)
         self.assertTrue(result.GetError().Success(), "expression succeeded")
-        self.assertEqual(result.GetValueAsSigned(), 18, "got the right value.")
+        self.assertEqual(result.GetValueAsSigned(), 20, "got the right value.")
 

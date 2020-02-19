@@ -1,6 +1,3 @@
-#include <iostream>
-#include <string>
-
 int *new_int(int val) {
   return new int(val);
 }

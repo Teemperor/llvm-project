@@ -1,5 +1,3 @@
-#include <stdio.h>
-
 class A {
 public:
   int __attribute__((abi_tag("cxx11"))) test_abi_tag() {

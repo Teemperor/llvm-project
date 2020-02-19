@@ -6,12 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <cstdlib>
-#include <cstring>
-#include <string>
-#include <fstream>
-#include <iostream>
-
 int
 product (int x, int y)
 {
@@ -52,8 +46,7 @@ int
 main(int argc, char const *argv[])
 {
 
-    int array[9];
-	memset(array,0,9*sizeof(int));
+    int array[9] = {0}; // all elements = 0.
 
     array[0] = foo (1238, 78392);
     array[1] = foo (379265, 23674);

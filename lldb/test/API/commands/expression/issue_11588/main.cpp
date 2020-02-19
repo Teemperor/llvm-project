@@ -1,9 +1,3 @@
-//
-//  11588.cpp
-//
-
-#include <iostream>
-
 class StgInfoTable {};
 
 class StgHeader
@@ -32,7 +26,7 @@ public:
 		if (make_payload)
 			payload[0] = new StgClosure(false);
 		else
-			payload[0] = NULL;
+			payload[0] = nullptr;
 	}
 	~StgClosure()
 	{

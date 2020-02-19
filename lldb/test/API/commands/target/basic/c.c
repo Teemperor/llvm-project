@@ -5,7 +5,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
-#include <stdio.h>
 
 int main (int argc, char const *argv[])
 {
@@ -20,9 +19,10 @@ int main (int argc, char const *argv[])
         kNumDays
     };
     enum days day;
+    int res = 0;
     for (day = Monday - 1; day <= kNumDays + 1; day++)
     {
-        printf("day as int is %i\n", (int)day);
+        res += (int)day;
     }
-    return 0; // Set break point at this line.
+    return res; // Set break point at this line.
 }
