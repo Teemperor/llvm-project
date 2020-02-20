@@ -431,6 +431,8 @@ void Sema::BuildModuleInclude(SourceLocation DirectiveLoc, Module *Mod) {
     Consumer.HandleImplicitImportDecl(ImportD);
   }
 
+  if (!LangOpts.ModulesLocalVisibility)
+    Mod = Mod->getTopLevelModule();
   getModuleLoader().makeModuleVisible(Mod, Module::AllVisible, DirectiveLoc);
   VisibleModules.setVisible(Mod, DirectiveLoc);
 }
