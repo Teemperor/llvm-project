@@ -1460,6 +1460,7 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
           m_ast_context->getDiagnostics().getCustomDiagID(
               clang::DiagnosticsEngine::Level::Warning, "%0");
       m_ast_context->getDiagnostics().Report(diag_id) << warning.c_str();
+      abort();
       AddOneGenericVariable(context, *data_symbol, current_id);
       context.m_found.variable = true;
     }
