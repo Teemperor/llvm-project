@@ -684,6 +684,8 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
 
       FindExternalVisibleDecls(context, i->first, i->second);
     }
+
+    LookupInNamespace(context);
   } else if (isa<TranslationUnitDecl>(context.m_decl_context)) {
     CompilerDeclContext namespace_decl;
 
@@ -692,7 +694,7 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
     FindExternalVisibleDecls(context, lldb::ModuleSP(), namespace_decl);
   }
 
-  //ClangASTSource::FindExternalVisibleDecls(context);
+  ClangASTSource::FindExternalVisibleDecls(context);
 }
 
 void ClangExpressionDeclMap::MaybeRegisterFunctionBody(
