@@ -364,6 +364,10 @@ protected:
   void FindDeclInModules(NameSearchContext &context, ConstString name);
   void FindDeclInObjCRuntime(NameSearchContext &context, ConstString name);
 
+  void FillNamespaceMap(NameSearchContext &context,
+                        lldb::ModuleSP module_sp,
+                        const CompilerDeclContext &namespace_decl);
+
   friend struct NameSearchContext;
 
   bool m_import_in_progress;
