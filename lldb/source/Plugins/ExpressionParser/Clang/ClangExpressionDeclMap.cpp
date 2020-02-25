@@ -692,7 +692,7 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
     FindExternalVisibleDecls(context, lldb::ModuleSP(), namespace_decl);
   }
 
-  ClangASTSource::FindExternalVisibleDecls(context);
+  //ClangASTSource::FindExternalVisibleDecls(context);
 }
 
 void ClangExpressionDeclMap::MaybeRegisterFunctionBody(
