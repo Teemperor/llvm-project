@@ -988,18 +988,6 @@ void ClangExpressionDeclMap::LookUpLldbObjCClass(NameSearchContext &context) {
 
 void ClangExpressionDeclMap::LookupLocalVarNamespace(
     SymbolContext &sym_ctx, NameSearchContext &name_context) {
-  if (sym_ctx.block == nullptr)
-    return;
-
-  CompilerDeclContext frame_decl_context = sym_ctx.block->GetDeclContext();
-  if (!frame_decl_context)
-    return;
-
-  TypeSystemClang *frame_ast = llvm::dyn_cast_or_null<TypeSystemClang>(
-      frame_decl_context.GetTypeSystem());
-  if (!frame_ast)
-    return;
-
   clang::NamespaceDecl *namespace_decl =
       m_clang_ast_context->GetUniqueNamespaceDeclaration(
           g_lldb_local_vars_namespace_cstr, nullptr);
