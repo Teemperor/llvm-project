@@ -1424,31 +1424,34 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
   if (!context.m_found.function_with_type_info)
     LookupInModulesDeclVendor(context, name);
 
-  if (target && !context.m_found.variable && !namespace_decl) {
-    // We couldn't find a non-symbol variable for this.  Now we'll hunt for a
-    // generic data symbol, and -- if it is found -- treat it as a variable.
-    Status error;
+  // We couldn't find a non-symbol variable for this.  Now we'll hunt for a
+  // generic data symbol, and -- if it is found -- treat it as a variable.
+  if (target && !context.m_found.variable && !namespace_decl)
+    LookupGlobalDataSymbol(context, name);
+}
 
-    const Symbol *data_symbol =
-        m_parser_vars->m_sym_ctx.FindBestGlobalDataSymbol(name, error);
+void ClangExpressionDeclMap::LookupGlobalDataSymbol(NameSearchContext &context, ConstString name) {
+  Status error;
 
-    if (!error.Success()) {
-      const unsigned diag_id =
-          m_ast_context->getDiagnostics().getCustomDiagID(
-              clang::DiagnosticsEngine::Level::Error, "%0");
-      m_ast_context->getDiagnostics().Report(diag_id) << error.AsCString();
-    }
+  const Symbol *data_symbol =
+      m_parser_vars->m_sym_ctx.FindBestGlobalDataSymbol(name, error);
 
-    if (data_symbol) {
-      std::string warning("got name from symbols: ");
-      warning.append(name.AsCString());
-      const unsigned diag_id =
-          m_ast_context->getDiagnostics().getCustomDiagID(
-              clang::DiagnosticsEngine::Level::Warning, "%0");
-      m_ast_context->getDiagnostics().Report(diag_id) << warning.c_str();
-      AddOneGenericVariable(context, *data_symbol);
-      context.m_found.variable = true;
-    }
+  if (!error.Success()) {
+    const unsigned diag_id =
+        m_ast_context->getDiagnostics().getCustomDiagID(
+            clang::DiagnosticsEngine::Level::Error, "%0");
+    m_ast_context->getDiagnostics().Report(diag_id) << error.AsCString();
+  }
+
+  if (data_symbol) {
+    std::string warning("got name from symbols: ");
+    warning.append(name.AsCString());
+    const unsigned diag_id =
+        m_ast_context->getDiagnostics().getCustomDiagID(
+            clang::DiagnosticsEngine::Level::Warning, "%0");
+    m_ast_context->getDiagnostics().Report(diag_id) << warning.c_str();
+    AddOneGenericVariable(context, *data_symbol);
+    context.m_found.variable = true;
   }
 }
 

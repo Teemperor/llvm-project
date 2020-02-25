@@ -497,6 +497,8 @@ private:
   FindGlobalVariable(Target &target, lldb::ModuleSP &module, ConstString name,
                      const CompilerDeclContext &namespace_decl);
 
+  void LookupGlobalDataSymbol(NameSearchContext &context, ConstString name);
+
   /// Get the value of a variable in a given execution context and return the
   /// associated Types if needed.
   ///
