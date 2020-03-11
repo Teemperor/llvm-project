@@ -47,6 +47,7 @@ bool operator>(const C &, const C &) { return true; }
 bool operator>>(const C &, const C &) { return true; }
 bool operator<<(const C &, const C &) { return true; }
 bool operator==(const C &, const C &) { return true; }
+int operator<=>(const C &, const C &) { return 0; }
 
 int main() {
   A::B b1;
@@ -56,7 +57,7 @@ int main() {
 
   bool result_b = b1 < b2 && b1 << b2 && b1 == b2 && b1 > b2 && b1 >> b2;
   bool result_c = c1 < c2 && c1 << c2 && c1 == c2 && c1 > c2 && c1 >> c2;
-
+  int x = c1<=>c2;
   return foo(42) + result_b + result_c +
          // ADL lookup case,
          f(A::C{}) +

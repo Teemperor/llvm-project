@@ -13,8 +13,7 @@ class TemplateFunctionsTestCase(TestBase):
 
     def do_test_template_function(self, add_cast):
         self.build()
-        (self.target, self.process, _, bkpt) = lldbutil.run_to_source_breakpoint(self, '// break here',
-                lldb.SBFileSpec("main.cpp", False))
+        lldbutil.run_to_source_breakpoint(self, '// break here', lldb.SBFileSpec("main.cpp"))
 
         if add_cast:
           self.expect_expr("(int) foo(42)", result_type="int", result_value="42")
@@ -46,6 +45,8 @@ class TemplateFunctionsTestCase(TestBase):
           self.expect_expr("c1 << c2", result_type="bool", result_value="true")
 
           self.expect_expr("c1 == c2", result_type="bool", result_value="true")
+
+          self.expect_expr("dc1 <=> c2", result_type="0", result_value="0")
 
     @skipIfWindows
     def test_template_function_with_cast(self):
