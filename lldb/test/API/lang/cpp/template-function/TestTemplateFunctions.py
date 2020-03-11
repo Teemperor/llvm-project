@@ -13,14 +13,39 @@ class TemplateFunctionsTestCase(TestBase):
 
     def do_test_template_function(self, add_cast):
         self.build()
-        (_, _, thread, _) = lldbutil.run_to_name_breakpoint(self, "main")
-        frame = thread.GetSelectedFrame()
-        expr = "foo(42)"
+        (self.target, self.process, _, bkpt) = lldbutil.run_to_source_breakpoint(self, '// break here',
+                lldb.SBFileSpec("main.cpp", False))
+
         if add_cast:
-            expr = "(int)" + expr
-        expr_result = frame.EvaluateExpression(expr)
-        self.assertTrue(expr_result.IsValid())
-        self.assertEqual(expr_result.GetValue(), "42")
+          self.expect_expr("(int) foo(42)", result_type="int", result_value="42")
+        else:
+          self.expect_expr("foo(42)", result_type="int", result_value="42")
+
+          self.expect_expr("h(10)", result_type="int", result_value="10")
+
+          self.expect_expr("f(A::C{})", result_type="int", result_value="4")
+
+          self.expect_expr("g(A::C{})", result_type="int", result_value="4")
+
+          self.expect_expr("var(1)", result_type="int", result_value="10")
+
+          self.expect_expr("var(1,2)", result_type="int", result_value="10")
+
+          self.expect_expr("b1 > b2", result_type="bool", result_value="true")
+
+          self.expect_expr("b1 >> b2", result_type="bool", result_value="true")
+
+          self.expect_expr("b1 << b2", result_type="bool", result_value="true")
+
+          self.expect_expr("b1 == b2", result_type="bool", result_value="true")
+
+          self.expect_expr("c1 > c2", result_type="bool", result_value="true")
+
+          self.expect_expr("c1 >> c2", result_type="bool", result_value="true")
+
+          self.expect_expr("c1 << c2", result_type="bool", result_value="true")
+
+          self.expect_expr("c1 == c2", result_type="bool", result_value="true")
 
     @skipIfWindows
     def test_template_function_with_cast(self):
