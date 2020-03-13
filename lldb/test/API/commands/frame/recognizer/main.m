@@ -7,7 +7,7 @@ void foo(int a, int b)
 
 void bar(int *ptr)
 {
-	printf("%d\n", *ptr);
+    printf("%d\n", *ptr);
 }
 
 int main (int argc, const char * argv[])
