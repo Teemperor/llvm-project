@@ -259,6 +259,9 @@ UserExpression::Evaluate(ExecutionContext &exe_ctx,
 
   // If there is a fixed expression, try to parse it:
   if (!parse_success) {
+    // Delete the failed expression that failed to parse.
+    user_expression_sp.reset();
+
     execution_results = lldb::eExpressionParseError;
     if (fixed_expression && !fixed_expression->empty() &&
         options.GetAutoApplyFixIts()) {
