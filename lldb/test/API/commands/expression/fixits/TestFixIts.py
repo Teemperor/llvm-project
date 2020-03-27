@@ -62,13 +62,33 @@ class ExprCommandWithFixits(TestBase):
         self.assertEquals(value.GetValueAsUnsigned(), 20)
 
         # Try error where the FixIt is in the note:
+        top_options = lldb.SBExpressionOptions()
+        top_options.SetAutoApplyFixIts(True)
+        top_options.SetTopLevel(True)
+
         value = frame.EvaluateExpression(
         """
-#define ToStr(x) #x
-(ToStr(0 {, })
-        """, options)
-        self.assertTrue(value.IsValid())
-        self.assertTrue(value.GetError().Success())
+  template<typename T>
+  struct X : public T {
+    using T::iterator;
+    void f() {
+      typename X<T>::iterator i;
+      i.m;
+    }
+  };
+
+  struct Data { int m; };
+
+  struct HasIterator {
+    typedef Data *iterator;
+  };
+
+  void test_X(X<HasIterator> xi) {
+    xi.f();
+  }
+        """, top_options)
+        self.assertTrue(value.IsValid(), value.GetError())
+        self.assertTrue(value.GetError().Success(), value.GetError())
         self.assertEquals(value.GetSummary(), "\"(0 {, })\"")
 
         # Now turn off the fixits, and the expression should fail:
