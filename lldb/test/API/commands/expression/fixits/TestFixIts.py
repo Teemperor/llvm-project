@@ -61,6 +61,16 @@ class ExprCommandWithFixits(TestBase):
         self.assertTrue(value.GetError().Success())
         self.assertEquals(value.GetValueAsUnsigned(), 20)
 
+        # Try error where the FixIt is in the note:
+        value = frame.EvaluateExpression(
+        """
+#define ToStr(x) #x
+(ToStr(0 {, })
+        """, options)
+        self.assertTrue(value.IsValid())
+        self.assertTrue(value.GetError().Success())
+        self.assertEquals(value.GetSummary(), "\"(0 {, })\"")
+
         # Now turn off the fixits, and the expression should fail:
         options.SetAutoApplyFixIts(False)
         value = frame.EvaluateExpression(two_error_expression, options)
