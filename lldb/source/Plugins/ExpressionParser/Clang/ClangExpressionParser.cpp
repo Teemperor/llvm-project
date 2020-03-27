@@ -199,11 +199,11 @@ public:
       break;
     case DiagnosticsEngine::Level::Remark:
     case DiagnosticsEngine::Level::Ignored:
+    case DiagnosticsEngine::Level::Note:
       severity = eDiagnosticSeverityRemark;
       break;
-    case DiagnosticsEngine::Level::Note:
       m_manager->AppendMessageToDiagnostic(m_output);
-      make_new_diagnostic = false;
+      //make_new_diagnostic = false;
     }
     if (make_new_diagnostic) {
       // ClangDiagnostic messages are expected to have no whitespace/newlines
@@ -214,18 +214,20 @@ public:
       auto new_diagnostic = std::make_unique<ClangDiagnostic>(
           stripped_output, severity, Info.getID());
 
+      llvm::errs() << "DIAG: " << m_output << "\n";
       // Don't store away warning fixits, since the compiler doesn't have
       // enough context in an expression for the warning to be useful.
       // FIXME: Should we try to filter out FixIts that apply to our generated
       // code, and not the user's expression?
-      if (severity == eDiagnosticSeverityError) {
+      //if (severity == eDiagnosticSeverityError) {
         size_t num_fixit_hints = Info.getNumFixItHints();
         for (size_t i = 0; i < num_fixit_hints; i++) {
           const clang::FixItHint &fixit = Info.getFixItHint(i);
+          llvm::errs() << "RECV: " << fixit.CodeToInsert << "\n";
           if (!fixit.isNull())
             new_diagnostic->AddFixitHint(fixit);
         }
-      }
+      //}
 
       m_manager->AddDiagnostic(std::move(new_diagnostic));
     }
@@ -1100,10 +1102,12 @@ bool ClangExpressionParser::RewriteExpression(
   if (num_diags == 0)
     return false;
 
+  llvm::errs() << "Diags: " << num_diags << "\n";
   for (const auto &diag : diagnostic_manager.Diagnostics()) {
     const auto *diagnostic = llvm::dyn_cast<ClangDiagnostic>(diag.get());
     if (diagnostic && diagnostic->HasFixIts()) {
       for (const FixItHint &fixit : diagnostic->FixIts()) {
+        llvm::errs() << "TO INSERT:" << fixit.CodeToInsert << "\n";
         // This is cobbed from clang::Rewrite::FixItRewriter.
         if (fixit.CodeToInsert.empty()) {
           if (fixit.InsertFromRange.isValid()) {

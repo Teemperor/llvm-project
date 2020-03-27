@@ -61,6 +61,11 @@ class ExprCommandWithFixits(TestBase):
         self.assertTrue(value.GetError().Success())
         self.assertEquals(value.GetValueAsUnsigned(), 20)
 
+        # Try with two errors that can't be fixed by one fixit:
+        self.expect("settings set target.auto-apply-fixits true")
+        self.expect("expr struct B { int x; }; B *b(); if (b != b) b.x; 1")
+        self.expect("settings set target.auto-apply-fixits false")
+
         # Now turn off the fixits, and the expression should fail:
         options.SetAutoApplyFixIts(False)
         value = frame.EvaluateExpression(two_error_expression, options)
