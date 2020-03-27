@@ -162,6 +162,14 @@ public:
     m_manager = manager;
   }
 
+  ClangDiagnostic *MaybeGetLastClangDiag() const {
+    if (m_manager->Diagnostics().empty())
+      return nullptr;
+    lldb_private::Diagnostic *diag = m_manager->Diagnostics().back().get();
+    ClangDiagnostic *clang_diag = dyn_cast<ClangDiagnostic>(diag);
+    return clang_diag;
+  }
+
   void HandleDiagnostic(DiagnosticsEngine::Level DiagLevel,
                         const clang::Diagnostic &Info) override {
     if (!m_manager) {
@@ -204,6 +212,25 @@ public:
     case DiagnosticsEngine::Level::Note:
       m_manager->AppendMessageToDiagnostic(m_output);
       make_new_diagnostic = false;
+
+      // 'note:' diagnostics for errors and warnings can also contain Fix-Its.
+      // We add these Fix-Its to the last error/warning diagnostic to make sure
+      // that we later have all Fix-Its related to an 'error' diagnostic when
+      // we apply them to the user expression.
+      auto *clang_diag = MaybeGetLastClangDiag();
+      // If we don't have a previous diagnostic there is nothing to do.
+      // If the previous diagnostic already has its own Fix-Its, assume that
+      // the 'note:' Fix-It is just an alternative way to solve the issue and
+      // ignore these Fix-Its.
+      if (!clang_diag || clang_diag->HasFixIts())
+        break;
+      // Add the Fix-Its to the previous diagnostic now.
+      for (auto &fix_it : Info.getFixItHints()) {
+        if (fix_it.isNull())
+          continue;
+        clang_diag->AddFixitHint(fix_it);
+      }
+      break;
     }
     if (make_new_diagnostic) {
       // ClangDiagnostic messages are expected to have no whitespace/newlines
