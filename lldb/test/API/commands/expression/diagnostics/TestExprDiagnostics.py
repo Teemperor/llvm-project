@@ -79,7 +79,7 @@ class ExprDiagnosticsTestCase(TestBase):
 
         value = frame.EvaluateExpression("foo(1, 2)")
         self.assertFalse(value.GetError().Success())
-        self.assertEqual("error: <user expression 7>:1:1: no matching function for call to 'foo'\nfoo(1, 2)\n^~~\nnote: candidate function not viable: requires single argument 'x', but 2 arguments were provided\n\n", value.GetError().GetCString())
+        self.assertEqual("error: <user expression 7>:1:1: no matching function for call to 'foo'\nfoo(1, 2)\n^~~\nnote: candidate function not viable: requires single argument 'x', but 2 arguments were provided\n", value.GetError().GetCString())
 
         # Redefine something that we defined in a user-expression. We should use the previous expression file name
         # for the original decl.

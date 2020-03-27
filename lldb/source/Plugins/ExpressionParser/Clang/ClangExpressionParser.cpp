@@ -187,7 +187,6 @@ public:
     m_os->flush();
 
     lldb_private::DiagnosticSeverity severity;
-    bool make_new_diagnostic = true;
 
     switch (DiagLevel) {
     case DiagnosticsEngine::Level::Fatal:
@@ -199,36 +198,28 @@ public:
       break;
     case DiagnosticsEngine::Level::Remark:
     case DiagnosticsEngine::Level::Ignored:
+    case DiagnosticsEngine::Level::Note:
       severity = eDiagnosticSeverityRemark;
       break;
-    case DiagnosticsEngine::Level::Note:
-      m_manager->AppendMessageToDiagnostic(m_output);
-      make_new_diagnostic = false;
     }
-    if (make_new_diagnostic) {
-      // ClangDiagnostic messages are expected to have no whitespace/newlines
-      // around them.
-      std::string stripped_output =
-          std::string(llvm::StringRef(m_output).trim());
 
-      auto new_diagnostic = std::make_unique<ClangDiagnostic>(
-          stripped_output, severity, Info.getID());
+    // ClangDiagnostic messages are expected to have no whitespace/newlines
+    // around them.
+    std::string stripped_output = std::string(llvm::StringRef(m_output).trim());
 
-      // Don't store away warning fixits, since the compiler doesn't have
-      // enough context in an expression for the warning to be useful.
-      // FIXME: Should we try to filter out FixIts that apply to our generated
-      // code, and not the user's expression?
-      if (severity == eDiagnosticSeverityError) {
-        size_t num_fixit_hints = Info.getNumFixItHints();
-        for (size_t i = 0; i < num_fixit_hints; i++) {
-          const clang::FixItHint &fixit = Info.getFixItHint(i);
-          if (!fixit.isNull())
-            new_diagnostic->AddFixitHint(fixit);
-        }
-      }
+    auto new_diagnostic = std::make_unique<ClangDiagnostic>(
+        stripped_output, severity, Info.getID());
 
-      m_manager->AddDiagnostic(std::move(new_diagnostic));
+    // FIXME: Should we try to filter out FixIts that apply to our generated
+    // code, and not the user's expression?
+    size_t num_fixit_hints = Info.getNumFixItHints();
+    for (size_t i = 0; i < num_fixit_hints; i++) {
+      const clang::FixItHint &fixit = Info.getFixItHint(i);
+      if (!fixit.isNull())
+        new_diagnostic->AddFixitHint(fixit);
     }
+
+    m_manager->AddDiagnostic(std::move(new_diagnostic));
   }
 
   clang::TextDiagnosticPrinter *GetPassthrough() { return m_passthrough.get(); }
