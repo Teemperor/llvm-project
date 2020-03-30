@@ -211,6 +211,7 @@ public:
       break;
     case DiagnosticsEngine::Level::Note:
       m_manager->AppendMessageToDiagnostic(m_output);
+      make_new_diagnostic = false;
 
       // 'note:' diagnostics for errors and warnings can also contain Fix-Its.
       // We add these Fix-Its to the last error/warning diagnostic to make sure

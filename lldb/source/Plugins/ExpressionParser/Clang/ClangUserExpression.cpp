@@ -625,6 +625,9 @@ bool ClangUserExpression::Parse(DiagnosticManager &diagnostic_manager,
                                                  fixed_start, fixed_end))
           m_fixed_text =
               fixed_expression.substr(fixed_start, fixed_end - fixed_start);
+        else
+          m_fixed_text = fixed_expression;
+        llvm::errs() << "NEW: " << m_fixed_text << "\n";
       }
     }
     return false;
