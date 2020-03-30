@@ -86,6 +86,10 @@ public:
 
   bool GetAutoApplyFixIts();
 
+  void SetRetriesWithFixIts(uint32_t retries);
+
+  uint32_t GetRetriesWithFixIts();
+
   bool GetTopLevel();
 
   void SetTopLevel(bool b = true);
