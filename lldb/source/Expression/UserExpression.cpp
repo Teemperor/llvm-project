@@ -266,22 +266,41 @@ UserExpression::Evaluate(ExecutionContext &exe_ctx,
     execution_results = lldb::eExpressionParseError;
     if (fixed_expression && !fixed_expression->empty() &&
         options.GetAutoApplyFixIts()) {
-      lldb::UserExpressionSP fixed_expression_sp(
-          target->GetUserExpressionForLanguage(fixed_expression->c_str(),
-                                               full_prefix, language,
-                                               desired_type, options, ctx_obj,
-                                               error));
-      DiagnosticManager fixed_diagnostic_manager;
-      parse_success = fixed_expression_sp->Parse(
-          fixed_diagnostic_manager, exe_ctx, execution_policy,
-          keep_expression_in_memory, generate_debug_info);
-      if (parse_success) {
-        diagnostic_manager.Clear();
-        user_expression_sp = fixed_expression_sp;
-      } else {
-        // If the fixed expression failed to parse, don't tell the user about,
-        // that won't help.
-        fixed_expression->clear();
+      std::unordered_set<std::string> seen_fixed_exprs;
+      const unsigned max_fix_retries = 100;
+      for (unsigned i = 0; i < max_fix_retries; ++i) {
+        lldb::UserExpressionSP fixed_expression_sp(
+            target->GetUserExpressionForLanguage(fixed_expression->c_str(),
+                                                 full_prefix, language,
+                                                 desired_type, options, ctx_obj,
+                                                 error));
+        DiagnosticManager fixed_diagnostic_manager;
+        parse_success = fixed_expression_sp->Parse(
+            fixed_diagnostic_manager, exe_ctx, execution_policy,
+            keep_expression_in_memory, generate_debug_info);
+        if (parse_success) {
+          diagnostic_manager.Clear();
+          user_expression_sp = fixed_expression_sp;
+          break;
+        } else {
+          // If the fixed expression failed to parse, don't tell the user about,
+          // that won't help.
+          fixed_expression->clear();
+          // Get the fixed expression suggested by the fixed expression.
+          if (fixed_expression_sp->GetFixedText()) {
+            std::string new_fixed = fixed_expression_sp->GetFixedText();
+            // We got a fixed expression we already saw before, so we hit a loop
+            // and should stop applying new fixits and reparsing.
+            if (seen_fixed_exprs.count(new_fixed) != 0)
+              break;
+            seen_fixed_exprs.insert(new_fixed);
+            // Use the new fixed expression to retry parsing another time.
+            *fixed_expression = new_fixed;
+          } else {
+            // Fixed expression didn't compile without a fixit, don't retry.
+            break;
+          }
+        }
       }
     }
 

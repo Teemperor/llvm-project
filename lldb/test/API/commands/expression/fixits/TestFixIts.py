@@ -13,6 +13,7 @@ from lldbsuite.test import lldbutil
 class ExprCommandWithFixits(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
+    NO_DEBUG_INFO_TESTCASE = True
 
     def setUp(self):
         # Call super's setUp().
@@ -27,7 +28,7 @@ class ExprCommandWithFixits(TestBase):
         self.build()
         self.try_expressions()
 
-    def test_with_dummy_target(self):
+    def atest_with_dummy_target(self):
         """Test calling expressions in the dummy target with errors that can be fixed by the FixIts."""
 
         # Enable fix-its as they were intentionally disabled by TestBase.setUp.
@@ -47,6 +48,36 @@ class ExprCommandWithFixits(TestBase):
         options.SetAutoApplyFixIts(True)
 
         frame = self.thread.GetFrameAtIndex(0)
+
+        # Top-level evaluation options with fixits.
+        top_level_options = lldb.SBExpressionOptions()
+        top_level_options.SetAutoApplyFixIts(True)
+        top_level_options.SetTopLevel(True)
+
+        two_runs_expr ="""
+template<typename T>
+struct X : public T {
+  using T::iterator;
+  void f() {
+    typename X<T>::iterator i;
+    i.m;
+  }
+};
+
+struct Data { int m; };
+
+struct HasIterator {
+  typedef Data *iterator;
+};
+
+int test_X(int i) {
+  X<HasIterator> xi;
+  xi.f();
+  return 1;
+}
+"""
+        value = frame.EvaluateExpression(two_runs_expr, top_level_options)
+        self.expect_expr("test_X(1)", result_type="int", result_value="1")
 
         # Try with one error:
         value = frame.EvaluateExpression("my_pointer.first", options)
