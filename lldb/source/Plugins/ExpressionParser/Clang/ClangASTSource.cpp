@@ -574,13 +574,23 @@ clang::Sema *ClangASTSource::getSema() {
 }
 
 bool ClangASTSource::IgnoreName(const ConstString name,
+                                const CompilerDeclContext &namespace_decl,
                                 bool ignore_all_dollar_names) {
-  static const ConstString id_name("id");
-  static const ConstString Class_name("Class");
-
-  if (m_ast_context->getLangOpts().ObjC)
-    if (name == id_name || name == Class_name)
+  if (m_ast_context->getLangOpts().ObjC) {
+    static const ConstString id_name("id");
+    static const ConstString Class_name("Class");
+    if (name == id_name || name == Class_name) {
+      // Only disallow using "id" and "Class" if we are searching from the root
+      // namespace or translation unit level. If namespace_decl is valid, then
+      // this is not the root namespace.
+      if (namespace_decl.IsValid())
+        return false;
+      LLDB_LOG(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS),
+               "  CAS::IgnoreName(name=\"{0}\") Ignoring reserved keryword",
+               name);
       return true;
+    }
+  }
 
   StringRef name_string_ref = name.GetStringRef();
 
@@ -600,7 +610,7 @@ void ClangASTSource::FindExternalVisibleDecls(
   SymbolContextList sc_list;
 
   const ConstString name(context.m_decl_name.getAsString().c_str());
-  if (IgnoreName(name, true))
+  if (IgnoreName(name, namespace_decl, true))
     return;
 
   if (!m_target)
@@ -663,7 +673,7 @@ void ClangASTSource::FillNamespaceMap(
     NameSearchContext &context, lldb::ModuleSP module_sp,
     const CompilerDeclContext &namespace_decl) {
   const ConstString name(context.m_decl_name.getAsString().c_str());
-  if (IgnoreName(name, true))
+  if (IgnoreName(name, namespace_decl, true))
     return;
 
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));

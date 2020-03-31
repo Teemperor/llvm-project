@@ -1321,7 +1321,7 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
 
   const ConstString name(context.m_decl_name.getAsString().c_str());
-  if (IgnoreName(name, false))
+  if (IgnoreName(name, namespace_decl, false))
     return;
 
   // Only look for functions by name out in our symbols if the function doesn't

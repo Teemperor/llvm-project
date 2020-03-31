@@ -325,13 +325,19 @@ public:
   /// \param[in] name
   ///     The name to be considered.
   ///
+  /// \param[in] namespace_decl
+  ///     The namespace decl that this name is being searched. This can be
+  ///     invalid if we are searching the root namespace.
+  ///
   /// \param[in] ignore_all_dollar_names
   ///     True if $-names of all sorts should be ignored.
   ///
   /// \return
   ///     True if the name is one of a class of names that are ignored by
   ///     global lookup for performance reasons.
-  bool IgnoreName(const ConstString name, bool ignore_all_dollar_names);
+  bool IgnoreName(const ConstString name,
+                  const CompilerDeclContext &namespace_decl,
+                  bool ignore_all_dollar_names);
 
 public:
   /// Copies a single Decl into the parser's AST context.
