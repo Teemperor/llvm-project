@@ -219,6 +219,11 @@ private:
                               ParsedDWARFTypeAttributes &attrs);
   lldb::TypeSP ParsePointerToMemberType(const DWARFDIE &die,
                                         const ParsedDWARFTypeAttributes &attrs);
+
+  /// Wrapper for TypeSystemClang::GetLocForDecl that automatically returns an
+  /// invalid SourceLocation in case source locations are disabled.
+  clang::SourceLocation GetLocForDecl(const DWARFDIE &die,
+                                      const lldb_private::Declaration &decl);
 };
 
 /// Parsed form of all attributes that are relevant for type reconstruction.

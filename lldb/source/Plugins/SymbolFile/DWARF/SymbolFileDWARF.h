@@ -286,6 +286,8 @@ public:
   std::vector<std::unique_ptr<lldb_private::CallEdge>>
   ParseCallEdgesInFunction(UserID func_id) override;
 
+  bool UseSourceLocations() const;
+
   void Dump(lldb_private::Stream &s) override;
 
   void DumpClangAST(lldb_private::Stream &s) override;

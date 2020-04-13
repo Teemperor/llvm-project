@@ -140,6 +140,11 @@ public:
     return m_collection_sp->GetPropertyAtIndexAsBoolean(
         nullptr, ePropertyIgnoreIndexes, false);
   }
+
+  bool UseSourceLocations() const {
+    return m_collection_sp->GetPropertyAtIndexAsBoolean(
+        nullptr, ePropertyUseSourceLocations, false);
+  }
 };
 
 typedef std::shared_ptr<PluginProperties> SymbolFileDWARFPropertiesSP;
@@ -3851,6 +3856,10 @@ SymbolFileDWARF::ParseCallEdgesInFunction(UserID func_id) {
   if (func_die.IsValid())
     return CollectCallEdges(GetObjectFile()->GetModule(), func_die);
   return {};
+}
+
+bool SymbolFileDWARF::UseSourceLocations() const {
+  return GetGlobalPluginProperties()->UseSourceLocations();
 }
 
 // PluginInterface protocol

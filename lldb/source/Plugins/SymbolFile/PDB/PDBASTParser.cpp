@@ -498,7 +498,8 @@ lldb::TypeSP PDBASTParser::CreateLLDBTypeFromPDBType(const PDBSymbol &type) {
       bool isScoped = false;
 
       ast_enum = m_ast.CreateEnumerationType(name.c_str(), decl_context,
-                                             OptionalClangModuleID(), decl,
+                                             OptionalClangModuleID(),
+                                             clang::SourceLocation(),
                                              builtin_type, isScoped);
 
       auto enum_decl = TypeSystemClang::GetAsEnumDecl(ast_enum);
@@ -1159,7 +1160,7 @@ bool PDBASTParser::AddEnumValue(CompilerType enum_type,
   uint32_t byte_size = m_ast.getASTContext().getTypeSize(
       ClangUtil::GetQualType(underlying_type));
   auto enum_constant_decl = m_ast.AddEnumerationValueToEnumerationType(
-      enum_type, decl, name.c_str(), raw_value, byte_size * 8);
+      enum_type, clang::SourceLocation(), name.c_str(), raw_value, byte_size * 8);
   if (!enum_constant_decl)
     return false;
 
