@@ -5922,6 +5922,72 @@ TEST_P(ASTImporterOptionSpecificTestBase, ImportExprOfAlignmentAttr) {
   EXPECT_TRUE(ToA);
 }
 
+struct ImportWithExternalSource : ASTImporterOptionSpecificTestBase {
+  ImportWithExternalSource() {
+    Creator = [](ASTContext &ToContext, FileManager &ToFileManager,
+                 ASTContext &FromContext, FileManager &FromFileManager,
+                 bool MinimalImport,
+                 const std::shared_ptr<ASTImporterSharedState> &SharedState) {
+      return new ASTImporter(ToContext, ToFileManager, FromContext,
+                             FromFileManager, MinimalImport,
+                             // We use the regular lookup.
+                             /*SharedState=*/nullptr);
+    };
+  }
+};
+
+/// An ExternalASTSource that keeps track of the tags is completed.
+struct SourceWithCompletedTagList : clang::ExternalASTSource {
+  std::vector<clang::TagDecl *> &CompletedTags;
+  SourceWithCompletedTagList(std::vector<clang::TagDecl *> &CompletedTags)
+      : CompletedTags(CompletedTags) {}
+  void CompleteType(TagDecl *Tag) override {
+    auto *Record = cast<CXXRecordDecl>(Tag);
+    Record->startDefinition();
+    Record->completeDefinition();
+    CompletedTags.push_back(Tag);
+  }
+
+  void
+  FindExternalLexicalDecls(const DeclContext *DC,
+                           llvm::function_ref<bool(Decl::Kind)> IsKindWeWant,
+                           SmallVectorImpl<Decl *> &Result) override {
+    DC->setHasExternalLexicalStorage(true);
+  }
+};
+
+TEST_P(ImportWithExternalSource, CompleteRecordBeforeImporting) {
+  // Create an empty TU.
+  TranslationUnitDecl *FromTU = getTuDecl("", Lang_CXX, "input.cpp");
+
+  // Create and add the test ExternalASTSource.
+  std::vector<clang::TagDecl *> CompletedTags;
+  IntrusiveRefCntPtr<ExternalASTSource> source =
+      new SourceWithCompletedTagList(CompletedTags);
+  clang::ASTContext &context = FromTU->getASTContext();
+  context.setExternalSource(std::move(source));
+
+  // Create a dummy class by hand with external lexical storage.
+  IdentifierInfo &Ident = context.Idents.get("test_class");
+  auto *Record = CXXRecordDecl::Create(
+      context, TTK_Class, FromTU, SourceLocation(), SourceLocation(), &Ident);
+  Record->setHasExternalLexicalStorage();
+  FromTU->addDecl(Record);
+
+  // Do a minimal import of the created class.
+  EXPECT_EQ(0U, CompletedTags.size());
+  Decl *Imported = Import(Record, Lang_CXX);
+  EXPECT_EQ(0U, CompletedTags.size());
+
+  // Import the definition of the created class.
+  llvm::Error err = findFromTU(Record)->Importer->ImportDefinition(Record);
+  EXPECT_FALSE((bool)err);
+  consumeError(std::move(err));
+  // Make sure the class was completed once.
+  EXPECT_EQ(1U, CompletedTags.size());
+  EXPECT_EQ(Record, CompletedTags.front());
+}
+
 INSTANTIATE_TEST_CASE_P(ParameterizedTests, ASTImporterLookupTableTest,
                         DefaultTestValuesForRunOptions, );
 
@@ -5983,5 +6049,7 @@ INSTANTIATE_TEST_CASE_P(ParameterizedTests, LLDBLookupTest,
 INSTANTIATE_TEST_CASE_P(ParameterizedTests, ImportSourceLocations,
                         DefaultTestValuesForRunOptions, );
 
+INSTANTIATE_TEST_CASE_P(ParameterizedTests, ImportWithExternalSource,
+                        DefaultTestValuesForRunOptions, );
 } // end namespace ast_matchers
 } // end namespace clang
