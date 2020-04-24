@@ -557,12 +557,18 @@ ThreadSP AppleObjCRuntime::GetBacktraceThreadFromException(
   if (!return_addresses) return ThreadSP();
   auto frames_value =
       return_addresses->GetChildMemberWithName(ConstString("_frames"), true);
+  if (!frames_value)
+    return ThreadSP();
   addr_t frames_addr = frames_value->GetValueAsUnsigned(0);
   auto count_value =
       return_addresses->GetChildMemberWithName(ConstString("_cnt"), true);
+  if (!count_value)
+    return ThreadSP();
   size_t count = count_value->GetValueAsUnsigned(0);
   auto ignore_value =
       return_addresses->GetChildMemberWithName(ConstString("_ignore"), true);
+  if (!ignore_value)
+    return ThreadSP();
   size_t ignore = ignore_value->GetValueAsUnsigned(0);
 
   size_t ptr_size = m_process->GetAddressByteSize();
