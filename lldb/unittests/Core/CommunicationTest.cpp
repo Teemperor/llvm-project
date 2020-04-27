@@ -21,7 +21,7 @@ TEST(CommunicationTest, SynchronizeWhileClosing) {
                     llvm::Succeeded());
 
   Communication comm("test");
-  comm.SetConnection(std::make_unique<ConnectionFileDescriptor>(
+  comm.SetConnection(new ConnectionFileDescriptor(
       pipe.ReleaseReadFileDescriptor(), /*owns_fd=*/true));
   comm.SetCloseOnEOF(true);
   ASSERT_TRUE(comm.StartReadThread());
