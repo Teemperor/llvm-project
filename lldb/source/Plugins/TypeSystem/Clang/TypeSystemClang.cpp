@@ -7432,6 +7432,7 @@ clang::CXXMethodDecl *TypeSystemClang::AddMethodToCXXRecordType(
   // "missing function" error when running expressions.
 
   if (is_artificial) {
+      abort();
     if (cxx_ctor_decl && ((cxx_ctor_decl->isDefaultConstructor() &&
                            cxx_record_decl->hasTrivialDefaultConstructor()) ||
                           (cxx_ctor_decl->isCopyConstructor() &&
