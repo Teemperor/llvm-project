@@ -1199,8 +1199,6 @@ static llvm::Expected<ParsedExpression> ParseAndImport(
 
   auto module_id = ast_context->getIdentifier(expr_name_buf);
   auto &module = *swift::ModuleDecl::create(module_id, *ast_context);
-  const auto implicit_import_kind =
-      swift::SourceFile::ImplicitModuleImportKind::Stdlib;
 
   swift::SourceFileKind source_file_kind = swift::SourceFileKind::Library;
 
@@ -1211,7 +1209,7 @@ static llvm::Expected<ParsedExpression> ParseAndImport(
   // Create the source file. Note, we disable delayed parsing for the
   // swift expression parser.
   swift::SourceFile *source_file = new (*ast_context) swift::SourceFile(
-      module, source_file_kind, buffer_id, implicit_import_kind,
+      module, source_file_kind, buffer_id,
       /*Keep tokens*/ false, /*KeepSyntaxTree*/ false,
       swift::SourceFile::ParsingFlags::DisableDelayedBodies);
   module.addFile(*source_file);

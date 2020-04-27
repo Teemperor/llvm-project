@@ -567,12 +567,10 @@ void SwiftREPL::CompleteCode(const std::string &current_code,
         swift_ast->GetModule(completion_module_info, error);
     if (repl_module == nullptr) {
       repl_module = swift_ast->CreateModule(completion_module_info, error);
-      const swift::SourceFile::ImplicitModuleImportKind implicit_import_kind =
-          swift::SourceFile::ImplicitModuleImportKind::Stdlib;
       llvm::Optional<unsigned> bufferID;
       swift::SourceFile *repl_source_file = new (*ast)
           swift::SourceFile(*repl_module, swift::SourceFileKind::REPL, bufferID,
-                            implicit_import_kind, /*Keep tokens*/false);
+                            /*Keep tokens*/false);
 
       // Given this file is empty and only exists to import the standard
       // library, we can go ahead and just mark it as having been type checked.
