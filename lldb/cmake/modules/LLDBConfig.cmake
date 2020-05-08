@@ -107,6 +107,14 @@ if(APPLE AND CMAKE_GENERATOR STREQUAL Xcode)
   endif()
 endif()
 
+if(APPLE)
+  # Look at the OSX_SYSROOT, e.g. /some/path/SDKs/MacOSX10.15.sdk and extract
+  # the SDK version (e.g. "10.15") out of it.
+  string(REGEX MATCH ".*[^0-9]+([0-9]+[.][0-9]+)[.]sdk" _ "${CMAKE_OSX_SYSROOT}")
+  set(LLDB_MACOS_SDK_VERSION "${CMAKE_MATCH_1}")
+  message(STATUS "Deteced macOS SDK version ${LLDB_MACOS_SDK_VERSION}")
+endif()
+
 if (NOT CMAKE_SYSTEM_NAME MATCHES "Windows")
   set(LLDB_EXPORT_ALL_SYMBOLS 0 CACHE BOOL
     "Causes lldb to export all symbols when building liblldb.")
