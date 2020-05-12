@@ -84,7 +84,8 @@ class CommandLineCompletionTestCase(TestBase):
         self.complete_from_to('process launch --arch ',
                               ['mips',
                                'arm64'])
-    
+
+    @skipUnlessPlatform(["linux"])
     def test_process_unload(self):
         """Test the completion for "process unload <index>" """
         # This tab completion should not work without a running process.
@@ -92,11 +93,10 @@ class CommandLineCompletionTestCase(TestBase):
                               'process unload ')
 
         self.build()
-        # self.main_source = "main.cpp"
-        # self.main_source_spec = lldb.SBFileSpec(self.main_source)
-        # lldbutil.run_to_source_breakpoint(self, '// Break here', self.main_source_spec)
-        self.dbg.CreateTarget(self.getBuildArtifact("a.out"))
-        self.dbg.LoadImage(self.getBuildArtifact("a.out"))
+        lldbutil.run_to_source_breakpoint(self, '// Break here', lldb.SBFileSpec("main.cpp"))
+        err = lldb.SBError()
+        self.process().LoadImage(lldb.SBFileSpec(self.getBuildArtifact("libshared.so")), err)
+        self.assertTrue(err.Success(), str(err) + str(self.getBuildArtifact("libshared.so")))
 
         self.complete_from_to('process unload ',
                               'process unload 0')
