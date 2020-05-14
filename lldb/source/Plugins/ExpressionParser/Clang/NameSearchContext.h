@@ -113,6 +113,10 @@ struct NameSearchContext {
   ///     of querying a DeclContext.
   void AddNamedDecl(clang::NamedDecl *decl);
 
+  /// Returns the found variable for this lookup or a nullptr if no previoius
+  /// variable has been found.
+  clang::VarDecl *MaybeGetFoundVariable() const;
+
 private:
   clang::ASTContext &GetASTContext() const {
     return m_clang_ts.getASTContext();

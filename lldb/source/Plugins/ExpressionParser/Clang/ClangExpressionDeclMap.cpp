@@ -622,6 +622,21 @@ TypeSystemClang *ClangExpressionDeclMap::GetTypeSystemClang() {
       frame_decl_context.GetTypeSystem());
 }
 
+/// Searches the given namespace map for an item that fits to the given module.
+/// \return The NamespaceMapItem for the given module or None if there is no
+///         fititing NamespaceMapItem.
+static llvm::Optional<ClangASTImporter::NamespaceMapItem>
+FindExecutionContextNamespace(lldb::ModuleSP module,
+                              ClangASTImporter::NamespaceMapSP namespace_map) {
+  auto it = llvm::find_if(
+      *namespace_map, [&module](const ClangASTImporter::NamespaceMapItem &i) {
+        return i.first == module;
+      });
+  if (it != namespace_map->end())
+    return *it;
+  return llvm::None;
+}
+
 // Interface for ClangASTSource
 
 void ClangExpressionDeclMap::FindExternalVisibleDecls(
@@ -676,7 +691,21 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
     LLDB_LOGV(log, "  CEDM::FEVD Inspecting (NamespaceMap*){0:x} ({1} entries)",
               namespace_map.get(), namespace_map->size());
 
+    // First search the namespace in the current module we are evaluating the
+    // expression in.
+    llvm::Optional<ClangASTImporter::NamespaceMapItem> current_namespace;
+    if (lldb::ModuleSP module = GetCurrentExecutionContextModule())
+      current_namespace = FindExecutionContextNamespace(module, namespace_map);
+    if (current_namespace)
+      FindExternalVisibleDecls(context, current_namespace->first,
+                               current_namespace->second);
+
+    // Now search all other modules/namespaces except the current one.
+    // We can't early exit here as the other modules might contain function
+    // overloads we need for overload resolution.
     for (ClangASTImporter::NamespaceMapItem &n : *namespace_map) {
+      if (current_namespace && n == *current_namespace)
+        continue;
       LLDB_LOG(log, "  CEDM::FEVD Searching namespace {0} in module {1}",
                n.second.GetName(), n.first->GetFileSpec().GetFilename());
 
@@ -713,6 +742,18 @@ clang::NamedDecl *ClangExpressionDeclMap::GetPersistentDecl(ConstString name) {
   if (!m_parser_vars->m_persistent_vars)
     return nullptr;
   return m_parser_vars->m_persistent_vars->GetPersistentDecl(name);
+}
+
+ModuleSP ClangExpressionDeclMap::GetCurrentExecutionContextModule() {
+  if (!m_struct_vars)
+    return lldb::ModuleSP();
+  StackFrame *frame = m_parser_vars->m_exe_ctx.GetFramePtr();
+  if (!frame)
+    return lldb::ModuleSP();
+  Block *block = frame->GetFrameBlock();
+  if (!block)
+    return lldb::ModuleSP();
+  return block->CalculateSymbolContextModule();
 }
 
 void ClangExpressionDeclMap::SearchPersistenDecls(NameSearchContext &context,
@@ -1532,6 +1573,14 @@ void ClangExpressionDeclMap::AddOneVariable(NameSearchContext &context,
   assert(m_parser_vars.get());
 
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
+
+  if (context.MaybeGetFoundVariable()) {
+    LLDB_LOG(log,
+             "Not adding duplicate variable {0} to lookup because"
+             " we already found a variable.",
+             var->GetDecl().GetName());
+    return;
+  }
 
   TypeFromUser ut;
   TypeFromParser pt;

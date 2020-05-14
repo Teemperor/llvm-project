@@ -379,6 +379,10 @@ private:
   /// from persistent variables.
   uint64_t GetParserID() { return (uint64_t) this; }
 
+  /// Returns the module belonging to the current execution context or a nullptr
+  /// if no module can't be found for the current execution context.
+  lldb::ModuleSP GetCurrentExecutionContextModule();
+
   /// Should be called on all copied functions.
   void MaybeRegisterFunctionBody(clang::FunctionDecl *copied_function_decl);
 

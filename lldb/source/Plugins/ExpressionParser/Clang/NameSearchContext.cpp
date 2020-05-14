@@ -177,3 +177,10 @@ void NameSearchContext::AddLookupResult(clang::DeclContextLookupResult result) {
 void NameSearchContext::AddNamedDecl(clang::NamedDecl *decl) {
   m_decls.push_back(decl);
 }
+
+VarDecl *NameSearchContext::MaybeGetFoundVariable() const {
+  for (clang::Decl *d : m_decls)
+    if (VarDecl *v = dyn_cast<VarDecl>(d))
+      return v;
+  return nullptr;
+}
