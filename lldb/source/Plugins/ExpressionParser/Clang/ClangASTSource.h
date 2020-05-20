@@ -15,7 +15,7 @@
 #include "Plugins/ExpressionParser/Clang/NameSearchContext.h"
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Target/Target.h"
-#include "clang/AST/ExternalASTSource.h"
+#include "clang/Sema/ExternalSemaSource.h"
 #include "clang/Basic/IdentifierTable.h"
 
 #include "llvm/ADT/SmallSet.h"
@@ -30,7 +30,7 @@ namespace lldb_private {
 /// knows the name it is looking for, but nothing else. The ExternalSemaSource
 /// class provides Decls (VarDecl, FunDecl, TypeDecl) to Clang for these
 /// names, consulting the ClangExpressionDeclMap to do the actual lookups.
-class ClangASTSource : public clang::ExternalASTSource,
+class ClangASTSource : public clang::ExternalSemaSource,
                        public ClangASTImporter::MapCompleter {
 public:
   /// Constructor
@@ -212,9 +212,9 @@ public:
   ///
   /// Clang AST contexts like to own their AST sources, so this is a state-
   /// free proxy object.
-  class ClangASTSourceProxy : public clang::ExternalASTSource {
+  class ClangSemaSourceProxy : public clang::ExternalSemaSource {
   public:
-    ClangASTSourceProxy(ClangASTSource &original) : m_original(original) {}
+    ClangSemaSourceProxy(ClangASTSource &original) : m_original(original) {}
 
     bool FindExternalVisibleDeclsByName(const clang::DeclContext *DC,
                                         clang::DeclarationName Name) override {
@@ -251,12 +251,25 @@ public:
       return m_original.StartTranslationUnit(Consumer);
     }
 
+    /// Initialize the semantic source with the Sema instance
+    /// being used to perform semantic analysis on the abstract syntax
+    /// tree.
+    void InitializeSema(clang::Sema &S) override{
+      return m_original.InitializeSema(S);
+    }
+
+    /// Inform the semantic consumer that Sema is no longer available.
+    void ForgetSema() override {
+      return m_original.ForgetSema();}
+
+    bool LookupUnqualified(clang::LookupResult &R, clang::Scope *S) override { return m_original.LookupUnqualified(R, S); }
+
   private:
     ClangASTSource &m_original;
   };
 
-  clang::ExternalASTSource *CreateProxy() {
-    return new ClangASTSourceProxy(*this);
+  clang::ExternalSemaSource *CreateProxy() {
+    return new ClangSemaSourceProxy(*this);
   }
 
 protected:

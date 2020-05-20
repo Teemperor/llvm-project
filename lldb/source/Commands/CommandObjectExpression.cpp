@@ -179,7 +179,7 @@ void CommandObjectExpression::CommandOptions::OptionParsingStarting(
   try_all_threads = true;
   timeout = 0;
   debug = false;
-  language = eLanguageTypeUnknown;
+  language = eLanguageTypeC_plus_plus_14;
   m_verbosity = eLanguageRuntimeDescriptionDisplayVerbosityCompact;
   auto_apply_fixits = eLazyBoolCalculate;
   top_level = false;

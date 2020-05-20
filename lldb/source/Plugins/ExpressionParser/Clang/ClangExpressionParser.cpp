@@ -470,26 +470,9 @@ ClangExpressionParser::ClangExpressionParser(
   case lldb::eLanguageTypeC89:
   case lldb::eLanguageTypeC99:
   case lldb::eLanguageTypeC11:
-    // FIXME: the following language option is a temporary workaround,
-    // to "ask for C, get C++."
-    // For now, the expression parser must use C++ anytime the language is a C
-    // family language, because the expression parser uses features of C++ to
-    // capture values.
-    lang_opts.CPlusPlus = true;
     break;
   case lldb::eLanguageTypeObjC:
     lang_opts.ObjC = true;
-    // FIXME: the following language option is a temporary workaround,
-    // to "ask for ObjC, get ObjC++" (see comment above).
-    lang_opts.CPlusPlus = true;
-
-    // Clang now sets as default C++14 as the default standard (with
-    // GNU extensions), so we do the same here to avoid mismatches that
-    // cause compiler error when evaluating expressions (e.g. nullptr not found
-    // as it's a C++11 feature). Currently lldb evaluates C++14 as C++11 (see
-    // two lines below) so we decide to be consistent with that, but this could
-    // be re-evaluated in the future.
-    lang_opts.CPlusPlus11 = true;
     break;
   case lldb::eLanguageTypeC_plus_plus:
   case lldb::eLanguageTypeC_plus_plus_11:

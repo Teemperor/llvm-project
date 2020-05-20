@@ -25,9 +25,13 @@ class TestCase(TestBase):
         # Doesn't parse.
         self.expect("expr doesnt_exist", error=True,
                     substrs=["undeclared identifier 'doesnt_exist'"])
+        self.expect("statistics dump", substrs=['expr evaluation successes : 1\n',
+                                                'expr evaluation failures : 1\n'])
         # Doesn't successfully execute.
         self.expect("expr int *i = nullptr; *i", error=True)
         # Interpret an integer as an array with 3 elements is also a failure.
+        self.expect("statistics dump", substrs=['expr evaluation successes : 1\n',
+                                                'expr evaluation failures : 2\n'])
         self.expect("expr -Z 3 -- 1", error=True,
                     substrs=["expression cannot be used with --element-count"])
         self.expect("statistics disable")

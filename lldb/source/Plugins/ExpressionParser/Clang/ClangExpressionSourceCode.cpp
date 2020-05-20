@@ -38,6 +38,10 @@ const char *ClangExpressionSourceCode::g_expression_prefix =
 "#line 1 \"" PREFIX_NAME R"("
 #ifndef offsetof
 #define offsetof(t, d) __builtin_offsetof(t, d)
+#endif    
+#ifndef __cplusplus
+#define nullptr (0)
+#define __null (0)
 #endif
 #ifndef NULL
 #define NULL (__null)
@@ -67,10 +71,12 @@ typedef __UINTPTR_TYPE__ uintptr_t;
 typedef __SIZE_TYPE__ size_t;
 typedef __PTRDIFF_TYPE__ ptrdiff_t;
 typedef unsigned short unichar;
+#ifdef __cplusplus
 extern "C"
 {
     int printf(const char * __restrict, ...);
 }
+#endif
 )";
 
 namespace {
@@ -294,6 +300,10 @@ static void AddLocalVariableDecls(const lldb::VariableListSP &var_list_sp,
   }
 }
 
+static bool LanguageNeedsLocalVarInjecting(lldb::LanguageType lang) {
+  return Language::LanguageIsCPlusPlus(lang);
+}
+
 bool ClangExpressionSourceCode::GetText(
     std::string &text, lldb::LanguageType wrapping_language, bool static_method,
     ExecutionContext &exe_ctx, bool add_locals, bool force_add_all_locals,
@@ -369,7 +379,7 @@ bool ClangExpressionSourceCode::GetText(
       }
     }
 
-    if (add_locals)
+    if (add_locals && LanguageNeedsLocalVarInjecting(wrapping_language))
       if (target->GetInjectLocalVariables(&exe_ctx)) {
         lldb::VariableListSP var_list_sp =
             frame->GetInScopeVariableList(false, true);
@@ -428,7 +438,9 @@ bool ClangExpressionSourceCode::GetText(
                          "%s(void *$__lldb_arg)          \n"
                          "{                              \n"
                          "    %s;                        \n"
-                         "%s"
+                         "%s\n"
+                         "  int __lldb_placeholder_var;\n"
+                         "  __lldb_placeholder_var = 0;\n"
                          "}                              \n",
                          module_imports.c_str(), m_name.c_str(),
                          lldb_local_var_decls.GetData(), tagged_body.c_str());
@@ -455,7 +467,9 @@ bool ClangExpressionSourceCode::GetText(
             "+(void)%s:(void *)$__lldb_arg                           \n"
             "{                                                       \n"
             "    %s;                                                 \n"
-            "%s"
+            "%s\n"
+            "  int __lldb_placeholder_var;\n"
+            "  __lldb_placeholder_var = 0;\n"
             "}                                                       \n"
             "@end                                                    \n",
             module_imports.c_str(), m_name.c_str(), m_name.c_str(),
@@ -470,7 +484,9 @@ bool ClangExpressionSourceCode::GetText(
             "-(void)%s:(void *)$__lldb_arg                          \n"
             "{                                                      \n"
             "    %s;                                                \n"
-            "%s"
+            "%s\n"
+            "  int __lldb_placeholder_var;\n"
+            "  __lldb_placeholder_var = 0;\n"
             "}                                                      \n"
             "@end                                                   \n",
             module_imports.c_str(), m_name.c_str(), m_name.c_str(),
