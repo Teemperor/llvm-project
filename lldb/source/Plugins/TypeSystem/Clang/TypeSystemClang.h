@@ -387,8 +387,7 @@ public:
 
   CompilerType CreateObjCClass(llvm::StringRef name,
                                clang::DeclContext *decl_ctx,
-                               OptionalClangModuleID owning_module,
-                               bool isForwardDecl, bool isInternal,
+                               OptionalClangModuleID owning_module, bool isInternal,
                                ClangASTMetadata *metadata = nullptr);
 
   bool SetTagTypeKind(clang::QualType type, int kind) const;

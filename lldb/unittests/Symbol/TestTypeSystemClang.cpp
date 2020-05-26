@@ -288,7 +288,7 @@ TEST_F(TestTypeSystemClang, TestOwningModule) {
 
   CompilerType class_type =
       ast.CreateObjCClass("objc_class", ast.GetTranslationUnitDecl(),
-                          OptionalClangModuleID(300), false, false);
+                          OptionalClangModuleID(300), false);
   auto *cd = TypeSystemClang::GetAsObjCInterfaceDecl(class_type);
   EXPECT_FALSE(!cd);
   EXPECT_EQ(cd->getOwningModuleID(), 300u);
@@ -687,4 +687,27 @@ TEST_F(TestTypeSystemClang, TestNotDeletingUserCopyCstrDueToMoveCStr) {
   m_ast->CompleteTagDeclarationDefinition(t);
   auto *record = llvm::cast<CXXRecordDecl>(ClangUtil::GetAsTagDecl(t));
   EXPECT_TRUE(record->hasUserDeclaredCopyConstructor());
+}
+
+TEST_F(TestTypeSystemClang, TestAddingObjC) {
+  CompilerType c = m_ast->CreateObjCClass("A", m_ast->GetTranslationUnitDecl(),
+                                          OptionalClangModuleID(),
+                                          /*IsInternal*/false);
+  ObjCInterfaceDecl *interface = m_ast->GetAsObjCInterfaceDecl(c);
+  m_ast->SetHasExternalStorage(c.GetOpaqueQualType(), true);
+  std::vector<CompilerType> args;
+  CompilerType func_type = m_ast->CreateFunctionType(m_ast->GetBasicType(lldb::eBasicTypeInt),
+                            args.data(), args.size(), /*variadic*/false,
+                            /*quals*/0, clang::CallingConv::CC_C);
+  bool variadic = false;
+  bool artificial = false;
+  bool objc_direct = false;
+  EXPECT_TRUE(interface->hasExternalLexicalStorage());
+  clang::ObjCMethodDecl *method = m_ast->AddMethodToObjCObjectType(c, "-[A foo]", func_type, lldb::AccessType::eAccessPublic, artificial, variadic, objc_direct);
+  ASSERT_NE(method, nullptr);
+  EXPECT_TRUE(interface->hasExternalLexicalStorage());
+  EXPECT_FALSE(method->isVariadic());
+  EXPECT_TRUE(method->isImplicit());
+  EXPECT_FALSE(method->isDirectMethod());
+  EXPECT_EQ(method->getDeclName().getObjCSelector().getAsString(), "foo");
 }
