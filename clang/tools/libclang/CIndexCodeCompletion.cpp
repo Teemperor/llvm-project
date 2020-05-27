@@ -571,25 +571,24 @@ namespace {
           CCTUInfo(Results.CodeCompletionAllocator), TU(TranslationUnit) {}
     ~CaptureCompletionResults() override { Finish(); }
 
-    void ProcessCodeCompleteResults(Sema &S, 
-                                    CodeCompletionContext Context,
-                                    CodeCompletionResult *Results,
-                                    unsigned NumResults) override {
-      StoredResults.reserve(StoredResults.size() + NumResults);
+    void ProcessCodeCompleteResults(
+        Sema &S, CodeCompletionContext Context,
+        llvm::MutableArrayRef<CodeCompletionResult> Results) override {
+      StoredResults.reserve(StoredResults.size() + Results.size());
       if (includeFixIts())
-        AllocatedResults.FixItsVector.reserve(NumResults);
-      for (unsigned I = 0; I != NumResults; ++I) {
-        CodeCompletionString *StoredCompletion
-          = Results[I].CreateCodeCompletionString(S, Context, getAllocator(),
-                                                  getCodeCompletionTUInfo(),
-                                                  includeBriefComments());
-        
+        AllocatedResults.FixItsVector.reserve(Results.size());
+      for (CodeCompletionResult &Result : Results) {
+        CodeCompletionString *StoredCompletion =
+            Result.CreateCodeCompletionString(S, Context, getAllocator(),
+                                              getCodeCompletionTUInfo(),
+                                              includeBriefComments());
+
         CXCompletionResult R;
-        R.CursorKind = Results[I].CursorKind;
+        R.CursorKind = Result.CursorKind;
         R.CompletionString = StoredCompletion;
         StoredResults.push_back(R);
         if (includeFixIts())
-          AllocatedResults.FixItsVector.emplace_back(std::move(Results[I].FixIts));
+          AllocatedResults.FixItsVector.emplace_back(std::move(Result.FixIts));
       }
 
       enum CodeCompletionContext::Kind contextKind = Context.getKind();
@@ -652,17 +651,17 @@ namespace {
       }
     }
 
-    void ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
-                                   OverloadCandidate *Candidates,
-                                   unsigned NumCandidates,
-                                   SourceLocation OpenParLoc) override {
-      StoredResults.reserve(StoredResults.size() + NumCandidates);
-      for (unsigned I = 0; I != NumCandidates; ++I) {
-        CodeCompletionString *StoredCompletion
-          = Candidates[I].CreateSignatureString(CurrentArg, S, getAllocator(),
-                                                getCodeCompletionTUInfo(),
-                                                includeBriefComments());
-        
+    void ProcessOverloadCandidates(
+        Sema &S, unsigned CurrentArg,
+        llvm::MutableArrayRef<OverloadCandidate> Candidates,
+        SourceLocation OpenParLoc) override {
+      StoredResults.reserve(StoredResults.size() + Candidates.size());
+      for (const OverloadCandidate &Candidate : Candidates) {
+        CodeCompletionString *StoredCompletion =
+            Candidate.CreateSignatureString(CurrentArg, S, getAllocator(),
+                                            getCodeCompletionTUInfo(),
+                                            includeBriefComments());
+
         CXCompletionResult R;
         R.CursorKind = CXCursor_OverloadCandidate;
         R.CompletionString = StoredCompletion;

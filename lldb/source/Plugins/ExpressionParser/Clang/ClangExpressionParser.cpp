@@ -887,9 +887,9 @@ public:
 
   /// \name Code-completion callbacks
   /// Process the finalized code-completion results.
-  void ProcessCodeCompleteResults(Sema &SemaRef, CodeCompletionContext Context,
-                                  CodeCompletionResult *Results,
-                                  unsigned NumResults) override {
+  void ProcessCodeCompleteResults(
+      Sema &SemaRef, CodeCompletionContext Context,
+      llvm::MutableArrayRef<CodeCompletionResult> Results) override {
 
     // The Sema put the incomplete token we try to complete in here during
     // lexing, so we need to retrieve it here to know what we are completing.
@@ -897,12 +897,11 @@ public:
 
     // Iterate over all the results. Filter out results we don't want and
     // process the rest.
-    for (unsigned I = 0; I != NumResults; ++I) {
+    for (const CodeCompletionResult &R : Results) {
       // Filter the results with the information from the Sema.
-      if (!Filter.empty() && isResultFilteredOut(Filter, Results[I]))
+      if (!Filter.empty() && isResultFilteredOut(Filter, R))
         continue;
 
-      CodeCompletionResult &R = Results[I];
       llvm::Optional<CompletionWithPriority> CompletionAndPriority =
           getCompletionForResult(R);
       if (!CompletionAndPriority)
@@ -919,10 +918,10 @@ public:
   /// \param Candidates an array of overload candidates.
   ///
   /// \param NumCandidates the number of overload candidates
-  void ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
-                                 OverloadCandidate *Candidates,
-                                 unsigned NumCandidates,
-                                 SourceLocation OpenParLoc) override {
+  void
+  ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
+                            llvm::MutableArrayRef<OverloadCandidate> Candidates,
+                            SourceLocation OpenParLoc) override {
     // At the moment we don't filter out any overloaded candidates.
   }
 

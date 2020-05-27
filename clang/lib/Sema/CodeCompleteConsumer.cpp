@@ -535,9 +535,9 @@ bool PrintingCodeCompleteConsumer::isResultFilteredOut(
 }
 
 void PrintingCodeCompleteConsumer::ProcessCodeCompleteResults(
-    Sema &SemaRef, CodeCompletionContext Context, CodeCompletionResult *Results,
-    unsigned NumResults) {
-  std::stable_sort(Results, Results + NumResults);
+    Sema &SemaRef, CodeCompletionContext Context,
+    llvm::MutableArrayRef<CodeCompletionResult> Results) {
+  llvm::stable_sort(Results);
 
   if (!Context.getPreferredType().isNull())
     OS << "PREFERRED-TYPE: " << Context.getPreferredType().getAsString()
@@ -545,26 +545,26 @@ void PrintingCodeCompleteConsumer::ProcessCodeCompleteResults(
 
   StringRef Filter = SemaRef.getPreprocessor().getCodeCompletionFilter();
   // Print the completions.
-  for (unsigned I = 0; I != NumResults; ++I) {
-    if (!Filter.empty() && isResultFilteredOut(Filter, Results[I]))
+  for (CodeCompletionResult &Result : Results) {
+    if (!Filter.empty() && isResultFilteredOut(Filter, Result))
       continue;
     OS << "COMPLETION: ";
-    switch (Results[I].Kind) {
+    switch (Result.Kind) {
     case CodeCompletionResult::RK_Declaration:
-      OS << *Results[I].Declaration;
+      OS << *Result.Declaration;
       {
         std::vector<std::string> Tags;
-        if (Results[I].Hidden)
+        if (Result.Hidden)
           Tags.push_back("Hidden");
-        if (Results[I].InBaseClass)
+        if (Result.InBaseClass)
           Tags.push_back("InBase");
-        if (Results[I].Availability ==
+        if (Result.Availability ==
             CXAvailabilityKind::CXAvailability_NotAccessible)
           Tags.push_back("Inaccessible");
         if (!Tags.empty())
           OS << " (" << llvm::join(Tags, ",") << ")";
       }
-      if (CodeCompletionString *CCS = Results[I].CreateCodeCompletionString(
+      if (CodeCompletionString *CCS = Result.CreateCodeCompletionString(
               SemaRef, Context, getAllocator(), CCTUInfo,
               includeBriefComments())) {
         OS << " : " << CCS->getAsString();
@@ -574,12 +574,12 @@ void PrintingCodeCompleteConsumer::ProcessCodeCompleteResults(
       break;
 
     case CodeCompletionResult::RK_Keyword:
-      OS << Results[I].Keyword;
+      OS << Result.Keyword;
       break;
 
     case CodeCompletionResult::RK_Macro:
-      OS << Results[I].Macro->getName();
-      if (CodeCompletionString *CCS = Results[I].CreateCodeCompletionString(
+      OS << Result.Macro->getName();
+      if (CodeCompletionString *CCS = Result.CreateCodeCompletionString(
               SemaRef, Context, getAllocator(), CCTUInfo,
               includeBriefComments())) {
         OS << " : " << CCS->getAsString();
@@ -587,10 +587,10 @@ void PrintingCodeCompleteConsumer::ProcessCodeCompleteResults(
       break;
 
     case CodeCompletionResult::RK_Pattern:
-      OS << "Pattern : " << Results[I].Pattern->getAsString();
+      OS << "Pattern : " << Result.Pattern->getAsString();
       break;
     }
-    for (const FixItHint &FixIt : Results[I].FixIts) {
+    for (const FixItHint &FixIt : Result.FixIts) {
       const SourceLocation BLoc = FixIt.RemoveRange.getBegin();
       const SourceLocation ELoc = FixIt.RemoveRange.getEnd();
 
@@ -644,16 +644,17 @@ static std::string getOverloadAsString(const CodeCompletionString &CCS) {
 }
 
 void PrintingCodeCompleteConsumer::ProcessOverloadCandidates(
-    Sema &SemaRef, unsigned CurrentArg, OverloadCandidate *Candidates,
-    unsigned NumCandidates, SourceLocation OpenParLoc) {
+    Sema &SemaRef, unsigned CurrentArg,
+    llvm::MutableArrayRef<OverloadCandidate> Candidates,
+    SourceLocation OpenParLoc) {
   OS << "OPENING_PAREN_LOC: ";
   OpenParLoc.print(OS, SemaRef.getSourceManager());
   OS << "\n";
 
-  for (unsigned I = 0; I != NumCandidates; ++I) {
-    if (CodeCompletionString *CCS = Candidates[I].CreateSignatureString(
-            CurrentArg, SemaRef, getAllocator(), CCTUInfo,
-            includeBriefComments())) {
+  for (const OverloadCandidate &Candidate : Candidates) {
+    if (CodeCompletionString *CCS =
+            Candidate.CreateSignatureString(CurrentArg, SemaRef, getAllocator(),
+                                            CCTUInfo, includeBriefComments())) {
       OS << "OVERLOAD: " << getOverloadAsString(*CCS) << "\n";
     }
   }

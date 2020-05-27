@@ -1937,16 +1937,15 @@ namespace {
                        |  (1LL << CodeCompletionContext::CCC_ClassOrStructTag);
     }
 
-    void ProcessCodeCompleteResults(Sema &S, CodeCompletionContext Context,
-                                    CodeCompletionResult *Results,
-                                    unsigned NumResults) override;
+    void ProcessCodeCompleteResults(
+        Sema &S, CodeCompletionContext Context,
+        llvm::MutableArrayRef<CodeCompletionResult> Results) override;
 
-    void ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
-                                   OverloadCandidate *Candidates,
-                                   unsigned NumCandidates,
-                                   SourceLocation OpenParLoc) override {
-      Next.ProcessOverloadCandidates(S, CurrentArg, Candidates, NumCandidates,
-                                     OpenParLoc);
+    void ProcessOverloadCandidates(
+        Sema &S, unsigned CurrentArg,
+        llvm::MutableArrayRef<OverloadCandidate> Candidates,
+        SourceLocation OpenParLoc) override {
+      Next.ProcessOverloadCandidates(S, CurrentArg, Candidates, OpenParLoc);
     }
 
     CodeCompletionAllocator &getAllocator() override {
@@ -1962,11 +1961,11 @@ namespace {
 
 /// Helper function that computes which global names are hidden by the
 /// local code-completion results.
-static void CalculateHiddenNames(const CodeCompletionContext &Context,
-                                 CodeCompletionResult *Results,
-                                 unsigned NumResults,
-                                 ASTContext &Ctx,
-                          llvm::StringSet<llvm::BumpPtrAllocator> &HiddenNames){
+static void
+CalculateHiddenNames(const CodeCompletionContext &Context,
+                     llvm::ArrayRef<CodeCompletionResult> Results,
+                     ASTContext &Ctx,
+                     llvm::StringSet<llvm::BumpPtrAllocator> &HiddenNames) {
   bool OnlyTagNames = false;
   switch (Context.getKind()) {
   case CodeCompletionContext::CCC_Recovery:
@@ -2016,12 +2015,12 @@ static void CalculateHiddenNames(const CodeCompletionContext &Context,
   }
 
   using Result = CodeCompletionResult;
-  for (unsigned I = 0; I != NumResults; ++I) {
-    if (Results[I].Kind != Result::RK_Declaration)
+  for (const CodeCompletionResult &Result : Results) {
+    if (Result.Kind != Result::RK_Declaration)
       continue;
 
-    unsigned IDNS
-      = Results[I].Declaration->getUnderlyingDecl()->getIdentifierNamespace();
+    unsigned IDNS =
+        Result.Declaration->getUnderlyingDecl()->getIdentifierNamespace();
 
     bool Hiding = false;
     if (OnlyTagNames)
@@ -2038,7 +2037,7 @@ static void CalculateHiddenNames(const CodeCompletionContext &Context,
     if (!Hiding)
       continue;
 
-    DeclarationName Name = Results[I].Declaration->getDeclName();
+    DeclarationName Name = Result.Declaration->getDeclName();
     if (IdentifierInfo *Identifier = Name.getAsIdentifierInfo())
       HiddenNames.insert(Identifier->getName());
     else
@@ -2046,10 +2045,9 @@ static void CalculateHiddenNames(const CodeCompletionContext &Context,
   }
 }
 
-void AugmentedCodeCompleteConsumer::ProcessCodeCompleteResults(Sema &S,
-                                            CodeCompletionContext Context,
-                                            CodeCompletionResult *Results,
-                                            unsigned NumResults) {
+void AugmentedCodeCompleteConsumer::ProcessCodeCompleteResults(
+    Sema &S, CodeCompletionContext Context,
+    llvm::MutableArrayRef<CodeCompletionResult> Results) {
   // Merge the results we were given with the results we cached.
   bool AddedResult = false;
   uint64_t InContexts =
@@ -2070,9 +2068,8 @@ void AugmentedCodeCompleteConsumer::ProcessCodeCompleteResults(Sema &S,
 
     // If we haven't added any results previously, do so now.
     if (!AddedResult) {
-      CalculateHiddenNames(Context, Results, NumResults, S.Context,
-                           HiddenNames);
-      AllResults.insert(AllResults.end(), Results, Results + NumResults);
+      CalculateHiddenNames(Context, Results, S.Context, HiddenNames);
+      AllResults.insert(AllResults.end(), Results.begin(), Results.end());
       AddedResult = true;
     }
 
@@ -2128,12 +2125,11 @@ void AugmentedCodeCompleteConsumer::ProcessCodeCompleteResults(Sema &S,
   // If we did not add any cached completion results, just forward the
   // results we were given to the next consumer.
   if (!AddedResult) {
-    Next.ProcessCodeCompleteResults(S, Context, Results, NumResults);
+    Next.ProcessCodeCompleteResults(S, Context, Results);
     return;
   }
 
-  Next.ProcessCodeCompleteResults(S, Context, AllResults.data(),
-                                  AllResults.size());
+  Next.ProcessCodeCompleteResults(S, Context, AllResults);
 }
 
 void ASTUnit::CodeComplete(

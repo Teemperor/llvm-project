@@ -1123,10 +1123,9 @@ public:
   /// \name Code-completion callbacks
   //@{
   /// Process the finalized code-completion results.
-  virtual void ProcessCodeCompleteResults(Sema &S,
-                                          CodeCompletionContext Context,
-                                          CodeCompletionResult *Results,
-                                          unsigned NumResults) {}
+  virtual void ProcessCodeCompleteResults(
+      Sema &S, CodeCompletionContext Context,
+      llvm::MutableArrayRef<CodeCompletionResult> Results) {}
 
   /// \param S the semantic-analyzer object for which code-completion is being
   /// done.
@@ -1135,14 +1134,12 @@ public:
   ///
   /// \param Candidates an array of overload candidates.
   ///
-  /// \param NumCandidates the number of overload candidates
-  ///
   /// \param OpenParLoc location of the opening parenthesis of the argument
   ///        list.
-  virtual void ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
-                                         OverloadCandidate *Candidates,
-                                         unsigned NumCandidates,
-                                         SourceLocation OpenParLoc) {}
+  virtual void
+  ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
+                            llvm::MutableArrayRef<OverloadCandidate> Candidates,
+                            SourceLocation OpenParLoc) {}
   //@}
 
   /// Retrieve the allocator that will be used to allocate
@@ -1186,14 +1183,14 @@ public:
         CCTUInfo(std::make_shared<GlobalCodeCompletionAllocator>()) {}
 
   /// Prints the finalized code-completion results.
-  void ProcessCodeCompleteResults(Sema &S, CodeCompletionContext Context,
-                                  CodeCompletionResult *Results,
-                                  unsigned NumResults) override;
+  void ProcessCodeCompleteResults(
+      Sema &S, CodeCompletionContext Context,
+      llvm::MutableArrayRef<CodeCompletionResult> Results) override;
 
-  void ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
-                                 OverloadCandidate *Candidates,
-                                 unsigned NumCandidates,
-                                 SourceLocation OpenParLoc) override;
+  void
+  ProcessOverloadCandidates(Sema &S, unsigned CurrentArg,
+                            llvm::MutableArrayRef<OverloadCandidate> Candidates,
+                            SourceLocation OpenParLoc) override;
 
   bool isResultFilteredOut(StringRef Filter, CodeCompletionResult Results) override;
 

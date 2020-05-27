@@ -42,9 +42,9 @@ public:
       : CodeCompleteConsumer(/*CodeCompleteOpts=*/{}), ResultCtx(ResultCtx),
         CCTUInfo(std::make_shared<GlobalCodeCompletionAllocator>()) {}
 
-  void ProcessCodeCompleteResults(Sema &S, CodeCompletionContext Context,
-                                  CodeCompletionResult *Results,
-                                  unsigned NumResults) override {
+  void ProcessCodeCompleteResults(
+      Sema &S, CodeCompletionContext Context,
+      llvm::MutableArrayRef<CodeCompletionResult> Results) override {
     ResultCtx.VisitedNamespaces =
         getVisitedNamespace(Context.getVisitedContexts());
     ResultCtx.PreferredType = Context.getPreferredType().getAsString();
