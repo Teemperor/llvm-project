@@ -1894,9 +1894,10 @@ void ClangExpressionDeclMap::AddThisType(NameSearchContext &context,
     CompilerType void_clang_type =
         m_clang_ast_context->GetBasicType(eBasicTypeVoid);
     CompilerType void_ptr_clang_type = void_clang_type.GetPointerType();
+    std::vector<CompilerType> params = {void_ptr_clang_type};
 
     CompilerType method_type = m_clang_ast_context->CreateFunctionType(
-        void_clang_type, &void_ptr_clang_type, 1, false, 0);
+        void_clang_type, params, false, 0);
 
     const bool is_virtual = false;
     const bool is_static = false;

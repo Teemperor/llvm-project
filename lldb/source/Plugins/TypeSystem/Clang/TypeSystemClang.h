@@ -417,16 +417,9 @@ public:
                             int storage, bool is_inline);
 
   CompilerType CreateFunctionType(const CompilerType &result_type,
-                                  const CompilerType *args, unsigned num_args,
+                                  llvm::ArrayRef<CompilerType> args,
                                   bool is_variadic, unsigned type_quals,
-                                  clang::CallingConv cc);
-
-  CompilerType CreateFunctionType(const CompilerType &result_type,
-                                  const CompilerType *args, unsigned num_args,
-                                  bool is_variadic, unsigned type_quals) {
-    return CreateFunctionType(result_type, args, num_args, is_variadic,
-                              type_quals, clang::CC_C);
-  }
+                                  clang::CallingConv cc = clang::CC_C);
 
   clang::ParmVarDecl *
   CreateParameterDeclaration(clang::DeclContext *decl_ctx,
