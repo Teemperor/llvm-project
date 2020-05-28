@@ -904,8 +904,7 @@ TypeSP DWARFASTParserClang::ParseSubroutine(const DWARFDIE &die,
   // clang_type will get the function prototype clang type after this
   // call
   CompilerType clang_type = m_ast.CreateFunctionType(
-      return_clang_type, function_param_types.data(),
-      function_param_types.size(), is_variadic, type_quals);
+      return_clang_type, function_param_types, is_variadic, type_quals);
 
   if (attrs.name) {
     bool type_handled = false;
