@@ -7275,6 +7275,19 @@ clang::VarDecl *TypeSystemClang::AddVariableToRecordType(
   return var_decl;
 }
 
+void TypeSystemClang::AddInitToVarDecl(VarDecl *v,
+                                       const llvm::APInt &init_value) {
+  clang::ASTContext &ast = v->getASTContext();
+  QualType qt = v->getType();
+  assert(qt->isIntegralOrEnumerationType());
+  if (const EnumType *enum_type = llvm::dyn_cast<EnumType>(qt.getTypePtr())) {
+    const EnumDecl *enum_decl = enum_type->getDecl();
+    qt = enum_decl->getIntegerType();
+  }
+  v->setInit(IntegerLiteral::Create(ast, init_value, qt.getUnqualifiedType(),
+                                    SourceLocation()));
+}
+
 clang::CXXMethodDecl *TypeSystemClang::AddMethodToCXXRecordType(
     lldb::opaque_compiler_type_t type, llvm::StringRef name,
     const char *mangled_name, const CompilerType &method_clang_type,

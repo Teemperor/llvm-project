@@ -873,6 +873,9 @@ public:
                                                  const CompilerType &var_type,
                                                  lldb::AccessType access);
 
+  static void AddInitToVarDecl(clang::VarDecl *v,
+                               const llvm::APInt &init_value);
+
   clang::CXXMethodDecl *AddMethodToCXXRecordType(
       lldb::opaque_compiler_type_t type, llvm::StringRef name,
       const char *mangled_name, const CompilerType &method_type,

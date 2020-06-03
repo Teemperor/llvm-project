@@ -17,7 +17,7 @@ using namespace lldb;
 using namespace lldb_private;
 
 namespace {
-class DWARFASTParserClangTests : public testing::Test {};
+class DWARFASTParserClangStubTests : public testing::Test {};
 
 class DWARFASTParserClangStub : public DWARFASTParserClang {
 public:
@@ -35,7 +35,7 @@ public:
 
 // If your implementation needs to dereference the dummy pointers we are
 // defining here, causing this test to fail, feel free to delete it.
-TEST_F(DWARFASTParserClangTests,
+TEST_F(DWARFASTParserClangStubTests,
        EnsureAllDIEsInDeclContextHaveBeenParsedParsesOnlyMatchingEntries) {
 
   /// Auxiliary debug info.
@@ -116,3 +116,100 @@ TEST_F(DWARFASTParserClangTests,
               testing::UnorderedElementsAre(decl_ctxs[0], decl_ctxs[3]));
 }
 
+struct ExtractIntFromFormValueTest : public testing::Test {
+  SubsystemRAII<FileSystem, HostInfo> subsystems;
+  TypeSystemClang ts;
+  DWARFASTParserClang parser;
+  ExtractIntFromFormValueTest()
+      : ts("dummy ASTContext", HostInfoBase::GetTargetTriple()), parser(ts) {}
+
+  llvm::Expected<llvm::APInt> ExtractUnsigned(clang::QualType qt,
+                                              uint64_t value) {
+    DWARFFormValue form_value;
+    form_value.SetUnsigned(value);
+    return parser.ExtractIntFromFormValue(ts.GetType(qt), form_value);
+  }
+
+  std::string ExtractUnsignedValue(clang::QualType qt, uint64_t value) {
+    llvm::Expected<llvm::APInt> err = ExtractUnsigned(qt, value);
+    EXPECT_THAT_ERROR(err.takeError(), llvm::Succeeded());
+    llvm::SmallString<16> result;
+    err->toStringUnsigned(result);
+    return std::string(result.str());
+  }
+
+  llvm::Expected<llvm::APInt> ExtractSigned(clang::QualType qt, int64_t value) {
+    DWARFFormValue form_value;
+    form_value.SetSigned(value);
+    return parser.ExtractIntFromFormValue(ts.GetType(qt), form_value);
+  }
+
+  std::string ExtractSignedValue(clang::QualType qt, int64_t value) {
+    llvm::Expected<llvm::APInt> err = ExtractSigned(qt, value);
+    EXPECT_THAT_ERROR(err.takeError(), llvm::Succeeded());
+    llvm::SmallString<16> result;
+    err->toStringSigned(result);
+    return std::string(result.str());
+  }
+};
+
+TEST_F(ExtractIntFromFormValueTest, TestBool) {
+  clang::ASTContext &ast = ts.getASTContext();
+  EXPECT_EQ(ExtractUnsignedValue(ast.BoolTy, 0), "0");
+  EXPECT_EQ(ExtractUnsignedValue(ast.BoolTy, 1), "1");
+  EXPECT_THAT_ERROR(ExtractUnsigned(ast.BoolTy, 2).takeError(), llvm::Failed());
+  EXPECT_THAT_ERROR(ExtractUnsigned(ast.BoolTy, 3).takeError(), llvm::Failed());
+}
+
+TEST_F(ExtractIntFromFormValueTest, TestInt) {
+  clang::ASTContext &ast = ts.getASTContext();
+  const int64_t int_max = static_cast<uint64_t>(1)
+                          << (ast.getIntWidth(ast.IntTy) - 1) - 1;
+  const int64_t int_min = -int_max - 1;
+
+  EXPECT_THAT_ERROR(ExtractSigned(ast.IntTy, int_min - 2).takeError(),
+                    llvm::Failed());
+  EXPECT_THAT_ERROR(ExtractSigned(ast.IntTy, int_min - 1).takeError(),
+                    llvm::Failed());
+  EXPECT_EQ(ExtractSignedValue(ast.IntTy, int_min), std::to_string(int_min));
+  EXPECT_EQ(ExtractSignedValue(ast.IntTy, int_min + 1),
+            std::to_string(int_min + 1));
+  EXPECT_EQ(ExtractSignedValue(ast.IntTy, int_min + 2),
+            std::to_string(int_min + 2));
+  EXPECT_EQ(ExtractSignedValue(ast.IntTy, -10), "-10");
+  EXPECT_EQ(ExtractSignedValue(ast.IntTy, -1), "-1");
+  EXPECT_EQ(ExtractSignedValue(ast.IntTy, 0), "0");
+  EXPECT_EQ(ExtractSignedValue(ast.IntTy, 1), "1");
+  EXPECT_EQ(ExtractSignedValue(ast.IntTy, 10), "10");
+  EXPECT_EQ(ExtractSignedValue(ast.IntTy, int_max - 2),
+            std::to_string(int_max - 2));
+  EXPECT_EQ(ExtractSignedValue(ast.IntTy, int_max - 1),
+            std::to_string(int_max - 1));
+  EXPECT_THAT_ERROR(ExtractSigned(ast.IntTy, int_max - 2).takeError(),
+                    llvm::Succeeded());
+  EXPECT_THAT_ERROR(ExtractSigned(ast.IntTy, int_max - 1).takeError(),
+                    llvm::Succeeded());
+  EXPECT_THAT_ERROR(ExtractSigned(ast.IntTy, int_max).takeError(),
+                    llvm::Succeeded());
+  EXPECT_THAT_ERROR(ExtractSigned(ast.IntTy, int_max + 1).takeError(),
+                    llvm::Failed());
+  EXPECT_THAT_ERROR(ExtractSigned(ast.IntTy, int_max + 5).takeError(),
+                    llvm::Failed());
+}
+
+TEST_F(ExtractIntFromFormValueTest, TestUnsignedInt) {
+  clang::ASTContext &ast = ts.getASTContext();
+  const uint64_t uint_max =
+      (static_cast<uint64_t>(1) << ast.getIntWidth(ast.UnsignedIntTy)) - 1U;
+
+  EXPECT_EQ(ExtractUnsignedValue(ast.UnsignedIntTy, 0), "0");
+  EXPECT_EQ(ExtractUnsignedValue(ast.UnsignedIntTy, 1), "1");
+  EXPECT_EQ(ExtractUnsignedValue(ast.UnsignedIntTy, 1234), "1234");
+  EXPECT_EQ(ExtractUnsignedValue(ast.UnsignedIntTy, uint_max - 1),
+            std::to_string(uint_max - 1));
+  EXPECT_EQ(ExtractUnsignedValue(ast.UnsignedIntTy, uint_max),
+            std::to_string(uint_max));
+  EXPECT_THAT_ERROR(
+      ExtractUnsigned(ast.UnsignedIntTy, uint_max + 1).takeError(),
+      llvm::Failed());
+}

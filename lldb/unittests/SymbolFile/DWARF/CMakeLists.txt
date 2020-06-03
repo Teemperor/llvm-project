@@ -13,6 +13,7 @@ add_lldb_unittest(SymbolFileDWARFTests
     lldbPluginTypeSystemClang
     lldbUtilityHelpers
     lldbPluginPlatformMacOSX
+    LLVMTestingSupport
   LINK_COMPONENTS
     Support
     DebugInfoPDB
