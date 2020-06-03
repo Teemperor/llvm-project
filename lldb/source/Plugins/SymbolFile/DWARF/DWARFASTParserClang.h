@@ -67,6 +67,10 @@ public:
 
   lldb_private::ClangASTImporter &GetClangASTImporter();
 
+  llvm::Expected<llvm::APInt>
+  ExtractIntFromFormValue(const lldb_private::CompilerType &ct,
+                          const DWARFFormValue &form_value) const;
+
 protected:
   /// Protected typedefs and members.
   /// @{
