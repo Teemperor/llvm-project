@@ -327,6 +327,10 @@ void LookupResult::configure() {
 bool LookupResult::sanity() const {
   // This function is never called by NDEBUG builds.
   assert(ResultKind != NotFound || Decls.size() == 0);
+  if (!(ResultKind != Found || Decls.size() == 1)) {
+    for (const auto &D : Decls)
+      D->dumpColor();
+  }
   assert(ResultKind != Found || Decls.size() == 1);
   assert(ResultKind != FoundOverloaded || Decls.size() > 1 ||
          (Decls.size() == 1 &&
