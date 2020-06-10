@@ -176,8 +176,16 @@ inline int64_t decodeSLEB128(const uint8_t *p, unsigned *n = nullptr,
       return 0;
     }
     Byte = *p++;
+    uint64_t Slice = Byte & 0x7f;
     Value |= (uint64_t(Byte & 0x7f) << Shift);
     Shift += 7;
+    if (Shift >= 64 || Slice << Shift >> Shift != Slice) {
+      if (error)
+        *error = "sleb128 too big for int64";
+      if (n)
+        *n = (unsigned)(p - orig_p);
+      return 0;
+    }
   } while (Byte >= 128);
   // Sign extend negative numbers if needed.
   if (Shift < 64 && (Byte & 0x40))

@@ -43,6 +43,12 @@ TEST(LEB128Test, EncodeSLEB128) {
   EXPECT_SLEB128_EQ("\x40", -64, 0);
   EXPECT_SLEB128_EQ("\xbf\x7f", -65, 0);
   EXPECT_SLEB128_EQ("\xc0\x00", 64, 0);
+  EXPECT_SLEB128_EQ("\xFC\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\0", INT64_MAX - 3, 0);
+  EXPECT_SLEB128_EQ("\xFD\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\0", INT64_MAX - 2, 0);
+  EXPECT_SLEB128_EQ("\xFE\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\0", INT64_MAX - 1, 0);
+  EXPECT_SLEB128_EQ("\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\0", INT64_MAX, 0);
+  EXPECT_SLEB128_EQ("\x80\x80\x80\x80\x80\x80\x80\x80\x80\x7F", INT64_MIN, 0);
+  EXPECT_SLEB128_EQ("\x81\x80\x80\x80\x80\x80\x80\x80\x80\x7F", INT64_MIN + 1, 0);
 
   // Encode SLEB128 with some extra padding bytes
   EXPECT_SLEB128_EQ("\x80\x00", 0, 2);
@@ -52,6 +58,7 @@ TEST(LEB128Test, EncodeSLEB128) {
   EXPECT_SLEB128_EQ("\x80\x81\x00", 0x80, 3);
   EXPECT_SLEB128_EQ("\x80\x81\x80\x00", 0x80, 4);
   EXPECT_SLEB128_EQ("\xc0\x7f", -0x40, 2);
+  EXPECT_SLEB128_EQ("\xc0\x7f", -0x40, 8);
 
   EXPECT_SLEB128_EQ("\xc0\xff\x7f", -0x40, 3);
   EXPECT_SLEB128_EQ("\x80\xff\x7f", -0x80, 3);
@@ -91,6 +98,7 @@ TEST(LEB128Test, EncodeULEB128) {
   EXPECT_ULEB128_EQ("\xff\x01", 0xff, 0);
   EXPECT_ULEB128_EQ("\x80\x02", 0x100, 0);
   EXPECT_ULEB128_EQ("\x81\x02", 0x101, 0);
+  EXPECT_ULEB128_EQ("\xff\xff\xff\xff\xff\xff\xff\xff\xff\x1", UINT64_MAX, 0);
 
   // Encode ULEB128 with some extra padding bytes
   EXPECT_ULEB128_EQ("\x80\x00", 0, 2);
@@ -168,6 +176,8 @@ TEST(LEB128Test, DecodeSLEB128) {
   EXPECT_DECODE_SLEB128_EQ(-127L, "\x81\x7f");
   EXPECT_DECODE_SLEB128_EQ(64L, "\xc0\x00");
   EXPECT_DECODE_SLEB128_EQ(-12345L, "\xc7\x9f\x7f");
+  EXPECT_DECODE_SLEB128_EQ(INT64_MAX, "\xff\xff\xff\xff\xff\xff\xff\xff\xff\0");
+  EXPECT_DECODE_SLEB128_EQ(INT64_MIN, "\x80\x80\x80\x80\x80\x80\x80\x80\x80\x7f");
 
   // Decode unnormalized SLEB128 with extra padding bytes.
   EXPECT_DECODE_SLEB128_EQ(0L, "\x80\x00");
@@ -178,6 +188,39 @@ TEST(LEB128Test, DecodeSLEB128) {
   EXPECT_DECODE_SLEB128_EQ(0x80L, "\x80\x81\x80\x00");
 
 #undef EXPECT_DECODE_SLEB128_EQ
+}
+
+TEST(LEB128Test, DecodeSLEB128Error) {
+#define EXPECT_DECODE_SLEB128_ERR(EXPECTED_ERR_MSG, VALUE) \
+  do { \
+    const char *Err = nullptr; \
+    const char *End = &VALUE[sizeof(VALUE) - 1]; \
+    unsigned  ReadBytes = 0; \
+    int64_t Value = decodeSLEB128(reinterpret_cast<const uint8_t *>(VALUE), \
+                                   &ReadBytes, \
+   reinterpret_cast<const uint8_t *>(End), \
+                                   &Err); \
+    EXPECT_STREQ(EXPECTED_ERR_MSG, Err); \
+    EXPECT_EQ(0, Value); \
+    EXPECT_EQ(ReadBytes, sizeof(VALUE) - 1); \
+  } while (0)
+  EXPECT_DECODE_SLEB128_ERR("malformed sleb128, extends past end",
+                            "\x80");
+  EXPECT_DECODE_SLEB128_ERR("malformed sleb128, extends past end",
+                            "\x8f");
+  EXPECT_DECODE_SLEB128_ERR("malformed sleb128, extends past end",
+                            "\x80\x80");
+  EXPECT_DECODE_SLEB128_ERR("malformed sleb128, extends past end",
+                            "\x80\x80\x80\x80\x80\x80\x80\x80\x80\x80");
+
+  EXPECT_DECODE_SLEB128_ERR("sleb128 too big for int64",
+                            "\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\xFF\x01");
+  EXPECT_DECODE_SLEB128_ERR("sleb128 too big for int64",
+                            "\x80\x80\x80\x80\x80\x80\x80\x80\x80\x80\x80");
+  EXPECT_DECODE_SLEB128_ERR("sleb128 too big for int64",
+                            "\x80\x80\x80\x80\x80\x80\x80\x80\x80\x80\x7f");
+
+#undef EXPECT_DECODE_SLEB128_ERR
 }
 
 TEST(LEB128Test, SLEB128Size) {
