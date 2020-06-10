@@ -24,6 +24,7 @@
 #include "lld/Common/Strings.h"
 #include "llvm/BinaryFormat/Dwarf.h"
 #include "llvm/Object/ELF.h"
+#include "llvm/Support/LEB128.h"
 
 using namespace llvm;
 using namespace llvm::ELF;
@@ -109,13 +110,13 @@ StringRef EhReader::readString() {
 // the field that follows a LEB128 number.
 void EhReader::skipLeb128() {
   const uint8_t *errPos = d.data();
-  while (!d.empty()) {
-    uint8_t val = d.front();
-    d = d.slice(1);
-    if ((val & 0x80) == 0)
-      return;
+  const char *err;
+  const uint8_t *end = llvm::skipLEB128(d.begin(), d.end(), &err);
+  if (err) {
+    failOn(errPos, "corrupted CIE (failed to read LEB128)");
+    return;
   }
-  failOn(errPos, "corrupted CIE (failed to read LEB128)");
+  d = d.slice(errPos - end);
 }
 
 static size_t getAugPSize(unsigned enc) {

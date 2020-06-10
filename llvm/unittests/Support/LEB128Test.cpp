@@ -180,6 +180,32 @@ TEST(LEB128Test, DecodeSLEB128) {
 #undef EXPECT_DECODE_SLEB128_EQ
 }
 
+TEST(LEB128Test, SkipLEB128) {
+#define EXPECT_SKIP_LEB128(VALUE) \
+  do { \
+    const uint8_t *Result = skipLEB128(reinterpret_cast<const uint8_t *>(VALUE)); \
+    const uint8_t *End = reinterpret_cast<const uint8_t *>(&VALUE[sizeof(VALUE) - 1]); \
+    EXPECT_EQ(End, Result); \
+  } while (0)
+
+#define EXPECT_SKIP_LEB128_ERR(EXPECTED, VALUE) \
+  do { \
+    const uint8_t *End = reinterpret_cast<const uint8_t *>(&VALUE[sizeof(VALUE) - 1]); \
+    const char *Err; \
+    const uint8_t *Result = skipLEB128(reinterpret_cast<const uint8_t *>(VALUE), End, &Err); \
+    EXPECT_EQ(End, Result); \
+    EXPECT_STREQ(EXPECTED, Err); \
+  } while (0)
+
+  EXPECT_SKIP_LEB128("\x80");
+  EXPECT_SKIP_LEB128("\x80\x80\x80\x00");
+
+  EXPECT_SKIP_LEB128_ERR("malformed leb128, extends past end",
+                         "\x80");
+#undef EXPECT_DECODE_SLEB128_EQ
+#undef EXPECT_SKIP_LEB128_ERR
+}
+
 TEST(LEB128Test, SLEB128Size) {
   // Positive Value Testing Plan:
   // (1) 128 ^ n - 1 ........ need (n+1) bytes

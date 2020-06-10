@@ -26,6 +26,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/Support/MD5.h"
 #include "llvm/Support/MathExtras.h"
+#include "llvm/Support/LEB128.h"
 
 #include <algorithm>
 #include <array>
@@ -948,20 +949,12 @@ int64_t DataExtractor::GetSLEB128(offset_t *offset_ptr) const {
 //
 // Returns the number of bytes consumed during the extraction.
 uint32_t DataExtractor::Skip_LEB128(offset_t *offset_ptr) const {
-  uint32_t bytes_consumed = 0;
   const uint8_t *src = PeekData(*offset_ptr, 1);
   if (src == nullptr)
     return 0;
 
-  const uint8_t *end = m_end;
-
-  if (src < end) {
-    const uint8_t *src_pos = src;
-    while ((src_pos < end) && (*src_pos++ & 0x80))
-      ++bytes_consumed;
-    *offset_ptr += src_pos - src;
-  }
-  return bytes_consumed;
+  const uint8_t *end = llvm::skipLEB128(src, m_end);
+  return end - src;
 }
 
 // Dumps bytes from this object's data to the stream "s" starting

@@ -157,6 +157,19 @@ inline uint64_t decodeULEB128(const uint8_t *p, unsigned *n = nullptr,
   return Value;
 }
 
+inline const uint8_t *skipLEB128(const uint8_t *p,
+                                 const uint8_t *end = nullptr,
+                                 const char **error = nullptr) {
+  while (p != end) {
+    uint8_t Byte = *p++;
+    if (Byte < 128)
+      return p;
+  }
+  if (error)
+    *error = "malformed leb128, extends past end";
+  return p;
+}
+
 /// Utility function to decode a SLEB128 value.
 inline int64_t decodeSLEB128(const uint8_t *p, unsigned *n = nullptr,
                              const uint8_t *end = nullptr,
