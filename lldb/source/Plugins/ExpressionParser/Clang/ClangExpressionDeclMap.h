@@ -599,8 +599,8 @@ private:
   ///
   /// \param[in] type
   ///     The type of the class that serves as the evaluation context.
-  void AddContextClassType(NameSearchContext &context,
-                           const TypeFromUser &type);
+  void AddContextClassType(NameSearchContext &context, const TypeFromUser &type,
+                           bool static_method = false);
 
   /// Move a type out of the current ASTContext into another, but make sure to
   /// export all components of the type also.

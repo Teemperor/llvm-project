@@ -797,7 +797,7 @@ void ClangExpressionDeclMap::LookUpLldbClass(NameSearchContext &context) {
     LLDB_LOG(log, "  CEDM::FEVD Adding type for $__lldb_class: {1}",
              class_qual_type.getAsString());
 
-    AddContextClassType(context, class_user_type);
+    AddContextClassType(context, class_user_type, method_decl->isStatic());
 
     if (method_decl->isInstance()) {
       // self is a pointer to the object
@@ -1877,7 +1877,8 @@ void ClangExpressionDeclMap::AddOneFunction(NameSearchContext &context,
 }
 
 void ClangExpressionDeclMap::AddContextClassType(NameSearchContext &context,
-                                                 const TypeFromUser &ut) {
+                                                 const TypeFromUser &ut,
+                                                 bool static_method) {
   CompilerType copied_clang_type = GuardedCopyType(ut);
 
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
@@ -1899,7 +1900,7 @@ void ClangExpressionDeclMap::AddContextClassType(NameSearchContext &context,
         void_clang_type, &void_ptr_clang_type, 1, false, 0);
 
     const bool is_virtual = false;
-    const bool is_static = false;
+    const bool is_static = static_method;
     const bool is_inline = false;
     const bool is_explicit = false;
     const bool is_attr_used = true;
