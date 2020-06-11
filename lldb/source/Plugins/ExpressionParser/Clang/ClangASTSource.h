@@ -213,7 +213,16 @@ public:
   /// Clang AST contexts like to own their AST sources, so this is a state-
   /// free proxy object.
   class ClangASTSourceProxy : public clang::ExternalASTSource {
+    /// LLVM RTTI support.
+    static char ID;
+
   public:
+    /// LLVM RTTI support.
+    bool isA(const void *ClassID) const override { return ClassID == &ID; }
+    static bool classof(const clang::ExternalASTSource *s) {
+      return s->isA(&ID);
+    }
+
     ClangASTSourceProxy(ClangASTSource &original) : m_original(original) {}
 
     bool FindExternalVisibleDeclsByName(const clang::DeclContext *DC,
@@ -250,6 +259,8 @@ public:
     void StartTranslationUnit(clang::ASTConsumer *Consumer) override {
       return m_original.StartTranslationUnit(Consumer);
     }
+
+    ClangASTSource &GetOriginalSource() { return m_original; }
 
   private:
     ClangASTSource &m_original;
@@ -355,6 +366,8 @@ public:
   /// Returns the TypeSystem that uses this ClangASTSource instance as it's
   /// ExternalASTSource.
   TypeSystemClang *GetTypeSystem() const { return m_clang_ast_context; }
+
+  clang::TagDecl *FindCompleteType(const clang::TagDecl *decl);
 
 protected:
   bool FindObjCMethodDeclsWithOrigin(

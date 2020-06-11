@@ -18,6 +18,7 @@
 
 #include "Plugins/ExpressionParser/Clang/ClangASTImporter.h"
 #include "Plugins/ExpressionParser/Clang/ClangASTMetadata.h"
+#include "Plugins/ExpressionParser/Clang/ClangASTSource.h"
 #include "Plugins/ExpressionParser/Clang/ClangExternalASTSourceCallbacks.h"
 #include "Plugins/ExpressionParser/Clang/ClangUtil.h"
 #include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
@@ -873,6 +874,27 @@ ClangASTImporter::ASTImporterDelegate::ImportImpl(Decl *From) {
     if (R) {
       RegisterImportedDecl(From, R);
       return R;
+    }
+  }
+
+  const ClangASTMetadata *md = m_master.GetDeclMetadata(From);
+  auto *td = dyn_cast<TagDecl>(From);
+  if (td && md && md->IsForcefullyCompleted()) {
+    if (auto *proxy = llvm::dyn_cast<ClangASTSource::ClangASTSourceProxy>(
+            getToContext().getExternalSource())) {
+      if (TagDecl *complete = proxy->GetOriginalSource().FindCompleteType(td)) {
+        ImporterDelegateSP delegate_sp =
+            m_master.GetDelegate(&getToContext(), &complete->getASTContext());
+
+        Expected<Decl *> imported = delegate_sp->ImportImpl(complete);
+        if (imported) {
+          RegisterImportedDecl(From, *imported);
+          m_decls_to_ignore.insert(*imported);
+          m_master.CompleteTagDeclWithOrigin(cast<TagDecl>(*imported),
+                                             complete);
+        }
+        return imported;
+      }
     }
   }
 
