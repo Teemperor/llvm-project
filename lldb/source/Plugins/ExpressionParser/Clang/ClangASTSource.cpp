@@ -100,15 +100,18 @@ void ClangASTSource::StartTranslationUnit(ASTConsumer *Consumer) {
 // The core lookup interface.
 bool ClangASTSource::FindExternalVisibleDeclsByName(
     const DeclContext *decl_ctx, DeclarationName clang_decl_name) {
+  clang_decl_name.dump();
   if (!m_ast_context) {
     SetNoExternalVisibleDeclsForName(decl_ctx, clang_decl_name);
     return false;
   }
+  llvm::errs() << __PRETTY_FUNCTION__ << ":" << __LINE__ << "\n";
 
   if (GetImportInProgress()) {
     SetNoExternalVisibleDeclsForName(decl_ctx, clang_decl_name);
     return false;
   }
+  llvm::errs() << __PRETTY_FUNCTION__ << ":" << __LINE__ << "\n";
 
   std::string decl_name(clang_decl_name.getAsString());
 
@@ -157,6 +160,7 @@ bool ClangASTSource::FindExternalVisibleDeclsByName(
     return false;
   }
 
+  llvm::errs() << __PRETTY_FUNCTION__ << ":" << __LINE__ << "\n";
   if (!GetLookupsEnabled()) {
     // Wait until we see a '$' at the start of a name before we start doing any
     // lookups so we can avoid lookup up all of the builtin types.
@@ -167,6 +171,7 @@ bool ClangASTSource::FindExternalVisibleDeclsByName(
       return false;
     }
   }
+  llvm::errs() << __PRETTY_FUNCTION__ << ":" << __LINE__ << "\n";
 
   ConstString const_decl_name(decl_name.c_str());
 
@@ -1746,12 +1751,12 @@ CompilerType ClangASTSource::GuardedCopyType(const CompilerType &src_type) {
   if (src_ast == nullptr)
     return CompilerType();
 
-  SetImportInProgress(true);
+  //SetImportInProgress(true);
 
   QualType copied_qual_type = ClangUtil::GetQualType(
       m_ast_importer_sp->CopyType(*m_clang_ast_context, src_type));
 
-  SetImportInProgress(false);
+  //SetImportInProgress(false);
 
   if (copied_qual_type.getAsOpaquePtr() &&
       copied_qual_type->getCanonicalTypeInternal().isNull())

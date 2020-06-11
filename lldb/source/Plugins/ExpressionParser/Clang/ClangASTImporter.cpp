@@ -880,21 +880,20 @@ ClangASTImporter::ASTImporterDelegate::ImportImpl(Decl *From) {
   const ClangASTMetadata *md = m_master.GetDeclMetadata(From);
   auto *td = dyn_cast<TagDecl>(From);
   if (td && md && md->IsForcefullyCompleted()) {
-    if (auto *proxy = llvm::dyn_cast<ClangASTSource::ClangASTSourceProxy>(
-            getToContext().getExternalSource())) {
-      if (TagDecl *complete = proxy->GetOriginalSource().FindCompleteType(td)) {
-        ImporterDelegateSP delegate_sp =
-            m_master.GetDelegate(&getToContext(), &complete->getASTContext());
-
-        Expected<Decl *> imported = delegate_sp->ImportImpl(complete);
-        if (imported) {
-          RegisterImportedDecl(From, *imported);
-          m_decls_to_ignore.insert(*imported);
-          m_master.CompleteTagDeclWithOrigin(cast<TagDecl>(*imported),
-                                             complete);
-        }
-        return imported;
-      }
+    Expected<DeclContext *> dc_or_err = ImportContext(td->getDeclContext());
+    if (!dc_or_err)
+      return dc_or_err.takeError();
+    Expected<DeclarationName> dn_or_err = Import(td->getDeclName());
+    if (!dn_or_err)
+      return dn_or_err.takeError();
+    DeclContext *dc = *dc_or_err;
+    DeclarationName dn = *dn_or_err;
+    DeclContext::lookup_result lr = dc->lookup(dn);
+    if (lr.size()) {
+      clang::Decl *lookup_found = lr.front();
+      RegisterImportedDecl(From, lookup_found);
+      m_decls_to_ignore.insert(lookup_found);
+      return lookup_found;
     }
   }
 
