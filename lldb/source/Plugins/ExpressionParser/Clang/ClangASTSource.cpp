@@ -103,11 +103,6 @@ bool ClangASTSource::FindExternalVisibleDeclsByName(
     return false;
   }
 
-  if (GetImportInProgress()) {
-    SetNoExternalVisibleDeclsForName(decl_ctx, clang_decl_name);
-    return false;
-  }
-
   std::string decl_name(clang_decl_name.getAsString());
 
   switch (clang_decl_name.getNameKind()) {
@@ -1746,12 +1741,8 @@ CompilerType ClangASTSource::GuardedCopyType(const CompilerType &src_type) {
   if (src_ast == nullptr)
     return CompilerType();
 
-  SetImportInProgress(true);
-
   QualType copied_qual_type = ClangUtil::GetQualType(
       m_ast_importer_sp->CopyType(*m_clang_ast_context, src_type));
-
-  SetImportInProgress(false);
 
   if (copied_qual_type.getAsOpaquePtr() &&
       copied_qual_type->getCanonicalTypeInternal().isNull())

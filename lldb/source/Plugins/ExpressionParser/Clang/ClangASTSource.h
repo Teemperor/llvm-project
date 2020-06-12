@@ -197,11 +197,6 @@ public:
 
   clang::Sema *getSema();
 
-  void SetImportInProgress(bool import_in_progress) {
-    m_import_in_progress = import_in_progress;
-  }
-  bool GetImportInProgress() { return m_import_in_progress; }
-
   void SetLookupsEnabled(bool lookups_enabled) {
     m_lookups_enabled = lookups_enabled;
   }
