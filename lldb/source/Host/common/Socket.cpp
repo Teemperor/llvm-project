@@ -11,7 +11,6 @@
 #include "lldb/Host/Config.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Host/SocketAddress.h"
-#include "lldb/Host/StringConvert.h"
 #include "lldb/Host/common/TCPSocket.h"
 #include "lldb/Host/common/UDPSocket.h"
 #include "lldb/Utility/Log.h"
@@ -284,8 +283,7 @@ bool Socket::DecodeHostAndPort(llvm::StringRef host_and_port,
     // IPv6 addresses are wrapped in [] when specified with ports
     if (host_str.front() == '[' && host_str.back() == ']')
       host_str = host_str.substr(1, host_str.size() - 2);
-    bool ok = false;
-    port = StringConvert::ToUInt32(port_str.c_str(), UINT32_MAX, 10, &ok);
+    bool ok = llvm::to_integer(port_str, port);
     if (ok && port <= UINT16_MAX) {
       if (error_ptr)
         error_ptr->Clear();
