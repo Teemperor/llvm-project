@@ -12,7 +12,6 @@
 #include "lldb/DataFormatters/ValueObjectPrinter.h"
 #include "lldb/Host/Config.h"
 #include "lldb/Host/OptionParser.h"
-#include "lldb/Host/StringConvert.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/CommandReturnObject.h"
 #include "lldb/Interpreter/OptionGroupFormat.h"
@@ -943,8 +942,13 @@ protected:
       return false;
     }
 
-    uint32_t recognizer_id =
-        StringConvert::ToUInt32(command.GetArgumentAtIndex(0), 0, 0);
+    uint32_t recognizer_id;
+    if (!llvm::to_integer(command.GetArgumentAtIndex(0), recognizer_id)) {
+      result.AppendErrorWithFormat("'%s' is not a valid recognizer id.\n",
+                                   command.GetArgumentAtIndex(0));
+      result.SetStatus(eReturnStatusFailed);
+      return false;
+    }
 
     StackFrameRecognizerManager::RemoveRecognizerWithID(recognizer_id);
     result.SetStatus(eReturnStatusSuccessFinishResult);
@@ -1024,6 +1028,15 @@ public:
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
+    const char *frame_index_str = command.GetArgumentAtIndex(0);
+    uint32_t frame_index;
+    if (!llvm::to_integer(frame_index_str, frame_index)) {
+      result.AppendErrorWithFormat("'%s' is not a valid frame index.",
+                                   frame_index_str);
+      result.SetStatus(eReturnStatusFailed);
+      return false;
+    }
+
     Process *process = m_exe_ctx.GetProcessPtr();
     if (process == nullptr) {
       result.AppendError("no process");
@@ -1043,8 +1056,6 @@ protected:
       return false;
     }
 
-    uint32_t frame_index =
-        StringConvert::ToUInt32(command.GetArgumentAtIndex(0), 0, 0);
     StackFrameSP frame_sp = thread->GetStackFrameAtIndex(frame_index);
     if (!frame_sp) {
       result.AppendErrorWithFormat("no frame with index %u", frame_index);
