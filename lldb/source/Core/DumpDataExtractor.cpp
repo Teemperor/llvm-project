@@ -128,6 +128,53 @@ static lldb::offset_t DumpAPInt(Stream *s, const DataExtractor &data,
   return offset;
 }
 
+LLVM_NODISCARD
+static bool DumpEscapedSpecialCharacter(Stream &s, const char c) {
+  switch (c) {
+  case '\033':
+    s.Printf("\\e");
+    return true;
+  case '\a':
+    s.Printf("\\a");
+      return true;
+  case '\b':
+    s.Printf("\\b");
+      return true;
+  case '\f':
+    s.Printf("\\f");
+      return true;
+  case '\n':
+    s.Printf("\\n");
+      return true;
+  case '\r':
+    s.Printf("\\r");
+      return true;
+  case '\t':
+    s.Printf("\\t");
+      return true;
+  case '\v':
+    s.Printf("\\v");
+      return true;
+  case '\0':
+    s.Printf("\\0");
+      return true;
+  default:
+      return false;
+  }
+}
+
+/// Dump the character to a stream. Characters that are not printable will be
+/// escaped.
+static void DumpCharacter(Stream &s, const char c) {
+  if (std::isprint(c)) {
+    s.PutChar(c);
+    return;
+  }
+  if (DumpEscapedSpecialCharacter(s, c))
+    return;
+  s.Printf("\\x%2.2x", c);
+}
+
 lldb::offset_t lldb_private::DumpDataExtractor(
     const DataExtractor &DE, Stream *s, offset_t start_offset,
     lldb::Format item_format, size_t item_byte_size, size_t item_count,
@@ -287,40 +334,11 @@ lldb::offset_t lldb_private::DumpDataExtractor(
       if (isprint(ch))
         s->Printf("%c", (char)ch);
       else if (item_format != eFormatCharPrintable) {
-        switch (ch) {
-        case '\033':
-          s->Printf("\\e");
-          break;
-        case '\a':
-          s->Printf("\\a");
-          break;
-        case '\b':
-          s->Printf("\\b");
-          break;
-        case '\f':
-          s->Printf("\\f");
-          break;
-        case '\n':
-          s->Printf("\\n");
-          break;
-        case '\r':
-          s->Printf("\\r");
-          break;
-        case '\t':
-          s->Printf("\\t");
-          break;
-        case '\v':
-          s->Printf("\\v");
-          break;
-        case '\0':
-          s->Printf("\\0");
-          break;
-        default:
+        if (!DumpEscapedSpecialCharacter(*s, ch)) {
           if (item_byte_size == 1)
             s->Printf("\\x%2.2x", (uint8_t)ch);
           else
             s->Printf("%" PRIu64, ch);
-          break;
         }
       } else {
         s->PutChar(NON_PRINTABLE_CHAR);
@@ -375,42 +393,7 @@ lldb::offset_t lldb_private::DumpDataExtractor(
       s->PutChar('\'');
       for (uint32_t i = 0; i < item_byte_size; ++i) {
         uint8_t ch = (uint8_t)(uval64 >> ((item_byte_size - i - 1) * 8));
-        if (isprint(ch))
-          s->Printf("%c", ch);
-        else {
-          switch (ch) {
-          case '\033':
-            s->Printf("\\e");
-            break;
-          case '\a':
-            s->Printf("\\a");
-            break;
-          case '\b':
-            s->Printf("\\b");
-            break;
-          case '\f':
-            s->Printf("\\f");
-            break;
-          case '\n':
-            s->Printf("\\n");
-            break;
-          case '\r':
-            s->Printf("\\r");
-            break;
-          case '\t':
-            s->Printf("\\t");
-            break;
-          case '\v':
-            s->Printf("\\v");
-            break;
-          case '\0':
-            s->Printf("\\0");
-            break;
-          default:
-            s->Printf("\\x%2.2x", ch);
-            break;
-          }
-        }
+        DumpCharacter(*s, ch);
       }
       s->PutChar('\'');
     } break;
@@ -425,40 +408,7 @@ lldb::offset_t lldb_private::DumpDataExtractor(
         s->PutChar('\"');
 
         while (const char c = *cstr) {
-          if (isprint(c)) {
-            s->PutChar(c);
-          } else {
-            switch (c) {
-            case '\033':
-              s->Printf("\\e");
-              break;
-            case '\a':
-              s->Printf("\\a");
-              break;
-            case '\b':
-              s->Printf("\\b");
-              break;
-            case '\f':
-              s->Printf("\\f");
-              break;
-            case '\n':
-              s->Printf("\\n");
-              break;
-            case '\r':
-              s->Printf("\\r");
-              break;
-            case '\t':
-              s->Printf("\\t");
-              break;
-            case '\v':
-              s->Printf("\\v");
-              break;
-            default:
-              s->Printf("\\x%2.2x", c);
-              break;
-            }
-          }
-
+          DumpCharacter(*s, c);
           ++cstr;
         }
 
