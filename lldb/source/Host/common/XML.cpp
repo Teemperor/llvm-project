@@ -9,7 +9,6 @@
 #include <stdlib.h> /* atof */
 
 #include "lldb/Host/Config.h"
-#include "lldb/Host/StringConvert.h"
 #include "lldb/Host/XML.h"
 
 using namespace lldb;
@@ -158,9 +157,11 @@ bool XMLNode::GetAttributeValueAsUnsigned(const char *name, uint64_t &value,
 #else
   llvm::StringRef str_value;
 #endif
-  bool success = false;
-  value = StringConvert::ToUInt64(str_value.data(), fail_value, base, &success);
-  return success;
+  if (!llvm::to_integer(str_value, value, base)) {
+    value = fail_value;
+    return false;
+  }
+  return true;
 }
 
 void XMLNode::ForEachChildNode(NodeCallback const &callback) const {
@@ -307,7 +308,7 @@ bool XMLNode::GetElementTextAsUnsigned(uint64_t &value, uint64_t fail_value,
   if (IsValid()) {
     std::string text;
     if (GetElementText(text))
-      value = StringConvert::ToUInt64(text.c_str(), fail_value, base, &success);
+      success = llvm::to_integer(text, value, base);
   }
 #endif
   if (!success)

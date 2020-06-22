@@ -9,7 +9,6 @@
 #include "lldb/Interpreter/Property.h"
 
 #include "lldb/Core/UserSettingsController.h"
-#include "lldb/Host/StringConvert.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
 #include "lldb/Interpreter/OptionArgParser.h"
 #include "lldb/Interpreter/OptionValues.h"
@@ -170,28 +169,37 @@ Property::Property(const PropertyDefinition &definition)
         std::make_shared<OptionValueRegex>(definition.default_cstr_value);
     break;
 
-  case OptionValue::eTypeSInt64:
+  case OptionValue::eTypeSInt64: {
     // "definition.default_uint_value" is the default integer value if
     // "definition.default_cstr_value" is NULL, otherwise interpret
     // "definition.default_cstr_value" as a string value that represents the
     // default value.
-    m_value_sp = std::make_shared<OptionValueSInt64>(
-        definition.default_cstr_value
-            ? StringConvert::ToSInt64(definition.default_cstr_value)
-            : definition.default_uint_value);
+    int64_t value;
+    if (definition.default_cstr_value) {
+      if (!llvm::to_integer(definition.default_cstr_value, value))
+        value = 0;
+    } else {
+      value = definition.default_uint_value;
+    }
+    m_value_sp = std::make_shared<OptionValueSInt64>(value);
     break;
+  }
 
-  case OptionValue::eTypeUInt64:
+  case OptionValue::eTypeUInt64: {
     // "definition.default_uint_value" is the default unsigned integer value if
     // "definition.default_cstr_value" is NULL, otherwise interpret
     // "definition.default_cstr_value" as a string value that represents the
     // default value.
-    m_value_sp = std::make_shared<OptionValueUInt64>(
-        definition.default_cstr_value
-            ? StringConvert::ToUInt64(definition.default_cstr_value)
-            : definition.default_uint_value);
+    uint64_t value;
+    if (definition.default_cstr_value) {
+      if (!llvm::to_integer(definition.default_cstr_value, value))
+        value = 0;
+    } else {
+      value = definition.default_uint_value;
+    }
+    m_value_sp = std::make_shared<OptionValueUInt64>(value);
     break;
-
+  }
   case OptionValue::eTypeUUID:
     // "definition.default_uint_value" is not used for a OptionValue::eTypeUUID
     // "definition.default_cstr_value" can contain a default UUID value

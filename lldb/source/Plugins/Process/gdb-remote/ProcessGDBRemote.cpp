@@ -40,7 +40,6 @@
 #include "lldb/Host/HostThread.h"
 #include "lldb/Host/PosixApi.h"
 #include "lldb/Host/PseudoTerminal.h"
-#include "lldb/Host/StringConvert.h"
 #include "lldb/Host/ThreadLauncher.h"
 #include "lldb/Host/XML.h"
 #include "lldb/Interpreter/CommandInterpreter.h"
@@ -397,9 +396,8 @@ static size_t SplitCommaSeparatedRegisterNumberString(
   do {
     value_pair = value_pair.second.split(',');
     if (!value_pair.first.empty()) {
-      uint32_t reg = StringConvert::ToUInt32(value_pair.first.str().c_str(),
-                                             LLDB_INVALID_REGNUM, base);
-      if (reg != LLDB_INVALID_REGNUM)
+      uint32_t reg;
+      if (llvm::to_integer(value_pair.first, reg, base))
         regnums.push_back(reg);
     }
   } while (!value_pair.second.empty());
@@ -1507,13 +1505,11 @@ ProcessGDBRemote::UpdateThreadIDsFromStopReplyThreadsValue(std::string &value) {
   while ((comma_pos = value.find(',')) != std::string::npos) {
     value[comma_pos] = '\0';
     // thread in big endian hex
-    tid = StringConvert::ToUInt64(value.c_str(), LLDB_INVALID_THREAD_ID, 16);
-    if (tid != LLDB_INVALID_THREAD_ID)
+    if (llvm::to_integer(value.c_str(), tid, 16))
       m_thread_ids.push_back(tid);
     value.erase(0, comma_pos + 1);
   }
-  tid = StringConvert::ToUInt64(value.c_str(), LLDB_INVALID_THREAD_ID, 16);
-  if (tid != LLDB_INVALID_THREAD_ID)
+  if (llvm::to_integer(value.c_str(), tid, 16))
     m_thread_ids.push_back(tid);
   return m_thread_ids.size();
 }
@@ -1525,13 +1521,11 @@ ProcessGDBRemote::UpdateThreadPCsFromStopReplyThreadsValue(std::string &value) {
   lldb::addr_t pc;
   while ((comma_pos = value.find(',')) != std::string::npos) {
     value[comma_pos] = '\0';
-    pc = StringConvert::ToUInt64(value.c_str(), LLDB_INVALID_ADDRESS, 16);
-    if (pc != LLDB_INVALID_ADDRESS)
+    if (llvm::to_integer(value.c_str(), pc, 16))
       m_thread_pcs.push_back(pc);
     value.erase(0, comma_pos + 1);
   }
-  pc = StringConvert::ToUInt64(value.c_str(), LLDB_INVALID_ADDRESS, 16);
-  if (pc != LLDB_INVALID_THREAD_ID)
+  if (llvm::to_integer(value.c_str(), pc, 16))
     m_thread_pcs.push_back(pc);
   return m_thread_pcs.size();
 }
@@ -2080,9 +2074,8 @@ ProcessGDBRemote::SetThreadStopInfo(StructuredData::Dictionary *thread_dict) {
         registers_dict->ForEach(
             [&expedited_register_map](ConstString key,
                                       StructuredData::Object *object) -> bool {
-              const uint32_t reg =
-                  StringConvert::ToUInt32(key.GetCString(), UINT32_MAX, 10);
-              if (reg != UINT32_MAX)
+              uint32_t reg;
+              if (llvm::to_integer(key.GetStringRef(), reg, 10))
                 expedited_register_map[reg] =
                     std::string(object->GetStringValue());
               return true; // Keep iterating through all array items
@@ -4320,20 +4313,22 @@ bool ParseRegisters(XMLNode feature_node, GdbServerTargetInfo &target_info,
           if (name == "name") {
             reg_name.SetString(value);
           } else if (name == "bitsize") {
-            reg_info.byte_size =
-                StringConvert::ToUInt32(value.data(), 0, 0) / CHAR_BIT;
+            uint32_t bit_size;
+            if (llvm::to_integer(value, bit_size))
+              reg_info.byte_size = bit_size / CHAR_BIT;
+            else
+              reg_info.byte_size = 0;
           } else if (name == "type") {
             gdb_type = value.str();
           } else if (name == "group") {
             gdb_group = value.str();
           } else if (name == "regnum") {
-            const uint32_t regnum =
-                StringConvert::ToUInt32(value.data(), LLDB_INVALID_REGNUM, 0);
-            if (regnum != LLDB_INVALID_REGNUM) {
+            uint32_t regnum;
+            if (llvm::to_integer(value, regnum))
               reg_info.kinds[eRegisterKindProcessPlugin] = regnum;
-            }
           } else if (name == "offset") {
-            reg_offset = StringConvert::ToUInt32(value.data(), UINT32_MAX, 0);
+            if (!llvm::to_integer(value, reg_offset))
+              reg_offset = UINT32_MAX;
           } else if (name == "altname") {
             alt_name.SetString(value);
           } else if (name == "encoding") {
@@ -4364,18 +4359,23 @@ bool ParseRegisters(XMLNode feature_node, GdbServerTargetInfo &target_info,
             else if (value == "vector-uint128")
               reg_info.format = eFormatVectorOfUInt128;
           } else if (name == "group_id") {
-            const uint32_t set_id =
-                StringConvert::ToUInt32(value.data(), UINT32_MAX, 0);
+            uint32_t set_id;
+            if (!llvm::to_integer(value, set_id))
+              set_id = UINT32_MAX;
             RegisterSetMap::const_iterator pos =
                 target_info.reg_set_map.find(set_id);
             if (pos != target_info.reg_set_map.end())
               set_name = pos->second.name;
           } else if (name == "gcc_regnum" || name == "ehframe_regnum") {
-            reg_info.kinds[eRegisterKindEHFrame] =
-                StringConvert::ToUInt32(value.data(), LLDB_INVALID_REGNUM, 0);
+            uint32_t reg;
+            if (!llvm::to_integer(value, reg))
+              reg = LLDB_INVALID_REGNUM;
+            reg_info.kinds[eRegisterKindEHFrame] = reg;
           } else if (name == "dwarf_regnum") {
-            reg_info.kinds[eRegisterKindDWARF] =
-                StringConvert::ToUInt32(value.data(), LLDB_INVALID_REGNUM, 0);
+            uint32_t reg;
+            if (!llvm::to_integer(value, reg))
+              reg = LLDB_INVALID_REGNUM;
+            reg_info.kinds[eRegisterKindDWARF] = reg;
           } else if (name == "generic") {
             reg_info.kinds[eRegisterKindGeneric] =
                 Args::StringToGenericRegister(value);
@@ -4501,9 +4501,10 @@ bool ProcessGDBRemote::GetGDBServerRegisterInfoXMLAndProcess(
                 node.ForEachAttribute(
                     [&set_id, &set_info](const llvm::StringRef &name,
                                          const llvm::StringRef &value) -> bool {
-                      if (name == "id")
-                        set_id = StringConvert::ToUInt32(value.data(),
-                                                         UINT32_MAX, 0);
+                      if (name == "id") {
+                        if (!llvm::to_integer(value, set_id))
+                          set_id = UINT32_MAX;
+                      }
                       if (name == "name")
                         set_info.name = ConstString(value);
                       return true; // Keep iterating through all attributes
@@ -4638,8 +4639,8 @@ llvm::Expected<LoadedModuleInfoList> ProcessGDBRemote::GetLoadedModuleList() {
     // main link map structure
     llvm::StringRef main_lm = root_element.GetAttributeValue("main-lm");
     if (!main_lm.empty()) {
-      list.m_link_map =
-          StringConvert::ToUInt64(main_lm.data(), LLDB_INVALID_ADDRESS, 0);
+      if (!llvm::to_integer(main_lm, list.m_link_map))
+        list.m_link_map = 0;
     }
 
     root_element.ForEachChildElementWithName(
@@ -4655,20 +4656,26 @@ llvm::Expected<LoadedModuleInfoList> ProcessGDBRemote::GetLoadedModuleList() {
                   module.set_name(value.str());
                 else if (name == "lm") {
                   // the address of the link_map struct.
-                  module.set_link_map(StringConvert::ToUInt64(
-                      value.data(), LLDB_INVALID_ADDRESS, 0));
+                  lldb::addr_t link_map;
+                  if (!llvm::to_integer(value, link_map))
+                    link_map = LLDB_INVALID_ADDRESS;
+                  module.set_link_map(link_map);
                 } else if (name == "l_addr") {
                   // the displacement as read from the field 'l_addr' of the
                   // link_map struct.
-                  module.set_base(StringConvert::ToUInt64(
-                      value.data(), LLDB_INVALID_ADDRESS, 0));
+                  lldb::addr_t base;
+                  if (!llvm::to_integer(value, base))
+                    base = LLDB_INVALID_ADDRESS;
+                  module.set_base(base);
                   // base address is always a displacement, not an absolute
                   // value.
                   module.set_base_is_offset(true);
                 } else if (name == "l_ld") {
+                  lldb::addr_t dynamic;
+                  if (!llvm::to_integer(value, dynamic))
+                    dynamic = LLDB_INVALID_ADDRESS;
                   // the memory address of the libraries PT_DYNAMIC section.
-                  module.set_dynamic(StringConvert::ToUInt64(
-                      value.data(), LLDB_INVALID_ADDRESS, 0));
+                  module.set_dynamic(dynamic);
                 }
 
                 return true; // Keep iterating over all properties of "library"
@@ -4736,8 +4743,10 @@ llvm::Expected<LoadedModuleInfoList> ProcessGDBRemote::GetLoadedModuleList() {
           const XMLNode &section =
               library.FindFirstChildElementWithName("section");
           llvm::StringRef address = section.GetAttributeValue("address");
-          module.set_base(
-              StringConvert::ToUInt64(address.data(), LLDB_INVALID_ADDRESS, 0));
+          lldb::addr_t base;
+          if (!llvm::to_integer(address, base))
+            base = LLDB_INVALID_ADDRESS;
+          module.set_base(base);
           // These addresses are absolute values.
           module.set_base_is_offset(false);
 
