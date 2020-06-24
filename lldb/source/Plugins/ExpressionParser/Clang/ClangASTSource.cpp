@@ -582,6 +582,9 @@ bool ClangASTSource::IgnoreName(const ConstString name,
 
   StringRef name_string_ref = name.GetStringRef();
 
+  if (name_string_ref == "__lldb_placeholder_var")
+    return true;
+
   // The ClangASTSource is not responsible for finding $-names.
   return name_string_ref.empty() ||
          (ignore_all_dollar_names && name_string_ref.startswith("$")) ||

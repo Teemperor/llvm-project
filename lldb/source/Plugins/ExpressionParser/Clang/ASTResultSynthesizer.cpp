@@ -196,6 +196,15 @@ bool ASTResultSynthesizer::SynthesizeObjCMethodResult(
   return ret;
 }
 
+static bool isUserStmt(ASTContext &ctx, Stmt *s) {
+  llvm::StringRef filename = ctx.getSourceManager().getPresumedLoc(s->getBeginLoc()).getFilename();
+  if (filename.contains("<lldb wrapper suffix>"))
+    return false;
+  if (isa<NullStmt>(s))
+    return false;
+  return true;
+}
+
 bool ASTResultSynthesizer::SynthesizeBodyResult(CompoundStmt *Body,
                                                 DeclContext *DC) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
@@ -208,17 +217,32 @@ bool ASTResultSynthesizer::SynthesizeBodyResult(CompoundStmt *Body,
   if (Body->body_empty())
     return false;
 
-  Stmt **last_stmt_ptr = Body->body_end() - 1;
+  Stmt **last_stmt_ptr = Body->body_begin();
   Stmt *last_stmt = *last_stmt_ptr;
+  BinaryOperator *assign_stmt = nullptr;
 
-  while (dyn_cast<NullStmt>(last_stmt)) {
-    if (last_stmt_ptr != Body->body_begin()) {
-      last_stmt_ptr--;
-      last_stmt = *last_stmt_ptr;
-    } else {
-      return false;
+  for (auto it = Body->body_rbegin(); it != Body->body_rend(); ++it) {
+    if (isUserStmt(Ctx, *it)) {
+      last_stmt = *it;
+      last_stmt_ptr = it.base() - 1;
+      break;
     }
   }
+
+  for (auto it = Body->body_rbegin(); it != Body->body_rend(); ++it) {
+    llvm::StringRef filename = Ctx.getSourceManager().getPresumedLoc((*it)->getBeginLoc()).getFilename();
+    if (filename.contains("<lldb wrapper suffix>")) {
+      if (auto *e = dyn_cast<BinaryOperator>(*it)) {
+        if (e->getOpcode() == BO_Assign) {
+          assign_stmt = e;
+          break;
+        }
+      }
+    }
+  }
+  assert(last_stmt);
+  assert(Ctx.getLangOpts().CPlusPlus || assign_stmt);
+  assert(assign_stmt != last_stmt);
 
   Expr *last_expr = dyn_cast<Expr>(last_stmt);
 
@@ -334,10 +358,18 @@ bool ASTResultSynthesizer::SynthesizeBodyResult(CompoundStmt *Body,
 
     ExprResult address_of_expr =
         m_sema->CreateBuiltinUnaryOp(SourceLocation(), UO_AddrOf, last_expr);
-    if (address_of_expr.get())
-      m_sema->AddInitializerToDecl(result_decl, address_of_expr.get(), true);
-    else
-      return false;
+    if (Ctx.getLangOpts().CPlusPlus) {
+      if (address_of_expr.get())
+        m_sema->AddInitializerToDecl(result_decl, address_of_expr.get(), true);
+      else
+        return false;
+      DC->addDecl(result_decl);
+    } else {
+        DC->addDecl(result_decl);
+        DeclRefExpr *ref = m_sema->BuildDeclRefExpr(result_decl, result_decl->getType(), ExprValueKind::VK_LValue, SourceLocation());
+        assign_stmt->setLHS(ref);
+        assign_stmt->setRHS(address_of_expr.get());
+    }
   } else {
     IdentifierInfo &result_id = Ctx.Idents.get("$__lldb_expr_result");
 
@@ -348,10 +380,16 @@ bool ASTResultSynthesizer::SynthesizeBodyResult(CompoundStmt *Body,
     if (!result_decl)
       return false;
 
-    m_sema->AddInitializerToDecl(result_decl, last_expr, true);
+    if (Ctx.getLangOpts().CPlusPlus) {
+      m_sema->AddInitializerToDecl(result_decl, last_expr, true);
+      DC->addDecl(result_decl);
+    } else {
+      DC->addDecl(result_decl);
+      DeclRefExpr *ref = m_sema->BuildDeclRefExpr(result_decl, result_decl->getType(), ExprValueKind::VK_LValue, SourceLocation());
+      assign_stmt->setLHS(ref);
+      assign_stmt->setRHS(last_expr);
+    }
   }
-
-  DC->addDecl(result_decl);
 
   ///////////////////////////////
   // call AddInitializerToDecl

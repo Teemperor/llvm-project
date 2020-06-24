@@ -405,7 +405,9 @@ bool ClangExpressionSourceCode::GetText(
                          "%s(void *$__lldb_arg)          \n"
                          "{                              \n"
                          "    %s;                        \n"
-                         "%s"
+                         "%s\n"
+                         "  int __lldb_placeholder_var;\n"
+                         "  __lldb_placeholder_var = 0;\n"
                          "}                              \n",
                          module_imports.c_str(), m_name.c_str(),
                          lldb_local_var_decls.GetData(), tagged_body.c_str());
@@ -431,7 +433,9 @@ bool ClangExpressionSourceCode::GetText(
           "-(void)%s:(void *)$__lldb_arg                          \n"
           "{                                                      \n"
           "    %s;                                                \n"
-          "%s"
+          "%s\n"
+          "  int __lldb_placeholder_var;\n"
+          "  __lldb_placeholder_var = 0;\n"
           "}                                                      \n"
           "@end                                                   \n",
           module_imports.c_str(), m_name.c_str(), m_name.c_str(),
@@ -448,7 +452,9 @@ bool ClangExpressionSourceCode::GetText(
           "+(void)%s:(void *)$__lldb_arg                           \n"
           "{                                                       \n"
           "    %s;                                                 \n"
-          "%s"
+          "%s\n"
+          "  int __lldb_placeholder_var;\n"
+          "  __lldb_placeholder_var = 0;\n"
           "}                                                       \n"
           "@end                                                    \n",
           module_imports.c_str(), m_name.c_str(), m_name.c_str(),
