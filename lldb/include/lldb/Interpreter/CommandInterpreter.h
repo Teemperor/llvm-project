@@ -350,6 +350,11 @@ public:
 
   CommandObject *GetCommandObjectForCommand(llvm::StringRef &command_line);
 
+  /// Returns the auto-suggestion string that should be added to the given
+  /// command line.
+  llvm::Optional<std::string> GetAutoSuggestionForCommand(llvm::StringRef line,
+                                                          std::string &result);
+
   // This handles command line completion.
   void HandleCompletion(CompletionRequest &request);
 

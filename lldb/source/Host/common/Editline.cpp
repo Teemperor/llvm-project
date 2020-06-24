@@ -13,6 +13,7 @@
 #include "lldb/Host/Editline.h"
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Host/Host.h"
+#include "lldb/Utility/AnsiTerminal.h"
 #include "lldb/Utility/CompletionRequest.h"
 #include "lldb/Utility/FileSpec.h"
 #include "lldb/Utility/LLDBAssert.h"
@@ -1003,6 +1004,17 @@ unsigned char Editline::TabCommand(int ch) {
       to_add = to_add.substr(request.GetCursorArgumentPrefix().size());
       if (request.GetParsedArg().IsQuoted())
         to_add.push_back(request.GetParsedArg().GetQuoteChar());
+      if (m_use_autosuggestion && !to_add.empty()) {
+        size_t length = to_add.length();
+        if (m_current_autosuggestion.length() > length &&
+            to_add == m_current_autosuggestion.substr(0, length)) {
+          to_add.push_back(' ');
+          el_insertstr(m_editline, to_add.c_str());
+          m_current_autosuggestion =
+              m_current_autosuggestion.substr(length + 1);
+          return CC_REFRESH;
+        }
+      }
       to_add.push_back(' ');
       el_insertstr(m_editline, to_add.c_str());
       break;
@@ -1019,6 +1031,7 @@ unsigned char Editline::TabCommand(int ch) {
       break;
     }
     }
+    m_current_autosuggestion = "";
     return CC_REDISPLAY;
   }
 
@@ -1037,6 +1050,36 @@ unsigned char Editline::TabCommand(int ch) {
   DisplayInput();
   MoveCursor(CursorLocation::BlockEnd, CursorLocation::EditingCursor);
   return CC_REDISPLAY;
+}
+
+unsigned char Editline::ApplyCompleteCommand(int ch) {
+  el_insertstr(m_editline, m_current_autosuggestion.c_str());
+  m_current_autosuggestion = "";
+  return CC_REDISPLAY;
+}
+
+unsigned char Editline::TypedCharacter(int ch) {
+  std::string typed = std::string(1, ch);
+  el_insertstr(m_editline, typed.c_str());
+  const LineInfo *line_info = el_line(m_editline);
+  llvm::StringRef line(line_info->buffer,
+                       line_info->lastchar - line_info->buffer);
+
+  m_current_autosuggestion = "";
+  m_suggestion_callback(line, m_current_autosuggestion,
+                        m_suggestion_callback_baton);
+
+  if (m_current_autosuggestion.empty())
+    return CC_REDISPLAY;
+
+  std::string to_add_color = ansi::FormatAnsiTerminalCodes("${ansi.faint}") +
+                             m_current_autosuggestion +
+                             ansi::FormatAnsiTerminalCodes("${ansi.normal}");
+  fputs(typed.c_str(), m_output_file);
+  fputs(to_add_color.c_str(), m_output_file);
+  MoveCursor(CursorLocation::BlockEnd, CursorLocation::EditingPrompt);
+
+  return CC_REFRESH;
 }
 
 void Editline::ConfigureEditor(bool multiline) {
@@ -1152,7 +1195,38 @@ void Editline::ConfigureEditor(bool multiline) {
   if (!multiline) {
     el_set(m_editline, EL_BIND, "^r", "em-inc-search-prev",
            NULL); // Cycle through backwards search, entering string
+
+    if (m_use_autosuggestion) {
+      el_wset(m_editline, EL_ADDFN, EditLineConstString("lldb-apply-complete"),
+              EditLineConstString("Adopt autocompletion"),
+              (EditlineCommandCallbackType)([](EditLine *editline, int ch) {
+                return Editline::InstanceFor(editline)->ApplyCompleteCommand(
+                    ch);
+              }));
+
+      el_set(m_editline, EL_BIND, "^f", "lldb-apply-complete",
+             NULL); // Apply a part that is suggested automatically
+
+      el_wset(m_editline, EL_ADDFN, EditLineConstString("lldb-typed-character"),
+              EditLineConstString("Typed character"),
+              (EditlineCommandCallbackType)([](EditLine *editline, int ch) {
+                return Editline::InstanceFor(editline)->TypedCharacter(ch);
+              }));
+
+      char bind_key[2] = {0, 0};
+      llvm::StringRef indent_chars =
+          "abcdefghijklmnopqrstuvwxzyABCDEFGHIJKLMNOPQRSTUVWXZY1234567890!\"#$%"
+          "&'()*+,./:;<=>?@[]_`{|}~ ";
+      for (char c : indent_chars) {
+        bind_key[0] = c;
+        el_set(m_editline, EL_BIND, bind_key, "lldb-typed-character", NULL);
+      }
+      el_set(m_editline, EL_BIND, "\\-", "lldb-typed-character", NULL);
+      el_set(m_editline, EL_BIND, "\\^", "lldb-typed-character", NULL);
+      el_set(m_editline, EL_BIND, "\\\\", "lldb-typed-character", NULL);
+    }
   }
+
   el_set(m_editline, EL_BIND, "^w", "ed-delete-prev-word",
          NULL); // Delete previous word, behave like bash in emacs mode
   el_set(m_editline, EL_BIND, "\t", "lldb-complete",
@@ -1361,6 +1435,19 @@ bool Editline::Cancel() {
   }
   m_editor_status = EditorStatus::Interrupted;
   return result;
+}
+
+void Editline::SetSuggestionCallback(SuggestionCallbackType callback,
+                                     void *baton) {
+  m_suggestion_callback = callback;
+  m_suggestion_callback_baton = baton;
+}
+
+void Editline::SetShowAutosuggestion(bool autosuggestion) {
+  if (autosuggestion)
+    m_use_autosuggestion = true;
+  else
+    m_use_autosuggestion = false;
 }
 
 void Editline::SetAutoCompleteCallback(CompleteCallbackType callback,
