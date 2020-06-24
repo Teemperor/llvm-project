@@ -324,6 +324,8 @@ private:
   /// Apply autosuggestion part in gray as editline.
   unsigned char ApplyCompleteCommand(int ch);
 
+  unsigned char DisplayAutoSuggestion(llvm::Optional<std::string> prefix = llvm::None);
+
   /// Command used when a character is typed.
   unsigned char TypedCharacter(int ch);
 
@@ -377,7 +379,6 @@ private:
   void *m_suggestion_callback_baton = nullptr;
   CompleteCallbackType m_completion_callback = nullptr;
   void *m_completion_callback_baton = nullptr;
-  std::string m_current_autosuggestion = "";
   bool m_use_autosuggestion = false;
   std::mutex m_output_mutex;
 };

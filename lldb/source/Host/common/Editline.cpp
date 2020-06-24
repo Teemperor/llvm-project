@@ -1004,20 +1004,9 @@ unsigned char Editline::TabCommand(int ch) {
       to_add = to_add.substr(request.GetCursorArgumentPrefix().size());
       if (request.GetParsedArg().IsQuoted())
         to_add.push_back(request.GetParsedArg().GetQuoteChar());
-      if (m_use_autosuggestion && !to_add.empty()) {
-        size_t length = to_add.length();
-        if (m_current_autosuggestion.length() > length &&
-            to_add == m_current_autosuggestion.substr(0, length)) {
-          to_add.push_back(' ');
-          el_insertstr(m_editline, to_add.c_str());
-          m_current_autosuggestion =
-              m_current_autosuggestion.substr(length + 1);
-          return CC_REFRESH;
-        }
-      }
       to_add.push_back(' ');
       el_insertstr(m_editline, to_add.c_str());
-      break;
+      return DisplayAutoSuggestion(to_add);
     }
     case CompletionMode::Partial: {
       std::string to_add = completion.GetCompletion();
@@ -1030,9 +1019,8 @@ unsigned char Editline::TabCommand(int ch) {
       el_insertstr(m_editline, completion.GetCompletion().c_str());
       break;
     }
+    return CC_REFRESH;
     }
-    m_current_autosuggestion = "";
-    return CC_REDISPLAY;
   }
 
   // If we get a longer match display that first.
@@ -1053,33 +1041,47 @@ unsigned char Editline::TabCommand(int ch) {
 }
 
 unsigned char Editline::ApplyCompleteCommand(int ch) {
-  el_insertstr(m_editline, m_current_autosuggestion.c_str());
-  m_current_autosuggestion = "";
+  std::string current_autosuggestion = "";
+  const LineInfo *line_info = el_line(m_editline);
+  llvm::StringRef line(line_info->buffer,
+                       line_info->lastchar - line_info->buffer);
+  m_suggestion_callback(line, current_autosuggestion,
+                        m_suggestion_callback_baton);
+  MoveCursor(CursorLocation::BlockEnd, CursorLocation::EditingPrompt);
+  el_insertstr(m_editline, current_autosuggestion.c_str());
+  current_autosuggestion = "";
   return CC_REDISPLAY;
+}
+
+unsigned char Editline::DisplayAutoSuggestion(llvm::Optional<std::string> prefix) {
+  const LineInfo *line_info = el_line(m_editline);
+  llvm::StringRef line_ref(line_info->buffer,
+                       line_info->lastchar - line_info->buffer);
+  std::string line = line_ref.str();
+  if (prefix)
+    line += *prefix;
+
+  std::string current_autosuggestion = "";
+  m_suggestion_callback(line, current_autosuggestion,
+                        m_suggestion_callback_baton);
+
+  if (current_autosuggestion.empty())
+    return CC_REDISPLAY;
+
+  std::string to_add_color = ansi::FormatAnsiTerminalCodes("${ansi.faint}") +
+                             current_autosuggestion +
+                             ansi::FormatAnsiTerminalCodes("${ansi.normal}");
+  fputs(to_add_color.c_str(), m_output_file);
+  MoveCursor(CursorLocation::BlockEnd, CursorLocation::EditingPrompt);
+
+  return CC_REFRESH;
 }
 
 unsigned char Editline::TypedCharacter(int ch) {
   std::string typed = std::string(1, ch);
   el_insertstr(m_editline, typed.c_str());
-  const LineInfo *line_info = el_line(m_editline);
-  llvm::StringRef line(line_info->buffer,
-                       line_info->lastchar - line_info->buffer);
-
-  m_current_autosuggestion = "";
-  m_suggestion_callback(line, m_current_autosuggestion,
-                        m_suggestion_callback_baton);
-
-  if (m_current_autosuggestion.empty())
-    return CC_REDISPLAY;
-
-  std::string to_add_color = ansi::FormatAnsiTerminalCodes("${ansi.faint}") +
-                             m_current_autosuggestion +
-                             ansi::FormatAnsiTerminalCodes("${ansi.normal}");
   fputs(typed.c_str(), m_output_file);
-  fputs(to_add_color.c_str(), m_output_file);
-  MoveCursor(CursorLocation::BlockEnd, CursorLocation::EditingPrompt);
-
-  return CC_REFRESH;
+  return DisplayAutoSuggestion();
 }
 
 void Editline::ConfigureEditor(bool multiline) {
