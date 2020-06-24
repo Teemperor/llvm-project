@@ -97,6 +97,8 @@ public:
   /// \return true to tell Sema to recover using the LookupResult.
   virtual bool LookupUnqualified(LookupResult &R, Scope *S) { return false; }
 
+  virtual bool LookupUnqualifiedInMethod(LookupResult &R, Scope *S) { return false; }
+
   /// Read the set of tentative definitions known to the external Sema
   /// source.
   ///

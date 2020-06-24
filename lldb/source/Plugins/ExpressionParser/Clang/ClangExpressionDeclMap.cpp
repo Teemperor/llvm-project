@@ -49,6 +49,7 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/Sema/Lookup.h"
 
 #include "Plugins/Language/CPlusPlus/CPlusPlusLanguage.h"
 #include "Plugins/LanguageRuntime/CPlusPlus/CPPLanguageRuntime.h"
@@ -81,6 +82,36 @@ ClangExpressionDeclMap::~ClangExpressionDeclMap() {
 
   DidParse();
   DisableStructVars();
+}
+
+bool ClangExpressionDeclMap::LookupUnqualifiedInMethod(LookupResult &R, Scope *S) {
+  if (R.getLookupNameInfo().getName().getNameKind() != DeclarationName::NameKind::Identifier)
+    return false;
+
+  Target *target = nullptr;
+  StackFrame *frame = nullptr;
+  SymbolContext sym_ctx;
+  if (m_parser_vars) {
+    target = m_parser_vars->m_exe_ctx.GetTargetPtr();
+    frame = m_parser_vars->m_exe_ctx.GetFramePtr();
+  }
+  if (frame != nullptr)
+    sym_ctx = frame->GetSymbolContext(lldb::eSymbolContextFunction |
+                                      lldb::eSymbolContextBlock);
+
+  ConstString lookup_name(R.getLookupName().getAsString());
+
+  llvm::SmallVector<NamedDecl *, 4> decls;
+  NameSearchContext context(*m_clang_ast_context, decls, R.getLookupName(), m_clang_ast_context->GetTranslationUnitDecl());
+  LookupLocalVariable(context, lookup_name, sym_ctx, CompilerDeclContext());
+
+  for (clang::Decl *D : context.m_decls) {
+    D->dumpColor();
+    R.addDecl((NamedDecl *)D);
+    break;
+  }
+  R.dump();
+  return !context.m_decls.empty();
 }
 
 bool ClangExpressionDeclMap::WillParse(ExecutionContext &exe_ctx,

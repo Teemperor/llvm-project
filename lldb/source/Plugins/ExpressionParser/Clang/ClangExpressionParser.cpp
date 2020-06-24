@@ -1101,6 +1101,7 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
     ParseAST(m_compiler->getSema(), false, false);
   }
 
+  ast_context.getTranslationUnitDecl()->dumpColor();
   // Make sure we have no pointer to the Sema we are about to destroy.
   if (ast_context.getLangOpts().Modules)
     m_ast_context->setSema(nullptr);

@@ -1294,6 +1294,11 @@ bool Sema::CppLookupName(LookupResult &R, Scope *S) {
           // If we have an Objective-C instance method, look for ivars
           // in the corresponding interface.
           if (ObjCMethodDecl *Method = dyn_cast<ObjCMethodDecl>(Ctx)) {
+            Method->dumpColor();
+            if (ExternalSource && ExternalSource->LookupUnqualifiedInMethod(R, S)) {
+              R.dump();
+              return true;
+            }
             if (Method->isInstanceMethod() && Name.getAsIdentifierInfo())
               if (ObjCInterfaceDecl *Class = Method->getClassInterface()) {
                 ObjCInterfaceDecl *ClassDeclared;
