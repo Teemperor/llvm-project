@@ -35,7 +35,6 @@ class TestUnionMembers(TestBase):
         self.assertTrue(val.IsValid())
         val = frame.EvaluateExpression("u.s")
         self.assertTrue(val.IsValid())
-        self.assertEqual(val.GetNumChildren(), 2)
 
     def _load_exe(self):
         self.build()

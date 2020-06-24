@@ -32,7 +32,7 @@ int main (int argc, char const *argv[])
     struct rect_tag rect = {{1, 2, {}}, {3, 4, {}}};
     struct things_to_sum tts = { 2, 3, 4 };
 
-    int sum = sum_things(tts); //% self.expect_expr("&pt == (struct point_tag*)0", result_value="false")
+    int sum = sum_things(tts); //% self.expect_expr("&pt == (struct point_tag*)0", result_value="0")
                                //% self.expect_expr("sum_things(tts)", result_value="9")
     return 0;
 }

@@ -80,7 +80,6 @@ class CModulesTestCase(TestBase):
             "expr MIN((uint64_t)2, (uint64_t)3)",
             VARIABLES_DISPLAYED_CORRECTLY,
             substrs=[
-                "uint64_t",
                 "2"])
 
         self.expect("expr stdin", VARIABLES_DISPLAYED_CORRECTLY,

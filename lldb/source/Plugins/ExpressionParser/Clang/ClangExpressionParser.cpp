@@ -471,12 +471,6 @@ ClangExpressionParser::ClangExpressionParser(
   case lldb::eLanguageTypeC89:
   case lldb::eLanguageTypeC99:
   case lldb::eLanguageTypeC11:
-    // FIXME: the following language option is a temporary workaround,
-    // to "ask for C, get C++."
-    // For now, the expression parser must use C++ anytime the language is a C
-    // family language, because the expression parser uses features of C++ to
-    // capture values.
-    lang_opts.CPlusPlus = true;
     break;
   case lldb::eLanguageTypeObjC:
     lang_opts.ObjC = true;

@@ -44,5 +44,5 @@ class TestCase(TestBase):
             self.expect_expr("complex_long_long", result_type="_Complex long")
             self.expect_expr("complex_unsigned_long_long", result_type="_Complex long", result_value="1 + 2i")
         else:
-            self.expect_expr("complex_long_long", result_type="_Complex long long")
-            self.expect_expr("complex_unsigned_long_long", result_type="_Complex long long", result_value="1 + 2i")
+            self.expect_expr("complex_long_long", result_type="_Complex long")
+            self.expect_expr("complex_unsigned_long_long", result_type="_Complex long", result_value="1 + 2i")

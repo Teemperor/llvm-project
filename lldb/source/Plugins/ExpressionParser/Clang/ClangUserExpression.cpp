@@ -413,6 +413,11 @@ ClangExpressionSourceCode::WrapKind ClangUserExpression::GetWrapKind() const {
   return Kind::Function;
 }
 
+bool IsPureC(lldb::LanguageType lang) {
+  return lang == lldb::eLanguageTypeC || lang == lldb::eLanguageTypeC89 ||
+      lang == lldb::eLanguageTypeC99  || lang == lldb::eLanguageTypeC11;
+}
+
 void ClangUserExpression::CreateSourceCode(
     DiagnosticManager &diagnostic_manager, ExecutionContext &exe_ctx,
     std::vector<std::string> modules_to_import, bool for_completion) {
@@ -423,10 +428,14 @@ void ClangUserExpression::CreateSourceCode(
   if (m_options.GetExecutionPolicy() == eExecutionPolicyTopLevel) {
     m_transformed_text = m_expr_text;
   } else {
+    ClangExpressionSourceCode::WrapKind wrap = GetWrapKind();
     m_source_code.reset(ClangExpressionSourceCode::CreateWrapped(
-        m_filename, prefix, m_expr_text, GetWrapKind()));
+        m_filename, prefix, m_expr_text, wrap));
 
-    if (!m_source_code->GetText(m_transformed_text, exe_ctx, !m_ctx_obj,
+    bool add_locals = !IsPureC(m_language);
+    if (m_ctx_obj)
+      add_locals = false;
+    if (!m_source_code->GetText(m_transformed_text, exe_ctx, add_locals,
                                 for_completion, modules_to_import)) {
       diagnostic_manager.PutString(eDiagnosticSeverityError,
                                    "couldn't construct expression body");

@@ -39,6 +39,9 @@ const char *ClangExpressionSourceCode::g_expression_prefix =
 #ifndef offsetof
 #define offsetof(t, d) __builtin_offsetof(t, d)
 #endif
+#ifndef __cplusplus
+#define __null (0)
+#endif
 #ifndef NULL
 #define NULL (__null)
 #endif
@@ -67,10 +70,12 @@ typedef __UINTPTR_TYPE__ uintptr_t;
 typedef __SIZE_TYPE__ size_t;
 typedef __PTRDIFF_TYPE__ ptrdiff_t;
 typedef unsigned short unichar;
+#ifdef __cplusplus
 extern "C"
 {
     int printf(const char * __restrict, ...);
 }
+#endif
 )";
 
 namespace {
