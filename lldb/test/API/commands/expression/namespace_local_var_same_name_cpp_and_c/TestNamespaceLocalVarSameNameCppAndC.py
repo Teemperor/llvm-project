@@ -7,8 +7,6 @@ class TestNamespaceLocalVarSameNameCppAndC(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-    @skipUnlessDarwin
-    @add_test_categories(["gmodules"])
     def test_namespace_local_var_same_name_cpp_and_c(self):
         self.build()
 
