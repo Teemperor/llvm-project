@@ -251,6 +251,19 @@ public:
       return m_original.StartTranslationUnit(Consumer);
     }
 
+    /// Initialize the semantic source with the Sema instance
+    /// being used to perform semantic analysis on the abstract syntax
+    /// tree.
+    void InitializeSema(clang::Sema &S) override{
+      return m_original.InitializeSema(S);
+    }
+
+    /// Inform the semantic consumer that Sema is no longer available.
+    void ForgetSema() override {
+      return m_original.ForgetSema();}
+
+    bool LookupUnqualified(clang::LookupResult &R, clang::Scope *S) override { return m_original.LookupUnqualified(R, S); }
+
   private:
     ClangASTSource &m_original;
   };

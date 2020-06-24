@@ -49,6 +49,7 @@
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/RecursiveASTVisitor.h"
+#include "clang/Sema/Lookup.h"
 
 #include "Plugins/Language/CPlusPlus/CPlusPlusLanguage.h"
 #include "Plugins/LanguageRuntime/CPlusPlus/CPPLanguageRuntime.h"
@@ -81,6 +82,61 @@ ClangExpressionDeclMap::~ClangExpressionDeclMap() {
 
   DidParse();
   DisableStructVars();
+}
+
+bool ClangExpressionDeclMap::LookupUnqualified(LookupResult &R, Scope *S) {
+  if (m_ast_context->getLangOpts().CPlusPlus)
+    return false;
+  Target *target = nullptr;
+  StackFrame *frame = nullptr;
+  SymbolContext sym_ctx;
+  if (m_parser_vars) {
+    target = m_parser_vars->m_exe_ctx.GetTargetPtr();
+    frame = m_parser_vars->m_exe_ctx.GetFramePtr();
+  }
+  if (frame != nullptr)
+    sym_ctx = frame->GetSymbolContext(lldb::eSymbolContextFunction |
+                                      lldb::eSymbolContextBlock);
+
+  if (R.getLookupNameInfo().getName().getNameKind() != DeclarationName::NameKind::Identifier)
+    return false;
+
+  ConstString lookup_name(R.getLookupName().getAsString());
+  llvm::SmallVector<NamedDecl *, 4> decls;
+  NameSearchContext context(*m_clang_ast_context, decls, R.getLookupName(), m_clang_ast_context->GetTranslationUnitDecl());
+
+  if (lookup_name.GetStringRef().startswith("$")) {
+    if (lookup_name == "$__lldb_class")
+      LookUpLldbClass(context);
+    else {
+      SearchPersistenDecls(context, lookup_name);
+      // No ParserVars means we can't do register or variable lookup.
+      if (!m_parser_vars || !m_parser_vars->m_persistent_vars)
+        return false;
+
+      ExpressionVariableSP pvar_sp(
+          m_parser_vars->m_persistent_vars->GetVariable(lookup_name));
+
+      if (pvar_sp)
+        AddOneVariable(context, pvar_sp);
+    }
+  }
+  if (context.m_decls.empty())
+    LookupLocalVariable(context, lookup_name, sym_ctx, CompilerDeclContext());
+  if (context.m_decls.empty() && FindExternalVisibleDeclsByName(m_clang_ast_context->GetTranslationUnitDecl(),
+                                     R.getLookupName())) {
+    DeclContext::lookup_result result = m_clang_ast_context->GetTranslationUnitDecl()->lookup((R.getLookupName()));
+    for (clang::NamedDecl *D : result) {
+      context.m_decls.push_back(D);
+      break;
+    }
+  }
+
+  for (clang::Decl *D : context.m_decls) {
+    R.addDecl((NamedDecl *)D);
+    break;
+  }
+  return !context.m_decls.empty();
 }
 
 bool ClangExpressionDeclMap::WillParse(ExecutionContext &exe_ctx,

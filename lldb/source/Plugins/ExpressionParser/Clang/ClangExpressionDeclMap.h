@@ -86,6 +86,12 @@ public:
   /// Destructor
   ~ClangExpressionDeclMap() override;
 
+  void InitializeSema(clang::Sema &S) override {
+    S.addExternalSource(this);
+  }
+
+  bool LookupUnqualified(clang::LookupResult &R, clang::Scope *S) override;
+
   /// Enable the state needed for parsing and IR transformation.
   ///
   /// \param[in] exe_ctx
