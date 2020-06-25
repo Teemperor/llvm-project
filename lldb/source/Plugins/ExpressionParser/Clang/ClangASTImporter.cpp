@@ -359,10 +359,9 @@ bool ClangASTImporter::CanImport(const CompilerType &type) {
   const clang::Type::TypeClass type_class = qual_type->getTypeClass();
   switch (type_class) {
   case clang::Type::Record: {
-    const clang::CXXRecordDecl *cxx_record_decl =
-        qual_type->getAsCXXRecordDecl();
-    if (cxx_record_decl) {
-      if (GetDeclOrigin(cxx_record_decl).Valid())
+    const clang::RecordDecl *record_decl = qual_type->getAsRecordDecl();
+    if (record_decl) {
+      if (GetDeclOrigin(record_decl).Valid())
         return true;
     }
   } break;
@@ -435,10 +434,9 @@ bool ClangASTImporter::Import(const CompilerType &type) {
   const clang::Type::TypeClass type_class = qual_type->getTypeClass();
   switch (type_class) {
   case clang::Type::Record: {
-    const clang::CXXRecordDecl *cxx_record_decl =
-        qual_type->getAsCXXRecordDecl();
-    if (cxx_record_decl) {
-      if (GetDeclOrigin(cxx_record_decl).Valid())
+    const clang::RecordDecl *record_decl = qual_type->getAsRecordDecl();
+    if (record_decl) {
+      if (GetDeclOrigin(record_decl).Valid())
         return CompleteAndFetchChildren(qual_type);
     }
   } break;
