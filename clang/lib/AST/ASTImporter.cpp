@@ -2670,11 +2670,13 @@ ExpectedDecl ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
 
 ExpectedDecl ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
   bool IsFriendTemplate = false;
-  if (auto *DCXX = dyn_cast<CXXRecordDecl>(D)) {
-    IsFriendTemplate =
-        DCXX->getDescribedClassTemplate() &&
-        DCXX->getDescribedClassTemplate()->getFriendObjectKind() !=
-            Decl::FOK_None;
+  if (Importer.getToContext().getLangOpts().CPlusPlus) {
+    if (auto *DCXX = dyn_cast<CXXRecordDecl>(D)) {
+      IsFriendTemplate =
+          DCXX->getDescribedClassTemplate() &&
+          DCXX->getDescribedClassTemplate()->getFriendObjectKind() !=
+              Decl::FOK_None;
+    }
   }
 
   // Import the major distinguishing characteristics of this record.
@@ -2780,7 +2782,8 @@ ExpectedDecl ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
   // Create the record declaration.
   RecordDecl *D2 = nullptr;
   CXXRecordDecl *D2CXX = nullptr;
-  if (auto *DCXX = dyn_cast<CXXRecordDecl>(D)) {
+  auto *DCXX = dyn_cast<CXXRecordDecl>(D);
+  if (Importer.getToContext().getLangOpts().CPlusPlus && DCXX) {
     if (DCXX->isLambda()) {
       auto TInfoOrErr = import(DCXX->getLambdaTypeInfo());
       if (!TInfoOrErr)
@@ -2876,7 +2879,6 @@ ExpectedDecl ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
         else
           return POIOrErr.takeError();
     }
-
   } else {
     if (GetImportedOrCreateDecl(D2, D, Importer.getToContext(),
                                 D->getTagKind(), DC, *BeginLocOrErr, Loc,
