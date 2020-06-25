@@ -2284,6 +2284,16 @@ void TypeSystemClang::DumpDeclHiearchy(clang::Decl *decl) {
   }
 }
 
+static bool DeclKindIsEqual(const clang::Decl::Kind lhs,
+                            const clang::Decl::Kind rhs) {
+  bool lhs_is_record = lhs == clang::Decl::Record || lhs == clang::Decl::CXXRecord;
+  bool rhs_is_record = rhs == clang::Decl::Record || rhs == clang::Decl::CXXRecord;
+  if (lhs_is_record && rhs_is_record)
+    return true;
+  return lhs == rhs;
+}
+
+
 bool TypeSystemClang::DeclsAreEquivalent(clang::Decl *lhs_decl,
                                          clang::Decl *rhs_decl) {
   if (lhs_decl && rhs_decl) {
@@ -2291,7 +2301,7 @@ bool TypeSystemClang::DeclsAreEquivalent(clang::Decl *lhs_decl,
     const clang::Decl::Kind lhs_decl_kind = lhs_decl->getKind();
     const clang::Decl::Kind rhs_decl_kind = rhs_decl->getKind();
 
-    if (lhs_decl_kind == rhs_decl_kind) {
+    if (DeclKindIsEqual(lhs_decl_kind, rhs_decl_kind)) {
       // Now check that the decl contexts kinds are all equivalent before we
       // have to check any names of the decl contexts...
       clang::DeclContext *lhs_decl_ctx = lhs_decl->getDeclContext();
@@ -2303,7 +2313,7 @@ bool TypeSystemClang::DeclsAreEquivalent(clang::Decl *lhs_decl,
                 lhs_decl_ctx->getDeclKind();
             const clang::Decl::Kind rhs_decl_ctx_kind =
                 rhs_decl_ctx->getDeclKind();
-            if (lhs_decl_ctx_kind == rhs_decl_ctx_kind) {
+            if (DeclKindIsEqual(lhs_decl_ctx_kind, rhs_decl_ctx_kind)) {
               lhs_decl_ctx = lhs_decl_ctx->getParent();
               rhs_decl_ctx = rhs_decl_ctx->getParent();
 
