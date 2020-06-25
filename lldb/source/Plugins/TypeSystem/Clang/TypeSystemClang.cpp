@@ -1333,7 +1333,7 @@ CompilerType TypeSystemClang::CreateRecordType(
     // Anonymous classes is a GNU/MSVC extension that clang supports. It
     // requires the anonymous class be embedded within a class. So the new
     // heuristic verifies this condition.
-    if (isa<CXXRecordDecl>(decl_ctx) && exports_symbols)
+    if (isa<RecordDecl>(decl_ctx) && exports_symbols)
       decl->setAnonymousStructOrUnion(true);
   }
 
@@ -2134,7 +2134,7 @@ CompilerType TypeSystemClang::CreateStructForIdentifier(
     bool packed) {
   CompilerType type;
   if (!type_name.IsEmpty() &&
-      (type = GetTypeForIdentifier<clang::CXXRecordDecl>(type_name))
+      (type = GetTypeForIdentifier<clang::RecordDecl>(type_name))
           .IsValid()) {
     lldbassert(0 && "Trying to create a type for an existing name");
     return type;
@@ -2159,7 +2159,7 @@ CompilerType TypeSystemClang::GetOrCreateStructForIdentifier(
         &type_fields,
     bool packed) {
   CompilerType type;
-  if ((type = GetTypeForIdentifier<clang::CXXRecordDecl>(type_name)).IsValid())
+  if ((type = GetTypeForIdentifier<clang::RecordDecl>(type_name)).IsValid())
     return type;
 
   return CreateStructForIdentifier(type_name, type_fields, packed);
@@ -2555,7 +2555,7 @@ static bool GetCompleteQualType(clang::ASTContext *ast,
                                  allow_completion);
   } break;
   case clang::Type::Record: {
-    clang::CXXRecordDecl *cxx_record_decl = qual_type->getAsCXXRecordDecl();
+    clang::RecordDecl *cxx_record_decl = qual_type->getAsRecordDecl();
     if (cxx_record_decl) {
       if (cxx_record_decl->hasExternalLexicalStorage()) {
         const bool is_complete = cxx_record_decl->isCompleteDefinition();
@@ -7958,7 +7958,7 @@ bool TypeSystemClang::SetHasExternalStorage(lldb::opaque_compiler_type_t type,
   const clang::Type::TypeClass type_class = qual_type->getTypeClass();
   switch (type_class) {
   case clang::Type::Record: {
-    clang::CXXRecordDecl *cxx_record_decl = qual_type->getAsCXXRecordDecl();
+    clang::RecordDecl *cxx_record_decl = qual_type->getAsRecordDecl();
     if (cxx_record_decl) {
       cxx_record_decl->setHasExternalLexicalStorage(has_extern);
       cxx_record_decl->setHasExternalVisibleStorage(has_extern);
@@ -8063,6 +8063,14 @@ bool TypeSystemClang::CompleteTagDeclarationDefinition(
       cxx_record_decl->setHasExternalLexicalStorage(false);
       cxx_record_decl->setHasExternalVisibleStorage(false);
       return true;
+    }
+    if (auto *record_decl = llvm::dyn_cast<RecordDecl>(tag_decl)) {
+        if (!record_decl->isCompleteDefinition())
+          record_decl->completeDefinition();
+        record_decl->setHasLoadedFieldsFromExternalStorage(true);
+        record_decl->setHasExternalLexicalStorage(false);
+        record_decl->setHasExternalVisibleStorage(false);
+        return true;
     }
   }
 
