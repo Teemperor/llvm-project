@@ -297,6 +297,7 @@ bool ClangExpressionSourceCode::GetText(
     bool force_add_all_locals, llvm::ArrayRef<std::string> modules) const {
   const char *target_specific_defines = "typedef signed char BOOL;\n";
   std::string module_macros;
+  llvm::raw_string_ostream module_macros_stream(module_macros);
 
   Target *target = exe_ctx.GetTargetPtr();
   if (target) {
@@ -344,9 +345,15 @@ bool ClangExpressionSourceCode::GetText(
 
       decl_vendor->ForEachMacro(
           modules_for_macros,
-          [&module_macros](const std::string &expansion) -> bool {
-            module_macros.append(expansion);
-            module_macros.append("\n");
+          [&module_macros_stream](llvm::StringRef token,
+                                  llvm::StringRef expansion) -> bool {
+            // LLDB provides these defines already, so don't expand those macros
+            // in case they are defined in a way that doesn't fit to the way
+            // the Clang parser is defined (e.g., 'NULL' being defined as
+            // 'nullptr' but we're currently parsing a C expression).
+            if (token == "NULL" || token == "nil" || token == "Nil")
+              return false;
+            module_macros_stream << expansion << "\n";
             return false;
           });
     }
