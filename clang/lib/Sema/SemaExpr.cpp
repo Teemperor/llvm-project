@@ -2662,10 +2662,8 @@ DeclResult Sema::LookupIvarInObjCMethod(LookupResult &Lookup, Scope *S,
     LookForIvars = false;
   else
     LookForIvars = (Lookup.isSingleResult() &&
-                    Lookup.getFoundDecl()->isDefinedOutsideFunctionOrMethod());
-
-
-  LookForIvars = false;
+                    Lookup.getFoundDecl()->isDefinedOutsideFunctionOrMethod()
+                    && !isa<ObjCIvarDecl>(Lookup.getFoundDecl()));
 
   ObjCInterfaceDecl *IFace = nullptr;
   if (LookForIvars) {
