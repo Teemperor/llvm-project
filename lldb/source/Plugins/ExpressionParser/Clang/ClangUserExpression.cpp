@@ -426,8 +426,9 @@ void ClangUserExpression::CreateSourceCode(
     m_source_code.reset(ClangExpressionSourceCode::CreateWrapped(
         m_filename, prefix, m_expr_text, GetWrapKind()));
 
-    if (!m_source_code->GetText(m_transformed_text, exe_ctx, !m_ctx_obj,
-                                for_completion, modules_to_import)) {
+    if (!m_source_code->GetText(m_transformed_text, exe_ctx, m_language,
+                                !m_ctx_obj, for_completion,
+                                modules_to_import)) {
       diagnostic_manager.PutString(eDiagnosticSeverityError,
                                    "couldn't construct expression body");
       return;

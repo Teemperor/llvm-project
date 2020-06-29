@@ -295,6 +295,43 @@ static void SetupModuleHeaderPaths(CompilerInstance *compiler,
   search_opts.ImplicitModuleMaps = true;
 }
 
+/// Iff the given identifier is a C++ keyword, remove it from the
+/// identifier table (i.e., make the token a normal identifier).
+static void RemoveKeywordIfCpp(IdentifierTable &idents, llvm::StringRef token) {
+  // FIXME: 'using' is used by LLDB for local variables, so we can't remove
+  // this keyword without breaking this functionality.
+  if (token == "using")
+    return;
+  // GCC's '__null' is used by LLDB to define NULL/Nil/nil.
+  if (token == "__null")
+    return;
+
+  LangOptions cpp_lang_opts;
+  cpp_lang_opts.CPlusPlus = true;
+  cpp_lang_opts.CPlusPlus11 = true;
+  cpp_lang_opts.CPlusPlus14 = true;
+  cpp_lang_opts.CPlusPlus17 = true;
+  cpp_lang_opts.CPlusPlus20 = true;
+
+  clang::IdentifierInfo &ii = idents.get(token);
+  // If the identifier is not a keyword in any C++ standard then there is
+  // nothing to do.
+  if (!ii.isCPlusPlusKeyword(cpp_lang_opts))
+    return;
+  // If the token is already an identifier, then there is nothing to do.
+  if (ii.getTokenID() == clang::tok::identifier)
+    return;
+  // Otherwise the token is a C++ keyword, so turn it back into a normal
+  // identifier.
+  ii.revertTokenIDToIdentifier();
+}
+
+/// Remove all C++ keywords from the given identifier table.
+static void RemoveCppKeywords(IdentifierTable &idents) {
+#define KEYWORD(NAME, FLAGS) RemoveKeywordIfCpp(idents, llvm::StringRef(#NAME));
+#include "clang/Basic/TokenKinds.def"
+}
+
 //===----------------------------------------------------------------------===//
 // Implementation of ClangExpressionParser
 //===----------------------------------------------------------------------===//
@@ -615,6 +652,21 @@ ClangExpressionParser::ClangExpressionParser(
   if (!m_compiler->hasSourceManager())
     m_compiler->createSourceManager(m_compiler->getFileManager());
   m_compiler->createPreprocessor(TU_Complete);
+
+  switch (language) {
+  case lldb::eLanguageTypeC:
+  case lldb::eLanguageTypeC89:
+  case lldb::eLanguageTypeC99:
+  case lldb::eLanguageTypeC11:
+  case lldb::eLanguageTypeObjC:
+    // This is not a C++ expression but we enabled C++ as explained above.
+    // Remove all C++ keywords from the PP so that the user can still use
+    // variables that have C++ keywords as names (e.g. 'int template;').
+    RemoveCppKeywords(m_compiler->getPreprocessor().getIdentifierTable());
+    break;
+  default:
+    break;
+  }
 
   if (ClangModulesDeclVendor *decl_vendor =
           target_sp->GetClangModulesDeclVendor()) {

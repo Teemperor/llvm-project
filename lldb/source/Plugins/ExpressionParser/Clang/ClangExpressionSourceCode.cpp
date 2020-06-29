@@ -293,8 +293,9 @@ void ClangExpressionSourceCode::AddLocalVariableDecls(
 }
 
 bool ClangExpressionSourceCode::GetText(
-    std::string &text, ExecutionContext &exe_ctx, bool add_locals,
-    bool force_add_all_locals, llvm::ArrayRef<std::string> modules) const {
+    std::string &text, ExecutionContext &exe_ctx, lldb::LanguageType language,
+    bool add_locals, bool force_add_all_locals,
+    llvm::ArrayRef<std::string> modules) const {
   const char *target_specific_defines = "typedef signed char BOOL;\n";
   std::string module_macros;
 
@@ -343,7 +344,7 @@ bool ClangExpressionSourceCode::GetText(
       }
 
       decl_vendor->ForEachMacro(
-          modules_for_macros,
+          modules_for_macros, language,
           [&module_macros](const std::string &expansion) -> bool {
             module_macros.append(expansion);
             module_macros.append("\n");

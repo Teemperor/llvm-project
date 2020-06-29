@@ -89,6 +89,12 @@ public:
   ///     priority, just as if you @imported them in that order.  This matters
   ///     if module A #defines a macro and module B #undefs it.
   ///
+  /// \param[in] expansion_language
+  ///     The language in which the macro should be expanded. If the language
+  ///     doesn't support expanding a macro (e.g., because it expands into
+  ///     keywords that are not available in the expansion language), then
+  ///     the macro is ignored.
+  ///
   /// \param[in] handler
   ///     A function to call with the text of each #define (including the
   ///     #define directive).  #undef directives are not included; we simply
@@ -96,6 +102,7 @@ public:
   ///     we stop the iteration immediately.
   virtual void
   ForEachMacro(const ModuleVector &modules,
+               lldb::LanguageType expansion_language,
                std::function<bool(const std::string &)> handler) = 0;
 
   /// Query whether Clang supports modules for a particular language.

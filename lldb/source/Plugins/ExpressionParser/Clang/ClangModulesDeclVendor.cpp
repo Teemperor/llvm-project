@@ -96,6 +96,7 @@ public:
                      std::vector<CompilerDecl> &decls) override;
 
   void ForEachMacro(const ModuleVector &modules,
+                    lldb::LanguageType expansion_language,
                     std::function<bool(const std::string &)> handler) override;
 private:
   void
@@ -418,8 +419,47 @@ ClangModulesDeclVendorImpl::FindDecls(ConstString name, bool append,
   return num_matches;
 }
 
+/// Returns the clang::LangOptions that best represent the given
+/// LanguageType when checking for keyword availability.
+static clang::LangOptions getLangOpts(lldb::LanguageType language) {
+  clang::LangOptions opts;
+  switch (language) {
+  case lldb::eLanguageTypeC99:
+    opts.C99 = true;
+    break;
+  case lldb::eLanguageTypeC11:
+    opts.C11 = true;
+    break;
+  case lldb::eLanguageTypeC_plus_plus:
+  case lldb::eLanguageTypeC_plus_plus_03:
+    opts.CPlusPlus = true;
+    break;
+  case lldb::eLanguageTypeC_plus_plus_11:
+    opts.CPlusPlus11 = true;
+    break;
+  case lldb::eLanguageTypeC_plus_plus_14:
+    opts.CPlusPlus14 = true;
+    break;
+  case lldb::eLanguageTypeObjC_plus_plus:
+    opts.ObjC = true;
+    opts.CPlusPlus = true;
+    opts.CPlusPlus11 = true;
+    break;
+  case lldb::eLanguageTypeObjC:
+    opts.ObjC = true;
+    break;
+  default:
+    Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
+    LLDB_LOG(log, "Unknown expansion language: {0}", language);
+    // Unknown language, so set the
+    break;
+  }
+  return opts;
+}
+
 void ClangModulesDeclVendorImpl::ForEachMacro(
     const ClangModulesDeclVendor::ModuleVector &modules,
+    lldb::LanguageType expansion_language,
     std::function<bool(const std::string &)> handler) {
   if (!m_enabled) {
     return;
@@ -429,6 +469,10 @@ void ClangModulesDeclVendorImpl::ForEachMacro(
   ModulePriorityMap module_priorities;
 
   ssize_t priority = 0;
+
+  clang::LangOptions expansion_lang_opts = getLangOpts(expansion_language);
+  clang::IdentifierTable &idents =
+      m_compiler_instance->getPreprocessor().getIdentifierTable();
 
   for (ModuleID module : modules) {
     module_priorities[module] = priority++;
@@ -527,9 +571,15 @@ void ClangModulesDeclVendorImpl::ForEachMacro(
 
         bool first_token = true;
 
+        // True iff the expansion is usable in the expansion language.
+        bool expansion_usable = true;
         for (clang::MacroInfo::tokens_iterator ti = macro_info->tokens_begin(),
                                                te = macro_info->tokens_end();
              ti != te; ++ti) {
+          // Expansion has become unusable, so no need to expand the rest of
+          // the macro.
+          if (!expansion_usable)
+            break;
           if (!first_token) {
             macro_expansion.append(" ");
           } else {
@@ -560,11 +610,22 @@ void ClangModulesDeclVendorImpl::ForEachMacro(
           } else if (const char *keyword_spelling =
                          clang::tok::getKeywordSpelling(ti->getKind())) {
             macro_expansion.append(keyword_spelling);
+            // If this keyword is not a keyword in the expansion language, then
+            // this expansion will probably not make any sense.
+            if (!idents.get(keyword_spelling).isKeyword(expansion_lang_opts))
+              expansion_usable = false;
           } else {
             switch (ti->getKind()) {
-            case clang::tok::TokenKind::identifier:
-              macro_expansion.append(ti->getIdentifierInfo()->getName().str());
+            case clang::tok::TokenKind::identifier: {
+              llvm::StringRef token_name = ti->getIdentifierInfo()->getName();
+              // If this non-keyword identifiers is a keyword in the expansion
+              // language, then this macro will expand to something bogus and
+              // should be skipped.
+              if (idents.get(token_name).isKeyword(expansion_lang_opts))
+                expansion_usable = false;
+              macro_expansion.append(token_name.str());
               break;
+            }
             case clang::tok::TokenKind::raw_identifier:
               macro_expansion.append(ti->getRawIdentifier().str());
               break;
@@ -575,7 +636,7 @@ void ClangModulesDeclVendorImpl::ForEachMacro(
           }
         }
 
-        if (handler(macro_expansion)) {
+        if (expansion_usable && handler(macro_expansion)) {
           return;
         }
       }

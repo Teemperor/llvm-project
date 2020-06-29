@@ -54,6 +54,7 @@ public:
   /// \param text output parameter containing the source code string.
   /// \param exe_ctx The execution context in which the expression will be
   ///        evaluated.
+  /// \param language The language of the expression.
   /// \param add_locals True iff local variables should be injected into the
   ///        expression source code.
   /// \param force_add_all_locals True iff all local variables should be
@@ -61,7 +62,8 @@ public:
   /// \param modules A list of (C++) modules that the expression should import.
   ///
   /// \return true iff the source code was successfully generated.
-  bool GetText(std::string &text, ExecutionContext &exe_ctx, bool add_locals,
+  bool GetText(std::string &text, ExecutionContext &exe_ctx,
+               lldb::LanguageType language, bool add_locals,
                bool force_add_all_locals,
                llvm::ArrayRef<std::string> modules) const;
 
