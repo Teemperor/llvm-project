@@ -162,6 +162,25 @@ but by a program that wants consistent and easily parsable output. For
 these cases, Clang provides a wide range of options to control the exact
 output format of the diagnostics that it generates.
 
+.. _opt_fshow-line:
+
+**-f[no-]show-line**
+   Print line number in diagnostic.
+
+   This option, which defaults to on, controls whether or not Clang
+   prints the line number of a diagnostic. For example, when this is
+   enabled, Clang will print something like:
+
+   ::
+
+         test.c:28: warning: extra tokens at end of #endif directive [-Wextra-tokens]
+         #endif bad
+                ^
+                //
+
+   When this is disabled, Clang will print "test.c: warning..." with
+   no line number.
+
 .. _opt_fshow-column:
 
 **-f[no-]show-column**

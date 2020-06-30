@@ -3580,6 +3580,9 @@ static void RenderDiagnosticsOptions(const Driver &D, const ArgList &Args,
   if (Args.hasArg(options::OPT_fdiagnostics_absolute_paths))
     CmdArgs.push_back("-fdiagnostics-absolute-paths");
 
+  if (!Args.hasFlag(options::OPT_fshow_line, options::OPT_fno_show_line))
+    CmdArgs.push_back("-fno-show-line");
+
   if (!Args.hasFlag(options::OPT_fshow_column, options::OPT_fno_show_column,
                     ColumnDefault))
     CmdArgs.push_back("-fno-show-column");

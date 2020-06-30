@@ -16,19 +16,19 @@
 // RUN: %clang -fsyntax-only -fdiagnostics-format=msvc -fmsc-version=1900 -target x86_64-pc-win32 -fshow-column %s 2>&1 | FileCheck %s --strict-whitespace -check-prefix=MSVC2015
 //
 // RUN: %clang -fsyntax-only -fdiagnostics-format=vi    %s 2>&1 | FileCheck %s --strict-whitespace -check-prefix=VI
+// RUN: %clang -fsyntax-only -fdiagnostics-format=vi -fno-show-line   %s 2>&1 | FileCheck %s --strict-whitespace -check-prefix=VI
 //
 // RUN: %clang -fsyntax-only -fdiagnostics-format=msvc -fno-show-column -fmsc-version=1900 %s 2>&1 | FileCheck %s --strict-whitespace -check-prefix=MSVC2015_ORIG
+// RUN: %clang -fsyntax-only -fdiagnostics-format=msvc -fno-show-column -fno-show-line -fmsc-version=1900 %s 2>&1 | FileCheck %s --strict-whitespace -check-prefix=MSVC2015_ORIG
 //
 // RUN: %clang -fsyntax-only -fno-show-column %s 2>&1 | FileCheck %s --strict-whitespace -check-prefix=NO_COLUMN
+// RUN: %clang -fsyntax-only -fno-show-line %s 2>&1 | FileCheck %s --strict-whitespace -check-prefix=NO_LINE
+// RUN: %clang -fsyntax-only -fno-show-column -fno-show-line %s 2>&1 | FileCheck %s --strict-whitespace -check-prefix=NO_LINE_NO_COLUMN
 //
 // RUN: not %clang -fsyntax-only -Werror -fdiagnostics-format=msvc-fallback -fmsc-version=1300 %s 2>&1 | FileCheck %s --strict-whitespace -check-prefix=MSVC2010-FALLBACK
 // RUN: not %clang -fsyntax-only -Werror -fdiagnostics-format=msvc-fallback -fms-compatibility-version=13.00 %s 2>&1 | FileCheck %s --strict-whitespace -check-prefix=MSVC2010-FALLBACK
 // RUN: not %clang -fsyntax-only -Werror -fdiagnostics-format=msvc-fallback -fmsc-version=1800 %s 2>&1 | FileCheck %s --strict-whitespace -check-prefix=MSVC2013-FALLBACK
 // RUN: not %clang -fsyntax-only -Werror -fdiagnostics-format=msvc-fallback -fmsc-version=1900 %s 2>&1 | FileCheck %s --strict-whitespace -check-prefix=MSVC2015-FALLBACK
-
-
-
-
 
 
 
@@ -42,6 +42,8 @@
 // VI: {{.*}} +36:8: warning: extra tokens at end of #endif directive [-Wextra-tokens]
 // MSVC2015_ORIG: {{.*}}(36): warning: extra tokens at end of #endif directive [-Wextra-tokens]
 // NO_COLUMN: {{.*}}:36: warning: extra tokens at end of #endif directive [-Wextra-tokens]
+// NO_LINE: {{.*}}format.c:8: warning: extra tokens at end of #endif directive [-Wextra-tokens]
+// NO_LINE_NO_COLUMN: {{.*}}format.c: warning: extra tokens at end of #endif directive [-Wextra-tokens]
 // MSVC2010-FALLBACK: {{.*}}(36,7) : error(clang): extra tokens at end of #endif directive
 // MSVC2013-FALLBACK: {{.*}}(36,8) : error(clang): extra tokens at end of #endif directive
 // MSVC2015-FALLBACK: {{.*}}(36,8): error(clang): extra tokens at end of #endif directive

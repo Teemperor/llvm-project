@@ -1574,6 +1574,7 @@ bool clang::ParseDiagnosticArgs(DiagnosticOptions &Opts, ArgList &Args,
   Opts.PedanticErrors = Args.hasArg(OPT_pedantic_errors);
   Opts.ShowCarets = !Args.hasArg(OPT_fno_caret_diagnostics);
   Opts.ShowColors = parseShowColorsArgs(Args, DefaultDiagColor);
+  Opts.ShowLine = !Args.hasArg(OPT_fno_show_line);
   Opts.ShowColumn = !Args.hasArg(OPT_fno_show_column);
   Opts.ShowFixits = !Args.hasArg(OPT_fno_diagnostics_fixit_info);
   Opts.ShowLocation = !Args.hasArg(OPT_fno_show_source_location);
