@@ -644,51 +644,23 @@ bool Scalar::MakeUnsigned() {
   return success;
 }
 
-template <typename T> T Scalar::GetAsSigned(T fail_value) const {
+template <typename T> T Scalar::GetAs(T fail_value) const {
   switch (m_type) {
   case e_void:
     break;
   case e_sint:
-  case e_uint:
   case e_slong:
-  case e_ulong:
   case e_slonglong:
-  case e_ulonglong:
   case e_sint128:
-  case e_uint128:
   case e_sint256:
-  case e_uint256:
   case e_sint512:
-  case e_uint512:
     return m_integer.sextOrTrunc(sizeof(T) * 8).getSExtValue();
 
-  case e_float:
-    return static_cast<T>(m_float.convertToFloat());
-  case e_double:
-    return static_cast<T>(m_float.convertToDouble());
-  case e_long_double:
-    llvm::APInt ldbl_val = m_float.bitcastToAPInt();
-    return static_cast<T>(
-        (ldbl_val.sextOrTrunc(sizeof(schar_t) * 8)).getSExtValue());
-  }
-  return fail_value;
-}
-
-template <typename T> T Scalar::GetAsUnsigned(T fail_value) const {
-  switch (m_type) {
-  case e_void:
-    break;
-  case e_sint:
   case e_uint:
-  case e_slong:
   case e_ulong:
-  case e_slonglong:
   case e_ulonglong:
-  case e_sint128:
   case e_uint128:
-  case e_sint256:
   case e_uint256:
-  case e_sint512:
   case e_uint512:
     return m_integer.zextOrTrunc(sizeof(T) * 8).getZExtValue();
 
@@ -698,45 +670,45 @@ template <typename T> T Scalar::GetAsUnsigned(T fail_value) const {
     return static_cast<T>(m_float.convertToDouble());
   case e_long_double:
     llvm::APInt ldbl_val = m_float.bitcastToAPInt();
-    return static_cast<T>((ldbl_val.zextOrTrunc(sizeof(T) * 8)).getZExtValue());
+    return static_cast<T>((ldbl_val.sextOrTrunc(sizeof(T) * 8)).getSExtValue());
   }
   return fail_value;
 }
 
 signed char Scalar::SChar(signed char fail_value) const {
-  return GetAsSigned<signed char>(fail_value);
+  return GetAs<signed char>(fail_value);
 }
 
 unsigned char Scalar::UChar(unsigned char fail_value) const {
-  return GetAsUnsigned<unsigned char>(fail_value);
+  return GetAs<unsigned char>(fail_value);
 }
 
 short Scalar::SShort(short fail_value) const {
-  return GetAsSigned<short>(fail_value);
+  return GetAs<short>(fail_value);
 }
 
 unsigned short Scalar::UShort(unsigned short fail_value) const {
-  return GetAsUnsigned<unsigned short>(fail_value);
+  return GetAs<unsigned short>(fail_value);
 }
 
-int Scalar::SInt(int fail_value) const { return GetAsSigned<int>(fail_value); }
+int Scalar::SInt(int fail_value) const { return GetAs<int>(fail_value); }
 
 unsigned int Scalar::UInt(unsigned int fail_value) const {
-  return GetAsUnsigned<unsigned int>(fail_value);
+  return GetAs<unsigned int>(fail_value);
 }
 
-long Scalar::SLong(long fail_value) const { return GetAsSigned<long>(fail_value); }
+long Scalar::SLong(long fail_value) const { return GetAs<long>(fail_value); }
 
 unsigned long Scalar::ULong(unsigned long fail_value) const {
-  return GetAsUnsigned<unsigned long>(fail_value);
+  return GetAs<unsigned long>(fail_value);
 }
 
 long long Scalar::SLongLong(long long fail_value) const {
-  return GetAsSigned<long long>(fail_value);
+  return GetAs<long long>(fail_value);
 }
 
 unsigned long long Scalar::ULongLong(unsigned long long fail_value) const {
-  return GetAsUnsigned<unsigned long long>(fail_value);
+  return GetAs<unsigned long long>(fail_value);
 }
 
 llvm::APInt Scalar::SInt128(const llvm::APInt &fail_value) const {
@@ -794,18 +766,21 @@ float Scalar::Float(float fail_value) const {
   case e_void:
     break;
   case e_sint:
-  case e_uint:
   case e_slong:
-  case e_ulong:
   case e_slonglong:
-  case e_ulonglong:
   case e_sint128:
-  case e_uint128:
   case e_sint256:
-  case e_uint256:
   case e_sint512:
+    return llvm::APIntOps::RoundSignedAPIntToFloat(m_integer);
+
+  case e_uint:
+  case e_ulong:
+  case e_ulonglong:
+  case e_uint128:
+  case e_uint256:
   case e_uint512:
     return llvm::APIntOps::RoundAPIntToFloat(m_integer);
+
   case e_float:
     return m_float.convertToFloat();
   case e_double:
@@ -822,18 +797,21 @@ double Scalar::Double(double fail_value) const {
   case e_void:
     break;
   case e_sint:
-  case e_uint:
   case e_slong:
-  case e_ulong:
   case e_slonglong:
-  case e_ulonglong:
   case e_sint128:
-  case e_uint128:
   case e_sint256:
-  case e_uint256:
   case e_sint512:
+    return llvm::APIntOps::RoundSignedAPIntToDouble(m_integer);
+
+  case e_uint:
+  case e_ulong:
+  case e_ulonglong:
+  case e_uint128:
+  case e_uint256:
   case e_uint512:
     return llvm::APIntOps::RoundAPIntToDouble(m_integer);
+
   case e_float:
     return static_cast<double_t>(m_float.convertToFloat());
   case e_double:
@@ -850,19 +828,21 @@ long double Scalar::LongDouble(long double fail_value) const {
   case e_void:
     break;
   case e_sint:
-  case e_uint:
   case e_slong:
-  case e_ulong:
   case e_slonglong:
-  case e_ulonglong:
   case e_sint128:
-  case e_uint128:
   case e_sint256:
-  case e_uint256:
   case e_sint512:
+    return llvm::APIntOps::RoundSignedAPIntToDouble(m_integer);
+
+  case e_uint:
+  case e_ulong:
+  case e_ulonglong:
+  case e_uint128:
+  case e_uint256:
   case e_uint512:
-    return static_cast<long_double_t>(
-        llvm::APIntOps::RoundAPIntToDouble(m_integer));
+    return llvm::APIntOps::RoundAPIntToDouble(m_integer);
+
   case e_float:
     return static_cast<long_double_t>(m_float.convertToFloat());
   case e_double:
