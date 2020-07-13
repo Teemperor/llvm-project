@@ -423,6 +423,8 @@ class CommandLineCompletionTestCase(TestBase):
         self.complete_from_to('frame select ', ['0'])
     
     def test_frame_recognizer_delete(self):
+        self.build()
+        self.dbg.CreateTarget(self.getBuildArtifact("a.out"))
         self.runCmd("frame recognizer add -l py_class -s module_name -n recognizer_name")
         self.check_completion_with_desc('frame recognizer delete ', [['0', 'py_class, module module_name, symbol recognizer_name']])
 

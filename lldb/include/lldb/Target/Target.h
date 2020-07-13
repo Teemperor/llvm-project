@@ -1130,6 +1130,10 @@ public:
   ///     if none can be found.
   llvm::Expected<lldb_private::Address> GetEntryPointAddress();
 
+  StackFrameRecognizerManager &GetFrameRecognizerManager() {
+    return *m_frame_recognizer_manager_up;
+  }
+
   // Target Stop Hooks
   class StopHook : public UserID {
   public:
@@ -1325,6 +1329,7 @@ protected:
   bool m_suppress_stop_hooks;
   bool m_is_dummy_target;
   unsigned m_next_persistent_variable_index = 0;
+  lldb::StackFrameRecognizerManagerUP m_frame_recognizer_manager_up;
 
   static void ImageSearchPathsChanged(const PathMappingList &path_list,
                                       void *baton);

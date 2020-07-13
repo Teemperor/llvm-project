@@ -798,7 +798,8 @@ protected:
 public:
   CommandObjectFrameRecognizerAdd(CommandInterpreter &interpreter)
       : CommandObjectParsed(interpreter, "frame recognizer add",
-                            "Add a new frame recognizer.", nullptr),
+                            "Add a new frame recognizer.", nullptr,
+                            eCommandRequiresTarget),
         m_options() {
     SetHelpLong(R"(
 Frame recognizers allow for retrieving information about special frames based on
@@ -890,6 +891,8 @@ bool CommandObjectFrameRecognizerAdd::DoExecute(Args &command,
                          "before attempting to use this frame recognizer");
   }
 
+  lldb::TargetSP target = GetDebugger().GetSelectedTarget();
+
   StackFrameRecognizerSP recognizer_sp =
       StackFrameRecognizerSP(new ScriptedStackFrameRecognizer(
           interpreter, m_options.m_class_name.c_str()));
@@ -898,12 +901,14 @@ bool CommandObjectFrameRecognizerAdd::DoExecute(Args &command,
         RegularExpressionSP(new RegularExpression(m_options.m_module));
     auto func =
         RegularExpressionSP(new RegularExpression(m_options.m_symbols.front()));
-    StackFrameRecognizerManager::AddRecognizer(recognizer_sp, module, func);
+    GetSelectedTarget().GetFrameRecognizerManager().AddRecognizer(recognizer_sp,
+                                                                  module, func);
   } else {
     auto module = ConstString(m_options.m_module);
     std::vector<ConstString> symbols(m_options.m_symbols.begin(),
                                      m_options.m_symbols.end());
-    StackFrameRecognizerManager::AddRecognizer(recognizer_sp, module, symbols);
+    GetSelectedTarget().GetFrameRecognizerManager().AddRecognizer(
+        recognizer_sp, module, symbols);
   }
 #endif
 
@@ -915,13 +920,14 @@ class CommandObjectFrameRecognizerClear : public CommandObjectParsed {
 public:
   CommandObjectFrameRecognizerClear(CommandInterpreter &interpreter)
       : CommandObjectParsed(interpreter, "frame recognizer clear",
-                            "Delete all frame recognizers.", nullptr) {}
+                            "Delete all frame recognizers.", nullptr,
+                            eCommandRequiresTarget) {}
 
   ~CommandObjectFrameRecognizerClear() override = default;
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    StackFrameRecognizerManager::RemoveAllRecognizers();
+    GetSelectedTarget().GetFrameRecognizerManager().RemoveAllRecognizers();
     result.SetStatus(eReturnStatusSuccessFinishResult);
     return result.Succeeded();
   }
@@ -931,7 +937,8 @@ class CommandObjectFrameRecognizerDelete : public CommandObjectParsed {
 public:
   CommandObjectFrameRecognizerDelete(CommandInterpreter &interpreter)
       : CommandObjectParsed(interpreter, "frame recognizer delete",
-                            "Delete an existing frame recognizer.", nullptr) {}
+                            "Delete an existing frame recognizer.", nullptr,
+                            eCommandRequiresTarget) {}
 
   ~CommandObjectFrameRecognizerDelete() override = default;
 
@@ -941,7 +948,7 @@ public:
     if (request.GetCursorIndex() != 0)
       return;
 
-    StackFrameRecognizerManager::ForEach(
+    GetSelectedTarget().GetFrameRecognizerManager().ForEach(
         [&request](uint32_t rid, std::string rname, std::string module,
                    llvm::ArrayRef<lldb_private::ConstString> symbols,
                    bool regexp) {
@@ -973,7 +980,7 @@ protected:
         return false;
       }
 
-      StackFrameRecognizerManager::RemoveAllRecognizers();
+      GetSelectedTarget().GetFrameRecognizerManager().RemoveAllRecognizers();
       result.SetStatus(eReturnStatusSuccessFinishResult);
       return result.Succeeded();
     }
@@ -993,7 +1000,8 @@ protected:
       return false;
     }
 
-    StackFrameRecognizerManager::RemoveRecognizerWithID(recognizer_id);
+    GetSelectedTarget().GetFrameRecognizerManager().RemoveRecognizerWithID(
+        recognizer_id);
     result.SetStatus(eReturnStatusSuccessFinishResult);
     return result.Succeeded();
   }
@@ -1003,15 +1011,15 @@ class CommandObjectFrameRecognizerList : public CommandObjectParsed {
 public:
   CommandObjectFrameRecognizerList(CommandInterpreter &interpreter)
       : CommandObjectParsed(interpreter, "frame recognizer list",
-                            "Show a list of active frame recognizers.",
-                            nullptr) {}
+                            "Show a list of active frame recognizers.", nullptr,
+                            eCommandRequiresTarget) {}
 
   ~CommandObjectFrameRecognizerList() override = default;
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     bool any_printed = false;
-    StackFrameRecognizerManager::ForEach(
+    GetSelectedTarget().GetFrameRecognizerManager().ForEach(
         [&result, &any_printed](
             uint32_t recognizer_id, std::string name, std::string module,
             llvm::ArrayRef<ConstString> symbols, bool regexp) {
@@ -1051,7 +1059,7 @@ public:
       : CommandObjectParsed(
             interpreter, "frame recognizer info",
             "Show which frame recognizer is applied a stack frame (if any).",
-            nullptr) {
+            nullptr, eCommandRequiresTarget) {
     CommandArgumentEntry arg;
     CommandArgumentData index_arg;
 
@@ -1107,7 +1115,8 @@ protected:
     }
 
     auto recognizer =
-        StackFrameRecognizerManager::GetRecognizerForFrame(frame_sp);
+        GetSelectedTarget().GetFrameRecognizerManager().GetRecognizerForFrame(
+            frame_sp);
 
     Stream &output_stream = result.GetOutputStream();
     output_stream.Printf("frame %d ", frame_index);
