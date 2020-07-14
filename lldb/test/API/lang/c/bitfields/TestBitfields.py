@@ -21,6 +21,7 @@ class BitfieldsTestCase(TestBase):
     # BitFields exhibit crashes in record layout on Windows
     # (http://llvm.org/pr21800)
     @skipIfWindows
+    @no_debug_info_test
     def test_and_run_command(self):
         """Test 'frame variable ...' on a variable with bitfields."""
         self.build()
@@ -71,8 +72,15 @@ class BitfieldsTestCase(TestBase):
                 '(uint32_t:7) b7 = 127',
                 '(uint32_t:4) four = 15'])
 
-        self.expect("expr (bits.b1)", VARIABLES_DISPLAYED_CORRECTLY,
+        self.expect("v/x large_packed", VARIABLES_DISPLAYED_CORRECTLY,
+                    substrs=["a = 0x0000000cbbbbaaaa", "b = 0x0000000dffffeee"])
+        self.runCmd("log enable lldb expr")
+        self.expect("expr -l c++ -- bits.b1", VARIABLES_DISPLAYED_CORRECTLY,
                     substrs=['uint32_t', '1'])
+        self.runCmd("log disable lldb expr")
+        self.expect("v/x large_packed", VARIABLES_DISPLAYED_CORRECTLY,
+                    substrs=["a = 0x0000000cbbbbaaaa", "b = 0x0000000dffffeee"])
+
         self.expect("expr (bits.b2)", VARIABLES_DISPLAYED_CORRECTLY,
                     substrs=['uint32_t', '3'])
         self.expect("expr (bits.b3)", VARIABLES_DISPLAYED_CORRECTLY,

@@ -1,9 +1,12 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
 
 int main (int argc, char const *argv[])
 {
+
+
     struct Bits
     {
         uint32_t    : 1, // Unnamed bitfield
@@ -19,9 +22,10 @@ int main (int argc, char const *argv[])
                     four : 4;
     };
 
+    struct Bits bits;
+
     printf("%lu", sizeof(struct Bits));
 
-    struct Bits bits;
     int i;
     for (i=0; i<(1<<1); i++)
         bits.b1 = i;        //// break $source:$line
@@ -90,7 +94,9 @@ int main (int argc, char const *argv[])
 
     struct LargePackedBits large_packed =
       (struct LargePackedBits){ 0xcbbbbaaaa, 0xdffffeeee };
-    
-    return 0;               //// Set break point at this line.
 
+    printf("B: %" PRIu64 " " "%" PRIu64 "\n", large_packed.a, large_packed.b);
+    int bla = 3;               //// Set break point at this line.
+    printf("B: %" PRIu64 " " "%" PRIu64 "\n", large_packed.a, large_packed.b);
+    return 0;
 }
