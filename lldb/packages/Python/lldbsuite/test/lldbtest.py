@@ -2442,12 +2442,86 @@ FileCheck output:
                         msg + "\nCommand output:\n" + EXP_MSG(str, output, exe)
                         if msg else EXP_MSG(str, output, exe))
 
+    class ValueCheck:
+        def __init__(self, expect_name=None, expect_value=None, expect_type=None,
+                     expect_summary=None, children=None):
+            """
+            :param expect_name: The name that the SBValue should have. None if
+                                the summary should not be checked.
+            :param expect_summary: The summary that the SBValue should have.
+                                   None if the summary should not be checked.
+            :param expect_value: The value that the SBValue should have.
+                                 None if the value should not be checked.
+            :param expect_type: The type that the SBValue result should have.
+                                None if the type should not be checked.
+            :param children: A list of ValueChecks that need to match the
+            children of this SBValue. None if children shouldn't be checked.
+            The order of checks is the order of the checks in the list.
+            The number of check has to match the number of children.
+            """
+            self.expect_name = expect_name
+            self.expect_value = expect_value
+            self.expect_type = expect_type
+            self.expect_summary = expect_summary
+            self.children = children
+
+        def check_value(self, test_base, val, error_msg=None):
+            """
+            Checks that the given value matches the currently set properties
+            of this ValueCheck. If a match failed, the given TestBase will
+            be used to emit an error. A custom error message can be specified
+            that will be used to describe failed check for this SBValue (but
+            not errors in the child values).
+            """
+
+            this_error_msg = error_msg if error_msg else ""
+            this_error_msg += "\nCurrent SBValue: " + str(val)
+
+            test_base.assertSuccess(val.GetError())
+
+            if self.expect_name:
+                test_base.assertEqual(self.expect_name, val.GetName(),
+                                      this_error_msg)
+            if self.expect_value:
+                test_base.assertEqual(self.expect_value, val.GetValue(),
+                                      this_error_msg)
+            if self.expect_type:
+                test_base.assertEqual(self.expect_type, val.GetDisplayTypeName(),
+                                      this_error_msg)
+            if self.expect_summary:
+                test_base.assertEqual(self.expect_summary, val.GetSummary(),
+                                      this_error_msg)
+            if self.children is not None:
+                test_base.check_value_children(val, self.children, error_msg)
+
+    def check_value_children(self, val, expected_children, error_msg=None):
+        """
+        Checks that the children of a SBValue match a certain structure and
+        have certain properties.
+
+        :param val: The SBValue to check.
+        :param expected_children: A list of ValueChecks. The order and number of
+                                  checks has to match the order of children in
+                                  the given value.
+        """
+
+        this_error_msg = error_msg if error_msg else ""
+        this_error_msg += "\nCurrent SBValue: " + str(val)
+
+        self.assertEqual(len(expected_children), val.GetNumChildren(), this_error_msg)
+
+        for i in range(0, val.GetNumChildren()):
+          expected_child = expected_children[i]
+          actual_child = val.GetChildAtIndex(i)
+          expected_child.check_value(self, actual_child, error_msg)
+
     def expect_expr(
             self,
             expr,
             result_summary=None,
             result_value=None,
             result_type=None,
+            result_children=None
             ):
         """
         Evaluates the given expression and verifies the result.
@@ -2455,6 +2529,8 @@ FileCheck output:
         :param result_summary: The summary that the expression should have. None if the summary should not be checked.
         :param result_value: The value that the expression should have. None if the value should not be checked.
         :param result_type: The type that the expression result should have. None if the type should not be checked.
+        :param result_children: The expected children of the expression result
+                                as a list of ValueChecks. None if the children shouldn't be checked.
         """
         self.assertTrue(expr.strip() == expr, "Expression contains trailing/leading whitespace: '" + expr + "'")
 
@@ -2473,16 +2549,11 @@ FileCheck output:
         else:
             eval_result = self.target().EvaluateExpression(expr, options)
 
-        self.assertSuccess(eval_result.GetError())
-
-        if result_type:
-            self.assertEqual(result_type, eval_result.GetDisplayTypeName())
-
-        if result_value:
-            self.assertEqual(result_value, eval_result.GetValue())
-
-        if result_summary:
-            self.assertEqual(result_summary, eval_result.GetSummary())
+        value_check = self.ValueCheck(expect_type=result_type,
+                                      expect_value=result_value,
+                                      expect_summary=result_summary,
+                                      children=result_children)
+        value_check.check_value(self, eval_result, str(eval_result))
 
     def invoke(self, obj, name, trace=False):
         """Use reflection to call a method dynamically with no argument."""
