@@ -108,6 +108,10 @@ class LLDBTest(TestFormat):
             # Otherwise this is just a failure.
             return lit.Test.FAIL, output
 
+        has_cleanup_err_tests = 'CLEANUP ERROR:' in out or 'CLEANUP ERROR:' in err
+        if has_cleanup_err_tests:
+            return lit.Test.FAIL, output
+
         has_unsupported_tests = 'UNSUPPORTED:' in out or 'UNSUPPORTED:' in err
         has_passing_tests = 'PASS:' in out or 'PASS:' in err
         if has_unsupported_tests and not has_passing_tests:
