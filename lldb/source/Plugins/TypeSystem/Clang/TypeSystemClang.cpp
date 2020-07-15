@@ -2502,6 +2502,7 @@ RemoveWrappingTypes(QualType type, ArrayRef<clang::Type::TypeClass> mask = {}) {
     case clang::Type::Typedef:
     case clang::Type::TypeOf:
     case clang::Type::TypeOfExpr:
+    case clang::Type::TemplateSpecialization:
       type = type->getLocallyUnqualifiedSingleStepDesugaredType();
       break;
     default:
