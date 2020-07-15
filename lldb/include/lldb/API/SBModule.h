@@ -291,6 +291,8 @@ public:
   /// Get the number of global modules.
   static uint32_t GetNumberAllocatedModules();
 
+  static void ClearCachedModules();
+
 private:
   friend class SBAddress;
   friend class SBFrame;

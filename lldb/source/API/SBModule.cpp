@@ -690,6 +690,13 @@ uint32_t SBModule::GetNumberAllocatedModules() {
   return Module::GetNumberAllocatedModules();
 }
 
+void SBModule::ClearCachedModules() {
+  LLDB_RECORD_STATIC_METHOD_NO_ARGS(void, SBModule,
+                                    ClearCachedModules);
+  const bool mandatory = false;
+  ModuleList::RemoveOrphanSharedModules(mandatory);
+}
+
 namespace lldb_private {
 namespace repro {
 
