@@ -387,6 +387,13 @@ let Command = "frame select" in {
     Desc<"A relative frame index offset from the current frame index.">;
 }
 
+let Command = "frame recognizer dummy" in {
+  def recognizer_dummy_options_dummy :
+    Option<"dummy-frame-recognizer", "D">, Group<1>,
+    Desc<"Act on Dummy frame recognizers - i.e. frame recognizers added before"
+    " a file is provided, which prime new targets.">;
+}
+
 let Command = "frame recognizer add" in {
   def frame_recognizer_shlib : Option<"shlib", "s">, Arg<"ShlibName">,
     Completion<"Module">,

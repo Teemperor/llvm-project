@@ -189,6 +189,52 @@ class FrameRecognizerTestCase(TestBase):
         self.expect("frame recognizer info 0",
                     substrs=['frame 0 is recognized by recognizer.MyFrameRecognizer'])
 
+    @skipUnlessDarwin
+    def test_frame_recognizer_dummy_target(self):
+        self.build()
+        exe = self.getBuildArtifact("a.out")
+
+        # Clear internal & plugins recognizers that get initialized at launch
+        self.runCmd("frame recognizer clear -D")
+
+        self.runCmd("command script import " + os.path.join(self.getSourceDir(), "recognizer.py"))
+
+        # Add a frame recognizer to the dummy target.
+        self.runCmd("frame recognizer add -l recognizer.MyFrameRecognizer -s a.out -n foo")
+        self.expect("frame recognizer list -D",
+                    substrs=['recognizer.MyFrameRecognizer, module a.out, symbol foo'])
+
+        # Create a target.
+        lldbutil.run_to_name_breakpoint(self, "foo", exe_name = exe)
+
+        # Dummy frame recognizer is still there.
+        self.expect("frame recognizer list -D",
+                    substrs=['recognizer.MyFrameRecognizer, module a.out, symbol foo'])
+
+        # Delete recognizers from the dummy target.
+        self.runCmd("frame recognizer clear -D")
+
+        # It should be gone from the dummy target.
+        self.expect("frame recognizer list -D",
+                    matching=False, substrs=['MyFrameRecognizer'])
+        # But the real target should still have it.
+        self.expect("frame recognizer list",
+                    substrs=['recognizer.MyFrameRecognizer, module a.out, symbol foo'])
+
+        # Add a recognizer to the real target.
+        self.runCmd("frame recognizer add -l recognizer.MyFrameRecognizer -s a.out -n bar")
+        # The dummy target shouldn't have this recognizer.
+        self.expect("frame recognizer list -D",
+                    matching=False, substrs=['MyFrameRecognizer'])
+
+        # Add a recognizer to the dummy target.
+        self.runCmd("frame recognizer add -D -l recognizer.MyFrameRecognizer -s a.out -n bar")
+        self.expect("frame recognizer list -D",
+                    substrs=['recognizer.MyFrameRecognizer, module a.out, symbol bar'])
+        self.runCmd("frame recognizer delete -D 0")
+        self.expect("frame recognizer list -D",
+                    matching=False, substrs=['MyFrameRecognizer'])
+
     @no_debug_info_test
     def test_frame_recognizer_delete_invalid_arg(self):
         self.expect("frame recognizer delete a", error=True,
@@ -196,7 +242,7 @@ class FrameRecognizerTestCase(TestBase):
         self.expect("frame recognizer delete \"\"", error=True,
                     substrs=["error: '' is not a valid recognizer id."])
         self.expect("frame recognizer delete -1", error=True,
-                    substrs=["error: '-1' is not a valid recognizer id."])
+                    substrs=["error: unknown or ambiguous option"])
         self.expect("frame recognizer delete 4294967297", error=True,
                     substrs=["error: '4294967297' is not a valid recognizer id."])
 

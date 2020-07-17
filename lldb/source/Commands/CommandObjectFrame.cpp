@@ -735,20 +735,57 @@ protected:
 
 #pragma mark CommandObjectFrameRecognizer
 
+#define LLDB_OPTIONS_frame_recognizer_dummy
+#include "CommandOptions.inc"
+
+class FrameRecognizerDummyOptionGroup : public OptionGroup {
+public:
+  FrameRecognizerDummyOptionGroup() : OptionGroup() {}
+
+  ~FrameRecognizerDummyOptionGroup() override = default;
+
+  llvm::ArrayRef<OptionDefinition> GetDefinitions() override {
+    return llvm::makeArrayRef(g_frame_recognizer_dummy_options);
+  }
+
+  Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
+                        ExecutionContext *execution_context) override {
+    Status error;
+    const int short_option =
+        g_frame_recognizer_dummy_options[option_idx].short_option;
+
+    switch (short_option) {
+    case 'D':
+      m_use_dummy = true;
+      break;
+    default:
+      llvm_unreachable("Unimplemented option");
+    }
+
+    return error;
+  }
+
+  void OptionParsingStarting(ExecutionContext *execution_context) override {
+    m_use_dummy = false;
+  }
+
+  bool m_use_dummy;
+};
+
 #define LLDB_OPTIONS_frame_recognizer_add
 #include "CommandOptions.inc"
 
 class CommandObjectFrameRecognizerAdd : public CommandObjectParsed {
 private:
-  class CommandOptions : public Options {
+  class CommandOptions : public OptionGroup {
   public:
-    CommandOptions() : Options() {}
+    CommandOptions() = default;
     ~CommandOptions() override = default;
 
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const int short_option = g_frame_recognizer_add_options[option_idx].short_option;
 
       switch (short_option) {
       case 'l':
@@ -788,9 +825,11 @@ private:
     bool m_regex;
   };
 
+  FrameRecognizerDummyOptionGroup m_dummy_options;
   CommandOptions m_options;
+  OptionGroupOptions m_all_options;
 
-  Options *GetOptions() override { return &m_options; }
+  Options *GetOptions() override { return &m_all_options; }
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override;
@@ -800,6 +839,9 @@ public:
       : CommandObjectParsed(interpreter, "frame recognizer add",
                             "Add a new frame recognizer.", nullptr),
         m_options() {
+    m_all_options.Append(&m_dummy_options, LLDB_OPT_SET_ALL, LLDB_OPT_SET_ALL);
+    m_all_options.Append(&m_options);
+    m_all_options.Finalize();
     SetHelpLong(R"(
 Frame recognizers allow for retrieving information about special frames based on
 ABI, arguments or other special properties of that frame, even without source
@@ -898,13 +940,13 @@ bool CommandObjectFrameRecognizerAdd::DoExecute(Args &command,
         RegularExpressionSP(new RegularExpression(m_options.m_module));
     auto func =
         RegularExpressionSP(new RegularExpression(m_options.m_symbols.front()));
-    GetSelectedOrDummyTarget().GetFrameRecognizerManager().AddRecognizer(
+    GetSelectedOrDummyTarget(m_dummy_options.m_use_dummy).GetFrameRecognizerManager().AddRecognizer(
         recognizer_sp, module, func);
   } else {
     auto module = ConstString(m_options.m_module);
     std::vector<ConstString> symbols(m_options.m_symbols.begin(),
                                      m_options.m_symbols.end());
-    GetSelectedOrDummyTarget().GetFrameRecognizerManager().AddRecognizer(
+    GetSelectedOrDummyTarget(m_dummy_options.m_use_dummy).GetFrameRecognizerManager().AddRecognizer(
         recognizer_sp, module, symbols);
   }
 #endif
@@ -914,16 +956,24 @@ bool CommandObjectFrameRecognizerAdd::DoExecute(Args &command,
 }
 
 class CommandObjectFrameRecognizerClear : public CommandObjectParsed {
+  FrameRecognizerDummyOptionGroup m_dummy_options;
+  OptionGroupOptions m_all_options;
+
 public:
   CommandObjectFrameRecognizerClear(CommandInterpreter &interpreter)
       : CommandObjectParsed(interpreter, "frame recognizer clear",
-                            "Delete all frame recognizers.", nullptr) {}
+                            "Delete all frame recognizers.", nullptr) {
+    m_all_options.Append(&m_dummy_options, LLDB_OPT_SET_ALL, LLDB_OPT_SET_ALL);
+    m_all_options.Finalize();
+  }
 
   ~CommandObjectFrameRecognizerClear() override = default;
 
+  Options *GetOptions() override { return &m_all_options; }
+
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
-    GetSelectedOrDummyTarget()
+    GetSelectedOrDummyTarget(m_dummy_options.m_use_dummy)
         .GetFrameRecognizerManager()
         .RemoveAllRecognizers();
     result.SetStatus(eReturnStatusSuccessFinishResult);
@@ -932,12 +982,20 @@ protected:
 };
 
 class CommandObjectFrameRecognizerDelete : public CommandObjectParsed {
+  FrameRecognizerDummyOptionGroup m_dummy_options;
+  OptionGroupOptions m_all_options;
+
 public:
   CommandObjectFrameRecognizerDelete(CommandInterpreter &interpreter)
       : CommandObjectParsed(interpreter, "frame recognizer delete",
-                            "Delete an existing frame recognizer.", nullptr) {}
+                            "Delete an existing frame recognizer.", nullptr) {
+      m_all_options.Append(&m_dummy_options, LLDB_OPT_SET_ALL, LLDB_OPT_SET_ALL);
+      m_all_options.Finalize();
+    }
 
   ~CommandObjectFrameRecognizerDelete() override = default;
+
+  Options *GetOptions() override { return &m_all_options; }
 
   void
   HandleArgumentCompletion(CompletionRequest &request,
@@ -945,7 +1003,7 @@ public:
     if (request.GetCursorIndex() != 0)
       return;
 
-    GetSelectedOrDummyTarget().GetFrameRecognizerManager().ForEach(
+    GetSelectedOrDummyTarget(m_dummy_options.m_use_dummy).GetFrameRecognizerManager().ForEach(
         [&request](uint32_t rid, std::string rname, std::string module,
                    llvm::ArrayRef<lldb_private::ConstString> symbols,
                    bool regexp) {
@@ -977,7 +1035,7 @@ protected:
         return false;
       }
 
-      GetSelectedOrDummyTarget()
+      GetSelectedOrDummyTarget(m_dummy_options.m_use_dummy)
           .GetFrameRecognizerManager()
           .RemoveAllRecognizers();
       result.SetStatus(eReturnStatusSuccessFinishResult);
@@ -999,27 +1057,35 @@ protected:
       return false;
     }
 
-    GetSelectedOrDummyTarget()
+    if (!GetSelectedOrDummyTarget(m_dummy_options.m_use_dummy)
         .GetFrameRecognizerManager()
-        .RemoveRecognizerWithID(recognizer_id);
+        .RemoveRecognizerWithID(recognizer_id))
+      result.SetStatus(eReturnStatusFailed);
     result.SetStatus(eReturnStatusSuccessFinishResult);
     return result.Succeeded();
   }
 };
 
 class CommandObjectFrameRecognizerList : public CommandObjectParsed {
+  FrameRecognizerDummyOptionGroup m_dummy_options;
+  OptionGroupOptions m_all_options;
 public:
   CommandObjectFrameRecognizerList(CommandInterpreter &interpreter)
       : CommandObjectParsed(interpreter, "frame recognizer list",
                             "Show a list of active frame recognizers.",
-                            nullptr) {}
+                            nullptr) {
+    m_all_options.Append(&m_dummy_options, LLDB_OPT_SET_ALL, LLDB_OPT_SET_ALL);
+    m_all_options.Finalize();
+  }
 
   ~CommandObjectFrameRecognizerList() override = default;
+
+  Options *GetOptions() override { return &m_all_options; }
 
 protected:
   bool DoExecute(Args &command, CommandReturnObject &result) override {
     bool any_printed = false;
-    GetSelectedOrDummyTarget().GetFrameRecognizerManager().ForEach(
+    GetSelectedOrDummyTarget(m_dummy_options.m_use_dummy).GetFrameRecognizerManager().ForEach(
         [&result, &any_printed](
             uint32_t recognizer_id, std::string name, std::string module,
             llvm::ArrayRef<ConstString> symbols, bool regexp) {

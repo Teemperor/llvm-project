@@ -67,6 +67,8 @@ void StackFrameRecognizerManager::ForEach(
     const std::function<void(uint32_t, std::string, std::string,
                              llvm::ArrayRef<ConstString>, bool)> &callback) {
   for (auto entry : m_recognizers) {
+    if (entry.deleted)
+      continue;
     if (entry.is_regexp) {
       std::string module_name;
       std::string symbol_name;
