@@ -1066,35 +1066,14 @@ protected:
       TypeCategoryImpl::ForEachCallbacks<FormatterType> foreach;
       foreach
         .SetExact([&result, &formatter_regex, &any_printed](
-                      ConstString name,
+                      const TypeMatcher &regex,
                       const FormatterSharedPointer &format_sp) -> bool {
           if (formatter_regex) {
             bool escape = true;
-            if (name.GetStringRef() == formatter_regex->GetText()) {
+            if (regex.CreatedBySameMatchString(ConstString(formatter_regex->GetText()))) {
               escape = false;
-            } else if (formatter_regex->Execute(name.GetStringRef())) {
-              escape = false;
-            }
-
-            if (escape)
-              return true;
-          }
-
-          any_printed = true;
-          result.GetOutputStream().Printf("%s: %s\n", name.AsCString(),
-                                          format_sp->GetDescription().c_str());
-          return true;
-        });
-
-      foreach
-        .SetWithRegex([&result, &formatter_regex, &any_printed](
-                          const RegularExpression &regex,
-                          const FormatterSharedPointer &format_sp) -> bool {
-          if (formatter_regex) {
-            bool escape = true;
-            if (regex.GetText() == formatter_regex->GetText()) {
-              escape = false;
-            } else if (formatter_regex->Execute(regex.GetText())) {
+            } else if (formatter_regex->Execute(
+                           regex.GetMatchString().GetStringRef())) {
               escape = false;
             }
 
@@ -1104,7 +1083,31 @@ protected:
 
           any_printed = true;
           result.GetOutputStream().Printf("%s: %s\n",
-                                          regex.GetText().str().c_str(),
+                                          regex.GetMatchString().GetCString(),
+                                          format_sp->GetDescription().c_str());
+          return true;
+        });
+
+      foreach
+        .SetWithRegex([&result, &formatter_regex, &any_printed](
+                          const TypeMatcher &regex,
+                          const FormatterSharedPointer &format_sp) -> bool {
+          if (formatter_regex) {
+            bool escape = true;
+            if (regex.CreatedBySameMatchString(ConstString(formatter_regex->GetText()))) {
+              escape = false;
+            } else if (formatter_regex->Execute(
+                           regex.GetMatchString().GetStringRef())) {
+              escape = false;
+            }
+
+            if (escape)
+              return true;
+          }
+
+          any_printed = true;
+          result.GetOutputStream().Printf("%s: %s\n",
+                                          regex.GetMatchString().GetCString(),
                                           format_sp->GetDescription().c_str());
           return true;
         });
@@ -1681,10 +1684,10 @@ protected:
     if (DataVisualization::NamedSummaryFormats::GetCount() > 0) {
       result.GetOutputStream().Printf("Named summaries:\n");
       DataVisualization::NamedSummaryFormats::ForEach(
-          [&result](ConstString name,
+          [&result](TypeMatcher name,
                     const TypeSummaryImplSP &summary_sp) -> bool {
             result.GetOutputStream().Printf(
-                "%s: %s\n", name.AsCString(),
+                "%s: %s\n", name.GetMatchString().GetCString(),
                 summary_sp->GetDescription().c_str());
             return true;
           });
