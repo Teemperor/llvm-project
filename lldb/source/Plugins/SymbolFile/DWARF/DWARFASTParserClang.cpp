@@ -2578,10 +2578,10 @@ void DWARFASTParserClang::ParseSingleMember(
             }
           }
 
-          if ((this_field_info.bit_offset >= parent_bit_size) ||
+          if (!TypeSystemClang::IsObjCObjectOrInterfaceType(class_clang_type) && ((this_field_info.bit_offset >= parent_bit_size) ||
               (last_field_info.IsBitfield() &&
                !last_field_info.NextBitfieldOffsetIsValid(
-                   this_field_info.bit_offset))) {
+                   this_field_info.bit_offset)))) {
             ObjectFile *objfile = die.GetDWARF()->GetObjectFile();
             objfile->GetModule()->ReportWarning(
                 "0x%8.8" PRIx64 ": %s bitfield named \"%s\" has invalid "
