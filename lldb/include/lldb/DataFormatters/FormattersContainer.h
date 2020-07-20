@@ -112,6 +112,10 @@ public:
 
     return GetMatchString() == other.GetMatchString();
   }
+
+  bool IsRegex() const {
+    return !m_is_str;
+  }
 };
 
 template <typename ValueType> class FormattersContainer;
@@ -119,7 +123,7 @@ template <typename ValueType> class FormattersContainer;
 template <typename ValueType> class FormatMap {
 public:
   typedef typename ValueType::SharedPointer ValueSP;
-  typedef std::vector<std::pair<TypeMatcher, ValueSP>> MapType;
+  typedef std::deque<std::pair<TypeMatcher, ValueSP>> MapType;
   typedef typename MapType::iterator MapIterator;
   typedef std::function<bool(const TypeMatcher &, const ValueSP &)>
       ForEachCallback;
@@ -233,7 +237,13 @@ public:
   bool Get(ConstString type, MapValueType &entry) {
     std::lock_guard<std::recursive_mutex> guard(m_format_map.mutex());
     for (auto &formatter : llvm::reverse(m_format_map.map())) {
-      if (formatter.first.Matches(type)) {
+      if (!formatter.first.IsRegex() && formatter.first.Matches(type)) {
+        entry = formatter.second;
+        return true;
+      }
+    }
+    for (auto &formatter : llvm::reverse(m_format_map.map())) {
+      if (formatter.first.IsRegex() && formatter.first.Matches(type)) {
         entry = formatter.second;
         return true;
       }

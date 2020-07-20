@@ -110,7 +110,7 @@ uint32_t SBTypeCategory::GetNumFormats() {
     return 0;
 
   return m_opaque_sp->GetTypeFormatsContainer()->GetCount() +
-         m_opaque_sp->GetRegexTypeFormatsContainer()->GetCount();
+         m_opaque_sp->GetTypeFormatsContainer()->GetCount();
 }
 
 uint32_t SBTypeCategory::GetNumSummaries() {
@@ -119,7 +119,7 @@ uint32_t SBTypeCategory::GetNumSummaries() {
   if (!IsValid())
     return 0;
   return m_opaque_sp->GetTypeSummariesContainer()->GetCount() +
-         m_opaque_sp->GetRegexTypeSummariesContainer()->GetCount();
+         m_opaque_sp->GetTypeSummariesContainer()->GetCount();
 }
 
 uint32_t SBTypeCategory::GetNumFilters() {
@@ -128,7 +128,7 @@ uint32_t SBTypeCategory::GetNumFilters() {
   if (!IsValid())
     return 0;
   return m_opaque_sp->GetTypeFiltersContainer()->GetCount() +
-         m_opaque_sp->GetRegexTypeFiltersContainer()->GetCount();
+         m_opaque_sp->GetTypeFiltersContainer()->GetCount();
 }
 
 uint32_t SBTypeCategory::GetNumSynthetics() {
@@ -137,7 +137,7 @@ uint32_t SBTypeCategory::GetNumSynthetics() {
   if (!IsValid())
     return 0;
   return m_opaque_sp->GetTypeSyntheticsContainer()->GetCount() +
-         m_opaque_sp->GetRegexTypeSyntheticsContainer()->GetCount();
+         m_opaque_sp->GetTypeSyntheticsContainer()->GetCount();
 }
 
 lldb::SBTypeNameSpecifier
@@ -198,7 +198,7 @@ SBTypeFilter SBTypeCategory::GetFilterForType(SBTypeNameSpecifier spec) {
   lldb::TypeFilterImplSP children_sp;
 
   if (spec.IsRegex())
-    m_opaque_sp->GetRegexTypeFiltersContainer()->GetExact(
+    m_opaque_sp->GetTypeFiltersContainer()->GetExact(
         ConstString(spec.GetName()), children_sp);
   else
     m_opaque_sp->GetTypeFiltersContainer()->GetExact(
@@ -225,7 +225,7 @@ SBTypeFormat SBTypeCategory::GetFormatForType(SBTypeNameSpecifier spec) {
   lldb::TypeFormatImplSP format_sp;
 
   if (spec.IsRegex())
-    m_opaque_sp->GetRegexTypeFormatsContainer()->GetExact(
+    m_opaque_sp->GetTypeFormatsContainer()->GetExact(
         ConstString(spec.GetName()), format_sp);
   else
     m_opaque_sp->GetTypeFormatsContainer()->GetExact(
@@ -250,7 +250,7 @@ SBTypeSummary SBTypeCategory::GetSummaryForType(SBTypeNameSpecifier spec) {
   lldb::TypeSummaryImplSP summary_sp;
 
   if (spec.IsRegex())
-    m_opaque_sp->GetRegexTypeSummariesContainer()->GetExact(
+    m_opaque_sp->GetTypeSummariesContainer()->GetExact(
         ConstString(spec.GetName()), summary_sp);
   else
     m_opaque_sp->GetTypeSummariesContainer()->GetExact(
@@ -275,7 +275,7 @@ SBTypeSynthetic SBTypeCategory::GetSyntheticForType(SBTypeNameSpecifier spec) {
   lldb::SyntheticChildrenSP children_sp;
 
   if (spec.IsRegex())
-    m_opaque_sp->GetRegexTypeSyntheticsContainer()->GetExact(
+    m_opaque_sp->GetTypeSyntheticsContainer()->GetExact(
         ConstString(spec.GetName()), children_sp);
   else
     m_opaque_sp->GetTypeSyntheticsContainer()->GetExact(
@@ -362,7 +362,7 @@ bool SBTypeCategory::AddTypeFormat(SBTypeNameSpecifier type_name,
     return false;
 
   if (type_name.IsRegex())
-    m_opaque_sp->GetRegexTypeFormatsContainer()->Add(
+    m_opaque_sp->GetTypeFormatsContainer()->Add(
         RegularExpression(
             llvm::StringRef::withNullAsEmpty(type_name.GetName())),
         format.GetSP());
@@ -384,7 +384,7 @@ bool SBTypeCategory::DeleteTypeFormat(SBTypeNameSpecifier type_name) {
     return false;
 
   if (type_name.IsRegex())
-    return m_opaque_sp->GetRegexTypeFormatsContainer()->Delete(
+    return m_opaque_sp->GetTypeFormatsContainer()->Delete(
         ConstString(type_name.GetName()));
   else
     return m_opaque_sp->GetTypeFormatsContainer()->Delete(
@@ -441,7 +441,7 @@ bool SBTypeCategory::AddTypeSummary(SBTypeNameSpecifier type_name,
   }
 
   if (type_name.IsRegex())
-    m_opaque_sp->GetRegexTypeSummariesContainer()->Add(
+    m_opaque_sp->GetTypeSummariesContainer()->Add(
         RegularExpression(
             llvm::StringRef::withNullAsEmpty(type_name.GetName())),
         summary.GetSP());
@@ -463,7 +463,7 @@ bool SBTypeCategory::DeleteTypeSummary(SBTypeNameSpecifier type_name) {
     return false;
 
   if (type_name.IsRegex())
-    return m_opaque_sp->GetRegexTypeSummariesContainer()->Delete(
+    return m_opaque_sp->GetTypeSummariesContainer()->Delete(
         ConstString(type_name.GetName()));
   else
     return m_opaque_sp->GetTypeSummariesContainer()->Delete(
@@ -486,7 +486,7 @@ bool SBTypeCategory::AddTypeFilter(SBTypeNameSpecifier type_name,
     return false;
 
   if (type_name.IsRegex())
-    m_opaque_sp->GetRegexTypeFiltersContainer()->Add(
+    m_opaque_sp->GetTypeFiltersContainer()->Add(
         RegularExpression(
             llvm::StringRef::withNullAsEmpty(type_name.GetName())),
         filter.GetSP());
@@ -508,7 +508,7 @@ bool SBTypeCategory::DeleteTypeFilter(SBTypeNameSpecifier type_name) {
     return false;
 
   if (type_name.IsRegex())
-    return m_opaque_sp->GetRegexTypeFiltersContainer()->Delete(
+    return m_opaque_sp->GetTypeFiltersContainer()->Delete(
         ConstString(type_name.GetName()));
   else
     return m_opaque_sp->GetTypeFiltersContainer()->Delete(
@@ -565,7 +565,7 @@ bool SBTypeCategory::AddTypeSynthetic(SBTypeNameSpecifier type_name,
   }
 
   if (type_name.IsRegex())
-    m_opaque_sp->GetRegexTypeSyntheticsContainer()->Add(
+    m_opaque_sp->GetTypeSyntheticsContainer()->Add(
         RegularExpression(
             llvm::StringRef::withNullAsEmpty(type_name.GetName())),
         synth.GetSP());
@@ -587,7 +587,7 @@ bool SBTypeCategory::DeleteTypeSynthetic(SBTypeNameSpecifier type_name) {
     return false;
 
   if (type_name.IsRegex())
-    return m_opaque_sp->GetRegexTypeSyntheticsContainer()->Delete(
+    return m_opaque_sp->GetTypeSyntheticsContainer()->Delete(
         ConstString(type_name.GetName()));
   else
     return m_opaque_sp->GetTypeSyntheticsContainer()->Delete(
