@@ -731,7 +731,7 @@ void FormatManager::LoadSystemFormatters() {
                                                     string_format);
   sys_category_sp->GetTypeSummariesContainer()->Add(
       ConstString("unsigned char *"), string_format);
-  sys_category_sp->GetRegexTypeSummariesContainer()->Add(
+  sys_category_sp->GetTypeSummariesContainer()->Add(
       std::move(any_size_char_arr), string_array_format);
 
   lldb::TypeSummaryImplSP ostype_summary(

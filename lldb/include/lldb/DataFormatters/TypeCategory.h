@@ -26,39 +26,30 @@ namespace lldb_private {
 template <typename FormatterImpl> class FormatterContainerPair {
 public:
   typedef FormattersContainer<FormatterImpl> ExactMatchContainer;
-  typedef FormattersContainer<FormatterImpl> RegexMatchContainer;
 
   typedef TypeMatcher ExactMatchMap;
-  typedef TypeMatcher RegexMatchMap;
 
   typedef typename ExactMatchContainer::MapValueType MapValueType;
 
   typedef typename ExactMatchContainer::SharedPointer ExactMatchContainerSP;
-  typedef typename RegexMatchContainer::SharedPointer RegexMatchContainerSP;
 
   typedef
       typename ExactMatchContainer::ForEachCallback ExactMatchForEachCallback;
-  typedef
-      typename RegexMatchContainer::ForEachCallback RegexMatchForEachCallback;
 
   FormatterContainerPair(const char *exact_name, const char *regex_name,
                          IFormatChangeListener *clist)
-      : m_exact_sp(new ExactMatchContainer(std::string(exact_name), clist)),
-        m_regex_sp(new RegexMatchContainer(std::string(regex_name), clist)) {}
+      : m_exact_sp(new ExactMatchContainer(std::string(exact_name), clist)) {}
 
   ~FormatterContainerPair() = default;
 
   ExactMatchContainerSP GetExactMatch() const { return m_exact_sp; }
 
-  RegexMatchContainerSP GetRegexMatch() const { return m_regex_sp; }
-
   uint32_t GetCount() {
-    return GetExactMatch()->GetCount() + GetRegexMatch()->GetCount();
+    return GetExactMatch()->GetCount();
   }
 
 private:
   ExactMatchContainerSP m_exact_sp;
-  RegexMatchContainerSP m_regex_sp;
 };
 
 class TypeCategoryImpl {
@@ -73,16 +64,12 @@ public:
   static const uint16_t ALL_ITEM_TYPES = UINT16_MAX;
 
   typedef FormatContainer::ExactMatchContainerSP FormatContainerSP;
-  typedef FormatContainer::RegexMatchContainerSP RegexFormatContainerSP;
 
   typedef SummaryContainer::ExactMatchContainerSP SummaryContainerSP;
-  typedef SummaryContainer::RegexMatchContainerSP RegexSummaryContainerSP;
 
   typedef FilterContainer::ExactMatchContainerSP FilterContainerSP;
-  typedef FilterContainer::RegexMatchContainerSP RegexFilterContainerSP;
 
   typedef SynthContainer::ExactMatchContainerSP SynthContainerSP;
-  typedef SynthContainer::RegexMatchContainerSP RegexSynthContainerSP;
 
   template <typename T> class ForEachCallbacks {
   public:
@@ -91,123 +78,73 @@ public:
 
     template <typename U = TypeFormatImpl>
     typename std::enable_if<std::is_same<U, T>::value, ForEachCallbacks &>::type
-    SetExact(FormatContainer::ExactMatchForEachCallback callback) {
+    Set(FormatContainer::ExactMatchForEachCallback callback) {
       m_format_exact = callback;
       return *this;
     }
-    template <typename U = TypeFormatImpl>
-    typename std::enable_if<std::is_same<U, T>::value, ForEachCallbacks &>::type
-    SetWithRegex(FormatContainer::RegexMatchForEachCallback callback) {
-      m_format_regex = callback;
-      return *this;
-    }
 
     template <typename U = TypeSummaryImpl>
     typename std::enable_if<std::is_same<U, T>::value, ForEachCallbacks &>::type
-    SetExact(SummaryContainer::ExactMatchForEachCallback callback) {
+    Set(SummaryContainer::ExactMatchForEachCallback callback) {
       m_summary_exact = callback;
       return *this;
     }
-    template <typename U = TypeSummaryImpl>
-    typename std::enable_if<std::is_same<U, T>::value, ForEachCallbacks &>::type
-    SetWithRegex(SummaryContainer::RegexMatchForEachCallback callback) {
-      m_summary_regex = callback;
-      return *this;
-    }
 
     template <typename U = TypeFilterImpl>
     typename std::enable_if<std::is_same<U, T>::value, ForEachCallbacks &>::type
-    SetExact(FilterContainer::ExactMatchForEachCallback callback) {
+    Set(FilterContainer::ExactMatchForEachCallback callback) {
       m_filter_exact = callback;
       return *this;
     }
-    template <typename U = TypeFilterImpl>
-    typename std::enable_if<std::is_same<U, T>::value, ForEachCallbacks &>::type
-    SetWithRegex(FilterContainer::RegexMatchForEachCallback callback) {
-      m_filter_regex = callback;
-      return *this;
-    }
 
     template <typename U = SyntheticChildren>
     typename std::enable_if<std::is_same<U, T>::value, ForEachCallbacks &>::type
-    SetExact(SynthContainer::ExactMatchForEachCallback callback) {
+    Set(SynthContainer::ExactMatchForEachCallback callback) {
       m_synth_exact = callback;
-      return *this;
-    }
-    template <typename U = SyntheticChildren>
-    typename std::enable_if<std::is_same<U, T>::value, ForEachCallbacks &>::type
-    SetWithRegex(SynthContainer::RegexMatchForEachCallback callback) {
-      m_synth_regex = callback;
       return *this;
     }
 
     FormatContainer::ExactMatchForEachCallback GetFormatExactCallback() const {
       return m_format_exact;
     }
-    FormatContainer::RegexMatchForEachCallback GetFormatRegexCallback() const {
-      return m_format_regex;
-    }
 
     SummaryContainer::ExactMatchForEachCallback
     GetSummaryExactCallback() const {
       return m_summary_exact;
     }
-    SummaryContainer::RegexMatchForEachCallback
-    GetSummaryRegexCallback() const {
-      return m_summary_regex;
-    }
 
     FilterContainer::ExactMatchForEachCallback GetFilterExactCallback() const {
       return m_filter_exact;
-    }
-    FilterContainer::RegexMatchForEachCallback GetFilterRegexCallback() const {
-      return m_filter_regex;
     }
 
     SynthContainer::ExactMatchForEachCallback GetSynthExactCallback() const {
       return m_synth_exact;
     }
-    SynthContainer::RegexMatchForEachCallback GetSynthRegexCallback() const {
-      return m_synth_regex;
-    }
 
   private:
     FormatContainer::ExactMatchForEachCallback m_format_exact;
-    FormatContainer::RegexMatchForEachCallback m_format_regex;
 
     SummaryContainer::ExactMatchForEachCallback m_summary_exact;
-    SummaryContainer::RegexMatchForEachCallback m_summary_regex;
 
     FilterContainer::ExactMatchForEachCallback m_filter_exact;
-    FilterContainer::RegexMatchForEachCallback m_filter_regex;
 
     SynthContainer::ExactMatchForEachCallback m_synth_exact;
-    SynthContainer::RegexMatchForEachCallback m_synth_regex;
   };
 
   TypeCategoryImpl(IFormatChangeListener *clist, ConstString name);
 
   template <typename T> void ForEach(const ForEachCallbacks<T> &foreach) {
     GetTypeFormatsContainer()->ForEach(foreach.GetFormatExactCallback());
-    GetRegexTypeFormatsContainer()->ForEach(foreach.GetFormatRegexCallback());
 
     GetTypeSummariesContainer()->ForEach(foreach.GetSummaryExactCallback());
-    GetRegexTypeSummariesContainer()->ForEach(
-        foreach.GetSummaryRegexCallback());
 
     GetTypeFiltersContainer()->ForEach(foreach.GetFilterExactCallback());
-    GetRegexTypeFiltersContainer()->ForEach(foreach.GetFilterRegexCallback());
 
     GetTypeSyntheticsContainer()->ForEach(foreach.GetSynthExactCallback());
-    GetRegexTypeSyntheticsContainer()->ForEach(foreach.GetSynthRegexCallback());
   }
 
   FormatContainerSP GetTypeFormatsContainer() {
     return m_format_cont.GetExactMatch();
-  }
-
-  RegexFormatContainerSP GetRegexTypeFormatsContainer() {
-    return m_format_cont.GetRegexMatch();
   }
 
   FormatContainer &GetFormatContainer() { return m_format_cont; }
@@ -216,18 +153,10 @@ public:
     return m_summary_cont.GetExactMatch();
   }
 
-  RegexSummaryContainerSP GetRegexTypeSummariesContainer() {
-    return m_summary_cont.GetRegexMatch();
-  }
-
   SummaryContainer &GetSummaryContainer() { return m_summary_cont; }
 
   FilterContainerSP GetTypeFiltersContainer() {
     return m_filter_cont.GetExactMatch();
-  }
-
-  RegexFilterContainerSP GetRegexTypeFiltersContainer() {
-    return m_filter_cont.GetRegexMatch();
   }
 
   FilterContainer &GetFilterContainer() { return m_filter_cont; }
@@ -261,10 +190,6 @@ public:
 
   SynthContainerSP GetTypeSyntheticsContainer() {
     return m_synth_cont.GetExactMatch();
-  }
-
-  RegexSynthContainerSP GetRegexTypeSyntheticsContainer() {
-    return m_synth_cont.GetRegexMatch();
   }
 
   SynthContainer &GetSyntheticsContainer() { return m_synth_cont; }
