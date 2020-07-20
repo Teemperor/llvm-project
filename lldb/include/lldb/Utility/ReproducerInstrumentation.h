@@ -120,7 +120,7 @@ template <typename... Ts> inline std::string stringify_args(const Ts &... ts) {
 #define LLDB_CONSTRUCT_(T, Class, ...)                                         \
   lldb_private::repro::Recorder _recorder(LLVM_PRETTY_FUNCTION);               \
   lldb_private::repro::construct<T>::handle(LLDB_GET_INSTRUMENTATION_DATA(),   \
-                                            _recorder, Class, __VA_ARGS__);
+                                            _recorder, Class, __VA_ARGS__)
 
 #define LLDB_RECORD_CONSTRUCTOR(Class, Signature, ...)                         \
   LLDB_CONSTRUCT_(Class Signature, this, __VA_ARGS__)
@@ -145,7 +145,9 @@ template <typename... Ts> inline std::string stringify_args(const Ts &... ts) {
             _recorder, *_deserializer, _data.GetRegistry());                   \
       }                                                                        \
     }                                                                          \
-  }
+  }                                                                            \
+  do {                                                                         \
+  } while (false)
 
 #define LLDB_RECORD_METHOD(Result, Class, Method, Signature, ...)              \
   LLDB_RECORD_(Result(Class::*) Signature, (&Class::Method), this, __VA_ARGS__)

@@ -121,7 +121,7 @@ void SBStream::RedirectToFileHandle(FILE *fh, bool transfer_fh_ownership) {
 }
 
 void SBStream::RedirectToFile(SBFile file) {
-  LLDB_RECORD_METHOD(void, SBStream, RedirectToFile, (SBFile), file)
+  LLDB_RECORD_METHOD(void, SBStream, RedirectToFile, (SBFile), file);
   RedirectToFile(file.GetFile());
 }
 

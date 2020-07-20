@@ -586,7 +586,7 @@ lldb::SBCommand SBCommandInterpreter::AddCommand(
       impl, help);
 
   return LLDB_RECORD_RESULT(AddCommand(name, impl, help, /*syntax=*/nullptr,
-                                       /*auto_repeat_command=*/""))
+                                       /*auto_repeat_command=*/""));
 }
 
 lldb::SBCommand
@@ -598,7 +598,7 @@ SBCommandInterpreter::AddCommand(const char *name,
                       const char *, const char *),
                      name, impl, help, syntax);
   return LLDB_RECORD_RESULT(
-      AddCommand(name, impl, help, syntax, /*auto_repeat_command=*/""))
+      AddCommand(name, impl, help, syntax, /*auto_repeat_command=*/""));
 }
 
 lldb::SBCommand SBCommandInterpreter::AddCommand(
@@ -694,7 +694,7 @@ lldb::SBCommand SBCommand::AddCommand(const char *name,
       (const char *, lldb::SBCommandPluginInterface *, const char *), name,
       impl, help);
   return LLDB_RECORD_RESULT(AddCommand(name, impl, help, /*syntax=*/nullptr,
-                                       /*auto_repeat_command=*/""))
+                                       /*auto_repeat_command=*/""));
 }
 
 lldb::SBCommand SBCommand::AddCommand(const char *name,
@@ -705,7 +705,7 @@ lldb::SBCommand SBCommand::AddCommand(const char *name,
                       const char *, const char *),
                      name, impl, help, syntax);
   return LLDB_RECORD_RESULT(
-      AddCommand(name, impl, help, syntax, /*auto_repeat_command=*/""))
+      AddCommand(name, impl, help, syntax, /*auto_repeat_command=*/""));
 }
 
 lldb::SBCommand SBCommand::AddCommand(const char *name,
