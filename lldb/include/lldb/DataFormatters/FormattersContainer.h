@@ -114,7 +114,7 @@ public:
   }
 
   bool IsRegex() const {
-    return !m_is_str;
+    return m_is_regex;
   }
 };
 

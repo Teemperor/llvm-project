@@ -691,11 +691,11 @@ protected:
           result.SetStatus(eReturnStatusFailed);
           return false;
         }
-        category_sp->GetTypeSummariesContainer()->Delete(typeCS);
-        category_sp->GetTypeFormatsContainer()->Add(std::move(typeRX),
+        category_sp->GetSummariesContainer().Delete(typeCS);
+        category_sp->GetFormatsContainer().Add(std::move(typeRX),
                                                          entry);
       } else
-        category_sp->GetTypeFormatsContainer()->Add(std::move(typeCS), entry);
+        category_sp->GetFormatsContainer().Add(std::move(typeCS), entry);
     }
 
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
@@ -1599,8 +1599,8 @@ bool CommandObjectTypeSummaryAdd::AddSummary(ConstString type_name,
       return false;
     }
 
-    category->GetTypeSummariesContainer()->Delete(type_name);
-    category->GetTypeSummariesContainer()->Add(std::move(typeRX), entry);
+    category->GetSummariesContainer().Delete(type_name);
+    category->GetSummariesContainer().Add(std::move(typeRX), entry);
 
     return true;
   } else if (type == eNamedSummary) {
@@ -1608,7 +1608,7 @@ bool CommandObjectTypeSummaryAdd::AddSummary(ConstString type_name,
     DataVisualization::NamedSummaryFormats::Add(type_name, entry);
     return true;
   } else {
-    category->GetTypeSummariesContainer()->Add(std::move(type_name), entry);
+    category->GetSummariesContainer().Add(std::move(type_name), entry);
     return true;
   }
 }
@@ -2333,12 +2333,12 @@ bool CommandObjectTypeSynthAdd::AddSynth(ConstString type_name,
       return false;
     }
 
-    category->GetTypeSyntheticsContainer()->Delete(type_name);
-    category->GetTypeSyntheticsContainer()->Add(std::move(typeRX), entry);
+    category->GetSyntheticsContainer().Delete(type_name);
+    category->GetSyntheticsContainer().Add(std::move(typeRX), entry);
 
     return true;
   } else {
-    category->GetTypeSyntheticsContainer()->Add(std::move(type_name), entry);
+    category->GetSyntheticsContainer().Add(std::move(type_name), entry);
     return true;
   }
 }
@@ -2459,12 +2459,12 @@ private:
         return false;
       }
 
-      category->GetTypeFiltersContainer()->Delete(type_name);
-      category->GetTypeFiltersContainer()->Add(std::move(typeRX), entry);
+      category->GetFiltersContainer().Delete(type_name);
+      category->GetFiltersContainer().Add(std::move(typeRX), entry);
 
       return true;
     } else {
-      category->GetTypeFiltersContainer()->Add(std::move(type_name), entry);
+      category->GetFiltersContainer().Add(std::move(type_name), entry);
       return true;
     }
   }
