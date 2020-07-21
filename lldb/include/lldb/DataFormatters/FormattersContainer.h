@@ -76,6 +76,18 @@ public:
   TypeMatcher(RegularExpression regex)
       : m_type_name_regex(std::move(regex)), m_is_regex(true) {}
 
+  bool operator==(const TypeMatcher &o) const {
+    if (m_is_regex != o.m_is_regex)
+      return false;
+    if (m_is_regex)
+      return m_type_name_regex == o.m_type_name_regex;
+    return Matches(o.m_type_name);
+  }
+
+  bool IsRegex() const {
+    return m_is_regex;
+  }
+
   /// True iff this matches the given type name.
   bool Matches(ConstString type_name) const {
     if (m_is_regex)
@@ -133,7 +145,7 @@ public:
   bool Delete(TypeMatcher matcher) {
     std::lock_guard<std::recursive_mutex> guard(m_map_mutex);
     for (auto iter = m_map.begin(); iter != m_map.end(); ++iter)
-      if (iter->first.CreatedBySameMatchString(matcher)) {
+      if (iter->first == matcher) {
         m_map.erase(iter);
         if (listener)
           listener->Changed();
@@ -145,7 +157,13 @@ public:
   bool Get(ConstString type, ValueSP &entry) {
     std::lock_guard<std::recursive_mutex> guard(m_map_mutex);
     for (auto &formatter : llvm::reverse(m_map)) {
-      if (formatter.first.Matches(type)) {
+      if (!formatter.first.IsRegex() && formatter.first.Matches(type)) {
+        entry = formatter.second;
+        return true;
+      }
+    }
+    for (auto &formatter : llvm::reverse(m_map)) {
+      if (formatter.first.IsRegex() && formatter.first.Matches(type)) {
         entry = formatter.second;
         return true;
       }

@@ -149,6 +149,7 @@ class ScriptDataFormatterTestCase(TestBase):
         # disable type summary for pointers, and make a Python regex summary
         self.runCmd(
             "type summary add i_am_cool -p --summary-string \"Text summary\"")
+        #self.runCmd("type summary add -x cool --python-script \"%s\"" % script)
         self.runCmd("type summary add -x cool --python-script \"%s\"" % script)
 
         # variables should stick to the type summary

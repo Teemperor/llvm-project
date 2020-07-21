@@ -729,11 +729,11 @@ void FormatManager::LoadSystemFormatters() {
   TypeCategoryImpl::SharedPointer sys_category_sp =
       GetCategory(m_system_category_name);
 
-  sys_category_sp->GetTypeSummariesContainer()->Add(ConstString("char *"),
+  sys_category_sp->GetSummariesContainer().Add(ConstString("char *"),
                                                     string_format);
-  sys_category_sp->GetTypeSummariesContainer()->Add(
+  sys_category_sp->GetSummariesContainer().Add(
       ConstString("unsigned char *"), string_format);
-  sys_category_sp->GetRegexTypeSummariesContainer()->Add(
+  sys_category_sp->GetSummariesContainer().Add(
       std::move(any_size_char_arr), string_array_format);
 
   lldb::TypeSummaryImplSP ostype_summary(
@@ -747,7 +747,7 @@ void FormatManager::LoadSystemFormatters() {
                                   .SetHideItemNames(false),
                               "${var%O}"));
 
-  sys_category_sp->GetTypeSummariesContainer()->Add(ConstString("OSType"),
+  sys_category_sp->GetSummariesContainer().Add(ConstString("OSType"),
                                                     ostype_summary);
 
   TypeFormatImpl::Flags fourchar_flags;

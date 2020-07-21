@@ -129,15 +129,11 @@ enum InstructionType {
 /// Format category entry types
 enum FormatCategoryItem {
   eFormatCategoryItemSummary = 0x0001,
-  eFormatCategoryItemRegexSummary = 0x0002,
-  eFormatCategoryItemFilter = 0x0004,
-  eFormatCategoryItemRegexFilter = 0x0008,
-  eFormatCategoryItemSynth = 0x0010,
-  eFormatCategoryItemRegexSynth = 0x0020,
-  eFormatCategoryItemValue = 0x0040,
-  eFormatCategoryItemRegexValue = 0x0080,
-  eFormatCategoryItemValidator = 0x0100,
-  eFormatCategoryItemRegexValidator = 0x0200
+  eFormatCategoryItemFilter = 0x0002,
+  eFormatCategoryItemSynth = 0x0004,
+  eFormatCategoryItemValue = 0x0008,
+  eFormatCategoryItemValidator = 0x0010,
+  eFormatCategoryItemRegexValidator = 0x0020
 };
 
 /// Expression execution policies

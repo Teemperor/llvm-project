@@ -600,7 +600,7 @@ static void LoadLibCxxFormatters(lldb::TypeCategoryImplSP cpp_category_sp) {
       "libc++ std::atomic synthetic children",
       ConstString("^std::__[[:alnum:]]+::atomic<.+>$"), stl_synth_flags, true);
 
-  cpp_category_sp->GetRegexTypeSyntheticsContainer()->Add(
+  cpp_category_sp->GetSyntheticsContainer().Add(
       RegularExpression("^(std::__[[:alnum:]]+::)deque<.+>(( )?&)?$"),
       SyntheticChildrenSP(new ScriptedSyntheticChildren(
           stl_synth_flags,
@@ -768,26 +768,26 @@ static void LoadLibStdcppFormatters(lldb::TypeCategoryImplSP cpp_category_sp) {
       stl_summary_flags, LibStdcppWStringSummaryProvider,
       "libstdc++ c++11 std::wstring summary provider"));
 
-  cpp_category_sp->GetTypeSummariesContainer()->Add(ConstString("std::string"),
+  cpp_category_sp->GetSummariesContainer().Add(ConstString("std::string"),
                                                     std_string_summary_sp);
-  cpp_category_sp->GetTypeSummariesContainer()->Add(
+  cpp_category_sp->GetSummariesContainer().Add(
       ConstString("std::basic_string<char>"), std_string_summary_sp);
-  cpp_category_sp->GetTypeSummariesContainer()->Add(
+  cpp_category_sp->GetSummariesContainer().Add(
       ConstString("std::basic_string<char,std::char_traits<char>,std::"
                   "allocator<char> >"),
       std_string_summary_sp);
-  cpp_category_sp->GetTypeSummariesContainer()->Add(
+  cpp_category_sp->GetSummariesContainer().Add(
       ConstString("std::basic_string<char, std::char_traits<char>, "
                   "std::allocator<char> >"),
       std_string_summary_sp);
 
-  cpp_category_sp->GetTypeSummariesContainer()->Add(
+  cpp_category_sp->GetSummariesContainer().Add(
       ConstString("std::__cxx11::string"), cxx11_string_summary_sp);
-  cpp_category_sp->GetTypeSummariesContainer()->Add(
+  cpp_category_sp->GetSummariesContainer().Add(
       ConstString("std::__cxx11::basic_string<char, std::char_traits<char>, "
                   "std::allocator<char> >"),
       cxx11_string_summary_sp);
-  cpp_category_sp->GetTypeSummariesContainer()->Add(
+  cpp_category_sp->GetSummariesContainer().Add(
       ConstString("std::__cxx11::basic_string<unsigned char, std::char_traits<unsigned char>, "
                   "std::allocator<unsigned char> >"),
       cxx11_string_summary_sp);
@@ -797,22 +797,22 @@ static void LoadLibStdcppFormatters(lldb::TypeCategoryImplSP cpp_category_sp) {
   lldb::TypeSummaryImplSP std_wstring_summary_sp(
       new StringSummaryFormat(stl_summary_flags, "${var._M_dataplus._M_p%S}"));
 
-  cpp_category_sp->GetTypeSummariesContainer()->Add(ConstString("std::wstring"),
+  cpp_category_sp->GetSummariesContainer().Add(ConstString("std::wstring"),
                                                     std_wstring_summary_sp);
-  cpp_category_sp->GetTypeSummariesContainer()->Add(
+  cpp_category_sp->GetSummariesContainer().Add(
       ConstString("std::basic_string<wchar_t>"), std_wstring_summary_sp);
-  cpp_category_sp->GetTypeSummariesContainer()->Add(
+  cpp_category_sp->GetSummariesContainer().Add(
       ConstString("std::basic_string<wchar_t,std::char_traits<wchar_t>,std::"
                   "allocator<wchar_t> >"),
       std_wstring_summary_sp);
-  cpp_category_sp->GetTypeSummariesContainer()->Add(
+  cpp_category_sp->GetSummariesContainer().Add(
       ConstString("std::basic_string<wchar_t, std::char_traits<wchar_t>, "
                   "std::allocator<wchar_t> >"),
       std_wstring_summary_sp);
 
-  cpp_category_sp->GetTypeSummariesContainer()->Add(
+  cpp_category_sp->GetSummariesContainer().Add(
       ConstString("std::__cxx11::wstring"), cxx11_wstring_summary_sp);
-  cpp_category_sp->GetTypeSummariesContainer()->Add(
+  cpp_category_sp->GetSummariesContainer().Add(
       ConstString("std::__cxx11::basic_string<wchar_t, "
                   "std::char_traits<wchar_t>, std::allocator<wchar_t> >"),
       cxx11_wstring_summary_sp);
@@ -821,32 +821,32 @@ static void LoadLibStdcppFormatters(lldb::TypeCategoryImplSP cpp_category_sp) {
   stl_synth_flags.SetCascades(true).SetSkipPointers(false).SetSkipReferences(
       false);
 
-  cpp_category_sp->GetRegexTypeSyntheticsContainer()->Add(
+  cpp_category_sp->GetSyntheticsContainer().Add(
       RegularExpression("^std::vector<.+>(( )?&)?$"),
       SyntheticChildrenSP(new ScriptedSyntheticChildren(
           stl_synth_flags,
           "lldb.formatters.cpp.gnu_libstdcpp.StdVectorSynthProvider")));
-  cpp_category_sp->GetRegexTypeSyntheticsContainer()->Add(
+  cpp_category_sp->GetSyntheticsContainer().Add(
       RegularExpression("^std::map<.+> >(( )?&)?$"),
       SyntheticChildrenSP(new ScriptedSyntheticChildren(
           stl_synth_flags,
           "lldb.formatters.cpp.gnu_libstdcpp.StdMapSynthProvider")));
-  cpp_category_sp->GetRegexTypeSyntheticsContainer()->Add(
+  cpp_category_sp->GetSyntheticsContainer().Add(
       RegularExpression("^std::(__cxx11::)?list<.+>(( )?&)?$"),
       SyntheticChildrenSP(new ScriptedSyntheticChildren(
           stl_synth_flags,
           "lldb.formatters.cpp.gnu_libstdcpp.StdListSynthProvider")));
   stl_summary_flags.SetDontShowChildren(false);
   stl_summary_flags.SetSkipPointers(true);
-  cpp_category_sp->GetRegexTypeSummariesContainer()->Add(
+  cpp_category_sp->GetSummariesContainer().Add(
       RegularExpression("^std::vector<.+>(( )?&)?$"),
       TypeSummaryImplSP(
           new StringSummaryFormat(stl_summary_flags, "size=${svar%#}")));
-  cpp_category_sp->GetRegexTypeSummariesContainer()->Add(
+  cpp_category_sp->GetSummariesContainer().Add(
       RegularExpression("^std::map<.+> >(( )?&)?$"),
       TypeSummaryImplSP(
           new StringSummaryFormat(stl_summary_flags, "size=${svar%#}")));
-  cpp_category_sp->GetRegexTypeSummariesContainer()->Add(
+  cpp_category_sp->GetSummariesContainer().Add(
       RegularExpression("^std::(__cxx11::)?list<.+>(( )?&)?$"),
       TypeSummaryImplSP(
           new StringSummaryFormat(stl_summary_flags, "size=${svar%#}")));

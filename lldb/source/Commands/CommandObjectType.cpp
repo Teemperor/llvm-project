@@ -694,11 +694,11 @@ protected:
           result.SetStatus(eReturnStatusFailed);
           return false;
         }
-        category_sp->GetRegexTypeSummariesContainer()->Delete(typeCS);
-        category_sp->GetRegexTypeFormatsContainer()->Add(std::move(typeRX),
+        category_sp->GetSummariesContainer().Delete(typeCS);
+        category_sp->GetFormatsContainer().Add(std::move(typeRX),
                                                          entry);
       } else
-        category_sp->GetTypeFormatsContainer()->Add(std::move(typeCS), entry);
+        category_sp->GetFormatsContainer().Add(std::move(typeCS), entry);
     }
 
     result.SetStatus(eReturnStatusSuccessFinishNoResult);
@@ -789,26 +789,16 @@ public:
     DataVisualization::Categories::ForEach(
         [this, &request](const lldb::TypeCategoryImplSP &category_sp) {
           if (CHECK_FORMATTER_KIND_MASK(eFormatCategoryItemValue))
-            category_sp->GetTypeFormatsContainer()->AutoComplete(request);
-          if (CHECK_FORMATTER_KIND_MASK(eFormatCategoryItemRegexValue))
-            category_sp->GetRegexTypeFormatsContainer()->AutoComplete(request);
+            category_sp->GetFormatsContainer().AutoComplete(request);
 
           if (CHECK_FORMATTER_KIND_MASK(eFormatCategoryItemSummary))
-            category_sp->GetTypeSummariesContainer()->AutoComplete(request);
-          if (CHECK_FORMATTER_KIND_MASK(eFormatCategoryItemRegexSummary))
-            category_sp->GetRegexTypeSummariesContainer()->AutoComplete(
-                request);
+            category_sp->GetSummariesContainer().AutoComplete(request);
 
           if (CHECK_FORMATTER_KIND_MASK(eFormatCategoryItemFilter))
-            category_sp->GetTypeFiltersContainer()->AutoComplete(request);
-          if (CHECK_FORMATTER_KIND_MASK(eFormatCategoryItemRegexFilter))
-            category_sp->GetRegexTypeFiltersContainer()->AutoComplete(request);
+            category_sp->GetFiltersContainer().AutoComplete(request);
 
           if (CHECK_FORMATTER_KIND_MASK(eFormatCategoryItemSynth))
-            category_sp->GetTypeSyntheticsContainer()->AutoComplete(request);
-          if (CHECK_FORMATTER_KIND_MASK(eFormatCategoryItemRegexSynth))
-            category_sp->GetRegexTypeSyntheticsContainer()->AutoComplete(
-                request);
+            category_sp->GetSyntheticsContainer().AutoComplete(request);
           return true;
         });
   }
@@ -851,15 +841,19 @@ protected:
       lldb::TypeCategoryImplSP category;
       DataVisualization::Categories::GetCategory(m_options.m_language,
                                                  category);
-      if (category)
+      if (category) {
         delete_category = category->Delete(typeCS, m_formatter_kind_mask);
+        delete_category |= category->Delete(RegularExpression(typeCS.GetStringRef()), m_formatter_kind_mask);
+      }
       extra_deletion = FormatterSpecificDeletion(typeCS);
     } else {
       lldb::TypeCategoryImplSP category;
       DataVisualization::Categories::GetCategory(
           ConstString(m_options.m_category.c_str()), category);
-      if (category)
+      if (category) {
         delete_category = category->Delete(typeCS, m_formatter_kind_mask);
+        delete_category |= category->Delete(RegularExpression(typeCS.GetStringRef()), m_formatter_kind_mask);
+      }
       extra_deletion = FormatterSpecificDeletion(typeCS);
     }
 
@@ -964,7 +958,7 @@ public:
   CommandObjectTypeFormatDelete(CommandInterpreter &interpreter)
       : CommandObjectTypeFormatterDelete(
             interpreter,
-            eFormatCategoryItemValue | eFormatCategoryItemRegexValue,
+            eFormatCategoryItemValue,
             "type format delete",
             "Delete an existing formatting style for a type.") {}
 
@@ -978,7 +972,7 @@ public:
   CommandObjectTypeFormatClear(CommandInterpreter &interpreter)
       : CommandObjectTypeFormatterClear(
             interpreter,
-            eFormatCategoryItemValue | eFormatCategoryItemRegexValue,
+            eFormatCategoryItemValue,
             "type format clear", "Delete all existing format styles.") {}
 };
 
@@ -1101,34 +1095,9 @@ protected:
 
       TypeCategoryImpl::ForEachCallbacks<FormatterType> foreach;
       foreach
-        .SetExact([&result, &formatter_regex, &any_printed](
+        .Set([&result, &formatter_regex, &any_printed](
                       const TypeMatcher &type_matcher,
                       const FormatterSharedPointer &format_sp) -> bool {
-          if (formatter_regex) {
-            bool escape = true;
-            if (type_matcher.CreatedBySameMatchString(
-                    ConstString(formatter_regex->GetText()))) {
-              escape = false;
-            } else if (formatter_regex->Execute(
-                           type_matcher.GetMatchString().GetStringRef())) {
-              escape = false;
-            }
-
-            if (escape)
-              return true;
-          }
-
-          any_printed = true;
-          result.GetOutputStream().Printf(
-              "%s: %s\n", type_matcher.GetMatchString().GetCString(),
-              format_sp->GetDescription().c_str());
-          return true;
-        });
-
-      foreach
-        .SetWithRegex([&result, &formatter_regex, &any_printed](
-                          const TypeMatcher &type_matcher,
-                          const FormatterSharedPointer &format_sp) -> bool {
           if (formatter_regex) {
             bool escape = true;
             if (type_matcher.CreatedBySameMatchString(
@@ -1660,8 +1629,8 @@ bool CommandObjectTypeSummaryAdd::AddSummary(ConstString type_name,
       return false;
     }
 
-    category->GetRegexTypeSummariesContainer()->Delete(type_name);
-    category->GetRegexTypeSummariesContainer()->Add(std::move(typeRX), entry);
+    category->GetSummariesContainer().Delete(type_name);
+    category->GetSummariesContainer().Add(std::move(typeRX), entry);
 
     return true;
   } else if (type == eNamedSummary) {
@@ -1669,7 +1638,7 @@ bool CommandObjectTypeSummaryAdd::AddSummary(ConstString type_name,
     DataVisualization::NamedSummaryFormats::Add(type_name, entry);
     return true;
   } else {
-    category->GetTypeSummariesContainer()->Add(std::move(type_name), entry);
+    category->GetSummariesContainer().Add(std::move(type_name), entry);
     return true;
   }
 }
@@ -1681,7 +1650,7 @@ public:
   CommandObjectTypeSummaryDelete(CommandInterpreter &interpreter)
       : CommandObjectTypeFormatterDelete(
             interpreter,
-            eFormatCategoryItemSummary | eFormatCategoryItemRegexSummary,
+            eFormatCategoryItemSummary,
             "type summary delete", "Delete an existing summary for a type.") {}
 
   ~CommandObjectTypeSummaryDelete() override = default;
@@ -1699,7 +1668,7 @@ public:
   CommandObjectTypeSummaryClear(CommandInterpreter &interpreter)
       : CommandObjectTypeFormatterClear(
             interpreter,
-            eFormatCategoryItemSummary | eFormatCategoryItemRegexSummary,
+            eFormatCategoryItemSummary,
             "type summary clear", "Delete all existing summaries.") {}
 
 protected:
@@ -2248,7 +2217,7 @@ public:
   CommandObjectTypeFilterDelete(CommandInterpreter &interpreter)
       : CommandObjectTypeFormatterDelete(
             interpreter,
-            eFormatCategoryItemFilter | eFormatCategoryItemRegexFilter,
+            eFormatCategoryItemFilter,
             "type filter delete", "Delete an existing filter for a type.") {}
 
   ~CommandObjectTypeFilterDelete() override = default;
@@ -2263,7 +2232,7 @@ public:
   CommandObjectTypeSynthDelete(CommandInterpreter &interpreter)
       : CommandObjectTypeFormatterDelete(
             interpreter,
-            eFormatCategoryItemSynth | eFormatCategoryItemRegexSynth,
+            eFormatCategoryItemSynth,
             "type synthetic delete",
             "Delete an existing synthetic provider for a type.") {}
 
@@ -2279,7 +2248,7 @@ public:
   CommandObjectTypeFilterClear(CommandInterpreter &interpreter)
       : CommandObjectTypeFormatterClear(
             interpreter,
-            eFormatCategoryItemFilter | eFormatCategoryItemRegexFilter,
+            eFormatCategoryItemFilter,
             "type filter clear", "Delete all existing filter.") {}
 };
 
@@ -2291,7 +2260,7 @@ public:
   CommandObjectTypeSynthClear(CommandInterpreter &interpreter)
       : CommandObjectTypeFormatterClear(
             interpreter,
-            eFormatCategoryItemSynth | eFormatCategoryItemRegexSynth,
+            eFormatCategoryItemSynth,
             "type synthetic clear",
             "Delete all existing synthetic providers.") {}
 };
@@ -2418,7 +2387,7 @@ bool CommandObjectTypeSynthAdd::AddSynth(ConstString type_name,
   }
 
   if (category->AnyMatches(
-          type_name, eFormatCategoryItemFilter | eFormatCategoryItemRegexFilter,
+          type_name, eFormatCategoryItemFilter,
           false)) {
     if (error)
       error->SetErrorStringWithFormat("cannot add synthetic for type %s when "
@@ -2436,12 +2405,12 @@ bool CommandObjectTypeSynthAdd::AddSynth(ConstString type_name,
       return false;
     }
 
-    category->GetRegexTypeSyntheticsContainer()->Delete(type_name);
-    category->GetRegexTypeSyntheticsContainer()->Add(std::move(typeRX), entry);
+    category->GetSyntheticsContainer().Delete(type_name);
+    category->GetSyntheticsContainer().Add(std::move(typeRX), entry);
 
     return true;
   } else {
-    category->GetTypeSyntheticsContainer()->Add(std::move(type_name), entry);
+    category->GetSyntheticsContainer().Add(std::move(type_name), entry);
     return true;
   }
 }
@@ -2543,7 +2512,7 @@ private:
     }
 
     if (category->AnyMatches(
-            type_name, eFormatCategoryItemSynth | eFormatCategoryItemRegexSynth,
+            type_name, eFormatCategoryItemSynth,
             false)) {
       if (error)
         error->SetErrorStringWithFormat("cannot add filter for type %s when "
@@ -2562,12 +2531,12 @@ private:
         return false;
       }
 
-      category->GetRegexTypeFiltersContainer()->Delete(type_name);
-      category->GetRegexTypeFiltersContainer()->Add(std::move(typeRX), entry);
+      category->GetFiltersContainer().Delete(type_name);
+      category->GetFiltersContainer().Add(std::move(typeRX), entry);
 
       return true;
     } else {
-      category->GetTypeFiltersContainer()->Add(std::move(type_name), entry);
+      category->GetFiltersContainer().Add(std::move(type_name), entry);
       return true;
     }
   }
