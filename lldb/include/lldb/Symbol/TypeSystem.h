@@ -217,8 +217,7 @@ public:
 
   // Creating related types
 
-  virtual CompilerType GetArrayElementType(lldb::opaque_compiler_type_t type,
-                                           uint64_t *stride) = 0;
+  virtual CompilerType GetArrayElementType(lldb::opaque_compiler_type_t type) = 0;
 
   virtual CompilerType GetArrayType(lldb::opaque_compiler_type_t type,
                                     uint64_t size);

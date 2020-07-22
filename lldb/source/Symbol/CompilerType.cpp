@@ -317,9 +317,9 @@ unsigned CompilerType::GetTypeQualifiers() const {
 
 // Creating related types
 
-CompilerType CompilerType::GetArrayElementType(uint64_t *stride) const {
+CompilerType CompilerType::GetArrayElementType() const {
   if (IsValid()) {
-    return m_type_system->GetArrayElementType(m_type, stride);
+    return m_type_system->GetArrayElementType(m_type);
   }
   return CompilerType();
 }

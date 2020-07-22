@@ -177,7 +177,7 @@ public:
 
   /// Creating related types.
   /// \{
-  CompilerType GetArrayElementType(uint64_t *stride = nullptr) const;
+  CompilerType GetArrayElementType() const;
 
   CompilerType GetArrayType(uint64_t size) const;
 
