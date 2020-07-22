@@ -298,7 +298,11 @@ void CommandCompletions::SourceFiles(CommandInterpreter &interpreter,
 static void DiskFilesOrDirectories(const llvm::Twine &partial_name,
                                    bool only_directories,
                                    CompletionRequest &request,
-                                   TildeExpressionResolver &Resolver) {
+                                   TildeExpressionResolver &Resolver,
+                                   FileSystem *fs = nullptr) {
+  if (fs == nullptr)
+    fs = &FileSystem::Instance();
+
   llvm::SmallString<256> CompletionBuffer;
   llvm::SmallString<256> Storage;
   partial_name.toVector(CompletionBuffer);
@@ -308,8 +312,20 @@ static void DiskFilesOrDirectories(const llvm::Twine &partial_name,
 
   namespace path = llvm::sys::path;
 
+  // Check for the special case of a '//' prefix in the path which has
+  // implementation-defined meaning, so it's better to return nothing than to
+  // assume how the Host OS is interpreting this path and maybe return the wrong
+  // result. Note that '///' is not considered implementation-defined.
+  if (CompletionBuffer.str().startswith("//") &&
+      (CompletionBuffer.size() == 2 ||
+       !path::is_separator(CompletionBuffer[2])))
+    return;
+
   llvm::StringRef SearchDir;
   llvm::StringRef PartialItem;
+  // Set to true if this is just completing an alias of the root directory.
+  // E.g. completing '/' or '///', but not '/filename_prefix_'.
+  bool completing_root_dir = false;
 
   if (CompletionBuffer.startswith("~")) {
     llvm::StringRef Buffer(CompletionBuffer);
@@ -361,17 +377,35 @@ static void DiskFilesOrDirectories(const llvm::Twine &partial_name,
     SearchDir = Storage;
   } else {
     SearchDir = path::parent_path(CompletionBuffer);
+
+    // The only absolute path that has no parent path is the plain root
+    // directory path (e.g., '/' or '///'). Set the directory to search to be
+    // the root directory as an empty path means searching the current working
+    // directory.
+    if (SearchDir.empty() && path::is_absolute(CompletionBuffer)) {
+      SearchDir = CompletionBuffer;
+      completing_root_dir = true;
+    }
   }
 
   size_t FullPrefixLen = CompletionBuffer.size();
 
-  PartialItem = path::filename(CompletionBuffer);
+  // Figure out the file name prefix that should be used to filter unrelated
+  // completions. E.g. '/foo/bar' -> 'bar' to filter out paths like '/foo/yum'
+  // and keep valid completions like '/foo/barar'.
+  // Special case: If this is just completion an alias of the root directory,
+  // then path::filename would just return the full path ('/') which is not
+  // a valid file name prefix. Instead just leave the file name prefix empty
+  // to list all files.
+  if (!completing_root_dir) {
+    PartialItem = path::filename(CompletionBuffer);
 
-  // path::filename() will return "." when the passed path ends with a
-  // directory separator. We have to filter those out, but only when the
-  // "." doesn't come from the completion request itself.
-  if (PartialItem == "." && path::is_separator(CompletionBuffer.back()))
-    PartialItem = llvm::StringRef();
+    // path::filename() will return "." when the passed path ends with a
+    // directory separator. We have to filter those out, but only when the
+    // "." doesn't come from the completion request itself.
+    if (PartialItem == "." && path::is_separator(CompletionBuffer.back()))
+      PartialItem = llvm::StringRef();
+  }
 
   if (SearchDir.empty()) {
     llvm::sys::fs::current_path(Storage);
@@ -382,13 +416,12 @@ static void DiskFilesOrDirectories(const llvm::Twine &partial_name,
   // SearchDir now contains the directory to search in, and Prefix contains the
   // text we want to match against items in that directory.
 
-  FileSystem &fs = FileSystem::Instance();
   std::error_code EC;
-  llvm::vfs::directory_iterator Iter = fs.DirBegin(SearchDir, EC);
+  llvm::vfs::directory_iterator Iter = fs->DirBegin(SearchDir, EC);
   llvm::vfs::directory_iterator End;
   for (; Iter != End && !EC; Iter.increment(EC)) {
     auto &Entry = *Iter;
-    llvm::ErrorOr<llvm::vfs::Status> Status = fs.GetStatus(Entry.path());
+    llvm::ErrorOr<llvm::vfs::Status> Status = fs->GetStatus(Entry.path());
 
     if (!Status)
       continue;
@@ -406,9 +439,9 @@ static void DiskFilesOrDirectories(const llvm::Twine &partial_name,
     if (Status->isSymlink()) {
       FileSpec symlink_filespec(Entry.path());
       FileSpec resolved_filespec;
-      auto error = fs.ResolveSymbolicLink(symlink_filespec, resolved_filespec);
+      auto error = fs->ResolveSymbolicLink(symlink_filespec, resolved_filespec);
       if (error.Success())
-        is_dir = fs.IsDirectory(symlink_filespec);
+        is_dir = fs->IsDirectory(symlink_filespec);
     }
 
     if (only_directories && !is_dir)
@@ -433,11 +466,12 @@ static void DiskFilesOrDirectories(const llvm::Twine &partial_name,
 
 static void DiskFilesOrDirectories(const llvm::Twine &partial_name,
                                    bool only_directories, StringList &matches,
-                                   TildeExpressionResolver &Resolver) {
+                                   TildeExpressionResolver &Resolver,
+                                   FileSystem *f = nullptr) {
   CompletionResult result;
   std::string partial_name_str = partial_name.str();
   CompletionRequest request(partial_name_str, partial_name_str.size(), result);
-  DiskFilesOrDirectories(partial_name, only_directories, request, Resolver);
+  DiskFilesOrDirectories(partial_name, only_directories, request, Resolver, f);
   result.GetMatches(matches);
 }
 
@@ -456,8 +490,9 @@ void CommandCompletions::DiskFiles(CommandInterpreter &interpreter,
 
 void CommandCompletions::DiskFiles(const llvm::Twine &partial_file_name,
                                    StringList &matches,
-                                   TildeExpressionResolver &Resolver) {
-  DiskFilesOrDirectories(partial_file_name, false, matches, Resolver);
+                                   TildeExpressionResolver &Resolver,
+                                   FileSystem *fs) {
+  DiskFilesOrDirectories(partial_file_name, false, matches, Resolver, fs);
 }
 
 void CommandCompletions::DiskDirectories(CommandInterpreter &interpreter,

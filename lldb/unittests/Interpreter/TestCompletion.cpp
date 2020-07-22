@@ -227,6 +227,88 @@ TEST_F(CompletionTest, FileCompletionAbsolute) {
   EXPECT_TRUE(HasEquivalentFile(FileFoo, Results));
 }
 
+TEST_F(CompletionTest, RootDir) {
+  // Try completing files in the root directory.
+  const std::string sep = std::string(llvm::sys::path::get_separator());
+  const std::vector<std::string> root_dir_aliases = {
+      sep,                         // Plain root dir: '/'
+      sep + sep + sep,             // Triple-slash root dir: '///'
+      sep + "." + sep,             // By accessing the current dir: '/./'
+      sep + "." + sep + "." + sep, // Twice accessing current dir: '/././'
+  };
+
+  // Construct a test FileSystem that has a dummy file in the root dir.
+  using namespace llvm::vfs;
+  llvm::IntrusiveRefCntPtr<InMemoryFileSystem> dummy_fs(new InMemoryFileSystem);
+  std::unique_ptr<llvm::MemoryBuffer> buffer(
+      llvm::MemoryBuffer::getMemBuffer("", "dummy file buffer"));
+  const std::string dummy_file_name = "lldb_dummy_file";
+  dummy_fs->addFileNoOwn(sep + dummy_file_name, static_cast<time_t>(0),
+                         buffer.get());
+  lldb_private::FileSystem fs(dummy_fs);
+
+  for (const std::string &root_dir_alias : root_dir_aliases) {
+    SCOPED_TRACE("Root directory: " + root_dir_alias);
+    const std::string path_to_find = root_dir_alias + dummy_file_name;
+
+    StandardTildeExpressionResolver Resolver;
+    StringList Results;
+    // Try completing with just the directory. That should show the artificial
+    // file.
+    CommandCompletions::DiskFiles(root_dir_alias, Results, Resolver, &fs);
+    EXPECT_TRUE(llvm::is_contained(Results, path_to_find))
+        << "Results:\n"
+        << Results.CopyList();
+
+    // Try again but with a file part "lldb_" in the path.
+    Results.Clear();
+    CommandCompletions::DiskFiles(root_dir_alias + "lldb_", Results, Resolver,
+                                  &fs);
+    EXPECT_TRUE(llvm::is_contained(Results, path_to_find))
+        << "Results:\n"
+        << Results.CopyList();
+
+    // Try again but with a file part "unknown" in the path that shouldn't
+    // match our file.
+    Results.Clear();
+    CommandCompletions::DiskFiles(root_dir_alias + "unknown", Results, Resolver,
+                                  &fs);
+    EXPECT_TRUE(!llvm::is_contained(Results, path_to_find))
+        << "Results:\n"
+        << Results.CopyList();
+  }
+
+  // Test the '//' prefix which has an implementation-defined meaning. LLDB
+  // currently provides no completions for path in this directory.
+  {
+    StandardTildeExpressionResolver Resolver;
+    StringList Results;
+    CommandCompletions::DiskFiles("//", Results, Resolver, &fs);
+    EXPECT_EQ(Results.GetSize(), 0U);
+
+    Results.Clear();
+    CommandCompletions::DiskFiles("//lldb_", Results, Resolver, &fs);
+    EXPECT_EQ(Results.GetSize(), 0U);
+
+    Results.Clear();
+    CommandCompletions::DiskFiles("//net/lldb_", Results, Resolver, &fs);
+    EXPECT_EQ(Results.GetSize(), 0U);
+
+    // Same with backslashes as separators.
+    Results.Clear();
+    CommandCompletions::DiskFiles("\\\\", Results, Resolver, &fs);
+    EXPECT_EQ(Results.GetSize(), 0U);
+
+    Results.Clear();
+    CommandCompletions::DiskFiles("\\\\lldb_", Results, Resolver, &fs);
+    EXPECT_EQ(Results.GetSize(), 0U);
+
+    Results.Clear();
+    CommandCompletions::DiskFiles("\\\\net\\lldb_", Results, Resolver, &fs);
+    EXPECT_EQ(Results.GetSize(), 0U);
+  }
+}
+
 TEST_F(CompletionTest, DirCompletionUsername) {
   MockTildeExpressionResolver Resolver("James", BaseDir);
   Resolver.AddKnownUser("Kirk", DirFooB);

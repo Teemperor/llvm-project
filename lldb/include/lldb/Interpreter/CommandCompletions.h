@@ -21,6 +21,8 @@
 
 namespace lldb_private {
 class TildeExpressionResolver;
+class FileSystem;
+
 class CommandCompletions {
 public:
   enum CommonCompletionTypes {
@@ -51,8 +53,14 @@ public:
   static void DiskFiles(CommandInterpreter &interpreter,
                         CompletionRequest &request, SearchFilter *searcher);
 
+  /// Provides completions for file and directory paths.
+  /// \param partial_file_name The path to complete.
+  /// \param matches The found completions for the given path.
+  /// \param Resolver Used to resolve tilde occurrences in the path.
+  /// \param fs The FileSystem to use when searching files and directories.
   static void DiskFiles(const llvm::Twine &partial_file_name,
-                        StringList &matches, TildeExpressionResolver &Resolver);
+                        StringList &matches, TildeExpressionResolver &Resolver,
+                        FileSystem *fs = nullptr);
 
   static void DiskDirectories(CommandInterpreter &interpreter,
                               CompletionRequest &request,
