@@ -48,19 +48,13 @@ protected:
       state = process->GetState();
 
       if (process->IsAlive() && state != eStateConnected) {
-        char message[1024];
+        std::string message;
         if (process->GetState() == eStateAttaching)
-          ::snprintf(message, sizeof(message),
-                     "There is a pending attach, abort it and %s?",
-                     m_new_process_action.c_str());
+          message = llvm::formatv("There is a pending attach, abort it and {0}?", m_new_process_action).str();
         else if (process->GetShouldDetach())
-          ::snprintf(message, sizeof(message),
-                     "There is a running process, detach from it and %s?",
-                     m_new_process_action.c_str());
+          message = llvm::formatv("There is a running process, detach from it and {0}?", m_new_process_action).str();
         else
-          ::snprintf(message, sizeof(message),
-                     "There is a running process, kill it and %s?",
-                     m_new_process_action.c_str());
+          message = llvm::formatv("There is a running process, kill it and {0}?", m_new_process_action).str();
 
         if (!m_interpreter.Confirm(message, true)) {
           result.SetStatus(eReturnStatusFailed);

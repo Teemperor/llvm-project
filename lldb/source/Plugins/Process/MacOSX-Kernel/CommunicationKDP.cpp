@@ -198,7 +198,7 @@ size_t CommunicationKDP::WaitForPacketWithTimeoutMicroSecondsNoLock(
       "Read (buffer, sizeof(buffer), timeout_usec = 0x{0:x}, "
                   "status = {1}, error = {2}) => bytes_read = {4}",
                   timeout_usec,
-                  Communication::ConnectionStatusAsCString(status),
+                  Communication::ConnectionStatusAsString(status),
                   error, bytes_read);
 
     if (bytes_read > 0) {

@@ -1768,9 +1768,7 @@ ValueObjectSP ValueObject::GetSyntheticChildAtOffset(
   ValueObjectSP synthetic_child_sp;
 
   if (name_const_str.IsEmpty()) {
-    char name_str[64];
-    snprintf(name_str, sizeof(name_str), "@%i", offset);
-    name_const_str.SetCString(name_str);
+    name_const_str.SetString("@" + std::to_string(offset));
   }
 
   // Check if we have already created a synthetic array member in this valid
