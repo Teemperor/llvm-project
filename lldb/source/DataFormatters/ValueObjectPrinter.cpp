@@ -477,6 +477,9 @@ bool ValueObjectPrinter::ShouldPrintChildren(
   if (is_uninit)
     return false;
 
+  if (m_valobj->GetTypeImpl().GetCompilerType(false).IsPointerType())
+    return true;
+
   // if the user has specified an element count, always print children as it is
   // explicit user demand being honored
   if (m_options.m_pointer_as_array)

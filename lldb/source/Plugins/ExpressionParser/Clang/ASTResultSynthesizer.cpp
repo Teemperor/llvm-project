@@ -282,6 +282,13 @@ bool ASTResultSynthesizer::SynthesizeBodyResult(CompoundStmt *Body,
   //
   //   - During dematerialization, $0 is ignored.
 
+
+  if (last_expr->getType()->getAs<ObjCObjectType>()) {
+    ExprResult address_of_expr =
+        m_sema->CreateBuiltinUnaryOp(SourceLocation(), UO_AddrOf, last_expr);
+    last_expr = address_of_expr.get();
+  }
+
   bool is_lvalue = last_expr->getValueKind() == VK_LValue &&
                    last_expr->getObjectKind() == OK_Ordinary;
 

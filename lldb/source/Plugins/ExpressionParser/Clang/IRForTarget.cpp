@@ -285,11 +285,8 @@ bool IRForTarget::CreateResultVariable(llvm::Function &llvm_function) {
       m_result_type = lldb_private::TypeFromParser(
           m_decl_map->GetTypeSystem()->GetType(element_qual_type));
     } else if (pointer_objcobjpointertype) {
-      clang::QualType element_qual_type =
-          clang::QualType(pointer_objcobjpointertype->getObjectType(), 0);
-
       m_result_type = lldb_private::TypeFromParser(
-          m_decl_map->GetTypeSystem()->GetType(element_qual_type));
+          m_decl_map->GetTypeSystem()->GetType(pointer_qual_type));
     } else {
       LLDB_LOG(log, "Expected result to have pointer type, but it did not");
 

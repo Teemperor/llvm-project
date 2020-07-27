@@ -7,7 +7,6 @@ class TestBitfieldIvars(TestBase):
 
     mydir = TestBase.compute_mydir(__file__)
 
-
     @skipUnlessDarwin
     def test(self):
         self.build()
@@ -26,15 +25,13 @@ class TestBitfieldIvars(TestBase):
                                              'field2 =', '3',
                                              'field3 =', '4'])
 
-    # This test is meant to be xfailed, but running the test triggers an ASan
-    # issue, so it must be skipped for now.
-    @skipIf
+    @skipUnlessDarwin
     def testExprWholeObject(self):
         self.build()
         lldbutil.run_to_source_breakpoint(self, "// break here", lldb.SBFileSpec("main.m"))
 
         ## FIXME expression with individual bit-fields obtains correct values but not with the whole object
-        self.expect("expr *hb2", substrs = [ 'x =', '100',
-                                             'field1 =', '10',
-                                             'field2 =', '3',
-                                             'field3 =', '4'])
+        self.expect("expr *hb2", substrs = [ 'x = 100',
+                                             'field1 = 10',
+                                             'field2 = 3',
+                                             'field3 = 4'])
