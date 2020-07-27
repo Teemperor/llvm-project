@@ -26,16 +26,23 @@ CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
       "deque",
       "forward_list",
       "list",
+      "map",
       "queue",
       "stack",
       "vector",
+      "set",
+      "unordered_set",
+      "unordered_map",
       // pointers
       "shared_ptr",
       "unique_ptr",
       "weak_ptr",
       // utility
       "allocator",
+      "less",
       "pair",
+      "hash",
+      "equal_to"
   };
   m_supported_templates.insert(supported_names.begin(), supported_names.end());
 }
