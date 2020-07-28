@@ -198,6 +198,8 @@ public:
     }
 
     DeclsTy &Vec = *getAsVector();
+    assert(llvm::find(Vec, D) == Vec.end() &&
+           "Trying to add decl that already exists in list");
 
     // Using directives end up in a special entry which contains only
     // other using directives, so all this logic is wasted for them.
