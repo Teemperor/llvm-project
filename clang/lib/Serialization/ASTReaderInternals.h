@@ -62,9 +62,8 @@ public:
       // Just use a linear scan unless we have more than a few IDs.
       if (Found.empty() && !Data.empty()) {
         if (Data.size() <= 4) {
-          for (auto I : Found)
-            if (I == ID)
-              return;
+          if (llvm::is_contained(Data, ID))
+            return;
           Data.push_back(ID);
           return;
         }
