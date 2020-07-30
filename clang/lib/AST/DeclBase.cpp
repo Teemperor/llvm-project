@@ -1570,20 +1570,27 @@ void DeclContext::addHiddenDecl(Decl *D) {
   }
 }
 
-void DeclContext::addDecl(Decl *D) {
+void DeclContext::addDeclImpl(Decl *D, bool Internal) {
+  DeclContext *PrimaryContext = nullptr;
+  NamedDecl *ND = nullptr;
+  // Calculate the primary context before adding the decl. Calculating the
+  // primary context might end up unintentionally adding the new decl to the
+  // same lookup we will manually add it at the end of this function.
+  if ((ND = dyn_cast<NamedDecl>(D)))
+    PrimaryContext = ND->getDeclContext()->getPrimaryContext();
+
   addHiddenDecl(D);
 
-  if (auto *ND = dyn_cast<NamedDecl>(D))
-    ND->getDeclContext()->getPrimaryContext()->
-        makeDeclVisibleInContextWithFlags(ND, false, true);
+  if (ND)
+    PrimaryContext->makeDeclVisibleInContextWithFlags(ND, Internal, true);
+}
+
+void DeclContext::addDecl(Decl *D) {
+  addDeclImpl(D, /*Internal*/false);
 }
 
 void DeclContext::addDeclInternal(Decl *D) {
-  addHiddenDecl(D);
-
-  if (auto *ND = dyn_cast<NamedDecl>(D))
-    ND->getDeclContext()->getPrimaryContext()->
-        makeDeclVisibleInContextWithFlags(ND, true, true);
+  addDeclImpl(D, /*Internal*/true);
 }
 
 /// buildLookup - Build the lookup data structure with all of the

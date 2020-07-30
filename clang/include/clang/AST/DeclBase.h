@@ -2427,6 +2427,8 @@ public:
                    bool Deserialize = false) const;
 
 private:
+  void addDeclImpl(Decl *D, bool Internal);
+
   /// Whether this declaration context has had externally visible
   /// storage added since the last lookup. In this case, \c LookupPtr's
   /// invariant may not hold and needs to be fixed before we perform
