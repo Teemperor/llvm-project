@@ -1,0 +1,10 @@
+diff a/lldb/source/Core/IOHandler.cpp b/lldb/source/Core/IOHandler.cpp	(rejected hunks)
+@@ -258,6 +266,8 @@
+                                      m_color_prompts));
+     m_editline_up->SetIsInputCompleteCallback(IsInputCompleteCallback, this);
+     m_editline_up->SetAutoCompleteCallback(AutoCompleteCallback, this);
++    if (debugger.GetUseAutosuggestion() && debugger.GetUseColor())
++      m_editline_up->SetSuggestionCallback(SuggestionCallback, this);
+     // See if the delegate supports fixing indentation
+     const char *indent_chars = delegate.IOHandlerGetFixIndentationCharacters();
+     if (indent_chars) {
