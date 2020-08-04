@@ -261,15 +261,40 @@ public:
 
   struct ASTContextMetadata {
     ASTContextMetadata(clang::ASTContext *dst_ctx)
-        : m_dst_ctx(dst_ctx), m_delegates(), m_origins(), m_namespace_maps(),
-          m_map_completer(nullptr) {}
+        : m_dst_ctx(dst_ctx) {}
 
     clang::ASTContext *m_dst_ctx;
     DelegateMap m_delegates;
-    OriginMap m_origins;
 
     NamespaceMetaMap m_namespace_maps;
-    MapCompleter *m_map_completer;
+    MapCompleter *m_map_completer = nullptr;
+
+    void setOrigin(const clang::Decl *decl, DeclOrigin origin) {
+      m_origins[decl] = origin;
+    }
+    void removeOrigin(const clang::Decl *decl) {
+      m_origins.erase(decl);
+    }
+    void removeOriginsWithContext(clang::ASTContext *ctx) {
+      for (OriginMap::iterator iter = m_origins.begin();
+           iter != m_origins.end();) {
+        if (iter->second.ctx == ctx)
+          m_origins.erase(iter++);
+        else
+          ++iter;
+      }
+    }
+    DeclOrigin getOrigin(const clang::Decl *decl) const {
+      auto iter = m_origins.find(decl);
+      if (iter == m_origins.end())
+        return DeclOrigin();
+      return iter->second;
+    }
+    bool hasOrigin(const clang::Decl *decl) const {
+      return getOrigin(decl).Valid();
+    }
+  private:
+    OriginMap m_origins;
   };
 
   typedef std::shared_ptr<ASTContextMetadata> ASTContextMetadataSP;
