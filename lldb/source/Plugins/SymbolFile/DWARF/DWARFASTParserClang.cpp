@@ -2316,6 +2316,58 @@ Function *DWARFASTParserClang::ParseFunctionFromDWARF(CompileUnit &comp_unit,
   return nullptr;
 }
 
+llvm::Expected<llvm::APInt> DWARFASTParserClang::ExtractIntFromFormValue(
+    const CompilerType &int_type, const DWARFFormValue &form_value) const {
+  clang::QualType qt = ClangUtil::GetQualType(int_type);
+  assert(qt->isIntegralOrEnumerationType());
+  TypeSystemClang &ts = *llvm::cast<TypeSystemClang>(int_type.GetTypeSystem());
+  clang::ASTContext &ast = ts.getASTContext();
+
+  const unsigned type_bits = ast.getIntWidth(qt);
+  const bool is_unsigned = qt->isUnsignedIntegerType();
+
+  // The maximum int size supported at the moment by this function. Limited
+  // by the uint64_t return type of DWARFFormValue::Signed/Unsigned.
+  const std::size_t max_bit_size = 64;
+
+  // For values bigger than 64 bit (e.g. __int128_t values),
+  // DWARFFormValue's Signed/Unsigned functions will return wrong results so
+  // emit an error for now.
+  if (type_bits > max_bit_size) {
+    auto msg = llvm::formatv("Can only parse integers with up to {0} bits, but "
+                             "given integer has {1} bits.",
+                             max_bit_size, type_bits);
+    return llvm::createStringError(llvm::inconvertibleErrorCode(), msg.str());
+  }
+
+  // Construct an APInt with the maximum bit size and the given integer.
+  llvm::APInt result(max_bit_size, form_value.Unsigned(), !is_unsigned);
+
+  // Calculate how many bits are required to represent the input value.
+  // For unsigned types, take the number of active bits in the APInt.
+  // For signed types, ask APSInt how many bits are required to represent the
+  // signed integer.
+  const unsigned required_bits =
+      is_unsigned ? result.getActiveBits() : result.getMinSignedBits();
+
+  // If the input value doesn't fit into the integer type, return an error.
+  if (required_bits > type_bits) {
+    std::string value_as_str = is_unsigned
+                                   ? std::to_string(form_value.Unsigned())
+                                   : std::to_string(form_value.Signed());
+    auto msg = llvm::formatv("Can't store {0} value {1} in integer with {2} "
+                             "bits.",
+                             (is_unsigned ? "unsigned" : "signed"),
+                             value_as_str, type_bits);
+    return llvm::createStringError(llvm::inconvertibleErrorCode(), msg.str());
+  }
+
+  // Trim the result to the bit width our the int type.
+  if (result.getBitWidth() > type_bits)
+    result = result.trunc(type_bits);
+  return result;
+}
+
 void DWARFASTParserClang::ParseSingleMember(
     const DWARFDIE &die, const DWARFDIE &parent_die,
     const lldb_private::CompilerType &class_clang_type,
@@ -2324,6 +2376,9 @@ void DWARFASTParserClang::ParseSingleMember(
     DelayedPropertyList &delayed_properties,
     lldb_private::ClangASTImporter::LayoutInfo &layout_info,
     FieldInfo &last_field_info) {
+  Log *log = LogChannelDWARF::GetLogIfAll(DWARF_LOG_TYPE_COMPLETION |
+                                          DWARF_LOG_LOOKUPS);
+
   ModuleSP module_sp = parent_die.GetDWARF()->GetObjectFile()->GetModule();
   const dw_tag_t tag = die.Tag();
   // Get the parent byte size so we can verify any members will fit
@@ -2352,6 +2407,7 @@ void DWARFASTParserClang::ParseSingleMember(
   int64_t bit_offset = 0;
   uint64_t data_bit_offset = UINT64_MAX;
   size_t bit_size = 0;
+  llvm::Optional<DWARFFormValue> const_value_form;
   bool is_external =
       false; // On DW_TAG_members, this means the member is static
   uint32_t i;
@@ -2382,6 +2438,9 @@ void DWARFASTParserClang::ParseSingleMember(
         break;
       case DW_AT_byte_size:
         byte_size = form_value.Unsigned();
+        break;
+      case DW_AT_const_value:
+        const_value_form = form_value;
         break;
       case DW_AT_data_bit_offset:
         data_bit_offset = form_value.Unsigned();
@@ -2508,9 +2567,21 @@ void DWARFASTParserClang::ParseSingleMember(
     if (var_type) {
       if (accessibility == eAccessNone)
         accessibility = eAccessPublic;
-      TypeSystemClang::AddVariableToRecordType(
-          class_clang_type, name, var_type->GetLayoutCompilerType(),
-          accessibility);
+      CompilerType ct = var_type->GetLayoutCompilerType();
+      clang::VarDecl *v = TypeSystemClang::AddVariableToRecordType(
+          class_clang_type, name, ct, accessibility);
+
+      if (!const_value_form)
+        return;
+      llvm::Expected<llvm::APInt> const_value_or_err =
+          ExtractIntFromFormValue(ct, *const_value_form);
+      if (!const_value_or_err) {
+        LLDB_LOG_ERROR(log, const_value_or_err.takeError(),
+                       "Failed to add const value to variable {1}: {0}",
+                       v->getQualifiedNameAsString());
+        return;
+      }
+      TypeSystemClang::SetIntegerInitializerForVariable(v, *const_value_or_err);
     }
     return;
   }
