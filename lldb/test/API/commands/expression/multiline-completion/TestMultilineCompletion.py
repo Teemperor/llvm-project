@@ -11,6 +11,21 @@ class MultilineCompletionTest(PExpectTest):
 
     mydir = TestBase.compute_mydir(__file__)
 
+    def start_expression_editor(self):
+        """ Starts the multiline expression editor. """
+        # Expected output when the multiline expression editor started.
+        multiline_editor_needle = "terminate with an empty line to evaluate"
+
+        self.child.send("expression\n")
+        self.child.expect_exact(multiline_editor_needle)
+
+    def exit_expression_editor(self):
+        """ Exits the multiline expression editor. """
+        # Send two newlines. The first newline creates a new empty line
+        # in the editor and the second newline will exit the editor.
+        self.child.send("\n\n")
+        self.expect_prompt()
+
     # PExpect uses many timeouts internally and doesn't play well
     # under ASAN on a loaded machine..
     @skipIfAsan
@@ -21,14 +36,23 @@ class MultilineCompletionTest(PExpectTest):
 
         self.launch(executable=self.getBuildArtifact("a.out"), dimensions=(100,500))
         self.expect("b main", substrs=["Breakpoint 1", "address ="])
-        self.expect("run", substrs=["stop reason ="])
+        self.expect("run", substrs=["stop reason = breakpoint 1"])
 
-        self.child.sendline("expr")
-        self.child.expect_exact("terminate with an empty line to evaluate")
+        self.start_expression_editor()
         self.child.send("to_\t")
         self.child.expect_exact("to_complete")
+        self.exit_expression_editor()
 
-        self.child.send("\n\n")
-        self.expect_prompt()
+        # Check that completion empty input in a function with only one
+        # local variable works.
+        self.expect("breakpoint set -p 'break in single_local_func'",
+                    substrs=["Breakpoint 2"])
+        self.expect("continue", substrs=["stop reason = breakpoint 2"])
+        self.start_expression_editor()
+        self.child.send("\t")
+        # Only one local, so this will directly insert 'only_local' with a
+        # trailing space to signal a final completion.
+        self.child.expect_exact("only_local ")
+        self.exit_expression_editor()
 
         self.quit()
