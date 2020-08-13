@@ -1,0 +1,2 @@
+RUN: not %platformserver --listen "this_host_doesnt_exist:0"  2>&1 | FileCheck %s
+CHECK: failed to listen: Couldn't resolve host or address: 'this_host_doesnt_exist'

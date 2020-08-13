@@ -200,6 +200,13 @@ Status TCPSocket::Listen(llvm::StringRef name, int backlog) {
     host_str = "0.0.0.0";
   std::vector<SocketAddress> addresses = SocketAddress::GetAddressInfo(
       host_str.c_str(), nullptr, AF_UNSPEC, SOCK_STREAM, IPPROTO_TCP);
+
+  if (addresses.empty()) {
+    error.SetErrorStringWithFormat("Couldn't resolve host or address: '%s'",
+                                   host_str.c_str());
+    return error;
+  }
+
   for (SocketAddress &address : addresses) {
     int fd = Socket::CreateSocket(address.GetFamily(), kType, IPPROTO_TCP,
                                   m_child_processes_inherit, error);
