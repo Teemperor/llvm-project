@@ -1996,7 +1996,7 @@ TypeSystemClang::GetDeclarationName(const char *name,
 
 FunctionDecl *TypeSystemClang::CreateFunctionDeclaration(
     clang::DeclContext *decl_ctx, OptionalClangModuleID owning_module,
-    const char *name, const CompilerType &function_clang_type, int storage,
+    const char *name, const CompilerType &function_clang_type, clang::StorageClass storage,
     bool is_inline) {
   FunctionDecl *func_decl = nullptr;
   ASTContext &ast = getASTContext();
