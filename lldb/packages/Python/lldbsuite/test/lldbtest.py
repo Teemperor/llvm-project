@@ -2119,7 +2119,9 @@ class TestBase(Base):
         running = (cmd.startswith("run") or cmd.startswith("process launch"))
 
         for i in range(self.maxLaunchCount if running else 1):
+            start_time = time.time()
             self.ci.HandleCommand(cmd, self.res, inHistory)
+            end_time = time.time()
 
             with recording(self, trace) as sbuf:
                 print("runCmd:", cmd, file=sbuf)
@@ -2130,6 +2132,7 @@ class TestBase(Base):
                 else:
                     print("runCmd failed!", file=sbuf)
                     print(self.res.GetError(), file=sbuf)
+                print("runCmd took %.2f seconds" % round(end - start, 2))
 
             if self.res.Succeeded():
                 break
