@@ -71,7 +71,6 @@ add_llvm_unittest(SupportTests
   SymbolRemappingReaderTest.cpp
   TarWriterTest.cpp
   TargetParserTest.cpp
-  TaskQueueTest.cpp
   ThreadLocalTest.cpp
   ThreadPool.cpp
   Threading.cpp
