@@ -56,12 +56,29 @@ else:
                 self.child.expect_exact("Current executable set to")
                 self.expect_prompt()
 
-        def expect(self, cmd, substrs=None):
+        def expect(self, cmd, substrs=[], matching=True):
+            """ Run a command and check if the given substrs are in the
+            terminal output that the command produced. If matching is False,
+            then check that the substrs are *not* in the terminal output
+            of the command. """
             self.assertNotIn('\n', cmd)
             self.child.sendline(cmd)
-            if substrs is not None:
+            if matching:
                 for s in substrs:
                     self.child.expect_exact(s)
+            else:
+                for s in substrs:
+                    try:
+                        # If the substring is not in the output we'll reach
+                        # the timeout. Use a shorter timeout than the usual
+                        # one to prevent spending too much time just waiting.
+                        self.child.expect_exact(s, timeout=10)
+                        raise Exception("Found unexpected substr in output: " +
+                                        s + "\n" + str(self.child))
+                    except pexpect.exceptions.TIMEOUT:
+                        # substr not found
+                        pass
+
             self.expect_prompt()
 
         def quit(self, gracefully=True):
