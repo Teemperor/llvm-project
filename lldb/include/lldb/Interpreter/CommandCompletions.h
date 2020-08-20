@@ -101,6 +101,10 @@ public:
   static void Breakpoints(CommandInterpreter &interpreter,
                           CompletionRequest &request, SearchFilter *searcher);
 
+  static void BreakpointNames(CommandInterpreter &interpreter,
+                              CompletionRequest &request,
+                              SearchFilter *searcher);
+
   static void ProcessPluginNames(CommandInterpreter &interpreter,
                                  CompletionRequest &request,
                                  SearchFilter *searcher);
