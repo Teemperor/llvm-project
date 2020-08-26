@@ -1303,6 +1303,17 @@ class Base(unittest2.TestCase):
             return True
         return False
 
+    def isLinuxKVMGuest(self):
+        """Returns true if the current system is a Linux KVM guest"""
+        try:
+            # KVM guests have the product name 'KVM Server' on Linux.
+            with open("/sys/class/dmi/id/product_name", "r") as file:
+                file_content = file.read().strip()
+                return file_content == "KVM Server"
+        except FileNotFoundError as e:
+             return False
+        return False
+
     def getArchitecture(self):
         """Returns the architecture in effect the test suite is running with."""
         module = builder_module()
