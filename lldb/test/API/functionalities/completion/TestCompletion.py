@@ -29,12 +29,10 @@ class CommandLineCompletionTestCase(TestBase):
             pass
 
     def test_at(self):
-        """Test that 'at' completes to 'attach '."""
-        self.complete_from_to('at', 'attach ')
+        self.assert_completions_equal('at', ['attach'])
 
     def test_de(self):
-        """Test that 'de' completes to 'detach '."""
-        self.complete_from_to('de', 'detach ')
+        self.assert_completions_equal('de', ['detach'])
 
     def test_frame_variable(self):
         self.build()
@@ -49,54 +47,46 @@ class CommandLineCompletionTestCase(TestBase):
         # context at the beginning of HandleCompletion, we're here explicitly testing
         # the scenario where "frame var" is completed without any preceding commands.
 
-        self.complete_from_to('frame variable fo',
-                              'frame variable fooo')
-        self.complete_from_to('frame variable fooo.',
-                              'frame variable fooo.')
-        self.complete_from_to('frame variable fooo.dd',
-                              'frame variable fooo.dd')
+        self.assert_completions_equal('frame variable fo', ["fooo"])
+        self.assert_no_completions('frame variable fooo.')
+        self.assert_no_completions('frame variable fooo.dd')
 
-        self.complete_from_to('frame variable ptr_fooo->',
-                              'frame variable ptr_fooo->')
-        self.complete_from_to('frame variable ptr_fooo->dd',
-                              'frame variable ptr_fooo->dd')
+        self.assert_no_completions('frame variable ptr_fooo->')
+        self.assert_no_completions('frame variable ptr_fooo->dd')
 
-        self.complete_from_to('frame variable cont',
-                              'frame variable container')
-        self.complete_from_to('frame variable container.',
-                              'frame variable container.MemberVar')
-        self.complete_from_to('frame variable container.Mem',
-                              'frame variable container.MemberVar')
+        self.assert_completions_equal('frame variable cont',
+                                      ['container'])
+        self.assert_completions_equal('frame variable container.',
+                                      ['container.MemberVar'])
+        self.assert_completions_equal('frame variable container.Mem',
+                                      ['container.MemberVar'])
 
-        self.complete_from_to('frame variable ptr_cont',
-                              'frame variable ptr_container')
-        self.complete_from_to('frame variable ptr_container->',
-                              'frame variable ptr_container->MemberVar')
-        self.complete_from_to('frame variable ptr_container->Mem',
-                              'frame variable ptr_container->MemberVar')
+        self.assert_completions_equal('frame variable ptr_cont',
+                                      ['ptr_container'])
+        self.assert_completions_equal('frame variable ptr_container->',
+                                      ['ptr_container->MemberVar'])
+        self.assert_completions_equal('frame variable ptr_container->Mem',
+                                      ['ptr_container->MemberVar'])
 
     def test_process_attach_dash_dash_con(self):
         """Test that 'process attach --con' completes to 'process attach --continue '."""
-        self.complete_from_to(
-            'process attach --con',
-            'process attach --continue ')
+        self.assert_completions_equal("process attach --con", ["--continue"])
 
     def test_process_launch_arch(self):
-        self.complete_from_to('process launch --arch ',
-                              ['mips',
-                               'arm64'])
+        self.assert_completions_contain('process launch --arch ',
+                                        ['mips',
+                                        'arm64'])
 
     def test_process_load(self):
         self.build()
         lldbutil.run_to_source_breakpoint(self, '// Break here', lldb.SBFileSpec("main.cpp"))
-        self.complete_from_to('process load Makef', 'process load Makefile')
+        self.assert_completions_equal('process load Makef', ['Makefile'])
 
     @skipUnlessPlatform(["linux"])
     def test_process_unload(self):
         """Test the completion for "process unload <index>" """
         # This tab completion should not work without a running process.
-        self.complete_from_to('process unload ',
-                              'process unload ')
+        self.assert_no_completions('process unload ')
 
         self.build()
         lldbutil.run_to_source_breakpoint(self, '// Break here', lldb.SBFileSpec("main.cpp"))
@@ -104,31 +94,26 @@ class CommandLineCompletionTestCase(TestBase):
         self.process().LoadImage(lldb.SBFileSpec(self.getBuildArtifact("libshared.so")), err)
         self.assertSuccess(err)
 
-        self.complete_from_to('process unload ',
-                              'process unload 0')
+        self.assert_completions_contain('process unload ', ["0"])
 
         self.process().UnloadImage(0)
-        self.complete_from_to('process unload ',
-                              'process unload ')
+        # FIXME: This should be assert_no_completions.
+        self.assert_completions_contain('process unload ', ["0"])
 
     def test_process_plugin_completion(self):
         subcommands = ['attach -P', 'connect -p', 'launch -p']
 
         for subcommand in subcommands:
-            self.complete_from_to('process ' + subcommand + ' mac',
-                                  'process ' + subcommand + ' mach-o-core')
+            self.assert_completions_equal('process ' + subcommand + ' mac', ["mach-o-core"])
 
     def completions_contain_str(self, input, needle):
-        interp = self.dbg.GetCommandInterpreter()
-        match_strings = lldb.SBStringList()
-        num_matches = interp.HandleCompletion(input, len(input), 0, -1, match_strings)
+        match_strings = self.get_completion_list(input)
         found_needle = False
         for match in match_strings:
           if needle in match:
             found_needle = True
             break
-        self.assertTrue(found_needle, "Returned completions: " + "\n".join(match_strings))
-
+        self.assertTrue(found_needle, "Returned completions: " + str(match_strings))
 
     @skipIfRemote
     def test_common_completion_process_pid_and_name(self):
@@ -143,17 +128,16 @@ class CommandLineCompletionTestCase(TestBase):
         self.assertIsNotNone(server)
         pid = server.pid
 
-        self.completions_contain('process attach -p ', [str(pid)])
-        self.completions_contain('platform process attach -p ', [str(pid)])
-        self.completions_contain('platform process info ', [str(pid)])
+        self.assert_completions_contain('process attach -p ', [str(pid)])
+        self.assert_completions_contain('platform process attach -p ', [str(pid)])
+        self.assert_completions_contain('platform process info ', [str(pid)])
 
         self.completions_contain_str('process attach -n ', "a.out")
         self.completions_contain_str('platform process attach -n ', "a.out")
 
     def test_process_signal(self):
         # The tab completion for "process signal"  won't work without a running process.
-        self.complete_from_to('process signal ',
-                              'process signal ')
+        self.assert_no_completions('process signal ')
 
         # Test with a running process.
         self.build()
@@ -161,142 +145,121 @@ class CommandLineCompletionTestCase(TestBase):
         self.main_source_spec = lldb.SBFileSpec(self.main_source)
         lldbutil.run_to_source_breakpoint(self, '// Break here', self.main_source_spec)
 
-        self.complete_from_to('process signal ',
-                              'process signal SIG')
-        self.complete_from_to('process signal SIGA',
-                              ['SIGABRT',
-                               'SIGALRM'])
+        self.assert_completions_contain('process signal ',
+                                        ['SIGABRT',
+                                        'SIGALRM'])
 
     def test_ambiguous_long_opt(self):
-        self.completions_match('breakpoint modify --th',
-                               ['--thread-id',
-                                '--thread-index',
-                                '--thread-name'])
+        self.assert_completions_equal('breakpoint modify --th',
+                                      ['--thread-id',
+                                      '--thread-index',
+                                      '--thread-name'])
 
     def test_disassemble_dash_f(self):
-        self.completions_match('disassemble -F ',
-                               ['default',
-                                'intel',
-                                'att'])
+        self.assert_completions_equal('disassemble -F ',
+                                      ['default',
+                                      'intel',
+                                      'att'])
 
     def test_plugin_load(self):
-        self.complete_from_to('plugin load ', [])
+        # Just completes files like the Makefile in the test directory.
+        self.assert_completions_contain('plugin load ', ['Makefile'])
 
     def test_log_enable(self):
-        self.complete_from_to('log enable ll', ['lldb'])
-        self.complete_from_to('log enable dw', ['dwarf'])
-        self.complete_from_to('log enable lldb al', ['all'])
-        self.complete_from_to('log enable lldb sym', ['symbol'])
+        self.assert_completions_equal('log enable ll', ['lldb'])
+        self.assert_completions_equal('log enable dw', ['dwarf'])
+        self.assert_completions_equal('log enable lldb al', ['all'])
+        self.assert_completions_equal('log enable lldb sym', ['symbol'])
 
     def test_log_enable(self):
-        self.complete_from_to('log disable ll', ['lldb'])
-        self.complete_from_to('log disable dw', ['dwarf'])
-        self.complete_from_to('log disable lldb al', ['all'])
-        self.complete_from_to('log disable lldb sym', ['symbol'])
+        self.assert_completions_equal('log disable ll', ['lldb'])
+        self.assert_completions_equal('log disable dw', ['dwarf'])
+        self.assert_completions_equal('log disable lldb al', ['all'])
+        self.assert_completions_equal('log disable lldb sym', ['symbol'])
 
     def test_log_list(self):
-        self.complete_from_to('log list ll', ['lldb'])
-        self.complete_from_to('log list dw', ['dwarf'])
-        self.complete_from_to('log list ll', ['lldb'])
-        self.complete_from_to('log list lldb dwa', ['dwarf'])
+        self.assert_completions_equal('log list ll', ['lldb'])
+        self.assert_completions_equal('log list dw', ['dwarf'])
+        self.assert_completions_equal('log list ll', ['lldb'])
+        self.assert_completions_equal('log list lldb dwa', ['dwarf'])
 
     def test_quoted_command(self):
-        self.complete_from_to('"set',
-                              ['"settings" '])
+        self.assert_completions_equal('"set', ['settings'])
 
     def test_quoted_arg_with_quoted_command(self):
-        self.complete_from_to('"settings" "repl',
-                              ['"replace" '])
+        self.assert_completions_equal('"settings" "repl', ['replace'])
 
     def test_quoted_arg_without_quoted_command(self):
-        self.complete_from_to('settings "repl',
-                              ['"replace" '])
+        self.assert_completions_equal('settings "repl', ['replace'])
 
     def test_single_quote_command(self):
-        self.complete_from_to("'set",
-                              ["'settings' "])
+        self.assert_completions_equal("'set", ["settings"])
 
     def test_terminated_quote_command(self):
         # This should not crash, but we don't get any
         # reasonable completions from this.
-        self.complete_from_to("'settings'", [])
+        self.assert_completions_equal("'settings'", ["settings"])
 
     def test_process_launch_arch_arm(self):
-        self.complete_from_to('process launch --arch arm',
-                              ['arm64'])
+        self.assert_completions_contain('process launch --arch arm', ['arm64'])
 
     def test_target_symbols_add_shlib(self):
         # Doesn't seem to work, but at least it shouldn't crash.
-        self.complete_from_to('target symbols add --shlib ', [])
+        self.assert_no_completions('target symbols add --shlib ')
 
     def test_log_file(self):
         # Complete in our source directory which contains a 'main.cpp' file.
         src_dir =  os.path.dirname(os.path.realpath(__file__)) + '/'
-        self.complete_from_to('log enable lldb expr -f ' + src_dir,
-                              ['main.cpp'])
+        self.assert_completions_contain('log enable lldb expr -f ' + src_dir,
+                                        [os.path.join(src_dir, 'main.cpp')])
 
     def test_log_dir(self):
         # Complete our source directory.
         src_dir =  os.path.dirname(os.path.realpath(__file__))
-        self.complete_from_to('log enable lldb expr -f ' + src_dir,
-                              [src_dir + os.sep], turn_off_re_match=True)
+        self.assert_completions_contain('log enable lldb expr -f ' + src_dir,
+                                        [src_dir + os.sep])
 
     # <rdar://problem/11052829>
     def test_infinite_loop_while_completing(self):
         """Test that 'process print hello\' completes to itself and does not infinite loop."""
-        self.complete_from_to('process print hello\\', 'process print hello\\',
-                              turn_off_re_match=True)
+        self.assert_no_completions('process print hello\\')
 
     def test_watchpoint_co(self):
-        """Test that 'watchpoint co' completes to 'watchpoint command '."""
-        self.complete_from_to('watchpoint co', 'watchpoint command ')
+        self.assert_completions_equal('watchpoint co', ['command'])
 
     def test_watchpoint_command_space(self):
-        """Test that 'watchpoint command ' completes to ['add', 'delete', 'list']."""
-        self.complete_from_to(
-            'watchpoint command ', [
-                'add', 'delete', 'list'])
+        self.assert_completions_equal('watchpoint command ',
+                                      ['add', 'delete', 'list'])
 
     def test_watchpoint_command_a(self):
-        """Test that 'watchpoint command a' completes to 'watchpoint command add '."""
-        self.complete_from_to(
-            'watchpoint command a',
-            'watchpoint command add ')
+        self.assert_completions_equal('watchpoint command a',
+                                      ["add"])
 
     def test_watchpoint_set_ex(self):
-        """Test that 'watchpoint set ex' completes to 'watchpoint set expression '."""
-        self.complete_from_to(
-            'watchpoint set ex',
-            'watchpoint set expression ')
+        self.assert_completions_equal('watchpoint set ex', ['expression'])
 
     def test_watchpoint_set_var(self):
-        """Test that 'watchpoint set var' completes to 'watchpoint set variable '."""
-        self.complete_from_to('watchpoint set var', 'watchpoint set variable ')
+        self.assert_completions_equal('watchpoint set var', ['variable'])
 
     def test_watchpoint_set_variable_foo(self):
         self.build()
         lldbutil.run_to_source_breakpoint(self, '// Break here', lldb.SBFileSpec("main.cpp"))
-        self.complete_from_to('watchpoint set variable fo', 'watchpoint set variable fooo')
+        self.assert_completions_equal('watchpoint set variable fo', ['fooo'])
         # Only complete the first argument.
-        self.complete_from_to('watchpoint set variable fooo ', 'watchpoint set variable fooo ')
+        self.assert_no_completions('watchpoint set variable fooo ')
 
     def test_help_fi(self):
-        """Test that 'help fi' completes to ['file', 'finish']."""
-        self.complete_from_to(
-            'help fi', [
-                'file', 'finish'])
+        self.assert_completions_contain( 'help fi', ['file', 'finish'])
 
     def test_help_watchpoint_s(self):
-        """Test that 'help watchpoint s' completes to 'help watchpoint set '."""
-        self.complete_from_to('help watchpoint s', 'help watchpoint set ')
+        self.assert_completions_contain('help watchpoint s', ['set'])
 
     def test_common_complete_watchpoint_ids(self):
         subcommands = ['enable', 'disable', 'delete', 'modify', 'ignore']
 
         # Completion should not work without a target.
         for subcommand in subcommands:
-            self.complete_from_to('watchpoint ' + subcommand + ' ',
-                                  'watchpoint ' + subcommand + ' ')
+            self.assert_no_completions('watchpoint ' + subcommand + ' ')
 
         # Create a process to provide a target and enable watchpoint setting.
         self.build()
@@ -304,163 +267,126 @@ class CommandLineCompletionTestCase(TestBase):
 
         self.runCmd('watchpoint set variable ptr_fooo')
         for subcommand in subcommands:
-            self.complete_from_to('watchpoint ' + subcommand + ' ', ['1'])
+            self.assert_completions_equal('watchpoint ' + subcommand + ' ', ['1'])
 
     def test_settings_append_target_er(self):
-        """Test that 'settings append target.er' completes to 'settings append target.error-path'."""
-        self.complete_from_to(
-            'settings append target.er',
-            'settings append target.error-path')
+        self.assert_completions_equal('settings append target.er',
+                                      ['target.error-path'])
 
     def test_settings_insert_after_target_en(self):
-        """Test that 'settings insert-after target.env' completes to 'settings insert-after target.env-vars'."""
-        self.complete_from_to(
-            'settings insert-after target.env',
-            'settings insert-after target.env-vars')
+        self.assert_completions_equal('settings insert-after target.env', ['target.env-vars'])
 
     def test_settings_insert_before_target_en(self):
-        """Test that 'settings insert-before target.env' completes to 'settings insert-before target.env-vars'."""
-        self.complete_from_to(
-            'settings insert-before target.env',
-            'settings insert-before target.env-vars')
+        self.assert_completions_equal(
+            'settings insert-before target.env', ['target.env-vars'])
 
     def test_settings_replace_target_ru(self):
-        """Test that 'settings replace target.ru' completes to 'settings replace target.run-args'."""
-        self.complete_from_to(
-            'settings replace target.ru',
-            'settings replace target.run-args')
+        self.assert_completions_equal(
+            'settings replace target.ru', ['target.run-args'])
 
     def test_settings_show_term(self):
-        self.complete_from_to(
-            'settings show term-',
-            'settings show term-width')
+        self.assert_completions_equal(
+            'settings show term-', ['term-width'])
 
     def test_settings_list_term(self):
-        self.complete_from_to(
-            'settings list term-',
-            'settings list term-width')
+        self.assert_completions_equal(
+            'settings list term-', ['term-width'])
 
     def test_settings_remove_term(self):
-        self.complete_from_to(
-            'settings remove term-',
-            'settings remove term-width')
+        self.assert_completions_equal('settings remove term-', ['term-width'])
 
     def test_settings_s(self):
-        """Test that 'settings s' completes to ['set', 'show']."""
-        self.complete_from_to(
-            'settings s', [
-                'set', 'show'])
+        self.assert_completions_equal('settings s', ['set', 'show'])
 
     def test_settings_set_th(self):
-        """Test that 'settings set thread-f' completes to 'settings set thread-format'."""
-        self.complete_from_to('settings set thread-f', 'settings set thread-format')
+        self.assert_completions_equal('settings set thread-f', ['thread-format'])
 
     def test_settings_s_dash(self):
-        """Test that 'settings set --g' completes to 'settings set --global'."""
-        self.complete_from_to('settings set --g', 'settings set --global')
+        self.assert_completions_equal('settings set --g', ['--global'])
 
     def test_settings_clear_th(self):
-        """Test that 'settings clear thread-f' completes to 'settings clear thread-format'."""
-        self.complete_from_to(
-            'settings clear thread-f',
-            'settings clear thread-format')
+        self.assert_completions_equal('settings clear thread-f', ['thread-format'])
 
     def test_settings_set_ta(self):
-        """Test that 'settings set ta' completes to 'settings set target.'."""
-        self.complete_from_to(
-            'settings set target.ma',
-            'settings set target.max-')
+        self.assert_completions_contain('settings set target.ma', ['target.max-children-count'])
 
     def test_settings_set_target_exec(self):
-        """Test that 'settings set target.exec' completes to 'settings set target.exec-search-paths '."""
-        self.complete_from_to(
-            'settings set target.exec',
-            'settings set target.exec-search-paths')
+        self.assert_completions_equal('settings set target.exec', ['target.exec-search-paths'])
 
     def test_settings_set_target_pr(self):
-        """Test that 'settings set target.pr' completes to [
-        'target.prefer-dynamic-value', 'target.process.']."""
-        self.complete_from_to('settings set target.pr',
-                              ['target.prefer-dynamic-value',
-                               'target.process.'])
+        self.assert_completions_contain('settings set target.pr',
+                                        ['target.prefer-dynamic-value',
+                                        'target.process.thread.step-avoid-regexp'])
 
     def test_settings_set_target_process(self):
-        """Test that 'settings set target.process' completes to 'settings set target.process.'."""
-        self.complete_from_to(
-            'settings set target.process',
-            'settings set target.process.')
+        self.assert_completions_contain('settings set target.process',
+                                        ['target.process.disable-memory-cache'])
 
     def test_settings_set_target_process_dot(self):
-        """Test that 'settings set target.process.t' completes to 'settings set target.process.thread.'."""
-        self.complete_from_to(
-            'settings set target.process.t',
-            'settings set target.process.thread.')
+        self.assert_completions_contain('settings set target.process.t',
+                                        ['target.process.thread.step-out-avoid-nodebug'])
 
     def test_settings_set_target_process_thread_dot(self):
-        """Test that 'settings set target.process.thread.' completes to [
-        'target.process.thread.step-avoid-regexp', 'target.process.thread.trace-thread']."""
-        self.complete_from_to('settings set target.process.thread.',
-                              ['target.process.thread.step-avoid-regexp',
-                               'target.process.thread.trace-thread'])
+        self.assert_completions_contain('settings set target.process.thread.',
+                                        ['target.process.thread.step-avoid-regexp',
+                                        'target.process.thread.trace-thread'])
 
     def test_thread_plan_discard(self):
         self.build()
         (_, _, thread, _) = lldbutil.run_to_source_breakpoint(self,
                                           'ptr_foo', lldb.SBFileSpec("main.cpp"))
         self.assertTrue(thread)
-        self.complete_from_to('thread plan discard ', 'thread plan discard ')
+        self.assert_no_completions('thread plan discard ')
 
         source_path = os.path.join(self.getSourceDir(), "thread_plan_script.py")
         self.runCmd("command script import '%s'"%(source_path))
         self.runCmd("thread step-scripted -C thread_plan_script.PushPlanStack")
-        self.complete_from_to('thread plan discard ', 'thread plan discard 1')
+        self.assert_completions_equal('thread plan discard ', ['1'])
         self.runCmd('thread plan discard 1')
 
     def test_target_space(self):
-        """Test that 'target ' completes to ['create', 'delete', 'list',
-        'modules', 'select', 'stop-hook', 'variable']."""
-        self.complete_from_to('target ',
-                              ['create',
-                               'delete',
-                               'list',
-                               'modules',
-                               'select',
-                               'stop-hook',
-                               'variable'])
+        self.assert_completions_contain('target ',
+                                        ['create',
+                                        'delete',
+                                        'list',
+                                        'modules',
+                                        'select',
+                                        'stop-hook',
+                                        'variable'])
 
     def test_target_modules_dump_line_table(self):
         """Tests source file completion by completing the line-table argument."""
         self.build()
         self.dbg.CreateTarget(self.getBuildArtifact("a.out"))
-        self.complete_from_to('target modules dump line-table main.cp',
-                              ['main.cpp'])
+        self.assert_completions_equal('target modules dump line-table main.cp',
+                                      ['main.cpp'])
 
     def test_target_modules_load_aout(self):
         """Tests modules completion by completing the target modules load argument."""
         self.build()
         self.dbg.CreateTarget(self.getBuildArtifact("a.out"))
-        self.complete_from_to('target modules load a.ou',
-                              ['a.out'])
+        self.assert_completions_equal('target modules load a.ou',
+                                     ['a.out'])
 
     def test_target_modules_search_paths_insert(self):
         # Completion won't work without a valid target.
-        self.complete_from_to("target modules search-paths insert ", "target modules search-paths insert ")
+        self.assert_no_completions("target modules search-paths insert ")
         self.build()
         target = self.dbg.CreateTarget(self.getBuildArtifact('a.out'))
         self.assertTrue(target, VALID_TARGET)
-        self.complete_from_to("target modules search-paths insert ", "target modules search-paths insert ")
+        self.assert_no_completions("target modules search-paths insert ")
         self.runCmd("target modules search-paths add a b")
-        self.complete_from_to("target modules search-paths insert ", "target modules search-paths insert 0")
+        self.assert_completions_equal("target modules search-paths insert ", ["0"])
         # Completion only works for the first arg.
-        self.complete_from_to("target modules search-paths insert 0 ", "target modules search-paths insert 0 ")
+        self.assert_no_completions("target modules search-paths insert 0 ")
 
     def test_target_create_dash_co(self):
         """Test that 'target create --co' completes to 'target variable --core '."""
-        self.complete_from_to('target create --co', 'target create --core ')
+        self.assert_completions_contain('target create --co', ['--core'])
 
     def test_target_va(self):
         """Test that 'target va' completes to 'target variable '."""
-        self.complete_from_to('target va', 'target variable ')
+        self.assert_completions_equal('target va', ['variable'])
 
     def test_common_completion_thread_index(self):
         subcommands = ['continue', 'info', 'exception', 'select',
@@ -468,42 +394,41 @@ class CommandLineCompletionTestCase(TestBase):
 
         # Completion should do nothing without threads.
         for subcommand in subcommands:
-            self.complete_from_to('thread ' + subcommand + ' ',
-                                  'thread ' + subcommand + ' ')
+            self.assert_no_completions('thread ' + subcommand + ' ')
 
         self.build()
         lldbutil.run_to_source_breakpoint(self, '// Break here', lldb.SBFileSpec("main.cpp"))
 
         # At least we have the thread at the index of 1 now.
         for subcommand in subcommands:
-            self.complete_from_to('thread ' + subcommand + ' ', ['1'])
+            self.assert_completions_equal('thread ' + subcommand + ' ', ['1'])
 
     def test_common_completion_type_category_name(self):
         subcommands = ['delete', 'list', 'enable', 'disable', 'define']
         for subcommand in subcommands:
-            self.complete_from_to('type category ' + subcommand + ' ', ['default'])
-        self.complete_from_to('type filter add -w ', ['default'])
+            self.assert_completions_contain('type category ' + subcommand + ' ', ['default'])
+        self.assert_completions_contain('type filter add -w ', ['default'])
 
     def test_command_argument_completion(self):
         """Test completion of command arguments"""
-        self.complete_from_to("watchpoint set variable -", ["-w", "-s"])
-        self.complete_from_to('watchpoint set variable -w', 'watchpoint set variable -w ')
-        self.complete_from_to("watchpoint set variable --", ["--watch", "--size"])
-        self.complete_from_to("watchpoint set variable --w", "watchpoint set variable --watch")
-        self.complete_from_to('watchpoint set variable -w ', ['read', 'write', 'read_write'])
-        self.complete_from_to("watchpoint set variable --watch ", ["read", "write", "read_write"])
-        self.complete_from_to("watchpoint set variable --watch w", "watchpoint set variable --watch write")
-        self.complete_from_to('watchpoint set variable -w read_', 'watchpoint set variable -w read_write')
+        self.assert_completions_contain("watchpoint set variable -", ['-w', '-s'])
+        self.assert_completions_equal('watchpoint set variable -w', ['-w'])
+        self.assert_completions_equal("watchpoint set variable --", ['--watch', '--size'])
+        self.assert_completions_equal("watchpoint set variable --w", ['--watch'])
+        self.assert_completions_equal('watchpoint set variable -w ', ['read', 'write', 'read_write'])
+        self.assert_completions_equal("watchpoint set variable --watch ", ['read', 'write', 'read_write'])
+        self.assert_completions_equal("watchpoint set variable --watch w", ['write'])
+        self.assert_completions_equal('watchpoint set variable -w read_', ['read_write'])
         # Now try the same thing with a variable name (non-option argument) to
         # test that getopts arg reshuffling doesn't confuse us.
-        self.complete_from_to("watchpoint set variable foo -", ["-w", "-s"])
-        self.complete_from_to('watchpoint set variable foo -w', 'watchpoint set variable foo -w ')
-        self.complete_from_to("watchpoint set variable foo --", ["--watch", "--size"])
-        self.complete_from_to("watchpoint set variable foo --w", "watchpoint set variable foo --watch")
-        self.complete_from_to('watchpoint set variable foo -w ', ['read', 'write', 'read_write'])
-        self.complete_from_to("watchpoint set variable foo --watch ", ["read", "write", "read_write"])
-        self.complete_from_to("watchpoint set variable foo --watch w", "watchpoint set variable foo --watch write")
-        self.complete_from_to('watchpoint set variable foo -w read_', 'watchpoint set variable foo -w read_write')
+        self.assert_completions_contain("watchpoint set variable foo -", ['-w', '-s'])
+        self.assert_completions_equal('watchpoint set variable foo -w', ['-w'])
+        self.assert_completions_equal("watchpoint set variable foo --", ['--watch', '--size'])
+        self.assert_completions_equal("watchpoint set variable foo --w", ['--watch'])
+        self.assert_completions_equal('watchpoint set variable foo -w ', ['read', 'write', 'read_write'])
+        self.assert_completions_equal("watchpoint set variable foo --watch ", ['read', 'write', 'read_write'])
+        self.assert_completions_equal("watchpoint set variable foo --watch w", ['write'])
+        self.assert_completions_equal('watchpoint set variable foo -w read_', ['read_write'])
 
     def test_command_script_delete(self):
         self.runCmd("command script add -h test_desc -f none -s current usercmd1")
@@ -511,10 +436,10 @@ class CommandLineCompletionTestCase(TestBase):
 
     def test_command_delete(self):
         self.runCmd(r"command regex test_command s/^$/finish/ 's/([0-9]+)/frame select %1/'")
-        self.complete_from_to('command delete test_c', 'command delete test_command')
+        self.assert_completions_equal('command delete test_c', ['test_command'])
 
     def test_command_unalias(self):
-        self.complete_from_to('command unalias ima', 'command unalias image')
+        self.assert_completions_equal('command unalias ima', ['image'])
 
     def test_completion_description_commands(self):
         """Test descriptions of top-level command completions"""
@@ -560,138 +485,128 @@ class CommandLineCompletionTestCase(TestBase):
         self.build()
         lldbutil.run_to_source_breakpoint(self, '// Break here', lldb.SBFileSpec("main.cpp"))
 
-        self.complete_from_to('frame select ', ['0'])
-        self.complete_from_to('thread backtrace -s ', ['0'])
+        self.assert_completions_contain('frame select ', ['0'])
+        self.assert_completions_contain('thread backtrace -s ', ['0'])
 
     def test_frame_recognizer_delete(self):
         self.runCmd("frame recognizer add -l py_class -s module_name -n recognizer_name")
         self.check_completion_with_desc('frame recognizer delete ', [['0', 'py_class, module module_name, symbol recognizer_name']])
 
     def test_platform_install_local_file(self):
-        self.complete_from_to('platform target-install main.cp', 'platform target-install main.cpp')
+        self.assert_completions_equal('platform target-install main.cp', ['main.cpp'])
 
     @expectedFailureAll(oslist=["windows"], bugnumber="llvm.org/pr24489")
     def test_symbol_name(self):
         self.build()
         self.dbg.CreateTarget(self.getBuildArtifact("a.out"))
-        self.complete_from_to('breakpoint set -n Fo',
-                              'breakpoint set -n Foo::Bar(int,\\ int)',
-                              turn_off_re_match=True)
+        self.assert_completions_equal('breakpoint set -n Fo',
+                              ['Foo::Bar(int, int)'])
         # No completion for Qu because the candidate is
         # (anonymous namespace)::Quux().
-        self.complete_from_to('breakpoint set -n Qu', '')
+        self.assert_no_completions('breakpoint set -n Qu')
 
     def test_completion_type_formatter_delete(self):
         self.runCmd('type filter add --child a Aoo')
-        self.complete_from_to('type filter delete ', ['Aoo'])
+        self.assert_completions_contain('type filter delete ', ['Aoo'])
         self.runCmd('type filter add --child b -x Boo')
-        self.complete_from_to('type filter delete ', ['Boo'])
+        self.assert_completions_contain('type filter delete ', ['Boo'])
 
         self.runCmd('type format add -f hex Coo')
-        self.complete_from_to('type format delete ', ['Coo'])
+        self.assert_completions_contain('type format delete ', ['Coo'])
         self.runCmd('type format add -f hex -x Doo')
-        self.complete_from_to('type format delete ', ['Doo'])
+        self.assert_completions_contain('type format delete ', ['Doo'])
 
         self.runCmd('type summary add -c Eoo')
-        self.complete_from_to('type summary delete ', ['Eoo'])
+        self.assert_completions_contain('type summary delete ', ['Eoo'])
         self.runCmd('type summary add -x -c Foo')
-        self.complete_from_to('type summary delete ', ['Foo'])
+        self.assert_completions_contain('type summary delete ', ['Foo'])
 
         self.runCmd('type synthetic add Goo -l test')
-        self.complete_from_to('type synthetic delete ', ['Goo'])
+        self.assert_completions_contain('type synthetic delete ', ['Goo'])
         self.runCmd('type synthetic add -x Hoo -l test')
-        self.complete_from_to('type synthetic delete ', ['Hoo'])
+        self.assert_completions_contain('type synthetic delete ', ['Hoo'])
 
     @skipIf(archs=no_match(['x86_64']))
     def test_register_read_and_write_on_x86(self):
         """Test the completion of the commands register read and write on x86"""
 
         # The tab completion for "register read/write"  won't work without a running process.
-        self.complete_from_to('register read ',
-                              'register read ')
-        self.complete_from_to('register write ',
-                              'register write ')
+        self.assert_no_completions('register read ')
+        self.assert_no_completions('register write ')
 
         self.build()
         self.main_source_spec = lldb.SBFileSpec("main.cpp")
         lldbutil.run_to_source_breakpoint(self, '// Break here', self.main_source_spec)
 
         # test cases for register read
-        self.complete_from_to('register read ',
+        self.assert_completions_contain('register read ',
                               ['rax',
                                'rbx',
                                'rcx'])
-        self.complete_from_to('register read r',
+        self.assert_completions_contain('register read r',
                               ['rax',
                                'rbx',
                                'rcx'])
-        self.complete_from_to('register read ra',
-                              'register read rax')
         # register read can take multiple register names as arguments
-        self.complete_from_to('register read rax ',
+        self.assert_completions_contain('register read rax ',
                               ['rax',
                                'rbx',
                                'rcx'])
         # complete with prefix '$'
-        self.completions_match('register read $rb',
+        self.assert_completions_contain('register read $rb',
                               ['$rbx',
                                '$rbp'])
-        self.completions_match('register read $ra',
+        self.assert_completions_contain('register read $ra',
                               ['$rax'])
-        self.complete_from_to('register read rax $',
-                              ['\$rax',
-                               '\$rbx',
-                               '\$rcx'])
-        self.complete_from_to('register read $rax ',
+        self.assert_completions_contain('register read rax $',
+                              ['$rax',
+                               '$rbx',
+                               '$rcx'])
+        self.assert_completions_contain('register read $rax ',
                               ['rax',
                                'rbx',
                                'rcx'])
 
         # test cases for register write
-        self.complete_from_to('register write ',
+        self.assert_completions_contain('register write ',
                               ['rax',
                                'rbx',
                                'rcx'])
-        self.complete_from_to('register write r',
+        self.assert_completions_contain('register write r',
                               ['rax',
                                'rbx',
                                'rcx'])
-        self.complete_from_to('register write ra',
-                              'register write rax')
-        self.complete_from_to('register write rb',
+        self.assert_completions_contain('register write ra',
+                              ['rax'])
+        self.assert_completions_contain('register write rb',
                               ['rbx',
                                'rbp'])
         # register write can only take exact one register name as argument
-        self.complete_from_to('register write rbx ',
-                              [])
+        self.assert_no_completions('register write rbx ')
 
     def test_common_completion_target_stophook_ids(self):
         subcommands = ['delete', 'enable', 'disable']
 
         for subcommand in subcommands:
-            self.complete_from_to('target stop-hook ' + subcommand + ' ',
-                                  'target stop-hook ' + subcommand + ' ')
+            self.assert_no_completions('target stop-hook ' + subcommand + ' ')
 
         self.build()
         self.dbg.CreateTarget(self.getBuildArtifact("a.out"))
         self.runCmd('target stop-hook add test DONE')
+        self.runCmd('target stop-hook add test DONE')
 
         for subcommand in subcommands:
-            self.complete_from_to('target stop-hook ' + subcommand + ' ',
-                                  'target stop-hook ' + subcommand + ' 1')
-
-        # Completion should work only on the first argument.
-        for subcommand in subcommands:
-            self.complete_from_to('target stop-hook ' + subcommand + ' 1 ',
-                                  'target stop-hook ' + subcommand + ' 1 ')
+            self.assert_completions_equal('target stop-hook ' + subcommand + ' ', ['1', '2'])
+            # FIXME: Completing multiple IDs should work too.
 
     def test_common_completion_type_language(self):
-        self.complete_from_to('type category -l ', ['c'])
+        self.assert_completions_contain('type category define -l ', ['c'])
 
     def test_target_modules_load_dash_u(self):
         self.build()
         target = self.dbg.CreateTarget(self.getBuildArtifact("a.out"))
-        self.complete_from_to('target modules load -u ', [target.GetModuleAtIndex(0).GetUUIDString()])
+        self.assert_completions_contain('target modules load -u ',
+                                        [target.GetModuleAtIndex(0).GetUUIDString()])
 
     def test_complete_breakpoint_with_ids(self):
         """These breakpoint subcommands should be completed with a list of breakpoint ids"""
@@ -700,8 +615,7 @@ class CommandLineCompletionTestCase(TestBase):
 
         # The tab completion here is unavailable without a target
         for subcommand in subcommands:
-            self.complete_from_to('breakpoint ' + subcommand + ' ',
-                                  'breakpoint ' + subcommand + ' ')
+            self.assert_no_completions('breakpoint ' + subcommand + ' ')
 
         self.build()
         target = self.dbg.CreateTarget(self.getBuildArtifact('a.out'))
@@ -712,20 +626,20 @@ class CommandLineCompletionTestCase(TestBase):
         self.assertEqual(bp.GetNumLocations(), 1)
 
         for subcommand in subcommands:
-            self.complete_from_to('breakpoint ' + subcommand + ' ',
-                                  ['1'])
+            self.assert_completions_contain('breakpoint ' + subcommand + ' ',
+                                            ['1'])
 
         bp2 = target.BreakpointCreateByName('Bar', 'a.out')
         self.assertTrue(bp2)
         self.assertEqual(bp2.GetNumLocations(), 1)
 
         for subcommand in subcommands:
-            self.complete_from_to('breakpoint ' + subcommand + ' ',
+            self.assert_completions_equal('breakpoint ' + subcommand + ' ',
                                   ['1',
                                    '2'])
 
         for subcommand in subcommands:
-            self.complete_from_to('breakpoint ' + subcommand + ' 1 ',
+            self.assert_completions_equal('breakpoint ' + subcommand + ' 1 ',
                                   ['1',
                                    '2'])
 
@@ -735,15 +649,15 @@ class CommandLineCompletionTestCase(TestBase):
         self.assertTrue(target, VALID_TARGET)
 
         # test breakpoint read dedicated
-        self.complete_from_to('breakpoint read -N ', 'breakpoint read -N ')
-        self.complete_from_to('breakpoint read -f breakpoints.json -N ', ['mm'])
-        self.complete_from_to('breakpoint read -f breakpoints.json -N n', 'breakpoint read -f breakpoints.json -N n')
-        self.complete_from_to('breakpoint read -f breakpoints_invalid.json -N ', 'breakpoint read -f breakpoints_invalid.json -N ')
+        self.assert_no_completions('breakpoint read -N ')
+        self.assert_completions_contain('breakpoint read -f breakpoints.json -N ', ['mm'])
+        self.assert_no_completions('breakpoint read -f breakpoints.json -N n')
+        self.assert_no_completions('breakpoint read -f breakpoints_invalid.json -N ')
 
         # test common breapoint name completion
         bp1 = target.BreakpointCreateByName('main', 'a.out')
         self.assertTrue(bp1)
         self.assertEqual(bp1.GetNumLocations(), 1)
-        self.complete_from_to('breakpoint set -N n', 'breakpoint set -N n')
+        self.assert_no_completions('breakpoint set -N n')
         self.assertTrue(bp1.AddNameWithErrorHandling("nn"))
-        self.complete_from_to('breakpoint set -N ', 'breakpoint set -N nn')
+        self.assert_completions_equal('breakpoint set -N ', ["nn"])

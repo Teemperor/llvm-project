@@ -2247,65 +2247,76 @@ class TestBase(Base):
                 error_msg += "[" + match_candidate + ":" + description_candidate + "] index " + str(i) + "\n"
             self.assertFalse(got_failure, error_msg)
 
-    def complete_exactly(self, str_input, patterns):
-        self.complete_from_to(str_input, patterns, True)
-
-    def complete_from_to(self, str_input, patterns, turn_off_re_match=False):
-        """Test that the completion mechanism completes str_input to patterns,
-        where patterns could be a pattern-string or a list of pattern-strings"""
-        # Patterns should not be None in order to proceed.
-        self.assertFalse(patterns is None)
-        # And should be either a string or list of strings.  Check for list type
-        # below, if not, make a list out of the singleton string.  If patterns
-        # is not a string or not a list of strings, there'll be runtime errors
-        # later on.
-        if not isinstance(patterns, list):
-            patterns = [patterns]
-
+    def get_completion_list(self, command, cursor_pos = None):
+        """ Returns the list of completions for the given command input. The
+        completions are just the completed current token as it is returned
+        by HandleCompletion. cursor_pos is the position of the user cursor
+        in the given command (with 0 meaning the cursor is on the first character
+        and cursor_pos = len(command) meaning it's behind the last character.
+        The cursor_pos is by default behind the last character."""
         interp = self.dbg.GetCommandInterpreter()
         match_strings = lldb.SBStringList()
-        num_matches = interp.HandleCompletion(str_input, len(str_input), 0, -1, match_strings)
-        common_match = match_strings.GetStringAtIndex(0)
-        if num_matches == 0:
-            compare_string = str_input
-        else:
-            if common_match != None and len(common_match) > 0:
-                compare_string = str_input + common_match
-            else:
-                compare_string = ""
-                for idx in range(1, num_matches+1):
-                    compare_string += match_strings.GetStringAtIndex(idx) + "\n"
+        if cursor_pos is None:
+            cursor_pos = len(command)
+        return_code = interp.HandleCompletion(command, cursor_pos, 0, -1, match_strings)
+        # match_strings is a 1-indexed list, so we have to remove the first
+        # element (which contains the common prefix of all completion results).
+        result = list(match_strings)[1:]
+        # Check that the return code equals the number of matches if positive.
+        self.assertEqual(return_code, len(result))
+        return result
 
-        for p in patterns:
-            if turn_off_re_match:
-                self.expect(
-                    compare_string, msg=COMPLETION_MSG(
-                        str_input, p, match_strings), exe=False, substrs=[p])
-            else:
-                self.expect(
-                    compare_string, msg=COMPLETION_MSG(
-                        str_input, p, match_strings), exe=False, patterns=[p])
-
-    def completions_match(self, command, completions):
+    def assert_completions_equal(self, command, expected_completions,
+                                 cursor_pos = None):
         """Checks that the completions for the given command are equal to the
-        given list of completions"""
-        interp = self.dbg.GetCommandInterpreter()
-        match_strings = lldb.SBStringList()
-        interp.HandleCompletion(command, len(command), 0, -1, match_strings)
-        # match_strings is a 1-indexed list, so we have to slice...
-        self.assertItemsEqual(completions, list(match_strings)[1:],
-                              "List of returned completion is wrong")
+        given list of completions.
+        :param command The command string that should be completed.
+        :param expected_completions The list of completions that are expected.
+        :param cursor_pos See get_completion_list's cursor_pos parameter.
+        """
 
-    def completions_contain(self, command, completions):
+        # We should always have at least one expected completion. Use
+        # assert_no_completions if a command is expected to produce no
+        # completions.
+        self.assertGreater(len(expected_completions), 0)
+
+        self.assertItemsEqual(expected_completions,
+                              self.get_completion_list(command, cursor_pos),
+                              "Returned incorrect command completions")
+
+    def assert_completions_contain(self, command, expected_completions,
+                                   cursor_pos = None):
         """Checks that the completions for the given command contain the given
-        list of completions."""
-        interp = self.dbg.GetCommandInterpreter()
-        match_strings = lldb.SBStringList()
-        interp.HandleCompletion(command, len(command), 0, -1, match_strings)
-        for completion in completions:
-            # match_strings is a 1-indexed list, so we have to slice...
-            self.assertIn(completion, list(match_strings)[1:],
-                          "Couldn't find expected completion")
+        list of completions.
+        :param command The command string that should be completed.
+        :param expected_completions The list of completions that are expected.
+        :param cursor_pos See get_completion_list's cursor_pos parameter.
+        """
+
+        # We should always have at least one expected completion. Use
+        # assert_no_completions if a command is expected to produce no
+        # completions.
+        self.assertGreater(len(expected_completions), 0)
+
+        returned_completions = self.get_completion_list(command, cursor_pos)
+        remaining_completions = returned_completions[:]
+
+        for expected_completion in expected_completions:
+            self.assertIn(expected_completion, remaining_completions,
+                          "Couldn't find expected completion in remaining" +
+                          "completions. All returned completions were: " +
+                          str(returned_completions))
+            # Remove completion that we can't find it again in the following
+            # iterations.
+            remaining_completions.remove(expected_completion)
+
+    def assert_no_completions(self, command, cursor_pos = None):
+        """Checks that the command does not produce any tab completions.
+        :param command The command string that should be completed.
+        :param cursor_pos See get_completion_list's cursor_pos parameter.
+        """
+        self.assertItemsEqual([], self.get_completion_list(command, cursor_pos),
+                              "Expected no command completions")
 
     def filecheck(
             self,

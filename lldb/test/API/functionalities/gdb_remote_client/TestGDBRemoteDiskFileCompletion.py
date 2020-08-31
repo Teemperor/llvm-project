@@ -20,10 +20,10 @@ class TestGDBRemoteDiskFileCompletion(GDBRemoteTestBase):
                         self.server.port)
             self.assertTrue(self.dbg.GetSelectedPlatform().IsConnected())
 
-            self.complete_from_to('platform get-size ', ['test', '123'])
-            self.complete_from_to('platform get-file ', ['test', '123'])
-            self.complete_from_to('platform put-file foo ', ['test', '123'])
-            self.complete_from_to('platform file open ', ['test', '123'])
-            self.complete_from_to('platform settings -w ', ['test', '123'])
+            self.assert_completions_equal('platform get-size ', ['test', '123'])
+            self.assert_completions_equal('platform get-file ', ['test', '123'])
+            self.assert_completions_equal('platform put-file foo ', ['test', '123'])
+            self.assert_completions_equal('platform file open ', ['test', '123'])
+            self.assert_completions_equal('platform settings -w ', ['test', '123'])
         finally:
             self.dbg.GetSelectedPlatform().DisconnectRemote()
