@@ -23,3 +23,5 @@ class TestCase(TestBase):
         self.expect_expr("pair_int.first", result_type="int", result_value="1234")
         self.expect_expr("pair_int.second", result_type="int", result_value="5678")
         self.expect("expr pair_int", substrs=['first = 1234, second = 5678'])
+        self.expect("expr pair_int", substrs=['first = 1234, second = 5678'])
+        self.expect("expr std::pair<long, long> lp; lp.first = 3333; lp.second = 2344; lp", substrs=['first = 3333, second = 2344'])

@@ -68,7 +68,12 @@
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/ExprConcepts.h"
+#include "clang/AST/ExprObjC.h"
+#include "clang/AST/ExprOpenMP.h"
 #include "clang/AST/NestedNameSpecifier.h"
+#include "clang/AST/StmtObjC.h"
+#include "clang/AST/StmtOpenMP.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/TemplateName.h"
 #include "clang/AST/Type.h"
@@ -149,32 +154,160 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   return true;
 }
 
-/// Determine structural equivalence of two expressions.
-static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
-                                     const Expr *E1, const Expr *E2) {
-  if (!E1 || !E2)
-    return E1 == E2;
+namespace {
+class StmtComparer {
+  StructuralEquivalenceContext &Context;
 
-  if (auto *DE1 = dyn_cast<DependentScopeDeclRefExpr>(E1)) {
-    auto *DE2 = dyn_cast<DependentScopeDeclRefExpr>(E2);
-    if (!DE2)
-      return false;
+  // IsStmtEquivalent overloads. Each overload compares a specific statement
+  // and only has to compare the data that is specific to the specific statement
+  // class that is being compared.
+
+  bool IsStmtEquivalent(const BinaryOperator *E1, const BinaryOperator *E2) {
+    return E1->getOpcode() == E2->getOpcode();
+  }
+
+  bool IsStmtEquivalent(const CharacterLiteral *E1, const CharacterLiteral *E2) {
+    return E1->getValue() == E2->getValue() && E1->getKind() == E2->getKind();
+  }
+
+  bool IsStmtEquivalent(const DependentScopeDeclRefExpr *DE1,
+                        const DependentScopeDeclRefExpr *DE2) {
     if (!IsStructurallyEquivalent(Context, DE1->getDeclName(),
                                   DE2->getDeclName()))
       return false;
     return IsStructurallyEquivalent(Context, DE1->getQualifier(),
                                     DE2->getQualifier());
-  } else if (auto CastE1 = dyn_cast<ImplicitCastExpr>(E1)) {
-    auto *CastE2 = dyn_cast<ImplicitCastExpr>(E2);
-    if (!CastE2)
-      return false;
-    if (!IsStructurallyEquivalent(Context, CastE1->getType(),
-                                  CastE2->getType()))
-      return false;
-    return IsStructurallyEquivalent(Context, CastE1->getSubExpr(),
-                                    CastE2->getSubExpr());
   }
-  // FIXME: Handle other kind of expressions!
+
+
+  bool IsStmtEquivalent(const Expr *E1, const Expr *E2) {
+    return IsStructurallyEquivalent(Context, E1->getType(), E2->getType());
+  }
+
+  bool IsStmtEquivalent(const ImplicitCastExpr *CastE1,
+                        const ImplicitCastExpr *CastE2) {
+    return IsStructurallyEquivalent(Context, CastE1->getType(),
+                                    CastE2->getType());
+  }
+
+  bool IsStmtEquivalent(const ObjCStringLiteral *E1, const ObjCStringLiteral *E2) {
+    // Just wraps a StringLiteral child.
+    return true;
+  }
+
+  bool IsStmtEquivalent(const Stmt *S1, const Stmt *S2) { return true; }
+
+  bool IsStmtEquivalent(const SourceLocExpr *E1, const SourceLocExpr *E2) {
+    return E1->getIdentKind() == E2->getIdentKind();
+  }
+
+  bool IsStmtEquivalent(const SourceLocExpr *E1, const SourceLocExpr *E2) {
+    return E1->getIdentKind() == E2->getIdentKind();
+  }
+
+  bool IsStmtEquivalent(const StmtExpr *E1, const StmtExpr *E2) {
+    return E1->getTemplateDepth() == E2->getTemplateDepth();
+  }
+
+  bool IsStmtEquivalent(const StringLiteral *E1, const StringLiteral *E2) {
+    return E1->getBytes() == E2->getBytes();
+  }
+
+  bool IsStmtEquivalent(const SubstNonTypeTemplateParmExpr *E1,
+                        const SubstNonTypeTemplateParmExpr *E2) {
+    return IsStructurallyEquivalent(Context, E1->getParameter(), E2->getParameter());
+  }
+
+
+  bool IsStmtEquivalent(const SubstNonTypeTemplateParmPackExpr *E1,
+                        const SubstNonTypeTemplateParmPackExpr *E2) {
+    return IsStructurallyEquivalent(Context, E1->getArgumentPack(), E2->getArgumentPack());
+  }
+
+  bool IsStmtEquivalent(const TypeTraitExpr *E1,
+                        const TypeTraitExpr *E2) {
+    return E1->getTrait() == E2->getTrait();
+  }
+
+  bool IsStmtEquivalent(const TypoExpr *E1,
+                        const TypoExpr *E2) {
+    return true;
+  }
+
+  bool IsStmtEquivalent(const UnaryExprOrTypeTraitExpr *E1,
+                        const UnaryExprOrTypeTraitExpr *E2) {
+    return E1->getKind() == E2->getKind();
+  }
+
+  bool IsStmtEquivalent(const UnaryOperator *E1, const UnaryOperator *E2) {
+    return E1->getOpcode() == E2->getOpcode();
+  }
+
+  bool IsStmtEquivalent(const VAArgExpr *E1, const VAArgExpr *E2) {
+    return true;
+  }
+
+  /// End point of the traversal chain.
+  bool TraverseStmt(const Stmt *S1, const Stmt *S2) { return true; }
+
+  // Create traversal methods that traverse the class hierarchy and return
+  // the accumulated result of the comparison.
+#define STMT(CLASS, PARENT)                                                    \
+  bool TraverseStmt(const CLASS *S1, const CLASS *S2) {                        \
+    if (!IsStmtEquivalent(S1, S2))                                             \
+      return false;                                                            \
+    return TraverseStmt(static_cast<const PARENT *>(S1),                       \
+                        static_cast<const PARENT *>(S2));                      \
+  }
+#include "clang/AST/StmtNodes.inc"
+
+public:
+  StmtComparer(StructuralEquivalenceContext &C) : Context(C) {}
+
+  /// Determine whether two statements are equivalent. The statements have to
+  /// be of the same kind. The children of the statements and their properties
+  /// are not compared by this function.
+  bool IsEquivalent(const Stmt *S1, const Stmt *S2) {
+    if (S1->getStmtClass() != S2->getStmtClass())
+      return false;
+
+    // Dispatch to the specific traversal method for the actual statement kind.
+    switch (S1->getStmtClass()) {
+    case Stmt::NoStmtClass:
+      llvm_unreachable("Invalid Stmt class?");
+#define STMT(CLASS, PARENT)                                                    \
+  case Stmt::StmtClass::CLASS##Class:                                          \
+    return TraverseStmt(static_cast<const CLASS *>(S1),               \
+                        static_cast<const CLASS *>(S2));
+#define ABSTRACT_STMT(S)
+#include "clang/AST/StmtNodes.inc"
+    }
+  }
+};
+} // namespace
+
+/// Determine structural equivalence of two statements.
+static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
+                                     const Stmt *S1, const Stmt *S2) {
+  if (!S1 || !S2)
+    return S1 == S2;
+
+  // Compare the statements itself.
+  StmtComparer Comparer(Context);
+  if (!Comparer.IsEquivalent(S1, S2))
+    return false;
+
+  // Iterate over the children of both statements and also compare them.
+  for (auto Pair : zip_longest(S1->children(), S2->children())) {
+    Optional<const Stmt *> Child1 = std::get<0>(Pair);
+    Optional<const Stmt *> Child2 = std::get<1>(Pair);
+    // One of the statements has a different amount of children than the other,
+    // so the statements can't be equivalent.
+    if (!Child1 || !Child2)
+      return false;
+    if (!IsStructurallyEquivalent(Context, *Child1, *Child2))
+      return false;
+  }
   return true;
 }
 
