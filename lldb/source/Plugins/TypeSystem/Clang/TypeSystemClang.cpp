@@ -2014,6 +2014,12 @@ FunctionDecl *TypeSystemClang::CreateFunctionDeclaration(
   func_decl->setHasWrittenPrototype(hasWrittenPrototype);
   func_decl->setConstexprKind(isConstexprSpecified ? CSK_constexpr
                                                    : CSK_unspecified);
+  // Functions inside a record need to have an access specifier.  It doesn't
+  // matter what access specifier we give the function as LLDB allows
+  // accessing everything inside a record.
+  if (decl_ctx->isRecord())
+    func_decl->setAccess(clang::AccessSpecifier::AS_public);
+
   SetOwningModule(func_decl, owning_module);
   if (func_decl)
     decl_ctx->addDecl(func_decl);
