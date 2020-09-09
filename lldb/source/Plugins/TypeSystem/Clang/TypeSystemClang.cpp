@@ -1999,6 +1999,8 @@ FunctionDecl *TypeSystemClang::CreateFunctionDeclaration(
   ASTContext &ast = getASTContext();
   if (!decl_ctx)
     decl_ctx = ast.getTranslationUnitDecl();
+  assert(!decl_ctx->isRecord() &&
+         "Use AddMethodToCXXRecordType to add member functions to a record");
 
   const bool hasWrittenPrototype = true;
   const bool isConstexprSpecified = false;
