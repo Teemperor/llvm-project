@@ -80,6 +80,22 @@ struct StructuralEquivalenceTest : ::testing::Test {
     return makeDecls<NamedDecl>(SrcCode0, SrcCode1, Lang, Matcher);
   }
 
+  /// Parses the code as expressions and returns them wrapped in FunctionDecls.
+  /// The prefix code can contain top level declarations that are prepended
+  /// before the function declaration
+  std::tuple<NamedDecl *, NamedDecl *>
+  makeStmts(const std::string &SrcCode0, const std::string &SrcCode1,
+            TestLanguage Lang, const std::string &Prefix0 = "",
+            const std::string &Prefix1 = "") {
+    auto Wrap = [](const std::string &Src) {
+      return "void wrapped() {" + Src + ";}";
+    };
+    std::string WrappedSource0 = Prefix0 + Wrap(SrcCode0);
+    std::string WrappedSource1 = Prefix1 + Wrap(SrcCode1);
+    auto Matcher = namedDecl(hasName("wrapped"));
+    return makeDecls<NamedDecl>(WrappedSource0, WrappedSource1, Lang, Matcher);
+  }
+
   bool testStructuralMatch(Decl *D0, Decl *D1) {
     llvm::DenseSet<std::pair<Decl *, Decl *>> NonEquivalentDecls01;
     llvm::DenseSet<std::pair<Decl *, Decl *>> NonEquivalentDecls10;
@@ -1373,6 +1389,203 @@ TEST_F(StructuralEquivalenceCacheTest, Cycle) {
       TU, cxxRecordDecl(hasName("A"), unless(isImplicit())))));
   EXPECT_FALSE(isInNonEqCache(
       findDeclPair<FunctionDecl>(TU, functionDecl(hasName("x")))));
+}
+
+struct StructuralEquivalenceStmtTest : StructuralEquivalenceTest {};
+
+TEST_F(StructuralEquivalenceStmtTest, AddrLabelExpr) {
+  auto t = makeStmts("lbl: &&lbl;", "lbl: &&lbl;", Lang_CXX03);
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, AddrLabelExprDifferentLabel) {
+  auto t = makeStmts("lbl1: lbl2: &&lbl1;", "lbl1: lbl2: &&lbl2;", Lang_CXX03);
+  // FIXME: Should be false. LabelDecl are incorrectly matched.
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+static const std::string MemoryOrderSrc = R"(
+enum memory_order {
+  memory_order_relaxed,
+  memory_order_consume,
+  memory_order_acquire,
+  memory_order_release,
+  memory_order_acq_rel,
+  memory_order_seq_cst
+};
+)";
+
+TEST_F(StructuralEquivalenceStmtTest, AtomicExpr) {
+  std::string Prefix = "char a, b; " + MemoryOrderSrc;
+  auto t =
+      makeStmts("__atomic_load(&a, &b, memory_order_seq_cst);",
+                "__atomic_load(&a, &b, memory_order_seq_cst);", Lang_CXX03);
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, AtomicExprDifferentOp) {
+  std::string Prefix = "char a, b; " + MemoryOrderSrc;
+  auto t =
+      makeStmts("__atomic_load(&a, &b, memory_order_seq_cst);",
+                "__atomic_store(&a, &b, memory_order_seq_cst);", Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, BinaryOperator) {
+  auto t = makeStmts("1 + 1", "1 + 1", Lang_CXX03);
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, BinaryOperatorDifferentOps) {
+  auto t = makeStmts("1 + 1", "1 - 1", Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, CallExpr) {
+  std::string FunctionSrc = "int func();\n";
+  auto t = makeStmts("func()", "func()", Lang_CXX03, FunctionSrc, FunctionSrc);
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, CallExprDifferentCallee) {
+  std::string FunctionSrc = "int func1(); int func2();\n";
+  auto t =
+      makeStmts("func1()", "func2()", Lang_CXX03, FunctionSrc, FunctionSrc);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, CharacterLiteral) {
+  auto t = makeStmts("'a'", "'a'", Lang_CXX03);
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, CharacterLiteralDifferentValues) {
+  auto t = makeStmts("'a'", "'b'", Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, ExpressionTraitExpr) {
+  auto t = makeStmts("__is_lvalue_expr(1)", "__is_lvalue_expr(1)", Lang_CXX03);
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, ExpressionTraitExprDifferentKind) {
+  auto t = makeStmts("__is_lvalue_expr(1)", "__is_rvalue_expr(1)", Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, FloatingLiteral) {
+  auto t = makeStmts("1.0", "1.0", Lang_CXX03);
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, FloatingLiteralDifferentSpelling) {
+  auto t = makeStmts("0x10.1p0", "16.0625", Lang_CXX17);
+  // Same value but with different spelling is equivalent.
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, FloatingLiteralDifferentType) {
+  auto t = makeStmts("1.0", "1.0f", Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, FloatingLiteralDifferentValue) {
+  auto t = makeStmts("1.01", "1.0", Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, IntegerLiteral) {
+  auto t = makeStmts("1", "1", Lang_CXX03);
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, IntegerLiteralDifferentSpelling) {
+  auto t = makeStmts("1", "0x1", Lang_CXX03);
+  // Same value but with different spelling is equivalent.
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, IntegerLiteralDifferentValue) {
+  auto t = makeStmts("1", "2", Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, IntegerLiteralDifferentTypes) {
+  auto t = makeStmts("1", "1L", Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, ObjCStringLiteral) {
+  auto t = makeStmts("@\"a\"", "@\"a\"", Lang_OBJCXX);
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, ObjCStringLiteralDifferentContent) {
+  auto t = makeStmts("@\"a\"", "@\"b\"", Lang_OBJCXX);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, StringLiteral) {
+  auto t = makeStmts("\"a\"", "\"a\"", Lang_CXX03);
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, StringLiteralDifferentContent) {
+  auto t = makeStmts("\"a\"", "\"b\"", Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, StringLiteralDifferentLength) {
+  auto t = makeStmts("\"a\"", "\"aa\"", Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, TypeTraitExpr) {
+  auto t = makeStmts("__is_pod(int)", "__is_pod(int)", Lang_CXX03);
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, TypeTraitExprDifferentType) {
+  auto t = makeStmts("__is_pod(int)", "__is_pod(long)", Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, TypeTraitExprDifferentTrait) {
+  auto t = makeStmts("__is_pod(int)", "__is_trivially_constructible(int)",
+                     Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, TypeTraitExprDifferentTraits) {
+  auto t = makeStmts("__is_constructible(int)", "__is_constructible(int, int)",
+                     Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, UnaryExprOrTypeTraitExpr) {
+  auto t = makeStmts("sizeof(int)", "sizeof(int)", Lang_CXX03);
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, UnaryExprOrTypeTraitExprDifferentKind) {
+  auto t = makeStmts("sizeof(int)", "alignof(long)", Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, UnaryExprOrTypeTraitExprDifferentType) {
+  auto t = makeStmts("sizeof(int)", "sizeof(long)", Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, UnaryOperator) {
+  auto t = makeStmts("+1", "+1", Lang_CXX03);
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, UnaryOperatorDifferentOps) {
+  auto t = makeStmts("+1", "-1", Lang_CXX03);
+  EXPECT_FALSE(testStructuralMatch(t));
 }
 
 } // end namespace ast_matchers
