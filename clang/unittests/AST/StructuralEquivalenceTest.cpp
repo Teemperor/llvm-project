@@ -1564,6 +1564,16 @@ TEST_F(StructuralEquivalenceStmtTest, FloatingLiteralDifferentValue) {
   EXPECT_FALSE(testStructuralMatch(t));
 }
 
+TEST_F(StructuralEquivalenceStmtTest, GNUNullExpr) {
+  auto t = makeWrappedStmts("__null", "__null", Lang_CXX03, gnuNullExpr());
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, GNUNullExprDifferentNode) {
+  auto t = makeWrappedStmts("__null", "0", Lang_CXX03, fallbackExprMatcher());
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
 TEST_F(StructuralEquivalenceStmtTest, IntegerLiteral) {
   auto t = makeWrappedStmts("1", "1", Lang_CXX03, integerLiteral());
   EXPECT_TRUE(testStructuralMatch(t));
@@ -1608,6 +1618,23 @@ TEST_F(StructuralEquivalenceStmtTest, ObjCStringLiteral) {
 TEST_F(StructuralEquivalenceStmtTest, ObjCStringLiteralDifferentContent) {
   auto t =
       makeWrappedStmts("@\"a\"", "@\"b\"", Lang_OBJCXX, fallbackExprMatcher());
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, ShuffleVectorExpr) {
+  std::string Src = R"(
+                    typedef int v __attribute__ ((vector_size (16)));
+
+                    v wrapper(v x, v y) { return __builtin_shufflevector(x, y, 3, 2, 5, 7); }
+                    )";
+  auto t = makeStmts(Src, Src, Lang_CXX03, returnStmt());
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, ShuffleVectorExprDifferentArgs) {
+  std::string Typedef = "typedef int v __attribute__ ((vector_size (16)));";
+  auto t = makeStmts(Typedef + "v wrapper(v x, v y) { return __builtin_shufflevector(x, y, 3, 2, 5, 4);",
+                            Typedef + "v wrapper(v x, v y) { return __builtin_shufflevector(x, y, 3, 2, 5, 5);", Lang_CXX03, returnStmt());
   EXPECT_FALSE(testStructuralMatch(t));
 }
 

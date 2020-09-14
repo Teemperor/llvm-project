@@ -233,6 +233,10 @@ class StmtComparer {
     return E1->isExact() == E2->isExact() && E1->getValue() == E2->getValue();
   }
 
+  bool IsStmtEquivalent(const GNUNullExpr *E1, const GNUNullExpr *E2) {
+    return true; // Nothing to compare.
+  }
+
   bool IsStmtEquivalent(const ImplicitCastExpr *CastE1,
                         const ImplicitCastExpr *CastE2) {
     return IsStructurallyEquivalent(Context, CastE1->getType(),
@@ -257,6 +261,12 @@ class StmtComparer {
 
   bool IsStmtEquivalent(const SourceLocExpr *E1, const SourceLocExpr *E2) {
     return E1->getIdentKind() == E2->getIdentKind();
+  }
+
+  bool IsStmtEquivalent(const ShuffleVectorExpr *E1,
+                        const ShuffleVectorExpr *E2) {
+    // Semantics only depend on children.
+    return true;
   }
 
   bool IsStmtEquivalent(const StmtExpr *E1, const StmtExpr *E2) {
