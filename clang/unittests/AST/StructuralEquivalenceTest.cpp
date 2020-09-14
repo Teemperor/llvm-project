@@ -1460,8 +1460,7 @@ TEST_F(StructuralEquivalenceStmtTest, AddrLabelExpr) {
 TEST_F(StructuralEquivalenceStmtTest, AddrLabelExprDifferentLabel) {
   auto t = makeWrappedStmts("lbl1: lbl2: &&lbl1;", "lbl1: lbl2: &&lbl2;",
                             Lang_CXX03, addrLabelExpr());
-  // FIXME: Should be false. LabelDecl are incorrectly matched.
-  EXPECT_TRUE(testStructuralMatch(t));
+  EXPECT_FALSE(testStructuralMatch(t));
 }
 
 static const std::string MemoryOrderSrc = R"(
@@ -1583,6 +1582,20 @@ TEST_F(StructuralEquivalenceStmtTest, IntegerLiteralDifferentValue) {
 
 TEST_F(StructuralEquivalenceStmtTest, IntegerLiteralDifferentTypes) {
   auto t = makeWrappedStmts("1", "1L", Lang_CXX03, integerLiteral());
+  EXPECT_FALSE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, MemberExpr) {
+  std::string ClassSrc = "struct C { int a; int b; };";
+  auto t = makeStmts(ClassSrc + "int wrapper() { C c; return c.a; }",
+                     ClassSrc + "int wrapper() { C c; return c.a; }", Lang_CXX03, memberExpr());
+  EXPECT_TRUE(testStructuralMatch(t));
+}
+
+TEST_F(StructuralEquivalenceStmtTest, MemberExprDifferentMember) {
+  std::string ClassSrc = "struct C { int a; int b; };";
+  auto t = makeStmts(ClassSrc + "int wrapper() { C c; return c.a; }",
+                     ClassSrc + "int wrapper() { C c; return c.b; }", Lang_CXX03, memberExpr());
   EXPECT_FALSE(testStructuralMatch(t));
 }
 
