@@ -22,6 +22,7 @@ CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
 
   std::initializer_list<const char *> supported_names = {
       // containers
+      "basic_string",
       "deque",
       "forward_list",
       "list",
@@ -34,9 +35,15 @@ CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
       "weak_ptr",
       // utility
       "allocator",
+      "char_traits"
       "pair",
   };
   m_supported_templates.insert(supported_names.begin(), supported_names.end());
+
+  supported_names = {// strings
+                     "string", "wstring", "u16string", "u32string"};
+  m_supported_named_decls.insert(supported_names.begin(),
+                                 supported_names.end());
 }
 
 /// Builds a list of scopes that point into the given context.
@@ -282,9 +289,57 @@ llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
   return result;
 }
 
+llvm::Optional<Decl *> CxxModuleHandler::tryLoadNamedDecl(Decl *d) {
+  Log *log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS);
+
+  auto nd = dyn_cast<NamedDecl>(d);
+  if (!nd)
+    return llvm::None;
+
+  if (!nd->getDeclContext()->isStdNamespace())
+    return llvm::None;
+
+  if (!m_supported_named_decls.contains(nd->getName()))
+    return llvm::None;
+
+  // Find the local DeclContext that corresponds to the DeclContext of our
+  // decl we want to import.
+  llvm::Expected<DeclContext *> to_context =
+      getEqualLocalDeclContext(*m_sema, nd->getDeclContext());
+  if (!to_context) {
+    LLDB_LOG_ERROR(log, to_context.takeError(),
+                   "Got error while searching equal local DeclContext for decl "
+                   "'{1}':\n{0}",
+                   nd->getName());
+    return llvm::None;
+  }
+
+  // Look up the decl in our local context.
+  std::unique_ptr<LookupResult> lookup =
+      emulateLookupInCtxt(*m_sema, nd->getName(), *to_context);
+
+  NamedDecl *found_decl = nullptr;
+  for (auto LD : *lookup) {
+    if ((found_decl = dyn_cast<NamedDecl>(LD)))
+      break;
+  }
+  if (!found_decl)
+    return llvm::None;
+
+  m_importer->RegisterImportedDecl(d, found_decl);
+  return found_decl;
+}
+
 llvm::Optional<Decl *> CxxModuleHandler::Import(Decl *d) {
   if (!isValid())
     return {};
 
+  // Search the C++ module for a suitable replacement.
+  if (llvm::Optional<Decl *> result = tryLoadNamedDecl(d))
+    return result;
+
+  // If there is no suitable replacement already, see if the declaration is
+  // a template specialization and try loading and instantiating the template
+  // from the C++ module.
   return tryInstantiateStdTemplate(d);
 }

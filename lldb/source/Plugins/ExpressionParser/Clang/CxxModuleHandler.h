@@ -41,9 +41,18 @@ class CxxModuleHandler {
   /// template names inside the 'std' namespace such as 'vector' or 'list'.
   llvm::StringSet<> m_supported_templates;
 
+  /// List of simple named decls that can safely be substituted safely by
+  /// their equivalent from the 'std' C++ module.
+  llvm::StringSet<> m_supported_named_decls;
+
   /// Tries to manually instantiate the given foreign template in the target
   /// context (designated by m_sema).
   llvm::Optional<clang::Decl *> tryInstantiateStdTemplate(clang::Decl *d);
+
+  /// Tries to load the NamedDecl from the 'std' C++ module. Returns the loaded
+  /// NamedDecl (which will be in the target context) or None if no suitable
+  /// Decl could be found in the C++ module.
+  llvm::Optional<clang::Decl *> tryLoadNamedDecl(clang::Decl *d);
 
 public:
   CxxModuleHandler() = default;
