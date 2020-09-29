@@ -35,6 +35,32 @@ using namespace lldb_private;
 
 static const char *pluginDesc = "Mac OS X ABI for arm64 targets";
 
+static void SetupVolatileRegisters(llvm::StringSet<> &register_names) {
+  auto addVSDForms = [&register_names](unsigned index) {
+    register_names.insert("v" + std::to_string(index));
+    register_names.insert("s" + std::to_string(index));
+    register_names.insert("d" + std::to_string(index));
+  };
+  // Volatile registers: x0-x18, x30 (lr)
+  for (unsigned i = 0; i <= 18; ++i)
+    register_names.insert("x" + std::to_string(i));
+  register_names.insert("x30");
+
+  // Volatile registers: v0-7 (and 's' and 'd' forms)
+  for (unsigned i = 0; i <= 7; ++i)
+    addVSDForms(i);
+
+  // Volatile registers: v16-v31 (and 's' and 'd' forms)
+  for (unsigned i = 16; i <= 32; ++i)
+    addVSDForms(i);
+}
+
+ABIMacOSX_arm64::ABIMacOSX_arm64(ProcessSP process_sp,
+                                 std::unique_ptr<llvm::MCRegisterInfo> info_up)
+  : ABIAArch64(process_sp, std::move(info_up)) {
+  SetupVolatileRegisters(m_volatile_register_names);
+}
+
 size_t ABIMacOSX_arm64::GetRedZoneSize() const { return 128; }
 
 // Static Functions
@@ -407,82 +433,9 @@ bool ABIMacOSX_arm64::CreateDefaultUnwindPlan(UnwindPlan &unwind_plan) {
 // retrieve fp saves.
 
 bool ABIMacOSX_arm64::RegisterIsVolatile(const RegisterInfo *reg_info) {
-  if (reg_info) {
-    const char *name = reg_info->name;
-
-    // Sometimes we'll be called with the "alternate" name for these registers;
-    // recognize them as non-volatile.
-
-    if (name[0] == 'p' && name[1] == 'c') // pc
-      return false;
-    if (name[0] == 'f' && name[1] == 'p') // fp
-      return false;
-    if (name[0] == 's' && name[1] == 'p') // sp
-      return false;
-    if (name[0] == 'l' && name[1] == 'r') // lr
-      return false;
-
-    if (name[0] == 'x') {
-      // Volatile registers: x0-x18, x30 (lr)
-      // Return false for the non-volatile gpr regs, true for everything else
-      switch (name[1]) {
-      case '1':
-        switch (name[2]) {
-        case '9':
-          return false; // x19 is non-volatile
-        default:
-          return true;
-        }
-        break;
-      case '2':
-        switch (name[2]) {
-        case '0':
-        case '1':
-        case '2':
-        case '3':
-        case '4':
-        case '5':
-        case '6':
-        case '7':
-        case '8':
-          return false; // x20 - 28 are non-volatile
-        case '9':
-          return false; // x29 aka fp treat as non-volatile on Darwin
-        default:
-          return true;
-        }
-      case '3': // x30 aka lr treat as non-volatile
-        if (name[2] == '0')
-          return false;
-        break;
-      default:
-        return true;
-      }
-    } else if (name[0] == 'v' || name[0] == 's' || name[0] == 'd') {
-      // Volatile registers: v0-7, v16-v31
-      // Return false for non-volatile fp/SIMD regs, true for everything else
-      switch (name[1]) {
-      case '8':
-      case '9':
-        return false; // v8-v9 are non-volatile
-      case '1':
-        switch (name[2]) {
-        case '0':
-        case '1':
-        case '2':
-        case '3':
-        case '4':
-        case '5':
-          return false; // v10-v15 are non-volatile
-        default:
-          return true;
-        }
-      default:
-        return true;
-      }
-    }
-  }
-  return true;
+  if (!reg_info)
+    return false;
+  return m_volatile_register_names.contains(reg_info->name);
 }
 
 static bool LoadValueFromConsecutiveGPRRegisters(

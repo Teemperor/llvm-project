@@ -9,6 +9,7 @@
 #ifndef LLDB_SOURCE_PLUGINS_ABI_AARCH64_ABIMACOSX_ARM64_H
 #define LLDB_SOURCE_PLUGINS_ABI_AARCH64_ABIMACOSX_ARM64_H
 
+#include "llvm/ADT/StringSet.h"
 #include "Plugins/ABI/AArch64/ABIAArch64.h"
 #include "lldb/Utility/ConstString.h"
 #include "lldb/lldb-private.h"
@@ -90,7 +91,9 @@ protected:
                            lldb_private::CompilerType &ast_type) const override;
 
 private:
-  using ABIAArch64::ABIAArch64; // Call CreateInstance instead.
+  ABIMacOSX_arm64(lldb::ProcessSP process_sp, std::unique_ptr<llvm::MCRegisterInfo> info_up);
+
+  llvm::StringSet<> m_volatile_register_names;
 };
 
 #endif // LLDB_SOURCE_PLUGINS_ABI_AARCH64_ABIMACOSX_ARM64_H

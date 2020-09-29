@@ -13,12 +13,14 @@ add_lldb_unittest(TargetTests
       lldbPluginObjectFileELF
       lldbPluginPlatformLinux
       lldbPluginSymbolFileSymtab
+      lldbPluginABIAArch64
       lldbTarget
       lldbSymbol
       lldbUtility
       lldbUtilityHelpers
     LINK_COMPONENTS
       Support
+      ${LLVM_TARGETS_TO_BUILD}
   )
 
 add_unittest_inputs(TargetTests TestModule.so)
