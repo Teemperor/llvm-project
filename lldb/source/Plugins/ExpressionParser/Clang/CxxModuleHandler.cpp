@@ -26,6 +26,7 @@ CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
       "forward_list",
       "list",
       "queue",
+      "set",
       "stack",
       "vector",
       // pointers
@@ -34,6 +35,7 @@ CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
       "weak_ptr",
       // utility
       "allocator",
+      "less",
       "pair",
   };
   m_supported_templates.insert(supported_names.begin(), supported_names.end());
@@ -182,6 +184,8 @@ llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
   auto td = dyn_cast<ClassTemplateSpecializationDecl>(d);
   if (!td)
     return {};
+
+  llvm::errs() << "D:" << td->getNameAsString() << "\n";
 
   // We only care about templates in the std namespace.
   if (!td->getDeclContext()->isStdNamespace())
