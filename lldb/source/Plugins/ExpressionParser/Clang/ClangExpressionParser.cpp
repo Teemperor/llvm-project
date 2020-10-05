@@ -279,9 +279,9 @@ private:
   std::string m_output;
 };
 
-static void SetupModuleHeaderPaths(CompilerInstance *compiler,
-                                   std::vector<std::string> include_directories,
-                                   lldb::TargetSP target_sp) {
+static void
+SetupModuleHeaderPaths(CompilerInstance *compiler,
+                       std::vector<std::string> include_directories) {
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
 
   HeaderSearchOptions &search_opts = compiler->getHeaderSearchOpts();
@@ -561,8 +561,7 @@ ClangExpressionParser::ClangExpressionParser(
     // The Darwin libc expects this macro to be set.
     lang_opts.GNUCVersion = 40201;
 
-    SetupModuleHeaderPaths(m_compiler.get(), m_include_directories,
-                           target_sp);
+    SetupModuleHeaderPaths(m_compiler.get(), m_include_directories);
   }
 
   if (process_sp && lang_opts.ObjC) {
