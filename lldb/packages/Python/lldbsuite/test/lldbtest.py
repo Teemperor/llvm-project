@@ -1591,6 +1591,9 @@ class Base(unittest2.TestCase):
         """Platform specific way to build the default binaries."""
         testdir = self.mydir
         testname = self.getBuildDirBasename()
+        if not architecture and configuration.arch:
+            architecture = configuration.arch
+
         if self.getDebugInfo():
             raise Exception("buildDefault tests must set NO_DEBUG_INFO_TESTCASE")
         module = builder_module()
@@ -1607,6 +1610,9 @@ class Base(unittest2.TestCase):
         """Platform specific way to build binaries with dsym info."""
         testdir = self.mydir
         testname = self.getBuildDirBasename()
+        if not architecture and configuration.arch:
+            architecture = configuration.arch
+
         if self.getDebugInfo() != "dsym":
             raise Exception("NO_DEBUG_INFO_TESTCASE must build with buildDefault")
 
@@ -1624,6 +1630,9 @@ class Base(unittest2.TestCase):
         """Platform specific way to build binaries with dwarf maps."""
         testdir = self.mydir
         testname = self.getBuildDirBasename()
+        if not architecture and configuration.arch:
+            architecture = configuration.arch
+
         if self.getDebugInfo() != "dwarf":
             raise Exception("NO_DEBUG_INFO_TESTCASE must build with buildDefault")
 
@@ -1641,6 +1650,9 @@ class Base(unittest2.TestCase):
         """Platform specific way to build binaries with dwarf maps."""
         testdir = self.mydir
         testname = self.getBuildDirBasename()
+        if not architecture and configuration.arch:
+            architecture = configuration.arch
+
         if self.getDebugInfo() != "dwo":
             raise Exception("NO_DEBUG_INFO_TESTCASE must build with buildDefault")
 
@@ -1658,6 +1670,9 @@ class Base(unittest2.TestCase):
         """Platform specific way to build binaries with gmodules info."""
         testdir = self.mydir
         testname = self.getBuildDirBasename()
+        if not architecture and configuration.arch:
+            architecture = configuration.arch
+
         if self.getDebugInfo() != "gmodules":
             raise Exception("NO_DEBUG_INFO_TESTCASE must build with buildDefault")
 
@@ -2605,6 +2620,9 @@ FileCheck output:
             dictionary=None):
         """Platform specific way to build the default binaries."""
         module = builder_module()
+
+        if not architecture and configuration.arch:
+            architecture = configuration.arch
 
         dictionary = lldbplatformutil.finalize_build_dictionary(dictionary)
         if self.getDebugInfo() is None:
