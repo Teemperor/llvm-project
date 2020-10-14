@@ -92,7 +92,7 @@ class LoadUnloadTestCase(TestBase):
     # dependencies are resolved relative to the debuggers PWD. Bug?
     @expectedFailureAll(oslist=["linux"])
     @skipIfFreeBSD  # llvm.org/pr14424 - missing FreeBSD Makefiles/testcase support
-    @not_remote_testsuite_ready
+    @skipIfRemote
     @skipIfWindows  # Windows doesn't have dlopen and friends, dynamic libraries work differently
     @expectedFailureNetBSD
     @skipIfReproducer # VFS is a snapshot.
