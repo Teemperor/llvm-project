@@ -31,19 +31,6 @@ using namespace lldb_private::formatters;
 
 namespace lldb_private {
 namespace formatters {
-std::map<ConstString, CXXFunctionSummaryFormat::Callback> &
-NSArray_Additionals::GetAdditionalSummaries() {
-  static std::map<ConstString, CXXFunctionSummaryFormat::Callback> g_map;
-  return g_map;
-}
-
-std::map<ConstString, CXXSyntheticChildren::CreateFrontEndCallback> &
-NSArray_Additionals::GetAdditionalSynthetics() {
-  static std::map<ConstString, CXXSyntheticChildren::CreateFrontEndCallback>
-      g_map;
-  return g_map;
-}
-
 class NSArrayMSyntheticFrontEndBase : public SyntheticChildrenFrontEnd {
 public:
   NSArrayMSyntheticFrontEndBase(lldb::ValueObjectSP valobj_sp);
@@ -414,12 +401,7 @@ bool lldb_private::formatters::NSArraySummaryProvider(
     if (error.Fail())
       return false;
   } else {
-    auto &map(NSArray_Additionals::GetAdditionalSummaries());
-    auto iter = map.find(class_name), end = map.end();
-    if (iter != end)
-      return iter->second(valobj, stream, options);
-    else
-      return false;
+    return false;
   }
 
   std::string prefix, suffix;
@@ -838,11 +820,6 @@ lldb_private::formatters::NSArraySyntheticFrontEndCreator(
       return (new Foundation1010::NSArrayMSyntheticFrontEnd(valobj_sp));
   } else if (class_name == g_NSCallStackArray) {
     return (new CallStackArray::NSCallStackArraySyntheticFrontEnd(valobj_sp));
-  } else {
-    auto &map(NSArray_Additionals::GetAdditionalSynthetics());
-    auto iter = map.find(class_name), end = map.end();
-    if (iter != end)
-      return iter->second(synth, valobj_sp);
   }
 
   return nullptr;

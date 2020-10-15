@@ -48,21 +48,6 @@ bool NSDictionary_Additionals::AdditionalFormatterMatching::Full::Match(
   return (class_name == m_name);
 }
 
-NSDictionary_Additionals::AdditionalFormatters<
-    CXXFunctionSummaryFormat::Callback> &
-NSDictionary_Additionals::GetAdditionalSummaries() {
-  static AdditionalFormatters<CXXFunctionSummaryFormat::Callback> g_map;
-  return g_map;
-}
-
-NSDictionary_Additionals::AdditionalFormatters<
-    CXXSyntheticChildren::CreateFrontEndCallback> &
-NSDictionary_Additionals::GetAdditionalSynthetics() {
-  static AdditionalFormatters<CXXSyntheticChildren::CreateFrontEndCallback>
-      g_map;
-  return g_map;
-}
-
 static CompilerType GetLLDBNSPairType(TargetSP target_sp) {
   CompilerType compiler_type;
 
@@ -453,11 +438,6 @@ bool lldb_private::formatters::NSDictionarySummaryProvider(
       return false;
     value = cfbh.GetCount();
   } else {
-    auto &map(NSDictionary_Additionals::GetAdditionalSummaries());
-    for (auto &candidate : map) {
-      if (candidate.first && candidate.first->Match(class_name))
-        return candidate.second(valobj, stream, options);
-    }
     return false;
   }
 
@@ -535,12 +515,6 @@ lldb_private::formatters::NSDictionarySyntheticFrontEndCreator(
              class_name == g_DictionaryNSCF ||
              class_name == g_DictionaryCFRef) {
     return (new NSCFDictionarySyntheticFrontEnd(valobj_sp));
-  } else {
-    auto &map(NSDictionary_Additionals::GetAdditionalSynthetics());
-    for (auto &candidate : map) {
-      if (candidate.first && candidate.first->Match((class_name)))
-        return candidate.second(synth, valobj_sp);
-    }
   }
 
   return nullptr;

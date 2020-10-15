@@ -73,19 +73,6 @@ public:
       return std::make_unique<Prefix>(p);
     }
   };
-
-  template <typename FormatterType>
-  using AdditionalFormatter =
-      std::pair<AdditionalFormatterMatching::MatcherUP, FormatterType>;
-
-  template <typename FormatterType>
-  using AdditionalFormatters = std::vector<AdditionalFormatter<FormatterType>>;
-
-  static AdditionalFormatters<CXXFunctionSummaryFormat::Callback> &
-  GetAdditionalSummaries();
-
-  static AdditionalFormatters<CXXSyntheticChildren::CreateFrontEndCallback> &
-  GetAdditionalSynthetics();
 };
 } // namespace formatters
 } // namespace lldb_private

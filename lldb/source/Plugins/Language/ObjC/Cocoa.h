@@ -101,15 +101,6 @@ NSErrorSyntheticFrontEndCreator(CXXSyntheticChildren *,
 SyntheticChildrenFrontEnd *
 NSExceptionSyntheticFrontEndCreator(CXXSyntheticChildren *,
                                     lldb::ValueObjectSP valobj_sp);
-
-class NSArray_Additionals {
-public:
-  static std::map<ConstString, CXXFunctionSummaryFormat::Callback> &
-  GetAdditionalSummaries();
-
-  static std::map<ConstString, CXXSyntheticChildren::CreateFrontEndCallback> &
-  GetAdditionalSynthetics();
-};
 } // namespace formatters
 } // namespace lldb_private
 

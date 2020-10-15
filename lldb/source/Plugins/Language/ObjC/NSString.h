@@ -30,12 +30,6 @@ bool NSAttributedStringSummaryProvider(ValueObject &valobj, Stream &stream,
 
 bool NSMutableAttributedStringSummaryProvider(
     ValueObject &valobj, Stream &stream, const TypeSummaryOptions &options);
-
-class NSString_Additionals {
-public:
-  static std::map<ConstString, CXXFunctionSummaryFormat::Callback> &
-  GetAdditionalSummaries();
-};
 } // namespace formatters
 } // namespace lldb_private
 
