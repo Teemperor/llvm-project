@@ -929,10 +929,6 @@ def run_suite():
                 configuration.lldb_platform_working_dir):
             raise Exception("failed to set working directory '%s'" % configuration.lldb_platform_working_dir)
         lldb.selected_platform = lldb.remote_platform
-    else:
-        lldb.remote_platform = None
-        configuration.lldb_platform_working_dir = None
-        configuration.lldb_platform_url = None
 
     # Set up the working directory.
     # Note that it's not dotest's job to clean this directory.
