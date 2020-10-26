@@ -318,21 +318,21 @@ TEST(ArgsTest, Yaml) {
 TEST(ArgsTest, GetShellSafeArgument) {
   // Try escaping with bash at start/middle/end of the argument.
   FileSpec bash("/bin/bash", FileSpec::Style::posix);
-  EXPECT_EQ(Args::GetShellSafeArgument(bash, "\"b"), "\\\"b");
-  EXPECT_EQ(Args::GetShellSafeArgument(bash, "a\""), "a\\\"");
-  EXPECT_EQ(Args::GetShellSafeArgument(bash, "a\"b"), "a\\\"b");
+  EXPECT_EQ(Args::GetShellSafeArgument(bash, "\"b"), R"("\"b")");
+  EXPECT_EQ(Args::GetShellSafeArgument(bash, "a\""), R"("a\"")");
+  EXPECT_EQ(Args::GetShellSafeArgument(bash, "a\"b"), R"("a\"b")");
 
   // String that doesn't need to be escaped
-  EXPECT_EQ(Args::GetShellSafeArgument(bash, "a"), "a");
+  EXPECT_EQ(Args::GetShellSafeArgument(bash, "a"), R"("a")");
 
   // Try escaping with tcsh and the tcsh-specific "$" escape.
   FileSpec tcsh("/bin/tcsh", FileSpec::Style::posix);
-  EXPECT_EQ(Args::GetShellSafeArgument(tcsh, "a$b"), "a\\$b");
+  EXPECT_EQ(Args::GetShellSafeArgument(tcsh, "a$b"), R"("a\$b")");
   // Bash however doesn't need escaping for "$".
-  EXPECT_EQ(Args::GetShellSafeArgument(bash, "a$b"), "a$b");
+  EXPECT_EQ(Args::GetShellSafeArgument(bash, "a$b"), R"("a$b")");
 
   // Try escaping with an unknown shell.
   FileSpec unknown_shell("/bin/unknown_shell", FileSpec::Style::posix);
-  EXPECT_EQ(Args::GetShellSafeArgument(unknown_shell, "a'b"), "a\\'b");
-  EXPECT_EQ(Args::GetShellSafeArgument(unknown_shell, "a\"b"), "a\\\"b");
+  EXPECT_EQ(Args::GetShellSafeArgument(unknown_shell, "a'b"), R"("a\'b")");
+  EXPECT_EQ(Args::GetShellSafeArgument(unknown_shell, "a\"b"), R"("a\"b")");
 }
