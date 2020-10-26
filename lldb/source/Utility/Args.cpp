@@ -403,13 +403,22 @@ std::string Args::GetShellSafeArgument(const FileSpec &shell,
   }
 
   std::string safe_arg;
-  safe_arg.reserve(unsafe_arg.size());
+  // Reserve the original argument size + 2 for leading/trailing quotes.
+  safe_arg.reserve(unsafe_arg.size() + 2U);
+
+  // Start quoting argument.
+  constexpr char quote = '\"';
+  safe_arg.push_back(quote);
+
   // Add a \ before every character that needs to be escaped.
   for (char c : unsafe_arg) {
     if (escapables.contains(c))
       safe_arg.push_back('\\');
     safe_arg.push_back(c);
   }
+
+  // Terminate quoted argument.
+  safe_arg.push_back(quote);
   return safe_arg;
 }
 
