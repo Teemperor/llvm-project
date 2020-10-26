@@ -386,12 +386,12 @@ std::string Args::GetShellSafeArgument(const FileSpec &shell,
     llvm::StringRef m_escapables;
   };
 
-  static ShellDescriptor g_Shells[] = {{ConstString("bash"), " '\"<>()&"},
-                                       {ConstString("tcsh"), " '\"<>()&$"},
-                                       {ConstString("sh"), " '\"<>()&"}};
+  static ShellDescriptor g_Shells[] = {{ConstString("bash"), "\""},
+                                       {ConstString("tcsh"), "\"$"},
+                                       {ConstString("sh"), "\"&"}};
 
   // safe minimal set
-  llvm::StringRef escapables = " '\"";
+  llvm::StringRef escapables = "\"";
 
   if (auto basename = shell.GetFilename()) {
     for (const auto &Shell : g_Shells) {
