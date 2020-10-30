@@ -2585,6 +2585,35 @@ FileCheck output:
         value_check.check_value(self, eval_result, str(eval_result))
         return eval_result
 
+    def expect_var_path(
+            self,
+            var_path,
+            result_summary=None,
+            result_value=None,
+            result_type=None,
+            result_children=None
+            ):
+        """
+        Evaluates the given variable path and verifies the result.
+        See also 'frame variable' and SBFrame.GetValueForVariablePath.
+        :param var_path: The variable path as a string.
+        :param result_summary: The summary that the variable should have. None if the summary should not be checked.
+        :param result_value: The value that the variable should have. None if the value should not be checked.
+        :param result_type: The type that the variable result should have. None if the type should not be checked.
+        :param result_children: The expected children of the variable  as a list of ValueChecks.
+                                None if the children shouldn't be checked.
+        """
+        self.assertTrue(var_path.strip() == var_path,
+                        "Expression contains trailing/leading whitespace: '" + var_path + "'")
+
+        frame = self.frame()
+        eval_result = frame.GetValueForVariablePath(var_path)
+
+        value_check = ValueCheck(type=result_type, value=result_value,
+                                 summary=result_summary, children=result_children)
+        value_check.check_value(self, eval_result, str(eval_result))
+        return eval_result
+
     def invoke(self, obj, name, trace=False):
         """Use reflection to call a method dynamically with no argument."""
         trace = (True if traceAlways else trace)
