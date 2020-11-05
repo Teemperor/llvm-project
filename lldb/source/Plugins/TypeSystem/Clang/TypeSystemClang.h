@@ -301,6 +301,17 @@ public:
           &type_fields,
       bool packed = false);
 
+  /// Returns true iff the given FileID was created for a dummy file by
+  /// GetLocForDecl.
+  bool IsDummyFileID(clang::FileID fid);
+
+  /// Returns the SourceLocation of the given Declaration.
+  ///
+  /// \return A SourceLocation that points to a dummy file with the
+  ///         same file path as the given declaration. If the declaration
+  ///         is invalid the returned SourceLocation is also invalid.
+  clang::SourceLocation GetLocForDecl(const Declaration &decl);
+
   static bool IsOperator(llvm::StringRef name,
                          clang::OverloadedOperatorKind &op_kind);
 
@@ -321,13 +332,12 @@ public:
                                                bool is_framework = false,
                                                bool is_explicit = false);
 
-  CompilerType CreateRecordType(clang::DeclContext *decl_ctx,
-                                OptionalClangModuleID owning_module,
-                                lldb::AccessType access_type,
-                                llvm::StringRef name, int kind,
-                                lldb::LanguageType language,
-                                ClangASTMetadata *metadata = nullptr,
-                                bool exports_symbols = false);
+  CompilerType CreateRecordType(
+      clang::DeclContext *decl_ctx, OptionalClangModuleID owning_module,
+      lldb::AccessType access_type, llvm::StringRef name, int kind,
+      lldb::LanguageType language, ClangASTMetadata *metadata = nullptr,
+      bool exports_symbols = false,
+      clang::SourceLocation location = clang::SourceLocation());
 
   class TemplateParameterInfos {
   public:
@@ -445,7 +455,7 @@ public:
   CompilerType CreateEnumerationType(const char *name,
                                      clang::DeclContext *decl_ctx,
                                      OptionalClangModuleID owning_module,
-                                     const Declaration &decl,
+                                     clang::SourceLocation loc,
                                      const CompilerType &integer_qual_type,
                                      bool is_scoped);
 
@@ -936,11 +946,11 @@ public:
 
   // Modifying Enumeration types
   clang::EnumConstantDecl *AddEnumerationValueToEnumerationType(
-      const CompilerType &enum_type, const Declaration &decl, const char *name,
-      int64_t enum_value, uint32_t enum_value_bit_size);
+      const CompilerType &enum_type, clang::SourceLocation loc,
+      const char *name, int64_t enum_value, uint32_t enum_value_bit_size);
   clang::EnumConstantDecl *AddEnumerationValueToEnumerationType(
-      const CompilerType &enum_type, const Declaration &decl, const char *name,
-      const llvm::APSInt &value);
+      const CompilerType &enum_type, clang::SourceLocation loc,
+      const char *name, const llvm::APSInt &value);
 
   /// Returns the underlying integer type for an enum type. If the given type
   /// is invalid or not an enum-type, the function returns an invalid

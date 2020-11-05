@@ -1105,8 +1105,8 @@ clang::QualType PdbAstBuilder::CreateEnumType(PdbTypeSymId id,
 
   Declaration declaration;
   CompilerType enum_ct = m_clang.CreateEnumerationType(
-      uname.c_str(), decl_context, OptionalClangModuleID(), declaration,
-      ToCompilerType(underlying_type), er.isScoped());
+      uname.c_str(), decl_context, OptionalClangModuleID(),
+      clang::SourceLocation(), ToCompilerType(underlying_type), er.isScoped());
 
   TypeSystemClang::StartTagDeclarationDefinition(enum_ct);
   TypeSystemClang::SetHasExternalStorage(enum_ct.GetOpaqueQualType(), true);

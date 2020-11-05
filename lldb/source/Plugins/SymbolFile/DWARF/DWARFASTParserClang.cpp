@@ -843,8 +843,8 @@ TypeSP DWARFASTParserClang::ParseEnum(const SymbolContext &sc,
 
     clang_type = m_ast.CreateEnumerationType(
         attrs.name.GetCString(), GetClangDeclContextContainingDIE(die, nullptr),
-        GetOwningClangModule(die), attrs.decl, enumerator_clang_type,
-        attrs.is_scoped_enum);
+        GetOwningClangModule(die), GetLocForDecl(die, attrs.decl),
+        enumerator_clang_type, attrs.is_scoped_enum);
   } else {
     enumerator_clang_type = m_ast.GetEnumerationIntegerType(clang_type);
   }
@@ -1241,6 +1241,9 @@ TypeSP DWARFASTParserClang::ParseSubroutine(const DWARFDIE &die,
                                       : containing_decl_ctx,
             GetOwningClangModule(die), name, clang_type, attrs.storage,
             attrs.is_inline);
+        const clang::SourceLocation loc = GetLocForDecl(die, attrs.decl);
+        function_decl->setLocation(loc);
+        function_decl->setRangeEnd(loc);
 
         if (has_template_params) {
           TypeSystemClang::TemplateParameterInfos template_param_infos;
@@ -1250,10 +1253,13 @@ TypeSP DWARFASTParserClang::ParseSubroutine(const DWARFDIE &die,
                                         : containing_decl_ctx,
               GetOwningClangModule(die), attrs.name.GetStringRef(), clang_type,
               attrs.storage, attrs.is_inline);
+          template_function_decl->setLocation(loc);
+
           clang::FunctionTemplateDecl *func_template_decl =
               m_ast.CreateFunctionTemplateDecl(
                   containing_decl_ctx, GetOwningClangModule(die),
                   template_function_decl, template_param_infos);
+          func_template_decl->setLocation(loc);
           m_ast.CreateFunctionTemplateSpecializationInfo(
               template_function_decl, func_template_decl, template_param_infos);
         }
@@ -1368,6 +1374,14 @@ TypeSP DWARFASTParserClang::ParsePointerToMemberType(
                                   Type::ResolveState::Forward);
   }
   return nullptr;
+}
+
+clang::SourceLocation
+DWARFASTParserClang::GetLocForDecl(const DWARFDIE &die,
+                                   const Declaration &decl) {
+  if (!die.GetCU()->GetSymbolFileDWARF().UseSourceLocations())
+    return clang::SourceLocation();
+  return m_ast.GetLocForDecl(decl);
 }
 
 TypeSP DWARFASTParserClang::UpdateSymbolContextScopeForType(
@@ -1627,6 +1641,7 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
             m_ast.CreateClassTemplateSpecializationDecl(
                 decl_ctx, GetOwningClangModule(die), class_template_decl,
                 tag_decl_kind, template_param_infos);
+        class_specialization_decl->setLocation(GetLocForDecl(die, attrs.decl));
         clang_type = m_ast.CreateClassTemplateSpecializationType(
             class_specialization_decl);
         clang_type_was_created = true;
@@ -1641,7 +1656,7 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
       clang_type = m_ast.CreateRecordType(
           decl_ctx, GetOwningClangModule(die), attrs.accessibility,
           attrs.name.GetCString(), tag_decl_kind, attrs.class_language,
-          &metadata, attrs.exports_symbols);
+          &metadata, attrs.exports_symbols, GetLocForDecl(die, attrs.decl));
     }
   }
 
@@ -2217,7 +2232,8 @@ size_t DWARFASTParserClang::ParseChildEnumerators(
 
         if (name && name[0] && got_value) {
           m_ast.AddEnumerationValueToEnumerationType(
-              clang_type, decl, name, enum_value, enumerator_byte_size * 8);
+              clang_type, GetLocForDecl(die, decl), name, enum_value,
+              enumerator_byte_size * 8);
           ++enumerators_added;
         }
       }

@@ -17,6 +17,7 @@ class ExprDiagnosticsTestCase(TestBase):
 
         self.main_source = "main.cpp"
         self.main_source_spec = lldb.SBFileSpec(self.main_source)
+        self.main_source_diag_path = os.path.join("diagnostics", "main.cpp")
 
     def test_source_and_caret_printing(self):
         """Test that the source and caret positions LLDB prints are correct"""
@@ -70,23 +71,13 @@ class ExprDiagnosticsTestCase(TestBase):
         self.assertFalse(value.GetError().Success())
         self.assertIn("<user expression 5>:1:8: previous definition is here\nstruct SFoo{}; struct SFoo { int x; };\n       ^\n", value.GetError().GetCString())
 
-        # Declarations from the debug information currently have no debug information. It's not clear what
-        # we should do in this case, but we should at least not print anything that's wrong.
-        # In the future our declarations should have valid source locations.
-        value = frame.EvaluateExpression("struct FooBar { double x };", top_level_opts)
-        self.assertFalse(value.GetError().Success())
-        self.assertEqual("error: <user expression 6>:1:8: redefinition of 'FooBar'\nstruct FooBar { double x };\n       ^\n", value.GetError().GetCString())
-
-        value = frame.EvaluateExpression("foo(1, 2)")
-        self.assertFalse(value.GetError().Success())
-        self.assertEqual("error: <user expression 7>:1:1: no matching function for call to 'foo'\nfoo(1, 2)\n^~~\nnote: candidate function not viable: requires single argument 'x', but 2 arguments were provided\n\n", value.GetError().GetCString())
-
         # Redefine something that we defined in a user-expression. We should use the previous expression file name
         # for the original decl.
         value = frame.EvaluateExpression("struct Redef { double x; };", top_level_opts)
         value = frame.EvaluateExpression("struct Redef { float y; };", top_level_opts)
         self.assertFalse(value.GetError().Success())
-        self.assertIn("error: <user expression 9>:1:8: redefinition of 'Redef'\nstruct Redef { float y; };\n       ^\n<user expression 8>:1:8: previous definition is here\nstruct Redef { double x; };\n       ^", value.GetError().GetCString())
+        self.assertIn("error: <user expression 7>:1:8: redefinition of 'Redef'\nstruct Redef { float y; };\n       ^\n", value.GetError().GetCString())
+        self.assertIn("<user expression 6>:1:8: previous definition is here\nstruct Redef { double x; };\n       ^", value.GetError().GetCString())
 
     @skipUnlessDarwin
     def test_source_locations_from_objc_modules(self):
@@ -110,3 +101,116 @@ class ExprDiagnosticsTestCase(TestBase):
         # the first argument are probably stable enough that this test can check for them.
         self.assertIn("void NSLog(NSString *format", value.GetError().GetCString())
 
+    def assert_has_file_diagnostic(self, error_msg, file=None):
+        if file is None:
+            file = self.main_source_diag_path
+        # The SourceLocation for the file should be printed.
+        self.assertIn(file + ": ", error_msg)
+        # Never show the dummy source code. This is the dummy content string
+        # used by TypeSystemClang.
+        self.assertNotIn("<LLDB-generated contents of", error_msg)
+        self.assertNotIn(file + ">", error_msg)
+
+    def assert_has_not_file_diagnostic(self, error_msg, file=None):
+        if file is None:
+            file = self.main_source_diag_path
+        # The SourceLocation should not be printed.
+        self.assertNotIn(file + ":", error_msg)
+        # Never show the dummy source code. This is the dummy content string
+        # used by TypeSystemClang.
+        self.assertNotIn("<LLDB-generated contents of", error_msg)
+        self.assertNotIn(file + ">", error_msg)
+
+    def test_source_locations_from_debug_information(self):
+        """Test that the source locations from debug information are correct"""
+        self.build()
+
+        (target, process, thread, bkpt) = lldbutil.run_to_source_breakpoint(self,
+                                          '// Break here', self.main_source_spec)
+        frame = thread.GetFrameAtIndex(0)
+        top_level_opts = lldb.SBExpressionOptions();
+        top_level_opts.SetTopLevel(True)
+
+        # Test source locations of functions.
+        value = frame.EvaluateExpression("foo(1, 2)")
+        self.assertFalse(value.GetError().Success(), value.GetError().GetCString())
+        self.assertIn(":1:1: no matching function for call to 'foo'\nfoo(1, 2)\n^~~",
+                      value.GetError().GetCString())
+        self.assert_has_file_diagnostic(value.GetError().GetCString())
+
+        # Test source locations of records.
+        value = frame.EvaluateExpression("struct FooBar { double x; };", top_level_opts)
+        self.assertFalse(value.GetError().Success(), value.GetError().GetCString())
+        self.assertIn(":1:8: redefinition of 'FooBar'\nstruct FooBar { double x; };\n",
+                      value.GetError().GetCString())
+        self.assert_has_file_diagnostic(value.GetError().GetCString())
+
+        # Test source locations of enums.
+        value = frame.EvaluateExpression("enum class EnumInSource {};", top_level_opts)
+        self.assertFalse(value.GetError().Success(), value.GetError().GetCString())
+        self.assert_has_file_diagnostic(value.GetError().GetCString())
+
+        # Test source locations in headers.
+        value = frame.EvaluateExpression("headerFunction(1)")
+        self.assertFalse(value.GetError().Success(), value.GetError().GetCString())
+        self.assert_has_file_diagnostic(value.GetError().GetCString(),
+                                        "header.h")
+
+    @skipIf(debug_info=no_match("dsym"),
+            bugnumber="Template function decl can only be found via dsym")
+    def test_source_locations_from_debug_information_templates(self):
+        """Test that the source locations from debug information are correct
+        for template functions"""
+        self.build()
+
+        (target, process, thread, bkpt) = lldbutil.run_to_source_breakpoint(self,
+                                          '// Break here', self.main_source_spec)
+        frame = thread.GetFrameAtIndex(0)
+
+        # Test source locations of template functions.
+        value = frame.EvaluateExpression("TemplateFunc<int>(1)")
+        self.assertFalse(value.GetError().Success(), value.GetError().GetCString())
+        self.assert_has_file_diagnostic(value.GetError().GetCString())
+
+    def test_disabled_source_locations(self):
+        """Test that disabling source locations with use-source-locations is
+        actually disabling the creation of valid source locations"""
+        self.build()
+        # Disable source locations.
+        self.runCmd("settings set plugin.symbol-file.dwarf.use-source-locations false")
+
+        (target, process, thread, bkpt) = lldbutil.run_to_source_breakpoint(self,
+                                          '// Break here', self.main_source_spec)
+        frame = thread.GetFrameAtIndex(0)
+        top_level_opts = lldb.SBExpressionOptions();
+        top_level_opts.SetTopLevel(True)
+
+        # Functions shouldn't have source locations now.
+        value = frame.EvaluateExpression("foo(1, 2)")
+        self.assertFalse(value.GetError().Success(), value.GetError().GetCString())
+        self.assertIn(":1:1: no matching function for call to 'foo'\nfoo(1, 2)\n^~~",
+                      value.GetError().GetCString())
+        self.assert_has_not_file_diagnostic(value.GetError().GetCString())
+
+        # Records shouldn't have source locations now.
+        value = frame.EvaluateExpression("struct FooBar { double x; };", top_level_opts)
+        self.assertFalse(value.GetError().Success(), value.GetError().GetCString())
+        self.assertIn(":1:8: redefinition of 'FooBar'\nstruct FooBar { double x; };\n",
+                      value.GetError().GetCString())
+        self.assert_has_not_file_diagnostic(value.GetError().GetCString())
+
+        # Enums shouldn't have source locations now.
+        value = frame.EvaluateExpression("enum class EnumInSource {};", top_level_opts)
+        self.assertFalse(value.GetError().Success(), value.GetError().GetCString())
+        self.assert_has_not_file_diagnostic(value.GetError().GetCString())
+
+        # Template functions shouldn't have source locations now.
+        value = frame.EvaluateExpression("TemplateFunc<int>(1)")
+        self.assertFalse(value.GetError().Success(), value.GetError().GetCString())
+        self.assert_has_not_file_diagnostic(value.GetError().GetCString())
+
+        # Test source locations in headers are disabled.
+        value = frame.EvaluateExpression("headerFunction(1)")
+        self.assertFalse(value.GetError().Success(), value.GetError().GetCString())
+        self.assert_has_not_file_diagnostic(value.GetError().GetCString(),
+                                            "header.h")
