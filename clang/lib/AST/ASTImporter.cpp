@@ -2724,6 +2724,9 @@ ExpectedDecl ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
   RecordDecl *PrevDecl = nullptr;
   if (!DC->isFunctionOrMethod() && !D->isLambda()) {
     SmallVector<NamedDecl *, 4> ConflictingDecls;
+    if (D->getName() == "__tree_node_base") {
+        llvm::errs() << "Hit ndoe\n";
+      }
     auto FoundDecls =
         Importer.findDeclsInToCtx(DC, SearchName);
     if (!FoundDecls.empty()) {

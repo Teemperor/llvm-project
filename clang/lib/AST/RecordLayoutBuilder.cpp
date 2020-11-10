@@ -416,6 +416,7 @@ EmptySubobjectMap::CanPlaceFieldSubobjectAtOffset(const CXXRecordDecl *RD,
        I != E; ++I, ++FieldNo) {
     if (I->isBitField())
       continue;
+    I->dumpColor();
 
     CharUnits FieldOffset = Offset + getFieldOffset(Layout, FieldNo);
 

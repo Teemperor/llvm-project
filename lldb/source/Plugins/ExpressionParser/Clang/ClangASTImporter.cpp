@@ -295,6 +295,10 @@ public:
     // Check if we already completed this type.
     if (m_decls_already_completed.count(to_named_decl) != 0)
       return;
+    if (to_named_decl->getName() == "__tree_node_base") {
+        llvm::errs() << "imported node\n";
+      }
+
     // Queue this type to be completed.
     m_decls_to_complete.insert(to_named_decl);
   }
