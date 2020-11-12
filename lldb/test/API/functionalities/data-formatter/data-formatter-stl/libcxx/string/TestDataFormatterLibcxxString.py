@@ -24,6 +24,9 @@ class LibcxxStringDataFormatterTestCase(TestBase):
 
     @add_test_categories(["libc++"])
     @expectedFailureAll(bugnumber="llvm.org/pr36109", debug_info="gmodules", triple=".*-android")
+    # Inline namespace is randomly ignored as Clang thinks that looking up certain
+    # basic_string typedefs would be ambiguous otherwise.
+    @expectedFailureAll(debug_info="gmodules")
     def test_with_run_command(self):
         """Test that that file and class static variables display correctly."""
         self.build()

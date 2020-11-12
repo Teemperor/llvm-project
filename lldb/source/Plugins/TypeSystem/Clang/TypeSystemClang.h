@@ -1063,6 +1063,27 @@ public:
   }
 
 private:
+  clang::PrintingPolicy GetFullPrintingPolicy() {
+    return GetFullPrintingPolicy(getASTContext());
+  }
+  static clang::PrintingPolicy GetFullPrintingPolicy(clang::ASTContext &ast) {
+    clang::PrintingPolicy printing_policy(ast.getPrintingPolicy());
+    printing_policy.SuppressTagKeyword = true;
+    // Inline namespaces are important for some type formatters (e.g., libc++
+    // and libstdc++ are differentiated by their inline namespaces).
+    printing_policy.SuppressInlineNamespace = false;
+    printing_policy.SuppressUnwrittenScope = false;
+    return printing_policy;
+  }
+  static std::string GetQualifiedName(const clang::NamedDecl *named_decl) {
+    clang::ASTContext &ast = named_decl->getASTContext();
+    clang::PrintingPolicy printing_policy = GetFullPrintingPolicy(ast);
+    std::string result;
+    llvm::raw_string_ostream os(result);
+    named_decl->printQualifiedName(os, printing_policy);
+    return result;
+  }
+
   const clang::ClassTemplateSpecializationDecl *
   GetAsTemplateSpecialization(lldb::opaque_compiler_type_t type);
 

@@ -3652,12 +3652,10 @@ ConstString TypeSystemClang::GetTypeName(lldb::opaque_compiler_type_t type) {
   // For a typedef just return the qualified name.
   if (const auto *typedef_type = qual_type->getAs<clang::TypedefType>()) {
     const clang::TypedefNameDecl *typedef_decl = typedef_type->getDecl();
-    return ConstString(typedef_decl->getQualifiedNameAsString());
+    return ConstString(GetQualifiedName(typedef_decl));
   }
 
-  clang::PrintingPolicy printing_policy(getASTContext().getPrintingPolicy());
-  printing_policy.SuppressTagKeyword = true;
-  return ConstString(qual_type.getAsString(printing_policy));
+  return ConstString(qual_type.getAsString(GetFullPrintingPolicy()));
 }
 
 ConstString
@@ -3670,6 +3668,7 @@ TypeSystemClang::GetDisplayTypeName(lldb::opaque_compiler_type_t type) {
   printing_policy.SuppressTagKeyword = true;
   printing_policy.SuppressScope = false;
   printing_policy.SuppressUnwrittenScope = true;
+  printing_policy.SuppressInlineNamespace = true;
   return ConstString(qual_type.getAsString(printing_policy));
 }
 
@@ -8934,8 +8933,7 @@ void TypeSystemClang::DumpTypeDescription(lldb::opaque_compiler_type_t type,
       if (level == eDescriptionLevelVerbose)
         typedef_decl->dump(llvm_ostrm);
       else {
-        std::string clang_typedef_name(
-            typedef_decl->getQualifiedNameAsString());
+        std::string clang_typedef_name(GetQualifiedName(typedef_decl));
         if (!clang_typedef_name.empty()) {
           s->PutCString("typedef ");
           s->PutCString(clang_typedef_name);
@@ -9412,8 +9410,7 @@ TypeSystemClang::DeclContextGetScopeQualifiedName(void *opaque_decl_ctx) {
     clang::NamedDecl *named_decl =
         llvm::dyn_cast<clang::NamedDecl>((clang::DeclContext *)opaque_decl_ctx);
     if (named_decl)
-      return ConstString(
-          llvm::StringRef(named_decl->getQualifiedNameAsString()));
+      return ConstString(GetQualifiedName(named_decl));
   }
   return ConstString();
 }
