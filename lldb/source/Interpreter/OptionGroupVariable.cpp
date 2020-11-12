@@ -79,7 +79,7 @@ OptionGroupVariable::SetOptionValue(uint32_t option_idx,
   Status error;
   if (!include_frame_options)
     option_idx += 3;
-  const int short_option = g_variable_options[option_idx].short_option;
+  const char short_option = g_variable_options[option_idx].short_option;
   switch (short_option) {
   case 'r':
     use_regex = true;

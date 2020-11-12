@@ -240,7 +240,7 @@ public:
     Status SetOptionValue(uint32_t option_idx, StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 's':
@@ -373,7 +373,7 @@ public:
     Status SetOptionValue(uint32_t option_idx, StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'f':
@@ -620,7 +620,7 @@ public:
     Status SetOptionValue(uint32_t option_idx, StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'f':

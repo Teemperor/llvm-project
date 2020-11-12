@@ -46,7 +46,7 @@ Status CommandObjectDisassemble::CommandOptions::SetOptionValue(
     ExecutionContext *execution_context) {
   Status error;
 
-  const int short_option = m_getopt_table[option_idx].val;
+  const char short_option = m_getopt_table[option_idx].val;
 
   switch (short_option) {
   case 'm':

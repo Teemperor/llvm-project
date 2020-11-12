@@ -55,7 +55,7 @@ public:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
       switch (short_option) {
       case 'r':
         reg = ConstString(option_arg);
@@ -231,7 +231,7 @@ public:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
       switch (short_option) {
       case 'r': {
         int32_t offset = 0;
@@ -743,7 +743,7 @@ private:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'l':

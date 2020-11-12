@@ -1413,7 +1413,7 @@ OptionGroupPlatformRSync::SetOptionValue(uint32_t option_idx,
                                          llvm::StringRef option_arg,
                                          ExecutionContext *execution_context) {
   Status error;
-  char short_option = (char)GetDefinitions()[option_idx].short_option;
+  char short_option = GetDefinitions()[option_idx].short_option;
   switch (short_option) {
   case 'r':
     m_rsync = true;
@@ -1459,7 +1459,7 @@ OptionGroupPlatformSSH::SetOptionValue(uint32_t option_idx,
                                        llvm::StringRef option_arg,
                                        ExecutionContext *execution_context) {
   Status error;
-  char short_option = (char)GetDefinitions()[option_idx].short_option;
+  char short_option = GetDefinitions()[option_idx].short_option;
   switch (short_option) {
   case 's':
     m_ssh = true;
@@ -1490,7 +1490,7 @@ lldb_private::Status OptionGroupPlatformCaching::SetOptionValue(
     uint32_t option_idx, llvm::StringRef option_arg,
     ExecutionContext *execution_context) {
   Status error;
-  char short_option = (char)GetDefinitions()[option_idx].short_option;
+  char short_option = GetDefinitions()[option_idx].short_option;
   switch (short_option) {
   case 'c':
     m_cache_dir.assign(std::string(option_arg));

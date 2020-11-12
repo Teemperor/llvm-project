@@ -283,7 +283,7 @@ are no syntax errors may indicate that a function was declared but never called.
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option =
+      const char short_option =
           g_breakpoint_command_add_options[option_idx].short_option;
 
       switch (short_option) {
@@ -506,7 +506,7 @@ public:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'D':

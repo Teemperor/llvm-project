@@ -58,7 +58,7 @@ public:
   Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_value,
                         ExecutionContext *execution_context) override {
     Status error;
-    const int short_option = g_memory_read_options[option_idx].short_option;
+    const char short_option = g_memory_read_options[option_idx].short_option;
 
     switch (short_option) {
     case 'l':
@@ -910,7 +910,7 @@ public:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_value,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = g_memory_find_options[option_idx].short_option;
+      const char short_option = g_memory_find_options[option_idx].short_option;
 
       switch (short_option) {
       case 'e':
@@ -1198,7 +1198,7 @@ public:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_value,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = g_memory_write_options[option_idx].short_option;
+      const char short_option = g_memory_write_options[option_idx].short_option;
 
       switch (short_option) {
       case 'i':

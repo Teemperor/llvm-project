@@ -4097,7 +4097,7 @@ public:
                           ExecutionContext *exe_ctx) override {
       Status err;
       StreamString err_str;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
       switch (short_option) {
       case 't':
         if (!ParseReductionTypes(option_arg, err_str))
@@ -4251,7 +4251,7 @@ public:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *exe_ctx) override {
       Status err;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'c': {
@@ -4532,7 +4532,7 @@ public:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *exe_ctx) override {
       Status err;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'f':
@@ -4660,7 +4660,7 @@ public:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *exe_ctx) override {
       Status err;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'i':

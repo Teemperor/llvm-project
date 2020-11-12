@@ -293,7 +293,7 @@ private:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
       bool success;
 
       switch (short_option) {
@@ -519,7 +519,7 @@ private:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_value,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option =
+      const char short_option =
           g_type_format_add_options[option_idx].short_option;
       bool success;
 
@@ -720,7 +720,7 @@ protected:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'a':
@@ -888,7 +888,7 @@ private:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'a':
@@ -1001,7 +1001,7 @@ class CommandObjectTypeFormatterList : public CommandObjectParsed {
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
       switch (short_option) {
       case 'w':
         m_category_regex.SetCurrentValue(option_arg);
@@ -1209,7 +1209,7 @@ Status CommandObjectTypeSummaryAdd::CommandOptions::SetOptionValue(
     uint32_t option_idx, llvm::StringRef option_arg,
     ExecutionContext *execution_context) {
   Status error;
-  const int short_option = m_getopt_table[option_idx].val;
+  const char short_option = m_getopt_table[option_idx].val;
   bool success;
 
   switch (short_option) {
@@ -1751,7 +1751,7 @@ class CommandObjectTypeCategoryDefine : public CommandObjectParsed {
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'e':
@@ -1855,7 +1855,7 @@ class CommandObjectTypeCategoryEnable : public CommandObjectParsed {
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'l':
@@ -2038,7 +2038,7 @@ class CommandObjectTypeCategoryDisable : public CommandObjectParsed {
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'l':
@@ -2463,7 +2463,7 @@ private:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
       bool success;
 
       switch (short_option) {
@@ -2730,7 +2730,7 @@ protected:
                           ExecutionContext *execution_context) override {
       Status error;
 
-      const int short_option = g_type_lookup_options[option_idx].short_option;
+      const char short_option = g_type_lookup_options[option_idx].short_option;
 
       switch (short_option) {
       case 'h':

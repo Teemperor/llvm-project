@@ -53,7 +53,7 @@ Status CommandObjectExpression::CommandOptions::SetOptionValue(
     ExecutionContext *execution_context) {
   Status error;
 
-  const int short_option = GetDefinitions()[option_idx].short_option;
+  const char short_option = GetDefinitions()[option_idx].short_option;
 
   switch (short_option) {
   case 'l':

@@ -67,7 +67,7 @@ public:
   SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                  ExecutionContext *execution_context) override {
     Status error;
-    char short_option = (char)GetDefinitions()[option_idx].short_option;
+    char short_option = GetDefinitions()[option_idx].short_option;
     switch (short_option) {
     case 'v': {
       if (option_arg.getAsInteger(8, m_permissions)) {
@@ -1596,7 +1596,7 @@ public:
                           ExecutionContext *execution_context) override {
       Status error;
 
-      const char short_option = (char)GetDefinitions()[option_idx].short_option;
+      const char short_option = GetDefinitions()[option_idx].short_option;
 
       switch (short_option) {
       case 'h':

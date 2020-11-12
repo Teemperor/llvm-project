@@ -73,7 +73,7 @@ Status OptionGroupValueObjectDisplay::SetOptionValue(
     uint32_t option_idx, llvm::StringRef option_arg,
     ExecutionContext *execution_context) {
   Status error;
-  const int short_option = g_option_table[option_idx].short_option;
+  const char short_option = g_option_table[option_idx].short_option;
   bool success = false;
 
   switch (short_option) {

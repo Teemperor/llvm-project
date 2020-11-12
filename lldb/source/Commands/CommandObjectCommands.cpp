@@ -84,7 +84,7 @@ protected:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'e':
@@ -200,7 +200,7 @@ protected:
                           ExecutionContext *execution_context) override {
       Status error;
 
-      const int short_option = GetDefinitions()[option_idx].short_option;
+      const char short_option = GetDefinitions()[option_idx].short_option;
       std::string option_str(option_value);
 
       switch (short_option) {
@@ -1018,7 +1018,7 @@ private:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'h':
@@ -1266,7 +1266,7 @@ protected:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'r':
@@ -1404,7 +1404,7 @@ protected:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'f':

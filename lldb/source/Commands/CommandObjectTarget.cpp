@@ -691,9 +691,6 @@ protected:
 #pragma mark CommandObjectTargetVariable
 
 class CommandObjectTargetVariable : public CommandObjectParsed {
-  static const uint32_t SHORT_OPTION_FILE = 0x66696c65; // 'file'
-  static const uint32_t SHORT_OPTION_SHLB = 0x73686c62; // 'shlb'
-
 public:
   CommandObjectTargetVariable(CommandInterpreter &interpreter)
       : CommandObjectParsed(interpreter, "target variable",
@@ -703,13 +700,13 @@ public:
         m_option_group(),
         m_option_variable(false), // Don't include frame options
         m_option_format(eFormatDefault),
-        m_option_compile_units(LLDB_OPT_SET_1, false, "file", SHORT_OPTION_FILE,
+        m_option_compile_units(LLDB_OPT_SET_1, false, "file", 'l',
                                0, eArgTypeFilename,
                                "A basename or fullpath to a file that contains "
                                "global variables. This option can be "
                                "specified multiple times."),
         m_option_shared_libraries(
-            LLDB_OPT_SET_1, false, "shlib", SHORT_OPTION_SHLB, 0,
+            LLDB_OPT_SET_1, false, "shlib", 'S', 0,
             eArgTypeFilename,
             "A basename or fullpath to a shared library to use in the search "
             "for global "
@@ -1982,7 +1979,7 @@ public:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'm':
@@ -2928,7 +2925,7 @@ public:
                           ExecutionContext *execution_context) override {
       Status error;
 
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
       if (short_option == 'g') {
         m_use_global_module_list = true;
       } else if (short_option == 'a') {
@@ -3279,7 +3276,7 @@ public:
                           ExecutionContext *execution_context) override {
       Status error;
 
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'a': {
@@ -3627,7 +3624,7 @@ public:
                           ExecutionContext *execution_context) override {
       Status error;
 
-      const int short_option = m_getopt_table[option_idx].val;
+      const char short_option = m_getopt_table[option_idx].val;
 
       switch (short_option) {
       case 'a': {
@@ -4460,7 +4457,7 @@ public:
     Status SetOptionValue(uint32_t option_idx, llvm::StringRef option_arg,
                           ExecutionContext *execution_context) override {
       Status error;
-      const int short_option =
+      const char short_option =
           g_target_stop_hook_add_options[option_idx].short_option;
 
       switch (short_option) {

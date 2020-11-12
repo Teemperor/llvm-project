@@ -23,11 +23,8 @@ struct OptionDefinition {
   bool required;
   /// Full name for this option.
   const char *long_option;
-  /// Single character for this option. If the option doesn't use a short
-  /// option character, this has to be a integer value that is not a printable
-  /// ASCII code point and also unique in the used set of options.
-  /// @see OptionDefinition::HasShortOption
-  int short_option;
+  /// Single character for this option.
+  char short_option;
   /// no_argument, required_argument or optional_argument
   int option_has_arg;
   /// If non-NULL, option is valid iff |validator->IsValid()|, otherwise
@@ -43,12 +40,6 @@ struct OptionDefinition {
   /// Full text explaining what this options does and what (if any) argument to
   /// pass it.
   const char *usage_text;
-
-  /// Whether this has a short option character.
-  bool HasShortOption() const {
-    // See the short_option documentation for more.
-    return llvm::isPrint(short_option);
-  }
 };
 } // namespace lldb_private
 

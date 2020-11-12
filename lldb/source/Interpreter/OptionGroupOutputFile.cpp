@@ -18,13 +18,11 @@ OptionGroupOutputFile::OptionGroupOutputFile()
 
 OptionGroupOutputFile::~OptionGroupOutputFile() {}
 
-static const uint32_t SHORT_OPTION_APND = 0x61706e64; // 'apnd'
-
 static constexpr OptionDefinition g_option_table[] = {
     {LLDB_OPT_SET_1, false, "outfile", 'o', OptionParser::eRequiredArgument,
      nullptr, {}, 0, eArgTypeFilename,
      "Specify a path for capturing command output."},
-    {LLDB_OPT_SET_1, false, "append-outfile", SHORT_OPTION_APND,
+    {LLDB_OPT_SET_1, false, "append-outfile", 'a',
      OptionParser::eNoArgument, nullptr, {}, 0, eArgTypeNone,
      "Append to the file specified with '--outfile <path>'."},
 };
@@ -38,14 +36,14 @@ OptionGroupOutputFile::SetOptionValue(uint32_t option_idx,
                                       llvm::StringRef option_arg,
                                       ExecutionContext *execution_context) {
   Status error;
-  const int short_option = g_option_table[option_idx].short_option;
+  const char short_option = g_option_table[option_idx].short_option;
 
   switch (short_option) {
   case 'o':
     error = m_file.SetValueFromString(option_arg);
     break;
 
-  case SHORT_OPTION_APND:
+  case 'a':
     m_append.SetCurrentValue(true);
     break;
 
