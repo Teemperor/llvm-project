@@ -257,6 +257,9 @@ CoreSimulatorSupport::Device PlatformAppleSimulator::GetSimulatorDevice() {
     m_device = CoreSimulatorSupport::DeviceSet::GetAvailableDevices(
                    developer_dir.c_str())
                    .GetFanciest(dev_id);
+    if (m_device) {
+      m_device = m_device->Clone(developer_dir.c_str());
+    }
   }
 
   if (m_device.hasValue())
