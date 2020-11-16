@@ -1541,6 +1541,7 @@ void DeclContext::removeDecl(Decl *D) {
     do {
       StoredDeclsMap *Map = DC->getPrimaryContext()->LookupPtr;
       if (Map) {
+        llvm::errs() << "Removing from " << DC->getDeclKindName() << "\n";
         StoredDeclsMap::iterator Pos = Map->find(ND->getDeclName());
         assert(Pos != Map->end() && "no lookup entry for decl");
         // Remove the decl only if it is contained.
@@ -1651,8 +1652,11 @@ void DeclContext::buildLookupImpl(DeclContext *DCtx, bool Internal) {
       if (ND->getDeclContext() == DCtx && !shouldBeHidden(ND) &&
           (!ND->isFromASTFile() ||
            (isTranslationUnit() &&
-            !getParentASTContext().getLangOpts().CPlusPlus)))
+            !getParentASTContext().getLangOpts().CPlusPlus))) {
         makeDeclVisibleInContextImpl(ND, Internal);
+        llvm::errs() << "ADDING TO LOOKUP:" << ND->getNameAsString() << "\n";
+      } else
+        llvm::errs() << "SKIPPING LOOKUP:" << ND->getNameAsString() << "\n";
 
     // If this declaration is itself a transparent declaration context
     // or inline namespace, add the members of this declaration of that
@@ -1915,6 +1919,10 @@ void DeclContext::makeDeclVisibleInContextWithFlags(NamedDecl *D, bool Internal,
 
 void DeclContext::makeDeclVisibleInContextImpl(NamedDecl *D, bool Internal) {
   // Find or create the stored declaration map.
+  llvm::errs() << "Making visible " << D->getNameAsString() << "\n";
+  if (D->getNameAsString() == "Field1" && D->isFromASTFile()) {
+    llvm_unreachable("asdf");
+  }
   StoredDeclsMap *Map = LookupPtr;
   if (!Map) {
     ASTContext *C = &getParentASTContext();

@@ -7592,6 +7592,9 @@ ASTReader::FindExternalVisibleDeclsByName(const DeclContext *DC,
   if (It == Lookups.end())
     return false;
 
+  llvm::errs() << "Find external\n";
+  Name.dump();
+
   Deserializing LookupResults(this);
 
   // Load the list of declarations.

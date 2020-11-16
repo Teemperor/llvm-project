@@ -14,8 +14,10 @@
 #include "clang/AST/Mangle.h"
 #include "clang/ASTMatchers/ASTMatchFinder.h"
 #include "clang/ASTMatchers/ASTMatchers.h"
+#include "clang/Basic/Builtins.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/TargetInfo.h"
+#include "clang/Lex/HeaderSearch.h"
 #include "clang/Tooling/Tooling.h"
 #include "llvm/IR/DataLayout.h"
 #include "gtest/gtest.h"
@@ -103,4 +105,35 @@ TEST(Decl, AsmLabelAttr) {
 
   ASSERT_TRUE(0 == MangleF.compare("\x01" "foo"));
   ASSERT_TRUE(0 == MangleG.compare("goo"));
+}
+
+TEST(Decl, RemoveASTFileDecl) {
+  // Create two method decls: `f` and `g`.
+  StringRef Code = R"(
+                   #pragma clang module build M
+                   module M {}
+                   #pragma clang module contents
+                   #pragma clang module begin M
+                   struct A {
+                     int Field1;
+                     int Field2;
+                   };
+                   #pragma clang module end
+                   #pragma clang module endbuild
+
+                   #pragma clang module import M
+                   A *a;
+                   )";
+  auto AST =
+      tooling::buildASTFromCodeWithArgs(Code, {"-fmodules", "-Xclang", "-fmodules-local-submodule-visibility"});
+  ASTContext &Ctx = AST->getASTContext();
+
+  CXXRecordDecl *ARecord = cast<CXXRecordDecl>(Ctx.getTranslationUnitDecl()->lookup(DeclarationName(&Ctx.Idents.get("A"))).front());
+      //selectFirst<CXXRecordDecl>("A", match(cxxRecordDecl().bind("A"), Ctx));
+
+  ASSERT_TRUE(ARecord->isFromASTFile());
+  ASSERT_TRUE(ARecord->hasExternalVisibleStorage());
+  //ARecord->lookup();
+  ARecord->removeDecl(*ARecord->fields().begin());
+  ASSERT_TRUE(ARecord->hasExternalVisibleStorage());
 }
