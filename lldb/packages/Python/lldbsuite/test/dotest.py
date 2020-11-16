@@ -888,6 +888,7 @@ def run_suite():
     # Now we can also import lldbutil
     from lldbsuite.test import lldbutil
 
+    lldb.remote_platform = None
     if configuration.lldb_platform_name:
         print("Setting up remote platform '%s'" %
               (configuration.lldb_platform_name))
