@@ -28,6 +28,18 @@ using namespace lldb_private;
 + (id)sharedServiceContextForDeveloperDir:(NSString *)dir
                                     error:(NSError **)error;
 @end
+@interface SimDevice {
+}
+@end
+@interface  SimDeviceSet<NSObject> {
+}
+  - (nullable SimDevice *)cloneDevice:(SimDevice *)device
+                        name:(NSString *)name
+                       toSet:(SimDeviceSet *)destinationSet
+                       error:(NSError *__autoreleasing _Nullable *_Nullable)error;
+  - (BOOL)deleteDevice:(SimDevice *)device
+                       error:(NSError *__autoreleasing _Nullable *_Nullable)error;
+@end
 // However, the drawback is that the compiler will not know about the selectors
 // we're trying to use
 // until runtime; to appease clang in this regard, define a fake protocol on
@@ -545,22 +557,38 @@ CoreSimulatorSupport::Device::Spawn(ProcessLaunchInfo &launch_info) {
   return CoreSimulatorSupport::Process(pid, error);
 }
 
-CoreSimulatorSupport::DeviceSet
-CoreSimulatorSupport::DeviceSet::GetAllDevices(const char *developer_dir) {
+static id getServiceContext(const char *developer_dir) {
   if (!developer_dir || !developer_dir[0])
-    return DeviceSet([NSArray new]);
+    return nil;
 
   Class SimServiceContextClass = NSClassFromString(@"SimServiceContext");
   NSString *dev_dir = @(developer_dir);
   NSError *error = nil;
 
-  id serviceContext =
-      [SimServiceContextClass sharedServiceContextForDeveloperDir:dev_dir
+  return [SimServiceContextClass sharedServiceContextForDeveloperDir:dev_dir
                                                             error:&error];
-  if (!serviceContext)
-    return DeviceSet([NSArray new]);
+}
 
-  return DeviceSet([[serviceContext defaultDeviceSetWithError:&error] devices]);
+static id getDeviceSet(const char *developer_dir) {
+  id serviceContext = getServiceContext(developer_dir);
+  if (!serviceContext)
+    return nil;
+
+  NSError *error = nil;
+  return [serviceContext defaultDeviceSetWithError:&error];
+}
+
+static id getDeviceList(const char *developer_dir) {
+  id deviceSet = getDeviceSet(developer_dir);
+  if (!deviceSet)
+    return nil;
+
+  return [deviceSet devices];
+}
+
+CoreSimulatorSupport::DeviceSet
+CoreSimulatorSupport::DeviceSet::GetAllDevices(const char *developer_dir) {
+  return DeviceSet(getDeviceList(developer_dir), developer_dir);
 }
 
 CoreSimulatorSupport::DeviceSet
@@ -592,7 +620,7 @@ CoreSimulatorSupport::DeviceSet CoreSimulatorSupport::DeviceSet::GetDevicesIf(
       [array addObject:(id)d.m_dev];
   }
 
-  return DeviceSet(array);
+  return DeviceSet(array, m_developer_dir);
 }
 
 void CoreSimulatorSupport::DeviceSet::ForEach(
@@ -615,7 +643,7 @@ CoreSimulatorSupport::DeviceSet CoreSimulatorSupport::DeviceSet::GetDevices(
       [array addObject:(id)d.m_dev];
   }
 
-  return DeviceSet(array);
+  return DeviceSet(array, m_developer_dir);
 }
 
 CoreSimulatorSupport::Device CoreSimulatorSupport::DeviceSet::GetFanciest(
@@ -639,4 +667,27 @@ CoreSimulatorSupport::Device CoreSimulatorSupport::DeviceSet::GetFanciest(
   }
 
   return dev;
+}
+
+CoreSimulatorSupport::Device CoreSimulatorSupport::DeviceSet::Clone(const Device &d) {
+  NSError *error = nil;
+  SimDeviceSet *device_set = getDeviceSet(m_developer_dir.c_str());
+  if (!device_set)
+    return CoreSimulatorSupport::Device();
+
+  return Device([device_set cloneDevice: d.m_dev
+      name:[NSString stringWithFormat:@"lldb-sim-%d", (int)getpid()]
+      toSet: device_set
+      error: &error]);
+}
+
+Status CoreSimulatorSupport::DeviceSet::Destroy(const Device &d) {
+  NSError *error = nil;
+  SimDeviceSet *device_set = getDeviceSet(m_developer_dir.c_str());
+  if (!device_set) {
+    return Status();
+  }
+
+  [device_set deleteDevice: m_dev error: &error];
+  return Status();
 }

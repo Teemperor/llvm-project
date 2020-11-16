@@ -254,9 +254,11 @@ CoreSimulatorSupport::Device PlatformAppleSimulator::GetSimulatorDevice() {
   if (!m_device.hasValue()) {
     const CoreSimulatorSupport::DeviceType::ProductFamilyID dev_id = m_kind;
     std::string developer_dir = HostInfo::GetXcodeDeveloperDirectory().GetPath();
-    m_device = CoreSimulatorSupport::DeviceSet::GetAvailableDevices(
-                   developer_dir.c_str())
-                   .GetFanciest(dev_id);
+    CoreSimulatorSupport::DeviceSet devices = CoreSimulatorSupport::DeviceSet::GetAvailableDevices(
+          developer_dir.c_str());
+    m_device = devices.GetFanciest(dev_id);
+    if (m_device)
+      m_device = devices.Clone(*m_device);
   }
 
   if (m_device.hasValue())

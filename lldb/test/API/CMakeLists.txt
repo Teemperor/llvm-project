@@ -36,7 +36,7 @@ set(LLDB_TEST_USER_ARGS
 # hash of filename and .text section, there *will* be conflicts inside
 # the build directory.
 set(LLDB_TEST_COMMON_ARGS
-  -S nm
+  -S fm
   -u CXXFLAGS
   -u CFLAGS
   )

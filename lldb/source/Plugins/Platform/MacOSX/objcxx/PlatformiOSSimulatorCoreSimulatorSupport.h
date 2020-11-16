@@ -210,10 +210,16 @@ public:
 
   Device GetFanciest(DeviceType::ProductFamilyID dev_id);
 
+  Device Clone(const Device &d);
+
+  lldb_private::Status Destroy(const Device &d);
+
 private:
-  DeviceSet(id arr) : m_dev(arr) {}
+  DeviceSet(id arr, std::string developer_dir) : m_dev(arr),
+  m_developer_dir(std::move(developer_dir)) {}
 
   id m_dev;
+  std::string m_developer_dir;
 };
 }
 
