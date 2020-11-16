@@ -168,8 +168,6 @@ public:
 
   Process Spawn(lldb_private::ProcessLaunchInfo &launch_info);
 
-  Device Clone(const char *developer_dir);
-
 private:
   id m_dev;
   llvm::Optional<DeviceType> m_dev_type;
