@@ -1,0 +1,2 @@
+module M1 { header "mod1.h" export * }
+module M2 { header "mod2.h" export * }

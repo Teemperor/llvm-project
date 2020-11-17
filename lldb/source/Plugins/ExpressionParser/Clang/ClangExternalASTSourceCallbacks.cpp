@@ -50,14 +50,13 @@ void ClangExternalASTSourceCallbacks::FindExternalLexicalDecls(
 bool ClangExternalASTSourceCallbacks::FindExternalVisibleDeclsByName(
     const clang::DeclContext *DC, clang::DeclarationName Name) {
   llvm::SmallVector<clang::NamedDecl *, 4> decls;
-  // Objective-C methods are not added into the LookupPtr when they originate
-  // from an external source. SetExternalVisibleDeclsForName() adds them.
-  if (auto *oid = llvm::dyn_cast<clang::ObjCInterfaceDecl>(DC)) {
-    clang::ObjCContainerDecl::method_range noload_methods(oid->noload_decls());
-    for (auto *omd : noload_methods)
-      if (omd->getDeclName() == Name)
-        decls.push_back(omd);
-  }
+  // SetExternalVisibleDeclsForName() should make all declarations visible
+  // that are from an AST file.
+  for (auto *d : DC->noload_decls())
+    if (clang::NamedDecl *nd = llvm::dyn_cast<clang::NamedDecl>(d)) {
+      if (nd->isFromASTFile() && nd->getDeclName() == Name)
+        decls.push_back(nd);
+    }
   return !SetExternalVisibleDeclsForName(DC, Name, decls).empty();
 }
 

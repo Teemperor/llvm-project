@@ -1240,6 +1240,11 @@ void TypeSystemClang::SetOwningModule(clang::Decl *decl,
   decl->setFromASTFile();
   decl->setOwningModuleID(owning_module.GetValue());
   decl->setModuleOwnershipKind(clang::Decl::ModuleOwnershipKind::Visible);
+
+  // Declarations that are marked as setFromASTFile are expected to be added to
+  // the lookup by the ExternalASTSource. See DeclContext::buildLookupImpl.
+  if (DeclContext *dc = dyn_cast<DeclContext>(decl))
+    dc->setHasExternalVisibleStorage(true);
 }
 
 OptionalClangModuleID
@@ -8068,7 +8073,6 @@ bool TypeSystemClang::CompleteTagDeclarationDefinition(
         cxx_record_decl->completeDefinition();
       cxx_record_decl->setHasLoadedFieldsFromExternalStorage(true);
       cxx_record_decl->setHasExternalLexicalStorage(false);
-      cxx_record_decl->setHasExternalVisibleStorage(false);
       return true;
     }
   }
