@@ -187,7 +187,12 @@ UserExpression::Evaluate(ExecutionContext &exe_ctx,
     }
   }
 
-  if (process == nullptr || !process->CanJIT())
+  // Explicitly force the IR interpreter to evaluate the expression when the
+  // there is no process that supports running the expression for us. For
+  // top-level expressions we leave it up to the Expression plugin to decide
+  // whether it can handle the expression without a running process.
+  if (execution_policy != eExecutionPolicyTopLevel &&
+      (process == nullptr || !process->CanJIT()))
     execution_policy = eExecutionPolicyNever;
 
   // We need to set the expression execution thread here, turns out parse can
