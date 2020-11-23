@@ -3105,6 +3105,24 @@ TEST_P(ASTImporterOptionSpecificTestBase,
 }
 
 TEST_P(ASTImporterOptionSpecificTestBase,
+       MergeTemplateSpecWithForwardDecl) {
+  std::string ClassTemplate =
+      R"(
+      template<typename T>
+      struct X { int m; };
+      template<>
+      struct X<int> { int m; };
+      )";
+  getToTuDecl(ClassTemplate + "template<> struct X<int>;", Lang_CXX11);
+  Decl *FromTU = getTuDecl(ClassTemplate, Lang_CXX11);
+  auto *FromSpec = FirstDeclMatcher<ClassTemplateSpecializationDecl>().match(
+      FromTU, classTemplateSpecializationDecl(hasName("X"), isDefinition()));
+  auto *ImportedSpec = Import(FromSpec, Lang_CXX11);
+  EXPECT_TRUE(FromSpec->isThisDeclarationADefinition());
+  EXPECT_TRUE(ImportedSpec->isThisDeclarationADefinition());
+}
+
+TEST_P(ASTImporterOptionSpecificTestBase,
        ODRViolationOfClassTemplateSpecializationsShouldBeReported) {
   std::string ClassTemplate =
       R"(
