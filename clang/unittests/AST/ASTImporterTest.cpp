@@ -901,6 +901,25 @@ TEST_P(ASTImporterOptionSpecificTestBase, ImportBeginLocOfDeclRefExpr) {
           .isValid());
 }
 
+TEST_P(ASTImporterOptionSpecificTestBase, NonTypeTemplateParmDeclNoDefaultArg) {
+  Decl *FromTU = getTuDecl("template<int N> struct X {};", Lang_CXX03);
+  auto From = FirstDeclMatcher<NonTypeTemplateParmDecl>().match(
+      FromTU, templateTypeParmDecl(hasName("N")));
+  NonTypeTemplateParmDecl *To = Import(From, Lang_CXX03);
+  ASSERT_FALSE(To->hasDefaultArgument());
+}
+
+TEST_P(ASTImporterOptionSpecificTestBase, NonTypeTemplateParmDeclDefaultArg) {
+  Decl *FromTU = getTuDecl("template<int S = 1> struct X {};", Lang_CXX03);
+  auto From = FirstDeclMatcher<NonTypeTemplateParmDecl>().match(
+      FromTU, templateTypeParmDecl(hasName("N")));
+  NonTypeTemplateParmDecl *To = Import(From, Lang_CXX03);
+  ASSERT_TRUE(To->hasDefaultArgument());
+  Expr *ToArg = To->getDefaultArgument();
+  ASSERT_TRUE(isa<IntegerLiteral>(ToArg));
+  ASSERT_EQ(cast<IntegerLiteral>(ToArg)->getValue().getLimitedValue(), 1U);
+}
+
 TEST_P(ASTImporterOptionSpecificTestBase,
        ImportOfTemplatedDeclOfClassTemplateDecl) {
   Decl *FromTU = getTuDecl("template<class X> struct S{};", Lang_CXX03);
