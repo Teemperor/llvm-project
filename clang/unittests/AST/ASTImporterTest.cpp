@@ -851,13 +851,30 @@ TEST_P(ImportDecl, ImportClassTemplatePartialSpecialization) {
   auto Code =
       R"s(
       struct declToImport {
-        template <typename T0> struct X;
-        template <typename T0> struct X<T0 *> {};
+        template <typename T> struct X {
+          typedef X<T> S;
+          int member;
+        };
+        X<int> inst;
       };
       )s";
   testImport(Code, Lang_CXX03, "", Lang_CXX03, Verifier,
-             recordDecl(has(classTemplateDecl()),
-                        has(classTemplateSpecializationDecl())));
+             recordDecl(has(classTemplateSpecializationDecl(has(fieldDecl())))));
+}
+
+TEST_P(ASTImporterOptionSpecificTestBase, ClassTemplateSpecializationSelfReference) {
+  Decl *FromTU = getTuDecl(R"(
+                           template <typename T> struct X {
+                             typedef X<T> S;
+                             int member;
+                           };
+                           X<int> inst;
+                           )",
+                           Lang_CXX17);
+  auto From = FirstDeclMatcher<ClassTemplateSpecializationDecl>().match(
+      FromTU, classTemplateSpecializationDecl(hasName("X")));
+  ClassTemplateSpecializationDecl *To = Import(From, Lang_CXX17);
+  ASSERT_FALSE(true);
 }
 
 TEST_P(ImportExpr, CXXOperatorCallExpr) {

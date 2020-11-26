@@ -1342,6 +1342,10 @@ static bool IsStructurallyEquivalent(StructuralEquivalenceContext &Context,
   if (!IsStructurallyEquivalent(Name1, Name2))
     return false;
 
+  llvm::errs() << "Comparing\n";
+  D1->dumpColor();
+  D2->dumpColor();
+
   if (D1->isUnion() != D2->isUnion()) {
     if (Context.Complain) {
       Context.Diag2(D2->getLocation(), Context.getApplicableDiagnostic(

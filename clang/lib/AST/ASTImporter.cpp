@@ -2430,6 +2430,12 @@ ASTNodeImporter::VisitTypedefNameDecl(TypedefNameDecl *D, bool IsAlias) {
     SmallVector<NamedDecl *, 4> ConflictingDecls;
     unsigned IDNS = Decl::IDNS_Ordinary;
     auto FoundDecls = Importer.findDeclsInToCtx(DC, Name);
+    llvm::errs() << "Found " << FoundDecls.size() << " conflicting for ";
+    Name.dump();
+    if (auto *RD = dyn_cast<RecordDecl>(DC)) {
+        llvm::errs() << "RECORD:\n";
+        RD->dumpColor();
+      }
     for (auto *FoundDecl : FoundDecls) {
       if (!FoundDecl->isInIdentifierNamespace(IDNS))
         continue;
