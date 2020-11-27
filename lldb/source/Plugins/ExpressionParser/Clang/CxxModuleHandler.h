@@ -41,6 +41,12 @@ class CxxModuleHandler {
   /// template names inside the 'std' namespace such as 'vector' or 'list'.
   llvm::StringSet<> m_supported_templates;
 
+  /// List of type names we can currently substitute. These are type
+  /// names inside the 'std' namespace such as 'string'.
+  llvm::StringSet<> m_supported_named_decls;
+
+  llvm::Optional<clang::Decl *> trySubstituteNamedDecl(clang::Decl *d);
+
   /// Tries to manually instantiate the given foreign template in the target
   /// context (designated by m_sema).
   llvm::Optional<clang::Decl *> tryInstantiateStdTemplate(clang::Decl *d);

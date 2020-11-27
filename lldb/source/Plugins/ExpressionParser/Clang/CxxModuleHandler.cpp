@@ -20,7 +20,7 @@ CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
     : m_importer(&importer),
       m_sema(TypeSystemClang::GetASTContext(target)->getSema()) {
 
-  std::initializer_list<const char *> supported_names = {
+  const std::initializer_list<const char *> supported_templates = {
       // containers
       "deque",
       "forward_list",
@@ -28,6 +28,7 @@ CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
       "queue",
       "stack",
       "vector",
+      "basic_string",
       // pointers
       "shared_ptr",
       "unique_ptr",
@@ -35,8 +36,15 @@ CxxModuleHandler::CxxModuleHandler(ASTImporter &importer, ASTContext *target)
       // utility
       "allocator",
       "pair",
+      "char_traits",
   };
-  m_supported_templates.insert(supported_names.begin(), supported_names.end());
+  m_supported_templates.insert(supported_templates.begin(),
+                               supported_templates.end());
+
+  const std::initializer_list<const char *> supported_typedefs = {
+      "string", "wstring", "u16string", "u32string"};
+  m_supported_named_decls.insert(supported_typedefs.begin(),
+                                 supported_typedefs.end());
 }
 
 /// Builds a list of scopes that point into the given context.
@@ -175,6 +183,60 @@ T *createDecl(ASTImporter &importer, Decl *from_d, Args &&... args) {
   return to_d;
 }
 
+template <typename T>
+T *findDeclInTargetAST(clang::Sema &sema, clang::NamedDecl *nd) {
+  const llvm::StringRef name = nd->getName();
+  DeclContext *from_dc = nd->getDeclContext();
+  Log *log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS);
+
+  // Find the local DeclContext that corresponds to the DeclContext of our
+  // decl we want to import.
+  llvm::Expected<DeclContext *> to_context =
+      getEqualLocalDeclContext(sema, from_dc);
+  if (!to_context) {
+    LLDB_LOG_ERROR(log, to_context.takeError(),
+                   "Got error while searching equal local DeclContext for decl "
+                   "'{1}':\n{0}",
+                   name);
+    return nullptr;
+  }
+
+  // Look up the template in our local context.
+  std::unique_ptr<LookupResult> lookup =
+      emulateLookupInCtxt(sema, name, *to_context);
+
+  T *found_decl = nullptr;
+  for (auto LD : *lookup) {
+    if ((found_decl = dyn_cast<T>(LD)))
+      break;
+  }
+  return found_decl;
+}
+
+llvm::Optional<Decl *> CxxModuleHandler::trySubstituteNamedDecl(Decl *d) {
+  // We only support decls with an identifier name.
+  auto nd = dyn_cast<NamedDecl>(d);
+  if (!nd || !nd->getDeclName().isIdentifier())
+    return llvm::None;
+
+  // We only care about decls in the std namespace.
+  if (!nd->getDeclContext()->isStdNamespace())
+    return llvm::None;
+
+  // Only substitute types that we explicitly allow to be substituted.
+  if (!m_supported_named_decls.contains(nd->getName()))
+    return llvm::None;
+
+  NamedDecl *result = findDeclInTargetAST<NamedDecl>(*m_sema, nd);
+
+  if (!result)
+    return llvm::None;
+
+  // Register the found decl it with the ASTImporter.
+  m_importer->RegisterImportedDecl(d, result);
+  return result;
+}
+
 llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
   Log *log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS);
 
@@ -197,27 +259,9 @@ llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
   if (!templateArgsAreSupported(foreign_args.asArray()))
     return llvm::None;
 
-  // Find the local DeclContext that corresponds to the DeclContext of our
-  // decl we want to import.
-  llvm::Expected<DeclContext *> to_context =
-      getEqualLocalDeclContext(*m_sema, td->getDeclContext());
-  if (!to_context) {
-    LLDB_LOG_ERROR(log, to_context.takeError(),
-                   "Got error while searching equal local DeclContext for decl "
-                   "'{1}':\n{0}",
-                   td->getName());
-    return llvm::None;
-  }
-
-  // Look up the template in our local context.
-  std::unique_ptr<LookupResult> lookup =
-      emulateLookupInCtxt(*m_sema, td->getName(), *to_context);
-
-  ClassTemplateDecl *new_class_template = nullptr;
-  for (auto LD : *lookup) {
-    if ((new_class_template = dyn_cast<ClassTemplateDecl>(LD)))
-      break;
-  }
+  // Find the template that needs to be instantiated in the target AST.
+  ClassTemplateDecl *new_class_template =
+      findDeclInTargetAST<ClassTemplateDecl>(*m_sema, td);
   if (!new_class_template)
     return llvm::None;
 
@@ -285,6 +329,9 @@ llvm::Optional<Decl *> CxxModuleHandler::tryInstantiateStdTemplate(Decl *d) {
 llvm::Optional<Decl *> CxxModuleHandler::Import(Decl *d) {
   if (!isValid())
     return {};
+
+  if (llvm::Optional<Decl *> r = trySubstituteNamedDecl(d))
+    return r;
 
   return tryInstantiateStdTemplate(d);
 }
