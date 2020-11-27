@@ -133,8 +133,6 @@ public:
 
   void SetOptions(uint32_t value) { m_flags.SetValue(value); }
 
-  uint32_t &GetRevision() { return m_my_revision; }
-
   enum class Type { eTypeUnknown, eTypeFormat, eTypeEnum };
 
   virtual Type GetType() { return Type::eTypeUnknown; }
@@ -149,7 +147,6 @@ public:
 
 protected:
   Flags m_flags;
-  uint32_t m_my_revision;
 
 private:
   TypeFormatImpl(const TypeFormatImpl &) = delete;
