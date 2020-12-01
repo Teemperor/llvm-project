@@ -334,8 +334,9 @@ public:
     bool IsValid() const {
       if (args.empty())
         return false;
+      if (pack_name && !packed_args)
+        return false;
       return args.size() == names.size() &&
-        ((bool)pack_name == (bool)packed_args) &&
         (!packed_args || !packed_args->packed_args);
     }
 
