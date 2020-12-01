@@ -457,12 +457,10 @@ TEST_F(TestTypeSystemClang, TestRecordHasFields) {
 
 TEST_F(TestTypeSystemClang, TemplateArguments) {
   TypeSystemClang::TemplateParameterInfos infos;
-  infos.names.push_back("T");
-  infos.args.push_back(TemplateArgument(m_ast->getASTContext().IntTy));
-  infos.names.push_back("I");
+  infos.addArgument("T", TemplateArgument(m_ast->getASTContext().IntTy));
   llvm::APSInt arg(llvm::APInt(8, 47));
-  infos.args.push_back(TemplateArgument(m_ast->getASTContext(), arg,
-                                        m_ast->getASTContext().IntTy));
+  infos.addArgument("I", TemplateArgument(m_ast->getASTContext(), arg,
+                                          m_ast->getASTContext().IntTy));
 
   // template<typename T, int I> struct foo;
   ClassTemplateDecl *decl = m_ast->CreateClassTemplateDecl(

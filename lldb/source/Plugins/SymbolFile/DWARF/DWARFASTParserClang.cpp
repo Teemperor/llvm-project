@@ -1839,7 +1839,7 @@ bool DWARFASTParserClang::ParseTemplateDIE(
   case DW_TAG_template_value_parameter: {
     DWARFAttributes attributes;
     const size_t num_attributes = die.GetAttributes(attributes);
-    const char *name = nullptr;
+    llvm::StringRef name;
     const char *template_name = nullptr;
     CompilerType clang_type;
     uint64_t uval64 = 0;
@@ -1885,11 +1885,6 @@ bool DWARFASTParserClang::ParseTemplateDIE(
 
       if (!is_template_template_argument) {
         bool is_signed = false;
-        if (name && name[0])
-          template_param_infos.names.push_back(name);
-        else
-          template_param_infos.names.push_back(NULL);
-
         // Get the signed value for any integer or enumeration if available
         clang_type.IsIntegerOrEnumerationType(is_signed);
 
@@ -1898,17 +1893,16 @@ bool DWARFASTParserClang::ParseTemplateDIE(
           if (!size)
             return false;
           llvm::APInt apint(*size, uval64, is_signed);
-          template_param_infos.args.push_back(
+          template_param_infos.addArgument(name,
               clang::TemplateArgument(ast, llvm::APSInt(apint, !is_signed),
                                       ClangUtil::GetQualType(clang_type)));
         } else {
-          template_param_infos.args.push_back(
+          template_param_infos.addArgument(name,
               clang::TemplateArgument(ClangUtil::GetQualType(clang_type)));
         }
       } else {
         auto *tplt_type = m_ast.CreateTemplateTemplateParmDecl(template_name);
-        template_param_infos.names.push_back(name);
-        template_param_infos.args.push_back(
+        template_param_infos.addArgument(name,
             clang::TemplateArgument(clang::TemplateName(tplt_type)));
       }
     }
@@ -1944,9 +1938,7 @@ bool DWARFASTParserClang::ParseTemplateParameterInfos(
       break;
     }
   }
-  if (template_param_infos.args.empty())
-    return false;
-  return template_param_infos.args.size() == template_param_infos.names.size();
+  return !template_param_infos.params.empty();
 }
 
 bool DWARFASTParserClang::CompleteRecordType(const DWARFDIE &die,

@@ -332,16 +332,38 @@ public:
   class TemplateParameterInfos {
   public:
     bool IsValid() const {
-      if (args.empty())
+      if (packed_args && packed_args->packed_args)
         return false;
-      return args.size() == names.size() &&
-        ((bool)pack_name == (bool)packed_args) &&
-        (!packed_args || !packed_args->packed_args);
+
+      return !params.empty();
     }
 
-    llvm::SmallVector<const char *, 2> names;
-    llvm::SmallVector<clang::TemplateArgument, 2> args;
-    
+    struct Parameter {
+      llvm::StringRef name;
+      clang::TemplateArgument arg;
+    };
+
+    llvm::StringRef getParamName(size_t index) const {
+      return params[index].name;
+    }
+
+    const clang::TemplateArgument &getArgument(size_t index) const {
+      return params[index].arg;
+    }
+
+    void addArgument(llvm::StringRef name, const clang::TemplateArgument& arg) {
+      params.push_back({name, arg});
+    }
+
+    llvm::SmallVector<clang::TemplateArgument, 2> getArguments() const {
+      llvm::SmallVector<clang::TemplateArgument, 2> args;
+      for (std::size_t i = 0; i < params.size(); ++i) {
+        args.push_back(params[i].arg);
+      }
+      return args;
+    }
+
+    llvm::SmallVector<Parameter, 2> params;
     const char * pack_name = nullptr;
     std::unique_ptr<TemplateParameterInfos> packed_args;
   };
