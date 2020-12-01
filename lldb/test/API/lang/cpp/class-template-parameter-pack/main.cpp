@@ -26,6 +26,30 @@ template <> struct D<int, int, bool> : D<int, int> {
   bool argsAre_Int_bool() { return true; }
 };
 
+// Unnamed type parameter.
+template <typename... >
+struct AnonTypePack { int m; };
+AnonTypePack<int> emptyAnonTypePackVar;
+AnonTypePack<int, float> oneElemAnonTypePackVar;
+
+// Unnamed type parameter pack behind a named type parameter.
+template <typename T, typename... >
+struct AnonTypePackAfterParam { T n; };
+AnonTypePackAfterParam<int> emptyAnonTypePackAfterParamVar;
+AnonTypePackAfterParam<int, float> oneElemAnonTypePackAfterParamVar;
+
+// Unnamed type parameter pack behind an unnamed type parameter.
+template <typename, typename... >
+struct AnonTypePackAfterAnonParam { float j; };
+AnonTypePackAfterAnonParam<int> emptyAnonTypePackAfterAnonParamVar;
+AnonTypePackAfterAnonParam<int, float> oneElemAnonTypePackAfterAnonParamVar;
+
+// Unnamed type parameter pack behind an unnamed type parameter.
+template <typename, typename... Ts>
+struct TypePackAfterAnonParam { int k; };
+TypePackAfterAnonParam<int> emptyTypePackAfterAnonParamVar;
+TypePackAfterAnonParam<int, float> oneElemTypePackAfterAnonParamVar;
+
 int main(int argc, char const *argv[]) {
   C<int, 16, 32> myC;
   C<int, 16> myLesserC;

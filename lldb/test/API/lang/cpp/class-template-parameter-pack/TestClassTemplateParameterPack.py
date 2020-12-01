@@ -30,6 +30,32 @@ class TestCase(TestBase):
         self.expect_expr("myLesserD.argsAre_Int_bool()", result_value="false")
         self.expect_expr("myD.argsAre_Int_bool()", result_value="true")
 
+        # Test an unnamed type parameter pack.
+        self.expect_expr("emptyAnonTypePackVar", result_type="AnonTypePack<int>",
+            result_children=[ValueCheck(name="m", type="int")]
+        )
+        self.expect_expr("oneElemAnonTypePackVar", result_type="AnonTypePack<int, float>",
+            result_children=[ValueCheck(name="m", type="int")]
+        )
+
+        # Test an unnamed type parameter pack after a named type param.
+        self.expect_expr("emptyAnonTypePackAfterParamVar", result_type="AnonTypePackAfterParam<int>",
+            result_children=[ValueCheck(name="n", type="int")])
+        self.expect_expr("oneElemAnonTypePackAfterParamVar", result_type="AnonTypePackAfterParam<int, float>",
+            result_children=[ValueCheck(name="n", type="int")])
+
+        # Test an unnamed type parameter pack after an unnamed type param.
+        self.expect_expr("emptyAnonTypePackAfterAnonParamVar", result_type="AnonTypePackAfterAnonParam<int>",
+            result_children=[ValueCheck(name="j", type="float")])
+        self.expect_expr("oneElemAnonTypePackAfterAnonParamVar", result_type="AnonTypePackAfterAnonParam<int, float>",
+            result_children=[ValueCheck(name="j", type="float")])
+
+        # Test a named type parameter pack after an unnamed type param.
+        self.expect_expr("emptyTypePackAfterAnonParamVar", result_type="TypePackAfterAnonParam<int>",
+            result_children=[ValueCheck(name="k", type="int")])
+        self.expect_expr("oneElemTypePackAfterAnonParamVar", result_type="TypePackAfterAnonParam<int, float>",
+            result_children=[ValueCheck(name="k", type="int")])
+
         # Disabling until we do template lookup correctly: http://lists.llvm.org/pipermail/lldb-commits/Week-of-Mon-20180507/040689.html
         # FIXME: Rewrite this with expect_expr
         # self.expect("expression -- C<int, 16>().isSixteenThirtyTwo()", DATA_TYPES_DISPLAYED_CORRECTLY, substrs = ["false"])
