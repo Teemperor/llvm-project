@@ -1160,41 +1160,11 @@ class Base(unittest2.TestCase):
         """
         returns a partial path that can be used as the beginning of the name of multiple
         log files pertaining to this test
-
-        <session-dir>/<arch>-<compiler>-<test-file>.<test-class>.<test-method>
         """
-        dname = os.path.join(configuration.test_src_root,
-                             os.environ["LLDB_SESSION_DIRNAME"])
-        if not os.path.isdir(dname):
-            os.mkdir(dname)
-
-        components = []
-        if prefix is not None:
-            components.append(prefix)
-        for c in configuration.session_file_format:
-            if c == 'f':
-                components.append(self.__class__.__module__)
-            elif c == 'n':
-                components.append(self.__class__.__name__)
-            elif c == 'c':
-                compiler = self.getCompiler()
-
-                if compiler[1] == ':':
-                    compiler = compiler[2:]
-                if os.path.altsep is not None:
-                    compiler = compiler.replace(os.path.altsep, os.path.sep)
-                path_components = [x for x in compiler.split(os.path.sep) if x != ""]
-
-                # Add at most 4 path components to avoid generating very long
-                # filenames
-                components.extend(path_components[-4:])
-            elif c == 'a':
-                components.append(self.getArchitecture())
-            elif c == 'm':
-                components.append(self.testMethodName)
-        fname = "-".join(components)
-
-        return os.path.join(dname, fname)
+        result = self.getBuildDir()
+        if prefix:
+          result = os.path.join(result, prefix)
+        return result
 
     def dumpSessionInfo(self):
         """
