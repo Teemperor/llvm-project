@@ -3703,6 +3703,9 @@ TypeSystemClang::GetDisplayTypeName(lldb::opaque_compiler_type_t type) {
   printing_policy.SuppressScope = false;
   printing_policy.SuppressUnwrittenScope = true;
   printing_policy.SuppressInlineNamespace = true;
+  // FIXME: The only source of default template arguments in LLDB are C++
+  // modules when the target.import-std-module setting is enabled.
+  printing_policy.SuppressDefaultTemplateArgs = false;
   return ConstString(qual_type.getAsString(printing_policy));
 }
 
