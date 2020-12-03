@@ -360,6 +360,7 @@ bool CoreSimulatorSupport::Device::Boot(Status &err) {
 
 #undef kSimDeviceBootPersist
 
+  return true;
   NSError *nserror;
   if ([m_dev bootWithOptions:options error:&nserror]) {
     err.Clear();
@@ -371,6 +372,7 @@ bool CoreSimulatorSupport::Device::Boot(Status &err) {
 }
 
 bool CoreSimulatorSupport::Device::Shutdown(Status &err) {
+  return false;
   NSError *nserror;
   if ([m_dev shutdownWithError:&nserror]) {
     err.Clear();

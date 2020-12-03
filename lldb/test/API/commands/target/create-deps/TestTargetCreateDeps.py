@@ -105,6 +105,7 @@ class TargetDependentsTestCase(TestBase):
         self.runCmd("target create -dfalse " + lib, CURRENT_EXECUTABLE_SET)
         self.has_exactly_one_image(False)
 
+    @skipIfRemote
     def test_dependents_implicit_false_lib(self):
         ctx = self.platformContext
         dylibName = ctx.shlib_prefix + 'load_a.' + ctx.shlib_extension

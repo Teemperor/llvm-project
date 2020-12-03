@@ -56,6 +56,7 @@ class LoadUnloadTestCase(TestBase):
             shlibs = ['libloadunload_a.' + ext, 'libloadunload_b.' + ext,
                       'libloadunload_c.' + ext, 'libloadunload_d.' + ext]
             wd = lldb.remote_platform.GetWorkingDirectory()
+            sys.stderr.write("WORKING" + wd)
             cwd = os.getcwd()
             for f in shlibs:
                 err = lldb.remote_platform.Put(
