@@ -730,3 +730,13 @@ TEST_F(TestTypeSystemClang, AddMethodToObjCObjectType) {
   EXPECT_FALSE(method->isDirectMethod());
   EXPECT_EQ(method->getDeclName().getObjCSelector().getAsString(), "foo");
 }
+
+TEST(TestScratchTypeSystemClang, InferSubASTFromLangOpts) {
+  LangOptions lang_opts;
+  EXPECT_EQ(ScratchTypeSystemClang::DefaultAST,
+            ScratchTypeSystemClang::InferSubASTFromLangOpts(lang_opts));
+
+  lang_opts.Modules = true;
+  EXPECT_EQ(ScratchTypeSystemClang::SpecialSubAST::CppModules,
+            ScratchTypeSystemClang::InferSubASTFromLangOpts(lang_opts));
+}

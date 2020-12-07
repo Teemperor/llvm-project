@@ -72,19 +72,19 @@ ClangASTSource::~ClangASTSource() {
   if (!m_target)
     return;
   // We are in the process of destruction, don't create clang ast context on
-  // demand by passing false to
-  // Target::GetScratchTypeSystemClang(create_on_demand).
-  TypeSystemClang *scratch_clang_ast_context =
-      ScratchTypeSystemClang::GetForTarget(*m_target, false);
+  // demand by passing false to GetForTarget(Target, sub_ast, create_on_demand).
+  TypeSystemClang *scratch_ast = ScratchTypeSystemClang::GetForTarget(
+      *m_target, ScratchTypeSystemClang::DefaultAST, false);
 
-  if (!scratch_clang_ast_context)
+  if (!scratch_ast)
     return;
 
-  clang::ASTContext &scratch_ast_context =
-      scratch_clang_ast_context->getASTContext();
+  if (!m_ast_importer_sp)
+    return;
 
-  if (m_ast_context != &scratch_ast_context && m_ast_importer_sp)
-    m_ast_importer_sp->ForgetSource(&scratch_ast_context, m_ast_context);
+  ScratchTypeSystemClang *default_scratch_ast =
+      llvm::cast<ScratchTypeSystemClang>(scratch_ast);
+  default_scratch_ast->ForgetSource(m_ast_context, *m_ast_importer_sp);
 }
 
 void ClangASTSource::StartTranslationUnit(ASTConsumer *Consumer) {
