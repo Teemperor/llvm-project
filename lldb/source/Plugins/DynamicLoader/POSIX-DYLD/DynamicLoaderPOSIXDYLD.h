@@ -95,6 +95,9 @@ protected:
       void *baton, lldb_private::StoppointCallbackContext *context,
       lldb::user_id_t break_id, lldb::user_id_t break_loc_id);
 
+  /// Indicates whether the initial set of modules was reported added.
+  bool m_initial_modules_added;
+
   /// Helper method for RendezvousBreakpointHit.  Updates LLDB's current set
   /// of loaded modules.
   void RefreshModules();
