@@ -74,7 +74,7 @@ public:
 
   /// Returns a list of (top level) modules that should be imported when using
   /// this configuration (e.g. {"std"}).
-  llvm::ArrayRef<std::string> GetImportedModules() const {
+  std::vector<std::string> GetImportedModules() const {
     return m_imported_modules;
   }
 };

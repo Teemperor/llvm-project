@@ -137,6 +137,8 @@ public:
 
   bool GetEnableImportStdModule() const;
 
+  bool GetRetryWithStdModule() const;
+
   bool GetEnableAutoApplyFixIts() const;
 
   uint64_t GetNumberOfRetriesWithFixits() const;

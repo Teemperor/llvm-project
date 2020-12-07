@@ -52,6 +52,9 @@ let Definition = "target" in {
   def ImportStdModule: Property<"import-std-module", "Boolean">,
     DefaultFalse,
     Desc<"Import the C++ std module to improve debugging STL containers.">;
+  def RetryWithStdModule: Property<"retry-with-std-module", "Boolean">,
+    DefaultFalse,
+    Desc<"When an expression fails to parse, import the C++ std module and retry parsing the expression">;
   def AutoApplyFixIts: Property<"auto-apply-fixits", "Boolean">,
     DefaultTrue,
     Desc<"Automatically apply fix-it hints to expressions.">;

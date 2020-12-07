@@ -3975,6 +3975,12 @@ bool TargetProperties::GetEnableImportStdModule() const {
       nullptr, idx, g_target_properties[idx].default_uint_value != 0);
 }
 
+bool TargetProperties::GetRetryWithStdModule() const {
+  const uint32_t idx = ePropertyRetryWithStdModule;
+  return m_collection_sp->GetPropertyAtIndexAsBoolean(
+      nullptr, idx, g_target_properties[idx].default_uint_value != 0);
+}
+
 bool TargetProperties::GetEnableAutoApplyFixIts() const {
   const uint32_t idx = ePropertyAutoApplyFixIts;
   return m_collection_sp->GetPropertyAtIndexAsBoolean(
