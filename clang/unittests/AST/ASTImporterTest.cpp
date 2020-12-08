@@ -6066,6 +6066,22 @@ TEST_P(CTAD, DeductionGuideShouldCopyALocalTypedef) {
   EXPECT_NE(Param->getType()->getAs<TypedefType>()->getDecl(), Typedef);
 }
 
+TEST_P(ImportFunctions, CTADWithLocalTypedef) {
+  Decl *TU = getTuDecl(
+      R"(
+      template <typename T> struct A {
+        typedef T U;
+        A(U, T);
+      };
+      A a{(int)0, (int)0};
+      )",
+      Lang_CXX17, "input.cc");
+  auto *FromD = FirstDeclMatcher<CXXDeductionGuideDecl>().match(
+      TU, cxxDeductionGuideDecl());
+  auto *ToD = Import(FromD, Lang_CXX17);
+  ASSERT_TRUE(ToD);
+}
+
 INSTANTIATE_TEST_CASE_P(ParameterizedTests, CTAD,
                         DefaultTestValuesForRunOptions, );
 
