@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "clang/AST/ASTImporter.h"
+#include "clang/AST/ASTImporterSharedState.h"
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
@@ -187,8 +188,10 @@ public:
   struct ASTImporterDelegate : public clang::ASTImporter {
     ASTImporterDelegate(ClangASTImporter &master, clang::ASTContext *target_ctx,
                         clang::ASTContext *source_ctx)
-        : clang::ASTImporter(*target_ctx, master.m_file_manager, *source_ctx,
-                             master.m_file_manager, true /*minimal*/),
+        : clang::ASTImporter(
+              *target_ctx, master.m_file_manager, *source_ctx,
+              master.m_file_manager, true /*minimal*/,
+              master.GetContextMetadata(target_ctx)->m_shared_state),
           m_master(master), m_source_ctx(source_ctx) {
       setODRHandling(clang::ASTImporter::ODRHandlingType::Liberal);
     }
@@ -256,18 +259,24 @@ public:
   typedef llvm::DenseMap<clang::ASTContext *, ImporterDelegateSP> DelegateMap;
   typedef llvm::DenseMap<const clang::NamespaceDecl *, NamespaceMapSP>
       NamespaceMetaMap;
+  typedef std::shared_ptr<clang::ASTImporterSharedState> SharedStateSP;
 
   class ASTContextMetadata {
     typedef llvm::DenseMap<const clang::Decl *, DeclOrigin> OriginMap;
 
   public:
-    ASTContextMetadata(clang::ASTContext *dst_ctx) : m_dst_ctx(dst_ctx) {}
+    ASTContextMetadata(clang::ASTContext *dst_ctx) : m_dst_ctx(dst_ctx) {
+      m_shared_state = std::make_shared<clang::ASTImporterSharedState>();
+    }
 
     clang::ASTContext *m_dst_ctx;
     DelegateMap m_delegates;
 
     NamespaceMetaMap m_namespace_maps;
     MapCompleter *m_map_completer = nullptr;
+    /// The shared state that should be used for all the ASTImporters that
+    /// import into the destination ASTContext.
+    SharedStateSP m_shared_state;
 
     /// Sets the DeclOrigin for the given Decl and overwrites any existing
     /// DeclOrigin.
