@@ -60,6 +60,7 @@ class ASTImporterLookupTable {
   DCMap LookupTable;
 
 public:
+  ASTImporterLookupTable() = default;
   ASTImporterLookupTable(TranslationUnitDecl &TU);
   void add(NamedDecl *ND);
   void remove(NamedDecl *ND);

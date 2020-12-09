@@ -44,7 +44,9 @@ class ASTImporterSharedState {
   // And from that point we can better encapsulate the lookup table.
 
 public:
-  ASTImporterSharedState() = default;
+  ASTImporterSharedState() {
+    LookupTable = std::make_unique<ASTImporterLookupTable>();
+  }
 
   ASTImporterSharedState(TranslationUnitDecl &ToTU) {
     LookupTable = std::make_unique<ASTImporterLookupTable>(ToTU);
