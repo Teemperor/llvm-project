@@ -762,12 +762,12 @@ bool SymbolContext::GetAddressRangeFromHereToEndLine(uint32_t end_line,
   return true;
 }
 
-const Symbol *SymbolContext::FindBestGlobalDataSymbol(ConstString name,
+llvm::SmallVector<const Symbol *, 1> SymbolContext::FindBestGlobalDataSymbol(ConstString name,
                                                       Status &error) {
   error.Clear();
 
   if (!target_sp) {
-    return nullptr;
+    return {};
   }
 
   Target &target = *target_sp;
@@ -775,7 +775,7 @@ const Symbol *SymbolContext::FindBestGlobalDataSymbol(ConstString name,
 
   auto ProcessMatches = [this, &name, &target,
                          module](SymbolContextList &sc_list,
-                                 Status &error) -> const Symbol * {
+                                 Status &error) -> llvm::SmallVector<const Symbol *, 1> {
     llvm::SmallVector<const Symbol *, 1> external_symbols;
     llvm::SmallVector<const Symbol *, 1> internal_symbols;
     const uint32_t matches = sc_list.GetSize();
@@ -829,7 +829,7 @@ const Symbol *SymbolContext::FindBestGlobalDataSymbol(ConstString name,
               // is the same as the current symbol
               if (name == symbol->GetReExportedSymbolName() &&
                   module == reexport_module_sp.get())
-                return nullptr;
+                return {};
 
               return FindBestGlobalDataSymbol(symbol->GetReExportedSymbolName(),
                                               error);
@@ -872,9 +872,9 @@ const Symbol *SymbolContext::FindBestGlobalDataSymbol(ConstString name,
       }
       ss.PutChar('\n');
       error.SetErrorString(ss.GetData());
-      return nullptr;
+      return {};
     } else if (external_symbols.size()) {
-      return external_symbols[0];
+      return external_symbols;
     } else if (internal_symbols.size() > 1) {
       StreamString ss;
       ss.Printf("Multiple internal symbols found for '%s'\n", name.AsCString());
@@ -883,22 +883,20 @@ const Symbol *SymbolContext::FindBestGlobalDataSymbol(ConstString name,
         ss.PutChar('\n');
       }
       error.SetErrorString(ss.GetData());
-      return nullptr;
+      return {};
     } else if (internal_symbols.size()) {
-      return internal_symbols[0];
+      return internal_symbols;
     } else {
-      return nullptr;
+      return {};
     }
   };
 
   if (module) {
     SymbolContextList sc_list;
     module->FindSymbolsWithNameAndType(name, eSymbolTypeAny, sc_list);
-    const Symbol *const module_symbol = ProcessMatches(sc_list, error);
+    llvm::SmallVector<const Symbol *, 1> module_symbol = ProcessMatches(sc_list, error);
 
-    if (!error.Success()) {
-      return nullptr;
-    } else if (module_symbol) {
+    if (!module_symbol.empty()) {
       return module_symbol;
     }
   }
@@ -907,16 +905,13 @@ const Symbol *SymbolContext::FindBestGlobalDataSymbol(ConstString name,
     SymbolContextList sc_list;
     target.GetImages().FindSymbolsWithNameAndType(name, eSymbolTypeAny,
                                                   sc_list);
-    const Symbol *const target_symbol = ProcessMatches(sc_list, error);
-
-    if (!error.Success()) {
-      return nullptr;
-    } else if (target_symbol) {
-      return target_symbol;
+    llvm::SmallVector<const Symbol *, 1> target_symbol = ProcessMatches(sc_list, error);
+    if (!target_symbol.empty()) {
+        return target_symbol;
     }
   }
 
-  return nullptr; // no error; we just didn't find anything
+  return {}; // no error; we just didn't find anything
 }
 
 //

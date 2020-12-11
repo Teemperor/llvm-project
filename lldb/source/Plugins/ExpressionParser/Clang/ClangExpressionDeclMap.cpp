@@ -1437,7 +1437,7 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
     if (!error.Success()) {
       const unsigned diag_id =
           m_ast_context->getDiagnostics().getCustomDiagID(
-              clang::DiagnosticsEngine::Level::Error, "%0");
+              clang::DiagnosticsEngine::Level::Warning, "%0");
       m_ast_context->getDiagnostics().Report(diag_id) << error.AsCString();
     }
 

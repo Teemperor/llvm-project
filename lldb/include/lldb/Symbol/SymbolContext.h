@@ -215,7 +215,7 @@ public:
   ///
   /// \return
   ///     The symbol that was found, or \b nullptr if none was found.
-  const Symbol *FindBestGlobalDataSymbol(ConstString name, Status &error);
+  llvm::SmallVector<const Symbol *, 1> FindBestGlobalDataSymbol(ConstString name, Status &error);
 
   void GetDescription(Stream *s, lldb::DescriptionLevel level,
                       Target *target) const;
