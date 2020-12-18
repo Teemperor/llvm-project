@@ -24,6 +24,8 @@ class TestBitfieldIvars(TestBase):
                                              'field1 =', '10',
                                              'field2 =', '3',
                                              'field3 =', '4'])
+        self.expect('p myField',
+                   substrs=['(UCBitFields)', 'fieldOne = \'\\0\'', 'fieldTwo = \'\\x01\'', 'fieldThree = \'\\0\'', 'fieldFour = \'\\0\'', 'fieldfive = \'\\x01\''])
 
     # This test is meant to be xfailed, but running the test triggers an ASan
     # issue, so it must be skipped for now.

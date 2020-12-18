@@ -75,3 +75,6 @@ class DataFormatterBoolRefPtr(TestBase):
                     substrs=['NO'])
         if not(isArm):
             self.expect('frame variable unset', substrs=['12'])
+
+        self.expect('p myField',
+                   substrs=['(BoolBitFields)', 'fieldOne = NO', 'fieldTwo = 255', 'fieldThree = NO', 'fieldFour = NO', 'fieldfive = 255'])
