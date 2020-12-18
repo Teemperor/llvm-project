@@ -1,5 +1,7 @@
 // RUN: %clang_cc1 %s -fsyntax-only -verify -std=c11 -Wno-unused-value
 
+typedef signed char BOOL;
+
 enum e0; // expected-note{{forward declaration of 'enum e0'}}
 
 struct a {
@@ -28,6 +30,9 @@ struct a {
 
   _Bool : 2;   // expected-error {{width of anonymous bit-field (2 bits) exceeds width of its type (1 bit)}}
   _Bool h : 5; // expected-error {{width of bit-field 'h' (5 bits) exceeds width of its type (1 bit)}}
+
+  // Make sure this doesn't trigger Objective-C's BOOL bitfield warning.
+  BOOL i : 1;
 };
 
 struct b {unsigned x : 2;} x;

@@ -78,6 +78,7 @@ CHECK-NEXT:    -Wvolatile-register-var
 CHECK-NEXT:    -Wobjc-missing-super-calls
 CHECK-NEXT:    -Wobjc-designated-initializers
 CHECK-NEXT:    -Wobjc-flexible-array
+CHECK-NEXT:    -Wobjc-bool-bitfield
 CHECK-NEXT:    -Woverloaded-virtual
 CHECK-NEXT:    -Wprivate-extern
 CHECK-NEXT:    -Wcast-of-sel-type

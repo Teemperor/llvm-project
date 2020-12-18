@@ -16513,6 +16513,12 @@ ExprResult Sema::VerifyBitField(SourceLocation FieldLoc,
           << FieldName << Value.toString(10)
           << (unsigned)TypeWidth;
     }
+
+    // If Objective C's BOOL type is a signed char (or any signed integer), then
+    // 1 bit is not wide enough to store Objective-C's YES(1) value.
+    if (LangOpts.ObjC && Value == 1 && NSAPIObj->isObjCBOOLType(FieldTy) &&
+        FieldTy->isSignedIntegerType())
+      Diag(FieldLoc, diag::warn_objc_bool_bitfield_has_width_one) << FieldName;
   }
 
   return BitWidth;

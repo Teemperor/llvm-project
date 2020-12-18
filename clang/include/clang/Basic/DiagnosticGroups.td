@@ -487,6 +487,7 @@ def ObjCPointerIntrospect : DiagGroup<"deprecated-objc-pointer-introspection", [
 def ObjCMultipleMethodNames : DiagGroup<"objc-multiple-method-names">;
 def ObjCFlexibleArray : DiagGroup<"objc-flexible-array">;
 def ObjCBoxing : DiagGroup<"objc-boxing">;
+def ObjCBoolBitfield : DiagGroup<"objc-bool-bitfield">;
 def OpenCLUnsupportedRGBA: DiagGroup<"opencl-unsupported-rgba">;
 def UnderalignedExceptionObject : DiagGroup<"underaligned-exception-object">;
 def DeprecatedObjCIsaUsage : DiagGroup<"deprecated-objc-isa-usage">;
@@ -929,6 +930,7 @@ def Most : DiagGroup<"most", [
     ObjCMissingSuperCalls,
     ObjCDesignatedInit,
     ObjCFlexibleArray,
+    ObjCBoolBitfield,
     OverloadedVirtual,
     PrivateExtern,
     SelTypeCast,
