@@ -1,0 +1,9 @@
+#include "libc_header.h"
+
+namespace std {
+  inline namespace __1 {
+    template<typename T> class unknown_container {
+      T member;
+    };
+  }
+}
