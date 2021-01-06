@@ -68,8 +68,8 @@ bool TypeFormatImpl_Format::FormatObject(ValueObject *valobj,
         // put custom bytes to display in the DataExtractor to override the
         // default value logic
         if (GetFormat() == eFormatCString) {
-          lldb_private::Flags type_flags(compiler_type.GetTypeInfo(
-              nullptr)); // disambiguate w.r.t. TypeFormatImpl::Flags
+          // disambiguate w.r.t. TypeFormatImpl::Flags
+          EnumFlags<TypeFlags> type_flags(compiler_type.GetTypeInfo(nullptr));
           if (type_flags.Test(eTypeIsPointer) &&
               !type_flags.Test(eTypeIsObjC)) {
             // if we are dumping a pointer as a c-string, get the pointee data
@@ -169,8 +169,7 @@ bool TypeFormatImpl_EnumType::FormatObject(ValueObject *valobj,
     for (lldb::TypeSP type_sp : types.Types()) {
       if (!type_sp)
         continue;
-      if ((type_sp->GetForwardCompilerType().GetTypeInfo() &
-           eTypeIsEnumeration) == eTypeIsEnumeration) {
+      if (type_sp->GetForwardCompilerType().GetTypeInfo().Test(eTypeIsEnumeration)) {
         valobj_enum_type = type_sp->GetFullCompilerType();
         m_types.emplace(valobj_key, valobj_enum_type);
         break;

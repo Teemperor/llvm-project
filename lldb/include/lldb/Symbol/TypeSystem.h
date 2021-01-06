@@ -25,6 +25,8 @@
 #include "lldb/Symbol/CompilerDecl.h"
 #include "lldb/Symbol/CompilerDeclContext.h"
 #include "lldb/lldb-private.h"
+#include "lldb/lldb-enumerations.h"
+#include "lldb/Utility/EnumFlags.h"
 
 class DWARFDIE;
 class DWARFASTParser;
@@ -205,7 +207,7 @@ public:
 
   virtual ConstString GetDisplayTypeName(lldb::opaque_compiler_type_t type) = 0;
 
-  virtual uint32_t
+  virtual EnumFlags<lldb::TypeFlags>
   GetTypeInfo(lldb::opaque_compiler_type_t type,
               CompilerType *pointee_or_element_compiler_type) = 0;
 

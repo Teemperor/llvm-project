@@ -371,8 +371,7 @@ public:
 
   virtual lldb::LanguageType GetObjectRuntimeLanguage();
 
-  virtual uint32_t
-  GetTypeInfo(CompilerType *pointee_or_element_compiler_type = nullptr);
+  virtual EnumFlags<lldb::TypeFlags> GetTypeInfo(CompilerType *pointee_or_element_compiler_type = nullptr);
 
   virtual bool IsPointerType();
 

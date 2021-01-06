@@ -263,9 +263,9 @@ ABIMacOSX_arm64::SetReturnValueObject(lldb::StackFrameSP &frame_sp,
       return error;
     }
 
-    const uint32_t type_flags = return_value_type.GetTypeInfo(nullptr);
-    if (type_flags & eTypeIsScalar || type_flags & eTypeIsPointer) {
-      if (type_flags & eTypeIsInteger || type_flags & eTypeIsPointer) {
+    const EnumFlags<TypeFlags> type_flags = return_value_type.GetTypeInfo();
+    if (type_flags.AnySet({eTypeIsScalar, eTypeIsPointer})) {
+      if (type_flags.AnySet({eTypeIsInteger,eTypeIsPointer})) {
         // Extract the register context so we can read arguments from registers
         lldb::offset_t offset = 0;
         if (byte_size <= 16) {
@@ -291,8 +291,8 @@ ABIMacOSX_arm64::SetReturnValueObject(lldb::StackFrameSP &frame_sp,
           error.SetErrorString("We don't support returning longer than 128 bit "
                                "integer values at present.");
         }
-      } else if (type_flags & eTypeIsFloat) {
-        if (type_flags & eTypeIsComplex) {
+      } else if (type_flags.Test(eTypeIsFloat)) {
+        if (type_flags.Test(eTypeIsComplex)) {
           // Don't handle complex yet.
           error.SetErrorString(
               "returning complex float values are not supported");

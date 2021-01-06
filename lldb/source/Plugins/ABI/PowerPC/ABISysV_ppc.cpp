@@ -518,12 +518,12 @@ ValueObjectSP ABISysV_ppc::GetReturnValueObjectSimple(
   if (!reg_ctx)
     return return_valobj_sp;
 
-  const uint32_t type_flags = return_compiler_type.GetTypeInfo();
-  if (type_flags & eTypeIsScalar) {
+  const EnumFlags<TypeFlags> type_flags = return_compiler_type.GetTypeInfo();
+  if (type_flags.Test(eTypeIsScalar)) {
     value.SetValueType(Value::eValueTypeScalar);
 
     bool success = false;
-    if (type_flags & eTypeIsInteger) {
+    if (type_flags.Test(eTypeIsInteger)) {
       // Extract the register context so we can read arguments from registers
 
       llvm::Optional<uint64_t> byte_size =
@@ -569,8 +569,8 @@ ValueObjectSP ABISysV_ppc::GetReturnValueObjectSimple(
         success = true;
         break;
       }
-    } else if (type_flags & eTypeIsFloat) {
-      if (type_flags & eTypeIsComplex) {
+    } else if (type_flags.Test(eTypeIsFloat)) {
+      if (type_flags.Test(eTypeIsComplex)) {
         // Don't handle complex yet.
       } else {
         llvm::Optional<uint64_t> byte_size =

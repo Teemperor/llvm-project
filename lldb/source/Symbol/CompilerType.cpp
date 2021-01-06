@@ -281,10 +281,10 @@ ConstString CompilerType::GetDisplayTypeName() const {
   return ConstString("<invalid>");
 }
 
-uint32_t CompilerType::GetTypeInfo(
+EnumFlags<lldb::TypeFlags> CompilerType::GetTypeInfo(
     CompilerType *pointee_or_element_compiler_type) const {
   if (!IsValid())
-    return 0;
+    return {};
 
   return m_type_system->GetTypeInfo(m_type, pointee_or_element_compiler_type);
 }

@@ -3697,14 +3697,16 @@ TypeSystemClang::GetDisplayTypeName(lldb::opaque_compiler_type_t type) {
   return ConstString(qual_type.getAsString(printing_policy));
 }
 
-uint32_t
+EnumFlags<lldb::TypeFlags>
 TypeSystemClang::GetTypeInfo(lldb::opaque_compiler_type_t type,
                              CompilerType *pointee_or_element_clang_type) {
   if (!type)
-    return 0;
+    return {};
 
   if (pointee_or_element_clang_type)
     pointee_or_element_clang_type->Clear();
+
+  EnumFlags<lldb::TypeFlags> result;
 
   clang::QualType qual_type =
       RemoveWrappingTypes(GetQualType(type), {clang::Type::Typedef});
@@ -3720,21 +3722,21 @@ TypeSystemClang::GetTypeInfo(lldb::opaque_compiler_type_t type,
     const clang::BuiltinType *builtin_type = llvm::dyn_cast<clang::BuiltinType>(
         qual_type->getCanonicalTypeInternal());
 
-    uint32_t builtin_type_flags = eTypeIsBuiltIn | eTypeHasValue;
+    result.Set({eTypeIsBuiltIn, eTypeHasValue});
     switch (builtin_type->getKind()) {
     case clang::BuiltinType::ObjCId:
     case clang::BuiltinType::ObjCClass:
       if (pointee_or_element_clang_type)
         pointee_or_element_clang_type->SetCompilerType(
             this, getASTContext().ObjCBuiltinClassTy.getAsOpaquePtr());
-      builtin_type_flags |= eTypeIsPointer | eTypeIsObjC;
+      result.Set({eTypeIsPointer, eTypeIsObjC});
       break;
 
     case clang::BuiltinType::ObjCSel:
       if (pointee_or_element_clang_type)
         pointee_or_element_clang_type->SetCompilerType(
             this, getASTContext().CharTy.getAsOpaquePtr());
-      builtin_type_flags |= eTypeIsPointer | eTypeIsObjC;
+      result.Set({eTypeIsPointer, eTypeIsObjC});
       break;
 
     case clang::BuiltinType::Bool:
@@ -3759,39 +3761,38 @@ TypeSystemClang::GetTypeInfo(lldb::opaque_compiler_type_t type,
     case clang::BuiltinType::Float:
     case clang::BuiltinType::Double:
     case clang::BuiltinType::LongDouble:
-      builtin_type_flags |= eTypeIsScalar;
+      result.Set(eTypeIsScalar);
       if (builtin_type->isInteger()) {
-        builtin_type_flags |= eTypeIsInteger;
+        result.Set(eTypeIsInteger);
         if (builtin_type->isSignedInteger())
-          builtin_type_flags |= eTypeIsSigned;
+          result.Set(eTypeIsSigned);
       } else if (builtin_type->isFloatingPoint())
-        builtin_type_flags |= eTypeIsFloat;
+        result.Set(eTypeIsFloat);
       break;
     default:
       break;
     }
-    return builtin_type_flags;
+    break;
   }
 
   case clang::Type::BlockPointer:
     if (pointee_or_element_clang_type)
       pointee_or_element_clang_type->SetCompilerType(
           this, qual_type->getPointeeType().getAsOpaquePtr());
-    return eTypeIsPointer | eTypeHasChildren | eTypeIsBlock;
+    result.Set({eTypeIsPointer, eTypeHasChildren, eTypeIsBlock});
+    break;
 
   case clang::Type::Complex: {
-    uint32_t complex_type_flags =
-        eTypeIsBuiltIn | eTypeHasValue | eTypeIsComplex;
+    result.Set({eTypeIsBuiltIn, eTypeHasValue, eTypeIsComplex});
     const clang::ComplexType *complex_type = llvm::dyn_cast<clang::ComplexType>(
         qual_type->getCanonicalTypeInternal());
     if (complex_type) {
       clang::QualType complex_element_type(complex_type->getElementType());
       if (complex_element_type->isIntegerType())
-        complex_type_flags |= eTypeIsFloat;
+        result.Set(eTypeIsFloat);
       else if (complex_element_type->isFloatingType())
-        complex_type_flags |= eTypeIsInteger;
+        result.Set(eTypeIsInteger);
     }
-    return complex_type_flags;
   } break;
 
   case clang::Type::ConstantArray:
@@ -3803,14 +3804,17 @@ TypeSystemClang::GetTypeInfo(lldb::opaque_compiler_type_t type,
           this, llvm::cast<clang::ArrayType>(qual_type.getTypePtr())
                     ->getElementType()
                     .getAsOpaquePtr());
-    return eTypeHasChildren | eTypeIsArray;
+    result.Set({eTypeHasChildren, eTypeIsArray});
+    break;
 
   case clang::Type::DependentName:
-    return 0;
+    break;
   case clang::Type::DependentSizedExtVector:
-    return eTypeHasChildren | eTypeIsVector;
+    result.Set({eTypeHasChildren, eTypeIsVector});
+    break;
   case clang::Type::DependentTemplateSpecialization:
-    return eTypeIsTemplate;
+      result.Set(eTypeIsTemplate);
+      break;
 
   case clang::Type::Enum:
     if (pointee_or_element_clang_type)
@@ -3819,14 +3823,15 @@ TypeSystemClang::GetTypeInfo(lldb::opaque_compiler_type_t type,
                     ->getDecl()
                     ->getIntegerType()
                     .getAsOpaquePtr());
-    return eTypeIsEnumeration | eTypeHasValue;
+    result.Set({eTypeIsEnumeration, eTypeHasValue});
+    break;
 
   case clang::Type::FunctionProto:
-    return eTypeIsFuncPrototype | eTypeHasValue;
   case clang::Type::FunctionNoProto:
-    return eTypeIsFuncPrototype | eTypeHasValue;
+    result.Set({eTypeIsFuncPrototype, eTypeHasValue});
+    break;
   case clang::Type::InjectedClassName:
-    return 0;
+    break;
 
   case clang::Type::LValueReference:
   case clang::Type::RValueReference:
@@ -3835,67 +3840,72 @@ TypeSystemClang::GetTypeInfo(lldb::opaque_compiler_type_t type,
           this, llvm::cast<clang::ReferenceType>(qual_type.getTypePtr())
                     ->getPointeeType()
                     .getAsOpaquePtr());
-    return eTypeHasChildren | eTypeIsReference | eTypeHasValue;
+    result.Set({eTypeHasChildren, eTypeIsReference, eTypeHasValue});
+    break;
 
   case clang::Type::MemberPointer:
-    return eTypeIsPointer | eTypeIsMember | eTypeHasValue;
+    result.Set({eTypeIsPointer, eTypeIsMember, eTypeHasValue});
+    break;
 
   case clang::Type::ObjCObjectPointer:
     if (pointee_or_element_clang_type)
       pointee_or_element_clang_type->SetCompilerType(
           this, qual_type->getPointeeType().getAsOpaquePtr());
-    return eTypeHasChildren | eTypeIsObjC | eTypeIsClass | eTypeIsPointer |
-           eTypeHasValue;
+    result.Set({eTypeHasChildren, eTypeIsObjC, eTypeIsClass, eTypeIsPointer,
+                eTypeHasValue});
+    break;
 
   case clang::Type::ObjCObject:
-    return eTypeHasChildren | eTypeIsObjC | eTypeIsClass;
   case clang::Type::ObjCInterface:
-    return eTypeHasChildren | eTypeIsObjC | eTypeIsClass;
+    result.Set({eTypeHasChildren, eTypeIsObjC, eTypeIsClass});
+    break;
 
   case clang::Type::Pointer:
     if (pointee_or_element_clang_type)
       pointee_or_element_clang_type->SetCompilerType(
           this, qual_type->getPointeeType().getAsOpaquePtr());
-    return eTypeHasChildren | eTypeIsPointer | eTypeHasValue;
+    result.Set({eTypeHasChildren, eTypeIsPointer, eTypeHasValue});
+    break;
 
   case clang::Type::Record:
     if (qual_type->getAsCXXRecordDecl())
-      return eTypeHasChildren | eTypeIsClass | eTypeIsCPlusPlus;
+      result.Set({eTypeHasChildren, eTypeIsClass, eTypeIsCPlusPlus});
     else
-      return eTypeHasChildren | eTypeIsStructUnion;
+      result.Set({eTypeHasChildren, eTypeIsStructUnion});
     break;
   case clang::Type::SubstTemplateTypeParm:
-    return eTypeIsTemplate;
   case clang::Type::TemplateTypeParm:
-    return eTypeIsTemplate;
   case clang::Type::TemplateSpecialization:
-    return eTypeIsTemplate;
+    result.Set(eTypeIsTemplate);
+    break;
 
   case clang::Type::Typedef:
-    return eTypeIsTypedef | GetType(llvm::cast<clang::TypedefType>(qual_type)
-                                        ->getDecl()
-                                        ->getUnderlyingType())
-                                .GetTypeInfo(pointee_or_element_clang_type);
+    result = GetType(llvm::cast<clang::TypedefType>(qual_type)
+                     ->getDecl()
+                     ->getUnderlyingType())
+             .GetTypeInfo(pointee_or_element_clang_type);
+    result.Set(eTypeIsTypedef);
+    break;
   case clang::Type::UnresolvedUsing:
-    return 0;
+    break;
 
   case clang::Type::ExtVector:
   case clang::Type::Vector: {
-    uint32_t vector_type_flags = eTypeHasChildren | eTypeIsVector;
+    result.Set({eTypeHasChildren, eTypeIsVector});
     const clang::VectorType *vector_type = llvm::dyn_cast<clang::VectorType>(
         qual_type->getCanonicalTypeInternal());
     if (vector_type) {
       if (vector_type->isIntegerType())
-        vector_type_flags |= eTypeIsFloat;
+        result.Set(eTypeIsFloat);
       else if (vector_type->isFloatingType())
-        vector_type_flags |= eTypeIsInteger;
+        result.Set(eTypeIsInteger);
     }
-    return vector_type_flags;
+    break;
   }
   default:
-    return 0;
+      break;
   }
-  return 0;
+  return result;
 }
 
 lldb::LanguageType

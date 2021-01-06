@@ -138,7 +138,7 @@ bool ValueObjectPrinter::GetMostSpecializedValue() {
     }
   }
   m_compiler_type = m_valobj->GetCompilerType();
-  m_type_flags.SetFromRawEncoding(m_compiler_type.GetTypeInfo());
+  m_type_flags = m_compiler_type.GetTypeInfo();
   return true;
 }
 
@@ -202,8 +202,7 @@ bool ValueObjectPrinter::IsAggregate() {
 bool ValueObjectPrinter::IsInstancePointer() {
   // you need to do this check on the value's clang type
   if (m_is_instance_ptr == eLazyBoolCalculate)
-    m_is_instance_ptr = (m_valobj->GetValue().GetCompilerType().GetTypeInfo() &
-                         eTypeInstanceIsPointer) != 0
+    m_is_instance_ptr = m_valobj->GetValue().GetCompilerType().GetTypeInfo().Test(eTypeInstanceIsPointer)
                             ? eLazyBoolYes
                             : eLazyBoolNo;
   if ((eLazyBoolYes == m_is_instance_ptr) && m_valobj->IsBaseClass())
@@ -330,8 +329,8 @@ TypeSummaryImpl *ValueObjectPrinter::GetSummaryFormatter(bool null_if_omitted) {
 }
 
 static bool IsPointerValue(const CompilerType &type) {
-  Flags type_flags(type.GetTypeInfo());
-  if (type_flags.AnySet(eTypeInstanceIsPointer | eTypeIsPointer))
+  EnumFlags<TypeFlags> type_flags(type.GetTypeInfo());
+  if (type_flags.AnySet({eTypeInstanceIsPointer, eTypeIsPointer}))
     return type_flags.AllClear(eTypeIsBuiltIn);
   return false;
 }

@@ -844,11 +844,10 @@ static bool DumpValue(Stream &s, const SymbolContext *sc,
       val_obj_display = ValueObject::eValueObjectRepresentationStyleValue;
   }
 
-  // TODO use flags for these
-  const uint32_t type_info_flags =
+  const EnumFlags<lldb::TypeFlags> type_info_flags =
       target->GetCompilerType().GetTypeInfo(nullptr);
-  bool is_array = (type_info_flags & eTypeIsArray) != 0;
-  bool is_pointer = (type_info_flags & eTypeIsPointer) != 0;
+  bool is_array = type_info_flags.Test(eTypeIsArray);
+  bool is_pointer = type_info_flags.Test(eTypeIsPointer);
   bool is_aggregate = target->GetCompilerType().IsAggregateType();
 
   if ((is_array || is_pointer) && (!is_array_range) &&

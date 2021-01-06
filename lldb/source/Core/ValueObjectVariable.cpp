@@ -252,9 +252,8 @@ void ValueObjectVariable::DoUpdateChildrenAddressType(ValueObject &valobj) {
   ExecutionContext exe_ctx(GetExecutionContextRef());
   Process *process = exe_ctx.GetProcessPtr();
   const bool process_is_alive = process && process->IsAlive();
-  const uint32_t type_info = valobj.GetCompilerType().GetTypeInfo();
-  const bool is_pointer_or_ref =
-      (type_info & (lldb::eTypeIsPointer | lldb::eTypeIsReference)) != 0;
+  const EnumFlags<lldb::TypeFlags> type_info(valobj.GetCompilerType().GetTypeInfo());
+  const bool is_pointer_or_ref = type_info.AnySet({lldb::eTypeIsPointer, lldb::eTypeIsReference});
 
   switch (value_type) {
   case Value::eValueTypeFileAddress:

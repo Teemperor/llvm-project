@@ -564,15 +564,9 @@ size_t ValueObject::GetNumChildren(uint32_t max) {
 }
 
 bool ValueObject::MightHaveChildren() {
-  bool has_children = false;
-  const uint32_t type_info = GetTypeInfo();
-  if (type_info) {
-    if (type_info & (eTypeHasChildren | eTypeIsPointer | eTypeIsReference))
-      has_children = true;
-  } else {
-    has_children = GetNumChildren() > 0;
-  }
-  return has_children;
+  if (GetTypeInfo().AnySet({eTypeHasChildren, eTypeIsPointer, eTypeIsReference}))
+    return true;
+  return GetNumChildren() > 0;
 }
 
 // Should only be called by ValueObject::GetNumChildren()
@@ -700,8 +694,8 @@ bool ValueObject::GetSummaryAsCString(std::string &destination,
 
 bool ValueObject::IsCStringContainer(bool check_pointer) {
   CompilerType pointee_or_element_compiler_type;
-  const Flags type_flags(GetTypeInfo(&pointee_or_element_compiler_type));
-  bool is_char_arr_ptr(type_flags.AnySet(eTypeIsArray | eTypeIsPointer) &&
+  const EnumFlags<TypeFlags> type_flags(GetTypeInfo(&pointee_or_element_compiler_type));
+  bool is_char_arr_ptr(type_flags.AnySet({eTypeIsArray, eTypeIsPointer}) &&
                        pointee_or_element_compiler_type.IsCharType());
   if (!is_char_arr_ptr)
     return false;
@@ -718,9 +712,9 @@ bool ValueObject::IsCStringContainer(bool check_pointer) {
 size_t ValueObject::GetPointeeData(DataExtractor &data, uint32_t item_idx,
                                    uint32_t item_count) {
   CompilerType pointee_or_element_compiler_type;
-  const uint32_t type_info = GetTypeInfo(&pointee_or_element_compiler_type);
-  const bool is_pointer_type = type_info & eTypeIsPointer;
-  const bool is_array_type = type_info & eTypeIsArray;
+  const EnumFlags<TypeFlags> type_info = GetTypeInfo(&pointee_or_element_compiler_type);
+  const bool is_pointer_type = type_info.Test(eTypeIsPointer);
+  const bool is_array_type = type_info.Test(eTypeIsArray);
   if (!(is_pointer_type || is_array_type))
     return 0;
 
@@ -1622,7 +1616,7 @@ ValueObjectSP ValueObject::GetSyntheticChild(ConstString key) const {
   return synthetic_child_sp;
 }
 
-uint32_t
+EnumFlags<TypeFlags>
 ValueObject::GetTypeInfo(CompilerType *pointee_or_element_compiler_type) {
   return GetCompilerType().GetTypeInfo(pointee_or_element_compiler_type);
 }
@@ -2041,13 +2035,13 @@ void ValueObject::GetExpressionPath(Stream &s,
               epformat == eGetExpressionPathFormatHonorPointers) {
             s.PutCString("->");
           } else {
-            const uint32_t non_base_class_parent_type_info =
+            const EnumFlags<TypeFlags> non_base_class_parent_type_info =
                 non_base_class_parent_compiler_type.GetTypeInfo();
 
-            if (non_base_class_parent_type_info & eTypeIsPointer) {
+            if (non_base_class_parent_type_info.Test(eTypeIsPointer)) {
               s.PutCString("->");
-            } else if ((non_base_class_parent_type_info & eTypeHasChildren) &&
-                       !(non_base_class_parent_type_info & eTypeIsArray)) {
+            } else if (non_base_class_parent_type_info.Test(eTypeHasChildren) &&
+                       !non_base_class_parent_type_info.Test(eTypeIsArray)) {
               s.PutChar('.');
             }
           }
@@ -2151,12 +2145,12 @@ ValueObjectSP ValueObject::GetValueForExpressionPath_Impl(
 
     CompilerType root_compiler_type = root->GetCompilerType();
     CompilerType pointee_compiler_type;
-    Flags pointee_compiler_type_info;
+    EnumFlags<lldb::TypeFlags> pointee_compiler_type_info;
 
-    Flags root_compiler_type_info(
+    EnumFlags<lldb::TypeFlags> root_compiler_type_info(
         root_compiler_type.GetTypeInfo(&pointee_compiler_type));
     if (pointee_compiler_type)
-      pointee_compiler_type_info.Reset(pointee_compiler_type.GetTypeInfo());
+      pointee_compiler_type_info = pointee_compiler_type.GetTypeInfo();
 
     if (temp_expression.empty()) {
       *reason_to_stop = ValueObject::eExpressionPathScanEndReasonEndOfString;

@@ -14,6 +14,8 @@
 #include <vector>
 
 #include "lldb/lldb-private.h"
+#include "lldb/lldb-enumerations.h"
+#include "lldb/Utility/EnumFlags.h"
 #include "llvm/ADT/APSInt.h"
 
 namespace lldb_private {
@@ -160,7 +162,7 @@ public:
 
   ConstString GetDisplayTypeName() const;
 
-  uint32_t
+  EnumFlags<lldb::TypeFlags>
   GetTypeInfo(CompilerType *pointee_or_element_compiler_type = nullptr) const;
 
   lldb::LanguageType GetMinimumLanguage();

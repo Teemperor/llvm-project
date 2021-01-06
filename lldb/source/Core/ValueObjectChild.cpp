@@ -113,7 +113,7 @@ bool ValueObjectChild::UpdateValue() {
       m_value.GetScalar() = parent->GetValue().GetScalar();
       m_value.SetValueType(parent->GetValue().GetValueType());
 
-      Flags parent_type_flags(parent_type.GetTypeInfo());
+      EnumFlags<lldb::TypeFlags> parent_type_flags(parent_type.GetTypeInfo());
       const bool is_instance_ptr_base =
           ((m_is_base_class) &&
            (parent_type_flags.AnySet(lldb::eTypeInstanceIsPointer)));
@@ -196,7 +196,7 @@ bool ValueObjectChild::UpdateValue() {
         const bool thread_and_frame_only_if_stopped = true;
         ExecutionContext exe_ctx(
             GetExecutionContextRef().Lock(thread_and_frame_only_if_stopped));
-        if (GetCompilerType().GetTypeInfo() & lldb::eTypeHasValue) {
+        if (GetCompilerType().GetTypeInfo().Test(lldb::eTypeHasValue)) {
           Value &value = is_instance_ptr_base ? m_parent->GetValue() : m_value;
           m_error =
               value.GetValueAsData(&exe_ctx, m_data, GetModule().get());

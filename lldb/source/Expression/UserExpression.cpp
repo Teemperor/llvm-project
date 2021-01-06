@@ -149,9 +149,8 @@ UserExpression::Evaluate(ExecutionContext &exe_ctx,
                                                   LIBLLDB_LOG_STEP));
 
   if (ctx_obj) {
-    static unsigned const ctx_type_mask =
-        lldb::TypeFlags::eTypeIsClass | lldb::TypeFlags::eTypeIsStructUnion;
-    if (!(ctx_obj->GetTypeInfo() & ctx_type_mask)) {
+    if (!(ctx_obj->GetTypeInfo().AnySet({lldb::TypeFlags::eTypeIsClass,
+                                        lldb::TypeFlags::eTypeIsStructUnion}))) {
       LLDB_LOG(log, "== [UserExpression::Evaluate] Passed a context object of "
                     "an invalid type, can't run expressions.");
       error.SetErrorString("a context object of an invalid type passed");

@@ -514,32 +514,32 @@ public:
 
   // main method: get value of the type specified at construction time
   ValueObjectSP GetValue() {
-    const uint32_t type_flags = m_type.GetTypeInfo();
+    EnumFlags<TypeFlags> type_flags = m_type.GetTypeInfo();
 
     // call the appropriate type handler
     ValueSP value_sp;
     ValueObjectSP valobj_sp;
-    if (type_flags & eTypeIsScalar) {
-      if (type_flags & eTypeIsInteger) {
+    if (type_flags.Test(eTypeIsScalar)) {
+      if (type_flags.Test(eTypeIsInteger)) {
         value_sp = GetIntegerValue(0);
-      } else if (type_flags & eTypeIsFloat) {
-        if (type_flags & eTypeIsComplex) {
+      } else if (type_flags.Test(eTypeIsFloat)) {
+        if (type_flags.Test(eTypeIsComplex)) {
           LLDB_LOG(m_log, LOG_PREFIX "Complex numbers are not supported yet");
           return ValueObjectSP();
         } else {
           value_sp = GetFloatValue(m_type, 0);
         }
       }
-    } else if (type_flags & eTypeIsPointer) {
+    } else if (type_flags.Test(eTypeIsPointer)) {
       value_sp = GetPointerValue(0);
     }
 
     if (value_sp) {
       valobj_sp = ValueObjectConstResult::Create(
           m_thread.GetStackFrameAtIndex(0).get(), *value_sp, ConstString(""));
-    } else if (type_flags & eTypeIsVector) {
+    } else if (type_flags.Test(eTypeIsVector)) {
       valobj_sp = GetVectorValueObject();
-    } else if (type_flags & eTypeIsStructUnion || type_flags & eTypeIsClass) {
+    } else if (type_flags.AnySet({eTypeIsStructUnion, eTypeIsClass})) {
       valobj_sp = GetStructValueObject();
     }
 
@@ -591,8 +591,8 @@ private:
     // build value from data
     ValueSP value_sp(NewScalarValue(m_type));
 
-    uint32_t type_flags = m_type.GetTypeInfo();
-    bool is_signed = (type_flags & eTypeIsSigned) != 0;
+    const EnumFlags<TypeFlags> type_flags = m_type.GetTypeInfo();
+    bool is_signed = type_flags.Test(eTypeIsSigned);
 
     switch (m_byte_size) {
     case sizeof(uint64_t):
@@ -776,12 +776,12 @@ private:
     // case 2: homogeneous double or float aggregate
     CompilerType elem_type;
     if (m_type.IsHomogeneousAggregate(&elem_type)) {
-      uint32_t type_flags = elem_type.GetTypeInfo();
+      const EnumFlags<TypeFlags> type_flags = elem_type.GetTypeInfo();
       llvm::Optional<uint64_t> elem_size =
           elem_type.GetByteSize(m_process_sp.get());
       if (!elem_size)
         return {};
-      if (type_flags & eTypeIsComplex || !(type_flags & eTypeIsFloat)) {
+      if (type_flags.Test(eTypeIsComplex) || !type_flags.Test(eTypeIsFloat)) {
         LLDB_LOG(m_log,
                  LOG_PREFIX "Unexpected type found in homogeneous aggregate");
         return {};
