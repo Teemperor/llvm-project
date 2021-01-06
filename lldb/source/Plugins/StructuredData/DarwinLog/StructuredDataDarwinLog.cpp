@@ -1403,7 +1403,7 @@ Status StructuredDataDarwinLog::FilterLaunchInfo(ProcessLaunchInfo &launch_info,
 
   // If we're not debugging this launched process, there's nothing for us to do
   // here.
-  if (!launch_info.GetFlags().AnySet(eLaunchFlagDebug))
+  if (!launch_info.GetFlags().Test(eLaunchFlagDebug))
     return error;
 
   // Darwin os_log() support automatically adds debug-level and info-level

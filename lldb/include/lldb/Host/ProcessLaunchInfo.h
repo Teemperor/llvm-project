@@ -13,7 +13,7 @@
 #include <string>
 
 // LLDB Headers
-#include "lldb/Utility/Flags.h"
+#include "lldb/Utility/EnumFlags.h"
 
 #include "lldb/Host/FileAction.h"
 #include "lldb/Host/Host.h"
@@ -60,9 +60,9 @@ public:
 
   const FileAction *GetFileActionForFD(int fd) const;
 
-  Flags &GetFlags() { return m_flags; }
+  EnumFlags<lldb::LaunchFlags> &GetFlags() { return m_flags; }
 
-  const Flags &GetFlags() const { return m_flags; }
+  const EnumFlags<lldb::LaunchFlags> &GetFlags() const { return m_flags; }
 
   const FileSpec &GetWorkingDirectory() const;
 
@@ -150,7 +150,8 @@ protected:
   FileSpec m_working_dir;
   std::string m_plugin_name;
   FileSpec m_shell;
-  Flags m_flags; // Bitwise OR of bits from lldb::LaunchFlags
+  EnumFlags<lldb::LaunchFlags>
+      m_flags; // Bitwise OR of bits from lldb::LaunchFlags
   std::vector<FileAction> m_file_actions; // File actions for any other files
   std::shared_ptr<PseudoTerminal> m_pty;
   uint32_t m_resume_count; // How many times do we resume after launching

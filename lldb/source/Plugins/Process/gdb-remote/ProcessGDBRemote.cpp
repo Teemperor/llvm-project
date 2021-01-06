@@ -740,7 +740,7 @@ Status ProcessGDBRemote::DoLaunch(lldb_private::Module *exe_module,
 
   LLDB_LOGF(log, "ProcessGDBRemote::%s() entered", __FUNCTION__);
 
-  uint32_t launch_flags = launch_info.GetFlags().Get();
+  EnumFlags<LaunchFlags> launch_flags = launch_info.GetFlags();
   FileSpec stdin_file_spec{};
   FileSpec stdout_file_spec{};
   FileSpec stderr_file_spec{};
@@ -778,7 +778,7 @@ Status ProcessGDBRemote::DoLaunch(lldb_private::Module *exe_module,
                 __FUNCTION__);
   }
 
-  const bool disable_stdio = (launch_flags & eLaunchFlagDisableSTDIO) != 0;
+  const bool disable_stdio = launch_flags.Test(eLaunchFlagDisableSTDIO);
   if (stdin_file_spec || disable_stdio) {
     // the inferior will be reading stdin from the specified file or stdio is
     // completely disabled
@@ -798,7 +798,6 @@ Status ProcessGDBRemote::DoLaunch(lldb_private::Module *exe_module,
     error = EstablishConnectionIfNeeded(launch_info);
     if (error.Success()) {
       PseudoTerminal pty;
-      const bool disable_stdio = (launch_flags & eLaunchFlagDisableSTDIO) != 0;
 
       PlatformSP platform_sp(GetTarget().GetPlatform());
       if (disable_stdio) {
@@ -856,8 +855,8 @@ Status ProcessGDBRemote::DoLaunch(lldb_private::Module *exe_module,
       if (stderr_file_spec)
         m_gdb_comm.SetSTDERR(stderr_file_spec);
 
-      m_gdb_comm.SetDisableASLR(launch_flags & eLaunchFlagDisableASLR);
-      m_gdb_comm.SetDetachOnError(launch_flags & eLaunchFlagDetachOnError);
+      m_gdb_comm.SetDisableASLR(launch_flags.Test(eLaunchFlagDisableASLR));
+      m_gdb_comm.SetDetachOnError(launch_flags.Test(eLaunchFlagDetachOnError));
 
       m_gdb_comm.SendLaunchArchPacket(
           GetTarget().GetArchitecture().GetArchitectureName());

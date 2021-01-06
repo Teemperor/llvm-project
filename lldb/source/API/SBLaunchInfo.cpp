@@ -39,7 +39,7 @@ SBLaunchInfo::SBLaunchInfo(const char **argv)
     : m_opaque_sp(new SBLaunchInfoImpl()) {
   LLDB_RECORD_CONSTRUCTOR(SBLaunchInfo, (const char **), argv);
 
-  m_opaque_sp->GetFlags().Reset(eLaunchFlagDebug | eLaunchFlagDisableASLR);
+  m_opaque_sp->GetFlags().Set({eLaunchFlagDebug, eLaunchFlagDisableASLR});
   if (argv && argv[0])
     m_opaque_sp->GetArguments().SetArguments(argv);
 }
@@ -227,13 +227,13 @@ void SBLaunchInfo::SetWorkingDirectory(const char *working_dir) {
 uint32_t SBLaunchInfo::GetLaunchFlags() {
   LLDB_RECORD_METHOD_NO_ARGS(uint32_t, SBLaunchInfo, GetLaunchFlags);
 
-  return m_opaque_sp->GetFlags().Get();
+  return m_opaque_sp->GetFlags().GetRawEncoding();
 }
 
 void SBLaunchInfo::SetLaunchFlags(uint32_t flags) {
   LLDB_RECORD_METHOD(void, SBLaunchInfo, SetLaunchFlags, (uint32_t), flags);
 
-  m_opaque_sp->GetFlags().Reset(flags);
+  m_opaque_sp->GetFlags().SetFromRawEncoding(flags);
 }
 
 const char *SBLaunchInfo::GetProcessPluginName() {

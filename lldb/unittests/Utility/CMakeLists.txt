@@ -7,6 +7,7 @@ add_lldb_unittest(UtilityTests
   ConstStringTest.cpp
   CompletionRequestTest.cpp
   DataExtractorTest.cpp
+  EnumFlagsTest.cpp
   EnvironmentTest.cpp
   EventTest.cpp
   FileSpecTest.cpp

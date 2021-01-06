@@ -13,7 +13,7 @@
 #include "lldb/lldb-private.h"
 #include "lldb/lldb-public.h"
 
-#include "lldb/Utility/Flags.h"
+#include "lldb/Utility/EnumFlags.h"
 
 #include "lldb/DataFormatters/DumpValueObjectOptions.h"
 #include "lldb/Symbol/CompilerType.h"
@@ -122,7 +122,7 @@ private:
   ValueObject *m_valobj;
   Stream *m_stream;
   DumpValueObjectOptions m_options;
-  Flags m_type_flags;
+  EnumFlags<lldb::TypeFlags> m_type_flags;
   CompilerType m_compiler_type;
   DumpValueObjectOptions::PointerDepth m_ptr_depth;
   uint32_t m_curr_depth;

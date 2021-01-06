@@ -138,7 +138,7 @@ bool ValueObjectPrinter::GetMostSpecializedValue() {
     }
   }
   m_compiler_type = m_valobj->GetCompilerType();
-  m_type_flags = m_compiler_type.GetTypeInfo();
+  m_type_flags.SetFromRawEncoding(m_compiler_type.GetTypeInfo());
   return true;
 }
 

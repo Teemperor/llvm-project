@@ -23,5 +23,5 @@ TEST(ProcessLaunchInfoTest, Constructor) {
   EXPECT_EQ(FileSpec("/stderr"),
             Info.GetFileActionForFD(STDERR_FILENO)->GetFileSpec());
   EXPECT_EQ(FileSpec("/wd"), Info.GetWorkingDirectory());
-  EXPECT_EQ(eLaunchFlagStopAtEntry, Info.GetFlags().Get());
+  EXPECT_TRUE(Info.GetFlags().Test(eLaunchFlagStopAtEntry));
 }
