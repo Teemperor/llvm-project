@@ -1,6 +1,19 @@
-int main()
-{
-  long foo = 1234;
+auto func();
+auto func() {
+  return 1L;
+}
 
-  return 0; // break here
+struct C {
+  int member = 3;
+  auto func();
+};
+
+auto C::func() {
+  return 2L;
+}
+
+int main() {
+  long foo = 1234;
+  C c;
+  return c.func() + func(); // break here
 }

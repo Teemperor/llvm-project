@@ -14,10 +14,17 @@ class CPPAutoTestCase(TestBase):
     @expectedFailureAll(
         compiler="gcc",
         bugnumber="GCC generates incomplete debug info")
-    def test_with_run_command(self):
+    def test(self):
         """Test that auto types work in the expression parser"""
         self.build()
         lldbutil.run_to_source_breakpoint(self, "// break here", lldb.SBFileSpec("main.cpp"))
+
+        self.expect_expr("func()", result_type="long", result_value="1")
+
+        self.expect_expr("c", result_type="C", result_children=[
+            ValueCheck(value="3")
+        ])
+        self.expect_expr("c.func()", result_type="long", result_value="2")
 
         self.expect_expr('auto f = 123456; f', result_type='int', result_value='123456')
         self.expect(

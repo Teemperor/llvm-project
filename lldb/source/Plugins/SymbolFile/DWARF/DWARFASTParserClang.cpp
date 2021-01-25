@@ -399,7 +399,8 @@ ParsedDWARFTypeAttributes::ParsedDWARFTypeAttributes(const DWARFDIE &die) {
       break;
 
     case DW_AT_type:
-      type = form_value;
+      if (!type.IsValid())
+        type = form_value;
       break;
 
     case DW_AT_virtuality:
@@ -618,6 +619,12 @@ DWARFASTParserClang::ParseTypeModifier(const SymbolContext &sc,
     if (attrs.name == "nullptr_t" || attrs.name == "decltype(nullptr)") {
       resolve_state = Type::ResolveState::Full;
       clang_type = m_ast.GetBasicType(eBasicTypeNullPtr);
+      break;
+    }
+    if (attrs.name == "auto") {
+      resolve_state = Type::ResolveState::Full;
+      clang::QualType t = m_ast.getASTContext().getAutoDeductType();
+      clang_type = m_ast.GetType(t);
       break;
     }
     // Fall through to base type below in case we can handle the type
@@ -877,6 +884,21 @@ TypeSP DWARFASTParserClang::ParseEnum(const SymbolContext &sc,
   return type_sp;
 }
 
+static void maybePropagateDeducedReturnType(clang::DeclContext *decl_ctx,
+                                            CompilerType function_type) {
+  auto *function_decl = llvm::dyn_cast_or_null<clang::FunctionDecl>(decl_ctx);
+  if (!function_decl)
+    return;
+
+  if (!function_decl->getReturnType()->isUndeducedAutoType()) {
+    return;
+  }
+
+  clang::QualType qt = ClangUtil::GetQualType(function_type);
+  const auto *ft = qt->getAs<clang::FunctionType>();
+  function_decl->setType(clang::QualType(ft, 0));
+}
+
 TypeSP DWARFASTParserClang::ParseSubroutine(const DWARFDIE &die,
                            ParsedDWARFTypeAttributes &attrs) {
   Log *log(LogChannelDWARF::GetLogIfAny(DWARF_LOG_TYPE_COMPLETION |
@@ -960,6 +982,15 @@ TypeSP DWARFASTParserClang::ParseSubroutine(const DWARFDIE &die,
   CompilerType clang_type = m_ast.CreateFunctionType(
       return_clang_type, function_param_types.data(),
       function_param_types.size(), is_variadic, type_quals);
+
+  if (attrs.specification.IsValid()) {
+    DWARFDIE abs_die = attrs.specification.Reference();
+    if (dwarf->ResolveType(abs_die)) {
+      maybePropagateDeducedReturnType(GetCachedClangDeclContextForDIE(abs_die),
+                                 clang_type);
+    }
+  }
+
 
   if (attrs.name) {
     bool type_handled = false;

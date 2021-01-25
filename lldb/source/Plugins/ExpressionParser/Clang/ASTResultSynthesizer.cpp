@@ -325,9 +325,10 @@ bool ASTResultSynthesizer::SynthesizeBodyResult(CompoundStmt *Body,
     else
       ptr_qual_type = Ctx.getPointerType(expr_qual_type);
 
+    TypeSourceInfo *tsi = Ctx.getTrivialTypeSourceInfo(ptr_qual_type, last_expr->getSourceRange().getBegin());
     result_decl =
         VarDecl::Create(Ctx, DC, SourceLocation(), SourceLocation(),
-                        result_ptr_id, ptr_qual_type, nullptr, SC_Static);
+                        result_ptr_id, ptr_qual_type, tsi, SC_Static);
 
     if (!result_decl)
       return false;
@@ -341,6 +342,7 @@ bool ASTResultSynthesizer::SynthesizeBodyResult(CompoundStmt *Body,
   } else {
     IdentifierInfo &result_id = Ctx.Idents.get("$__lldb_expr_result");
 
+    TypeSourceInfo *tsi = Ctx.getTrivialTypeSourceInfo(expr_qual_type, last_expr->getSourceRange().getBegin());
     result_decl =
         VarDecl::Create(Ctx, DC, SourceLocation(), SourceLocation(), &result_id,
                         expr_qual_type, nullptr, SC_Static);
