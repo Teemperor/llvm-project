@@ -32,7 +32,6 @@ public:
   virtual ~HostNativeThreadBase() {}
 
   virtual Status Join(lldb::thread_result_t *result) = 0;
-  virtual Status Cancel() = 0;
   virtual bool IsJoinable() const;
   virtual void Reset();
   virtual bool EqualsThread(lldb::thread_t thread) const;

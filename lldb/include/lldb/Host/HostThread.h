@@ -32,7 +32,6 @@ public:
   HostThread(lldb::thread_t thread);
 
   Status Join(lldb::thread_result_t *result);
-  Status Cancel();
   void Reset();
   lldb::thread_t Release();
 

@@ -37,19 +37,6 @@ Status HostThreadPosix::Join(lldb::thread_result_t *result) {
   return error;
 }
 
-Status HostThreadPosix::Cancel() {
-  Status error;
-  if (IsJoinable()) {
-#ifndef __FreeBSD__
-    llvm_unreachable("someone is calling HostThread::Cancel()");
-#else
-    int err = ::pthread_cancel(m_thread);
-    error.SetError(err, eErrorTypePOSIX);
-#endif
-  }
-  return error;
-}
-
 Status HostThreadPosix::Detach() {
   Status error;
   if (IsJoinable()) {

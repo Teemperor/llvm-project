@@ -21,8 +21,6 @@ Status HostThread::Join(lldb::thread_result_t *result) {
   return m_native_thread->Join(result);
 }
 
-Status HostThread::Cancel() { return m_native_thread->Cancel(); }
-
 void HostThread::Reset() { return m_native_thread->Reset(); }
 
 lldb::thread_t HostThread::Release() { return m_native_thread->Release(); }
