@@ -371,6 +371,14 @@ void Args::SetArguments(const char **argv) {
   SetArguments(ArgvToArgc(argv), argv);
 }
 
+void Args::Shrink(size_t len) {
+  assert(len <= GetArgumentCount() && "Shrink() can't grow Args list");
+  m_entries.resize(len);
+  m_argv.resize(len);
+  // Make sure that m_argv is still terminated by a nullptr.
+  m_argv.push_back(nullptr);
+}
+
 void Args::Clear() {
   m_entries.clear();
   m_argv.clear();

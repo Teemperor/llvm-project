@@ -163,17 +163,49 @@ insert-before or insert-after.");
     value_sp->AutoComplete(m_interpreter, request);
   }
 
+  /// Takes a raw command and parses all arguments of 'settings set' until
+  /// it reaches the settings name. This is necessary to prevent that options
+  /// trailing the settings name are recognized as LLDB command options.
+  /// Example:
+  ///     settings set -f my-command-args -o file.txt
+  /// This function would return ["-f", "my-command-args"].
+  ///
+  /// Note: The option parser is used by this function and it will use the
+  ///       objects shared m_option state. You need to call ParseOptions after
+  ///       calling this function to have the right m_options values.
+  Args ParseArgsPrecedingOptionName(const Args &all_args) {
+    // The only way to find all args and the property name is by iterating
+    // over the args and check if the property parser.
+    for (size_t i = 0 ; i < all_args.size(); ++i) {
+      Args opt_args = all_args;
+      opt_args.Shrink(i);
+      CommandReturnObject result(/*colors=*/false);
+      Args to_parse = opt_args;
+      if (ParseOptions(to_parse, result) && to_parse.size() > 0)
+        return opt_args;
+    }
+    return all_args;
+  }
+
 protected:
   bool DoExecute(llvm::StringRef command,
                  CommandReturnObject &result) override {
-    Args cmd_args(command);
+    // Parse the whole command into an argument list.
+    const Args all_args(command);
 
-    // Process possible options.
-    if (!ParseOptions(cmd_args, result))
+    // Extract all the arguments that don't belong to the property value.
+    const Args opt_args = ParseArgsPrecedingOptionName(all_args);
+
+    // Parse the extracted arguments. ParseOptions will remove any flags/values,
+    // so the remaining option will only be the property name.
+    Args parsed_opt_args = opt_args;
+    if (!ParseOptions(parsed_opt_args, result))
       return false;
 
     const size_t min_argc = m_options.m_force ? 1 : 2;
-    const size_t argc = cmd_args.GetArgumentCount();
+    // The arguments without the value have to be a subset of all args.
+    assert(all_args.size() >= opt_args.size());
+    const size_t argc = all_args.size() - opt_args.size() + 1U;
 
     if ((argc < min_argc) && (!m_options.m_global)) {
       result.AppendError("'settings set' takes more arguments");
@@ -181,8 +213,8 @@ protected:
       return false;
     }
 
-    const char *var_name = cmd_args.GetArgumentAtIndex(0);
-    if ((var_name == nullptr) || (var_name[0] == '\0')) {
+    llvm::StringRef var_name = parsed_opt_args.GetArgumentAtIndex(0);
+    if (var_name.empty()) {
       result.AppendError(
           "'settings set' command requires a valid variable name");
       result.SetStatus(eReturnStatusFailed);
@@ -202,9 +234,30 @@ protected:
       return result.Succeeded();
     }
 
-    // Split the raw command into var_name and value pair.
+    // Extract the value from the command.
+    //
+    // Find the start of the value string in the command line. We can't
+    // just search the command because the option name might also occur in
+    // one of preceding option or option arguments (such as the -g file path
+    // argument). Instead skip over all options were parsed as part of the
+    // option parsing. This should skip until the ^ cursor in the example below:
+    //
+    //     settings set -g my-prompt.lldb prompt "prompt string"
+    //                                           ^
     llvm::StringRef var_value(command);
-    var_value = var_value.split(var_name).second.ltrim();
+    for (const Args::ArgEntry &a : opt_args) {
+      // Find the start of this argument.
+      size_t toDrop = var_value.find(a.ref());
+      lldbassert(toDrop != llvm::StringRef::npos);
+      // Jump to the end of the argument.
+      toDrop += a.ref().size();
+      // If the argument is quoted, jump over the trailing quote character.
+      if (a.IsQuoted())
+        ++toDrop;
+      // Remove this argument from the command string.
+      var_value = var_value.drop_front(toDrop);
+    }
+    var_value = var_value.ltrim();
 
     Status error;
     if (m_options.m_global)

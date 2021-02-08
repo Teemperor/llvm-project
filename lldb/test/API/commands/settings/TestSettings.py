@@ -75,6 +75,57 @@ class SettingsCommandTestCase(TestBase):
                              '[1]: "b"',
                              '[2]: "c"'])
 
+    def test_set_parsing(self):
+        def expect_prompt_val(test_case, value):
+            self.expect("settings show prompt",
+                        startstr='prompt (string) = "' + value + '"')
+
+        # Test setting values that look like options.
+        self.runCmd("settings set prompt -v")
+        expect_prompt_val(self, "-v")
+
+        self.runCmd("settings set prompt \"-l\"")
+        expect_prompt_val(self, "-l")
+
+        self.runCmd("settings set prompt '-v'")
+        expect_prompt_val(self, "-v")
+
+        self.runCmd("settings set prompt -f")
+        expect_prompt_val(self, "-f")
+
+        self.runCmd("settings set prompt -g foo")
+        expect_prompt_val(self, '-g foo')
+
+        # Test parsing when a double dash is involved.
+        self.runCmd("settings set prompt -- -g foo1")
+        expect_prompt_val(self, '-- -g foo1')
+
+        self.runCmd("settings set -- prompt -- -g foo2")
+        expect_prompt_val(self, '-- -g foo2')
+
+        # Having a double dash before the property name is supported.
+        self.runCmd("settings set -- prompt -g foo3")
+        expect_prompt_val(self, '-g foo3')
+
+        self.runCmd("settings set -f -- prompt -g foo4")
+        expect_prompt_val(self, '-g foo4')
+
+        # A double dash indicates that the next arg is the property name.
+        self.expect("settings set -- -f prompt val", error=True,
+                    substrs=["invalid value path '-f'"])
+
+        # Test setting a variable name in quotes.
+        self.runCmd("settings set 'prompt' foo1")
+        expect_prompt_val(self, "foo1")
+
+        self.runCmd("settings set \"prompt\" foo2")
+        expect_prompt_val(self, "foo2")
+
+        # Test setting a value that also occurs in the preceding argument.
+        settings_file = self.getBuildArtifact("prompt.settings")
+        self.runCmd("settings set -g \"" + settings_file + "\" prompt foo")
+        expect_prompt_val(self, "foo")
+
     def test_set_prompt(self):
         """Test that 'set prompt' actually changes the prompt."""
 

@@ -231,6 +231,11 @@ public:
 
   void SetArguments(const char **argv);
 
+  /// Shrinks the argument vector to the given size.
+  /// \param len The new size of the argument list. Has to be smaller or equal
+  ///            the current number of arguments.
+  void Shrink(size_t len);
+
   /// Shifts the first argument C string value of the array off the argument
   /// array.
   ///

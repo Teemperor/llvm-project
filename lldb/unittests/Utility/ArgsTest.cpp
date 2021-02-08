@@ -284,6 +284,24 @@ TEST(ArgsTest, ReplaceArgumentAtIndexFarOutOfRange) {
   EXPECT_STREQ(args.GetArgumentAtIndex(2), "b");
 }
 
+TEST(ArgsTest, Shrink) {
+  Args args;
+  args.SetCommandString("foo ba b");
+  args.Shrink(3);
+  EXPECT_STREQ("b", args.GetArgumentAtIndex(2));
+  EXPECT_STREQ("ba", args.GetArgumentAtIndex(1));
+  EXPECT_STREQ("foo", args.GetArgumentAtIndex(0));
+  EXPECT_EQ(3U, args.size());
+
+  args.Shrink(2);
+  EXPECT_STREQ("ba", args.GetArgumentAtIndex(1));
+  EXPECT_STREQ("foo", args.GetArgumentAtIndex(0));
+  EXPECT_EQ(2U, args.size());
+
+  args.Shrink(0);
+  EXPECT_EQ(0U, args.size());
+}
+
 TEST(ArgsTest, Yaml) {
   std::string buffer;
   llvm::raw_string_ostream os(buffer);
