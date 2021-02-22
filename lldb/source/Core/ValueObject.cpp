@@ -77,26 +77,10 @@ static user_id_t g_value_obj_uid = 0;
 // ValueObject constructor
 ValueObject::ValueObject(ValueObject &parent)
     : UserID(++g_value_obj_uid), // Unique identifier for every value object
-      m_parent(&parent), m_root(nullptr),
-      m_update_point(parent.GetUpdatePoint()), m_name(), m_data(), m_value(),
-      m_error(), m_value_str(), m_old_value_str(), m_location_str(),
-      m_summary_str(), m_object_desc_str(), m_manager(parent.GetManager()),
-      m_children(), m_synthetic_children(), m_dynamic_value(nullptr),
-      m_synthetic_value(nullptr), m_deref_valobj(nullptr),
-      m_format(eFormatDefault), m_last_format(eFormatDefault),
-      m_last_format_mgr_revision(0), m_type_summary_sp(), m_type_format_sp(),
-      m_synthetic_children_sp(), m_user_id_of_forced_summary(),
-      m_address_type_of_ptr_or_ref_children(eAddressTypeInvalid),
-      m_value_checksum(),
-      m_preferred_display_language(lldb::eLanguageTypeUnknown),
-      m_language_flags(0), m_value_is_valid(false), m_value_did_change(false),
-      m_children_count_valid(false), m_old_value_valid(false),
-      m_is_deref_of_parent(false), m_is_array_item_for_pointer(false),
-      m_is_bitfield_for_scalar(false), m_is_child_at_offset(false),
-      m_is_getting_summary(false),
-      m_did_calculate_complete_objc_class_type(false),
-      m_is_synthetic_children_generated(
+      m_parent(&parent), m_update_point(parent.GetUpdatePoint()),
+      m_manager(parent.GetManager()), m_is_synthetic_children_generated(
           parent.m_is_synthetic_children_generated) {
+  InitHelper();
   m_data.SetByteOrder(parent.GetDataExtractor().GetByteOrder());
   m_data.SetAddressByteSize(parent.GetDataExtractor().GetAddressByteSize());
   m_manager->ManageObject(this);
@@ -107,25 +91,9 @@ ValueObject::ValueObject(ExecutionContextScope *exe_scope,
                          ValueObjectManager &manager,
                          AddressType child_ptr_or_ref_addr_type)
     : UserID(++g_value_obj_uid), // Unique identifier for every value object
-      m_parent(nullptr), m_root(nullptr), m_update_point(exe_scope), m_name(),
-      m_data(), m_value(), m_error(), m_value_str(), m_old_value_str(),
-      m_location_str(), m_summary_str(), m_object_desc_str(),
-      m_manager(&manager), m_children(), m_synthetic_children(),
-      m_dynamic_value(nullptr), m_synthetic_value(nullptr),
-      m_deref_valobj(nullptr), m_format(eFormatDefault),
-      m_last_format(eFormatDefault), m_last_format_mgr_revision(0),
-      m_type_summary_sp(), m_type_format_sp(), m_synthetic_children_sp(),
-      m_user_id_of_forced_summary(),
-      m_address_type_of_ptr_or_ref_children(child_ptr_or_ref_addr_type),
-      m_value_checksum(),
-      m_preferred_display_language(lldb::eLanguageTypeUnknown),
-      m_language_flags(0), m_value_is_valid(false), m_value_did_change(false),
-      m_children_count_valid(false), m_old_value_valid(false),
-      m_is_deref_of_parent(false), m_is_array_item_for_pointer(false),
-      m_is_bitfield_for_scalar(false), m_is_child_at_offset(false),
-      m_is_getting_summary(false),
-      m_did_calculate_complete_objc_class_type(false),
-      m_is_synthetic_children_generated(false) {
+      m_update_point(exe_scope), m_manager(&manager),
+      m_address_type_of_ptr_or_ref_children(child_ptr_or_ref_addr_type) {
+  InitHelper();
   if (exe_scope) {
     TargetSP target_sp(exe_scope->CalculateTarget());
     if (target_sp) {
