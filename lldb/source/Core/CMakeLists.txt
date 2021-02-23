@@ -32,6 +32,7 @@ add_lldb_library(lldbCore
   DumpRegisterValue.cpp
   DynamicLoader.cpp
   EmulateInstruction.cpp
+  ExpressionPath.cpp
   FileLineResolver.cpp
   FileSpecList.cpp
   FormatEntity.cpp

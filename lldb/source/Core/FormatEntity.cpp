@@ -632,12 +632,12 @@ static ValueObjectSP ExpandIndexedExpression(ValueObject *valobj, size_t index,
   ::sprintf(&ptr_deref_buffer[0], ptr_deref_format, index);
   LLDB_LOGF(log, "[ExpandIndexedExpression] name to deref: %s",
             ptr_deref_buffer.c_str());
-  ValueObject::GetValueForExpressionPathOptions options;
-  ValueObject::ExpressionPathEndResultType final_value_type;
-  ValueObject::ExpressionPathScanEndReason reason_to_stop;
-  ValueObject::ExpressionPathAftermath what_next =
-      (deref_pointer ? ValueObject::eExpressionPathAftermathDereference
-                     : ValueObject::eExpressionPathAftermathNothing);
+  ExpressionPath::GetValueOptions options;
+  ExpressionPath::EndResultType final_value_type;
+  ExpressionPath::ScanEndReason reason_to_stop;
+  ExpressionPath::Aftermath what_next =
+      (deref_pointer ? ExpressionPath::Aftermath::Dereference
+                     : ExpressionPath::Aftermath::Nothing);
   ValueObjectSP item = valobj->GetValueForExpressionPath(
       ptr_deref_buffer.c_str(), &reason_to_stop, &final_value_type, options,
       &what_next);
@@ -723,16 +723,15 @@ static bool DumpValue(Stream &s, const SymbolContext *sc,
   if (valobj == nullptr)
     return false;
 
-  ValueObject::ExpressionPathAftermath what_next =
-      (do_deref_pointer ? ValueObject::eExpressionPathAftermathDereference
-                        : ValueObject::eExpressionPathAftermathNothing);
-  ValueObject::GetValueForExpressionPathOptions options;
+  ExpressionPath::Aftermath what_next =
+      (do_deref_pointer ? ExpressionPath::Aftermath::Dereference
+                        : ExpressionPath::Aftermath::Nothing);
+  ExpressionPath::GetValueOptions options;
   options.DontCheckDotVsArrowSyntax()
       .DoAllowBitfieldSyntax()
       .DoAllowFragileIVar()
       .SetSyntheticChildrenTraversal(
-          ValueObject::GetValueForExpressionPathOptions::
-              SyntheticChildrenTraversal::Both);
+          ExpressionPath::GetValueOptions::SyntheticChildrenTraversal::Both);
   ValueObject *target = nullptr;
   const char *var_name_final_if_array_range = nullptr;
   size_t close_bracket_index = llvm::StringRef::npos;
@@ -742,10 +741,10 @@ static bool DumpValue(Stream &s, const SymbolContext *sc,
   bool was_plain_var = false;
   bool was_var_format = false;
   bool was_var_indexed = false;
-  ValueObject::ExpressionPathScanEndReason reason_to_stop =
-      ValueObject::eExpressionPathScanEndReasonEndOfString;
-  ValueObject::ExpressionPathEndResultType final_value_type =
-      ValueObject::eExpressionPathEndResultTypePlain;
+  ExpressionPath::ScanEndReason reason_to_stop =
+      ExpressionPath::ScanEndReason::EndOfString;
+  ExpressionPath::EndResultType final_value_type =
+      ExpressionPath::EndResultType::Plain;
 
   if (is_script) {
     return RunScriptFormatKeyword(s, sc, exe_ctx, valobj, entry.string.c_str());
@@ -800,13 +799,10 @@ static bool DumpValue(Stream &s, const SymbolContext *sc,
   }
 
   is_array_range =
-      (final_value_type ==
-           ValueObject::eExpressionPathEndResultTypeBoundedRange ||
-       final_value_type ==
-           ValueObject::eExpressionPathEndResultTypeUnboundedRange);
+      (final_value_type == ExpressionPath::EndResultType::BoundedRange ||
+       final_value_type == ExpressionPath::EndResultType::UnboundedRange);
 
-  do_deref_pointer =
-      (what_next == ValueObject::eExpressionPathAftermathDereference);
+  do_deref_pointer = (what_next == ExpressionPath::Aftermath::Dereference);
 
   if (do_deref_pointer && !is_array_range) {
     // I have not deref-ed yet, let's do it

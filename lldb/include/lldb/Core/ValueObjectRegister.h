@@ -102,10 +102,9 @@ public:
 
   bool ResolveValue(Scalar &scalar) override;
 
-  void
-  GetExpressionPath(Stream &s,
-                    GetExpressionPathFormat epformat =
-                        eGetExpressionPathFormatDereferencePointers) override;
+  void GetExpressionPath(
+      Stream &s, ExpressionPath::PathFormat epformat =
+                     ExpressionPath::PathFormat::DereferencePointers) override;
 
 protected:
   bool UpdateValue() override;

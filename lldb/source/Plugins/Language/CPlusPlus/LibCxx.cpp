@@ -236,10 +236,10 @@ bool lldb_private::formatters::LibCxxMapIteratorSyntheticFrontEnd::Update() {
   m_pair_ptr = valobj_sp
                    ->GetValueForExpressionPath(
                        ".__i_.__ptr_->__value_", nullptr, nullptr,
-                       ValueObject::GetValueForExpressionPathOptions()
+                       ExpressionPath::GetValueOptions()
                            .DontCheckDotVsArrowSyntax()
                            .SetSyntheticChildrenTraversal(
-                               ValueObject::GetValueForExpressionPathOptions::
+                               ExpressionPath::GetValueOptions::
                                    SyntheticChildrenTraversal::None),
                        nullptr)
                    .get();
@@ -248,10 +248,10 @@ bool lldb_private::formatters::LibCxxMapIteratorSyntheticFrontEnd::Update() {
     m_pair_ptr = valobj_sp
                      ->GetValueForExpressionPath(
                          ".__i_.__ptr_", nullptr, nullptr,
-                         ValueObject::GetValueForExpressionPathOptions()
+                         ExpressionPath::GetValueOptions()
                              .DontCheckDotVsArrowSyntax()
                              .SetSyntheticChildrenTraversal(
-                                 ValueObject::GetValueForExpressionPathOptions::
+                                 ExpressionPath::GetValueOptions::
                                      SyntheticChildrenTraversal::None),
                          nullptr)
                      .get();

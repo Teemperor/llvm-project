@@ -299,7 +299,7 @@ bool ValueObjectRegister::ResolveValue(Scalar &scalar) {
   return false;
 }
 
-void ValueObjectRegister::GetExpressionPath(Stream &s,
-                                            GetExpressionPathFormat epformat) {
+void ValueObjectRegister::GetExpressionPath(
+    Stream &s, ExpressionPath::PathFormat epformat) {
   s.Printf("$%s", m_reg_info.name);
 }

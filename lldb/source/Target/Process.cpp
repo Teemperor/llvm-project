@@ -859,9 +859,8 @@ bool Process::HandleProcessStateChangedEvent(const EventSP &event_sp,
             ValueObjectSP valobj_sp = StopInfo::GetCrashingDereference(
                 curr_thread_stop_info_sp, &crashing_address);
             if (valobj_sp) {
-              const ValueObject::GetExpressionPathFormat format =
-                  ValueObject::GetExpressionPathFormat::
-                      eGetExpressionPathFormatHonorPointers;
+              const ExpressionPath::PathFormat format =
+                  ExpressionPath::PathFormat::HonorPointers;
               stream->PutCString("Likely cause: ");
               valobj_sp->GetExpressionPath(*stream, format);
               stream->Printf(" accessed 0x%" PRIx64 "\n", crashing_address);

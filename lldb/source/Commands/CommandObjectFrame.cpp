@@ -169,8 +169,8 @@ protected:
         [&valobj_sp](ConstString type, ConstString var,
                      const DumpValueObjectOptions &opts,
                      Stream &stream) -> bool {
-      const ValueObject::GetExpressionPathFormat format = ValueObject::
-          GetExpressionPathFormat::eGetExpressionPathFormatHonorPointers;
+      const ExpressionPath::PathFormat format =
+          ExpressionPath::PathFormat::HonorPointers;
       valobj_sp->GetExpressionPath(stream, format);
       stream.PutCString(" =");
       return true;

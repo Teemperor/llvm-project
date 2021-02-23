@@ -9,6 +9,7 @@
 #ifndef LLDB_CORE_VALUEOBJECT_H
 #define LLDB_CORE_VALUEOBJECT_H
 
+#include "lldb/Core/ExpressionPath.h"
 #include "lldb/Core/Value.h"
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/Type.h"
@@ -104,11 +105,6 @@ class TypeSummaryOptions;
 
 class ValueObject {
 public:
-  enum GetExpressionPathFormat {
-    eGetExpressionPathFormatDereferencePointers = 1,
-    eGetExpressionPathFormatHonorPointers
-  };
-
   enum ValueObjectRepresentationStyle {
     eValueObjectRepresentationStyleValue = 1,
     eValueObjectRepresentationStyleSummary,
@@ -118,65 +114,6 @@ public:
     eValueObjectRepresentationStyleType,
     eValueObjectRepresentationStyleName,
     eValueObjectRepresentationStyleExpressionPath
-  };
-
-  enum ExpressionPathScanEndReason {
-    /// Out of data to parse.
-    eExpressionPathScanEndReasonEndOfString = 1,
-    /// Child element not found.
-    eExpressionPathScanEndReasonNoSuchChild,
-    /// (Synthetic) child  element not found.
-    eExpressionPathScanEndReasonNoSuchSyntheticChild,
-    /// [] only allowed for arrays.
-    eExpressionPathScanEndReasonEmptyRangeNotAllowed,
-    /// . used when -> should be used.
-    eExpressionPathScanEndReasonDotInsteadOfArrow,
-    /// -> used when . should be used.
-    eExpressionPathScanEndReasonArrowInsteadOfDot,
-    /// ObjC ivar expansion not allowed.
-    eExpressionPathScanEndReasonFragileIVarNotAllowed,
-    /// [] not allowed by options.
-    eExpressionPathScanEndReasonRangeOperatorNotAllowed,
-    /// [] not valid on objects  other than scalars, pointers or arrays.
-    eExpressionPathScanEndReasonRangeOperatorInvalid,
-    /// [] is good for arrays,  but I cannot parse it.
-    eExpressionPathScanEndReasonArrayRangeOperatorMet,
-    /// [] is good for bitfields, but I cannot parse after it.
-    eExpressionPathScanEndReasonBitfieldRangeOperatorMet,
-    /// Something is malformed in he expression.
-    eExpressionPathScanEndReasonUnexpectedSymbol,
-    /// Impossible to apply &  operator.
-    eExpressionPathScanEndReasonTakingAddressFailed,
-    /// Impossible to apply *  operator.
-    eExpressionPathScanEndReasonDereferencingFailed,
-    /// [] was expanded into a  VOList.
-    eExpressionPathScanEndReasonRangeOperatorExpanded,
-    /// getting the synthetic children failed.
-    eExpressionPathScanEndReasonSyntheticValueMissing,
-    eExpressionPathScanEndReasonUnknown = 0xFFFF
-  };
-
-  enum ExpressionPathEndResultType {
-    /// Anything but...
-    eExpressionPathEndResultTypePlain = 1,
-    /// A bitfield.
-    eExpressionPathEndResultTypeBitfield,
-    /// A range [low-high].
-    eExpressionPathEndResultTypeBoundedRange,
-    /// A range [].
-    eExpressionPathEndResultTypeUnboundedRange,
-    /// Several items in a VOList.
-    eExpressionPathEndResultTypeValueObjectList,
-    eExpressionPathEndResultTypeInvalid = 0xFFFF
-  };
-
-  enum ExpressionPathAftermath {
-    /// Just return it.
-    eExpressionPathAftermathNothing = 1,
-    /// Dereference the target.
-    eExpressionPathAftermathDereference,
-    /// Take target's address.
-    eExpressionPathAftermathTakeAddress
   };
 
   enum ClearUserVisibleDataItems {
@@ -191,70 +128,6 @@ public:
         eClearUserVisibleDataItemsLocation |
         eClearUserVisibleDataItemsDescription,
     eClearUserVisibleDataItemsAll = 0xFFFF
-  };
-
-  struct GetValueForExpressionPathOptions {
-    enum class SyntheticChildrenTraversal {
-      None,
-      ToSynthetic,
-      FromSynthetic,
-      Both
-    };
-
-    bool m_check_dot_vs_arrow_syntax;
-    bool m_no_fragile_ivar;
-    bool m_allow_bitfields_syntax;
-    SyntheticChildrenTraversal m_synthetic_children_traversal;
-
-    GetValueForExpressionPathOptions(
-        bool dot = false, bool no_ivar = false, bool bitfield = true,
-        SyntheticChildrenTraversal synth_traverse =
-            SyntheticChildrenTraversal::ToSynthetic)
-        : m_check_dot_vs_arrow_syntax(dot), m_no_fragile_ivar(no_ivar),
-          m_allow_bitfields_syntax(bitfield),
-          m_synthetic_children_traversal(synth_traverse) {}
-
-    GetValueForExpressionPathOptions &DoCheckDotVsArrowSyntax() {
-      m_check_dot_vs_arrow_syntax = true;
-      return *this;
-    }
-
-    GetValueForExpressionPathOptions &DontCheckDotVsArrowSyntax() {
-      m_check_dot_vs_arrow_syntax = false;
-      return *this;
-    }
-
-    GetValueForExpressionPathOptions &DoAllowFragileIVar() {
-      m_no_fragile_ivar = false;
-      return *this;
-    }
-
-    GetValueForExpressionPathOptions &DontAllowFragileIVar() {
-      m_no_fragile_ivar = true;
-      return *this;
-    }
-
-    GetValueForExpressionPathOptions &DoAllowBitfieldSyntax() {
-      m_allow_bitfields_syntax = true;
-      return *this;
-    }
-
-    GetValueForExpressionPathOptions &DontAllowBitfieldSyntax() {
-      m_allow_bitfields_syntax = false;
-      return *this;
-    }
-
-    GetValueForExpressionPathOptions &
-    SetSyntheticChildrenTraversal(SyntheticChildrenTraversal traverse) {
-      m_synthetic_children_traversal = traverse;
-      return *this;
-    }
-
-    static const GetValueForExpressionPathOptions DefaultOptions() {
-      static GetValueForExpressionPathOptions g_default_options;
-
-      return g_default_options;
-    }
   };
 
   class EvaluationPoint {
@@ -395,17 +268,18 @@ public:
 
   bool IsIntegerType(bool &is_signed);
 
-  virtual void GetExpressionPath(
-      Stream &s,
-      GetExpressionPathFormat = eGetExpressionPathFormatDereferencePointers);
+  virtual void
+  GetExpressionPath(Stream &s,
+                    ExpressionPath::PathFormat =
+                        ExpressionPath::PathFormat::DereferencePointers);
 
   lldb::ValueObjectSP GetValueForExpressionPath(
       llvm::StringRef expression,
-      ExpressionPathScanEndReason *reason_to_stop = nullptr,
-      ExpressionPathEndResultType *final_value_type = nullptr,
-      const GetValueForExpressionPathOptions &options =
-          GetValueForExpressionPathOptions::DefaultOptions(),
-      ExpressionPathAftermath *final_task_on_target = nullptr);
+      ExpressionPath::ScanEndReason *reason_to_stop = nullptr,
+      ExpressionPath::EndResultType *final_value_type = nullptr,
+      const ExpressionPath::GetValueOptions &options =
+          ExpressionPath::GetValueOptions::DefaultOptions(),
+      ExpressionPath::Aftermath *final_task_on_target = nullptr);
 
   virtual bool IsInScope() { return true; }
 
@@ -987,13 +861,6 @@ private:
   void UpdateChildrenAddressType() {
     GetRoot()->DoUpdateChildrenAddressType(*this);
   }
-
-  lldb::ValueObjectSP GetValueForExpressionPath_Impl(
-      llvm::StringRef expression_cstr,
-      ExpressionPathScanEndReason *reason_to_stop,
-      ExpressionPathEndResultType *final_value_type,
-      const GetValueForExpressionPathOptions &options,
-      ExpressionPathAftermath *final_task_on_target);
 
   ValueObject(const ValueObject &) = delete;
   const ValueObject &operator=(const ValueObject &) = delete;
