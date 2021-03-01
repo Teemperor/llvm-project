@@ -2984,6 +2984,34 @@ class SwiftDWARFImporterDelegate : public swift::DWARFImporterDelegate {
   SwiftASTContext &m_swift_ast_ctx;
   using ModuleAndName = std::pair<const char *, const char *>;
   std::string m_description;
+  /// Provides an ASTImporter that imports from a specific source context
+  /// to the ASTContext of the ClangImporter.
+  llvm::DenseMap<clang::ASTContext *, clang::ASTImporter> m_source_ctx_to_importer;
+
+  clang::ASTContext *GetClangImporterASTContext() {
+    auto clang_importer = m_swift_ast_ctx.GetClangImporter();
+    if (!clang_importer)
+      return nullptr;
+    return &clang_importer->getClangASTContext();
+  }
+
+  clang::ASTImporter *GetImporter(clang::ASTContext &from_ctx) {
+    auto iter = m_source_ctx_to_importer.find(&from_ctx);
+    if (iter != m_source_ctx_to_importer.end())
+      return &iter->second;
+    clang::ASTContext *to_ctx = GetClangImporterASTContext();
+    if (!to_ctx)
+      return nullptr;
+
+    auto inserted = m_source_ctx_to_importer.try_emplace(&from_ctx, *to_ctx,
+                                         to_ctx->getSourceManager().getFileManager(),
+                                         from_ctx,
+                                         from_ctx.getSourceManager().getFileManager(),
+                                         false);
+
+    assert(inserted.second && "Failed to create ASTImporter entry?");
+    return &inserted.first->second;
+  }
 
   /// Used to filter out types with mismatching kinds.
   bool HasTypeKind(TypeSP clang_type_sp, swift::ClangTypeKind kind) {
@@ -3053,15 +3081,12 @@ class SwiftDWARFImporterDelegate : public swift::DWARFImporterDelegate {
   /// Import \p qual_type from one clang ASTContext to another and
   /// add it to \p results if successful.
   void importType(clang::QualType qual_type, clang::ASTContext &from_ctx,
-                  clang::ASTContext &to_ctx,
                   llvm::Optional<swift::ClangTypeKind> kind,
                   llvm::SmallVectorImpl<clang::Decl *> &results) {
-    clang::ASTImporter importer(to_ctx,
-                                to_ctx.getSourceManager().getFileManager(),
-                                from_ctx,
-                                from_ctx.getSourceManager().getFileManager(),
-                                false);
-    llvm::Expected<clang::QualType> clang_type(importer.Import(qual_type));
+    clang::ASTImporter *importer = GetImporter(from_ctx);
+    if (!importer)
+      return;
+    llvm::Expected<clang::QualType> clang_type(importer->Import(qual_type));
     if (!clang_type) {
       llvm::consumeError(clang_type.takeError());
       return;
@@ -3203,14 +3228,13 @@ public:
         if (!from_clang_importer)
           continue;
         auto &from_ctx = from_clang_importer->getClangASTContext();
-        auto &to_ctx = clang_importer->getClangASTContext();
         for (clang::Decl *decl : module_results) {
           clang::QualType qual_type;
           if (auto *interface = llvm::dyn_cast<clang::ObjCInterfaceDecl>(decl))
             qual_type = {interface->getTypeForDecl(), 0};
           if (auto *type = llvm::dyn_cast<clang::TypeDecl>(decl))
             qual_type = {type->getTypeForDecl(), 0};
-          importType(qual_type, from_ctx, to_ctx, kind, results);
+          importType(qual_type, from_ctx, kind, results);
         }
         // Cut the search short after we found the first result.
         if (results.size())
@@ -3238,11 +3262,10 @@ public:
         return true;
 
       // Import the type into the DWARFImporter's context.
-      clang::ASTContext &to_ctx = clang_importer->getClangASTContext();
       clang::ASTContext &from_ctx = type_system->getASTContext();
 
       clang::QualType qual_type = ClangUtil::GetQualType(compiler_type);
-      importType(qual_type, from_ctx, to_ctx, kind, results);
+      importType(qual_type, from_ctx, kind, results);
 
       return true;
     });
