@@ -190,7 +190,7 @@ public:
   ///
   /// \return Returns \a value_if_empty if the string is empty, otherwise
   ///     the C string value contained in this object.
-  const char *AsCString(const char *value_if_empty = nullptr) const {
+  const char *AsCString(const char *value_if_empty = "") const {
     return (IsEmpty() ? value_if_empty : m_string);
   }
 
