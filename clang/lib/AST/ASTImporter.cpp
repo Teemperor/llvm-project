@@ -8051,12 +8051,18 @@ Error ASTNodeImporter::ImportOverriddenMethods(CXXMethodDecl *ToMethod,
   return ImportErrors;
 }
 
-ASTImporter::ASTImporter(ASTContext &ToContext, FileManager &ToFileManager,
-                         ASTContext &FromContext, FileManager &FromFileManager,
+ASTImporter::ASTImporter(ASTContext &ToContext, ASTContext &FromContext, bool MinimalImport, std::shared_ptr<ASTImporterSharedState> SharedState) :
+  ASTImporter(ToContext, ToContext.getSourceManager().getFileManager(),
+             FromContext, FromContext.getSourceManager().getFileManager(),
+             MinimalImport, SharedState) {}
+
+ASTImporter::ASTImporter(ASTContext &ToContext, clang::FileManager &ToFileManager,
+                         ASTContext &FromContext, clang::FileManager &FromFileManager,
                          bool MinimalImport,
                          std::shared_ptr<ASTImporterSharedState> SharedState)
     : SharedState(SharedState), ToContext(ToContext), FromContext(FromContext),
-      ToFileManager(ToFileManager), FromFileManager(FromFileManager),
+      ToFileManager(ToFileManager),
+      FromFileManager(FromFileManager),
       Minimal(MinimalImport), ODRHandling(ODRHandlingType::Conservative) {
 
   // Create a default state without the lookup table: LLDB case.
@@ -8142,8 +8148,8 @@ void ASTImporter::RegisterImportedDecl(Decl *FromD, Decl *ToD) {
 llvm::Expected<ExprWithCleanups::CleanupObject>
 ASTImporter::Import(ExprWithCleanups::CleanupObject From) {
   if (auto *CLE = From.dyn_cast<CompoundLiteralExpr *>()) {
-    if (Expected<Expr *> R = Import(CLE))
-      return ExprWithCleanups::CleanupObject(cast<CompoundLiteralExpr>(*R));
+      if (Expected<Expr *> R = Import(CLE))
+        return ExprWithCleanups::CleanupObject(cast<CompoundLiteralExpr>(*R));
   }
 
   // FIXME: Handle BlockDecl when we implement importing BlockExpr in

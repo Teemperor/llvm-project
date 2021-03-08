@@ -13,6 +13,7 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/VirtualFileSystem.h"
 #include "gtest/gtest.h"
+#include <fstream>
 
 using namespace llvm;
 using namespace clang;
@@ -350,6 +351,28 @@ TEST_F(FileManagerTest, getFileReturnsSameFileEntryForAliasedVirtualFiles) {
             f2 ? *f2 : nullptr);
 }
 
+TEST_F(FileManagerTest, BuggyTest) {
+  {
+    std::ofstream myfile;
+    myfile.open("a.cpp");
+    myfile << "empty\n";
+  }
+  llvm::ErrorOr<const FileEntry*> fe1 = manager.getFile("a.cpp");
+  EXPECT_FALSE(fe1);
+  const FileEntry *f1 = *fe1;
+  llvm::errs() << "a.cpp" << f1->getUniqueID().getFile() << "\n";
+  remove("a.cpp");
+  {
+    std::ofstream myfile;
+    myfile.open("a.cpp");
+    myfile << "actual contents\n";
+  }
+  llvm::ErrorOr<const FileEntry*> fe2 = manager.getFile("a.cpp");
+  EXPECT_FALSE(fe2);
+  const FileEntry *f2 = *fe2;
+  EXPECT_NE(f2->getSize(), f1->getSize());
+}
+
 TEST_F(FileManagerTest, getFileRefEquality) {
   auto StatCache = std::make_unique<FakeStatCache>();
   StatCache->InjectDirectory("dir", 40);
@@ -581,6 +604,28 @@ TEST_F(FileManagerTest, getBypassFile) {
   EXPECT_EQ(
       &FE,
       &expectedToOptional(Manager.getFileRef("/tmp/test"))->getFileEntry());
+}
+
+TEST_F(FileManagerTest, InodeReuse) {
+  {
+    std::ofstream myfile;
+    myfile.open("a.cpp");
+    myfile << "content\n";
+  }
+  llvm::ErrorOr<const FileEntry*> fe1 = manager.getFile("a.cpp");
+  EXPECT_TRUE(fe1);
+  const FileEntry *f1 = *fe1;
+  remove("a.cpp");
+  {
+    std::ofstream myfile;
+    myfile.open("b.cpp");
+    myfile << "different content\n";
+  }
+  llvm::ErrorOr<const FileEntry*> fe2 = manager.getFile("b.cpp");
+  EXPECT_TRUE(fe2);
+  const FileEntry *f2 = *fe2;
+  EXPECT_NE(f2->getSize(), f1->getSize());
+  EXPECT_NE(f2->getUniqueID().getFile(), f1->getUniqueID().getFile());
 }
 
 } // anonymous namespace

@@ -313,8 +313,13 @@ class TypeSourceInfo;
     /// \param SharedState The importer specific lookup table which may be
     /// shared amongst several ASTImporter objects.
     /// If not set then the original C/C++ lookup is used.
-    ASTImporter(ASTContext &ToContext, FileManager &ToFileManager,
-                ASTContext &FromContext, FileManager &FromFileManager,
+    ASTImporter(ASTContext &ToContext,
+                ASTContext &FromContext,
+                bool MinimalImport,
+                std::shared_ptr<ASTImporterSharedState> SharedState = nullptr);
+
+    ASTImporter(ASTContext &ToContext, clang::FileManager &ToFileManager,
+                ASTContext &FromContext, clang::FileManager &FromFileManager,
                 bool MinimalImport,
                 std::shared_ptr<ASTImporterSharedState> SharedState = nullptr);
 

@@ -751,9 +751,8 @@ CrossTranslationUnitContext::getOrCreateASTImporter(ASTUnit *Unit) {
   if (I != ASTUnitImporterMap.end())
     return *I->second;
   lazyInitImporterSharedSt(Context.getTranslationUnitDecl());
-  ASTImporter *NewImporter = new ASTImporter(
-      Context, Context.getSourceManager().getFileManager(), From,
-      From.getSourceManager().getFileManager(), false, ImporterSharedSt);
+  ASTImporter *NewImporter = new ASTImporter(Context, From, false,
+                                             ImporterSharedSt);
   ASTUnitImporterMap[From.getTranslationUnitDecl()].reset(NewImporter);
   return *NewImporter;
 }

@@ -53,8 +53,7 @@ void ASTMergeAction::ExecuteAction() {
     if (!Unit)
       continue;
 
-    ASTImporter Importer(CI.getASTContext(), CI.getFileManager(),
-                         Unit->getASTContext(), Unit->getFileManager(),
+    ASTImporter Importer(CI.getASTContext(), Unit->getASTContext(),
                          /*MinimalImport=*/false, SharedState);
 
     TranslationUnitDecl *TU = Unit->getASTContext().getTranslationUnitDecl();
