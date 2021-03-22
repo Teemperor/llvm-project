@@ -5639,6 +5639,34 @@ TEST_P(ASTImporterOptionSpecificTestBase, ImplicitlyDeclareSelf) {
   EXPECT_TRUE(ToMethod->getSelfDecl() != nullptr);
 }
 
+TEST_P(ASTImporterOptionSpecificTestBase, ObjPropertyNameConflict) {
+  // Tests that properties that share the same name are correctly imported.
+  // This is only possible with one instance and one class property.
+  Decl *FromTU = getTuDecl(R"(
+                           @protocol DupProp
+                           @property (class, readonly) int prop;
+                           @property (readonly) int prop;
+                           @end
+                           )",
+                           Lang_OBJCXX, "input.mm");
+  auto *FromProtocol = FirstDeclMatcher<ObjCProtocolDecl>().match(
+      FromTU, namedDecl(hasName("DupProp")));
+  auto ToProtocol = Import(FromProtocol, Lang_OBJCXX);
+  ASSERT_TRUE(ToProtocol);
+  // Both properties should have been imported as class/instance.
+  ASSERT_EQ(1, std::distance(ToProtocol->classprop_begin(),
+                             ToProtocol->classprop_end()));
+  ASSERT_EQ(1, std::distance(ToProtocol->instprop_begin(),
+                             ToProtocol->instprop_end()));
+  for (clang::ObjCPropertyDecl *prop : ToProtocol->class_properties()) {
+    // Both readyonly properties should have a getter but no setter.
+    ASSERT_TRUE(prop->getGetterMethodDecl());
+    ASSERT_FALSE(prop->getSetterMethodDecl());
+    // The getter should be able to find the right associated property.
+    ASSERT_EQ(prop->getGetterMethodDecl()->findPropertyDecl(), prop);
+  }
+}
+
 struct ImportAutoFunctions : ASTImporterOptionSpecificTestBase {};
 
 TEST_P(ImportAutoFunctions, ReturnWithTypedefDeclaredInside) {
