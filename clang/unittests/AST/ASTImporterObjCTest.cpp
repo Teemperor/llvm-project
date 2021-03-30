@@ -21,10 +21,31 @@ using namespace clang::ast_matchers;
 using namespace clang;
 
 namespace {
-struct ImportObjCDecl : ASTImporterOptionSpecificTestBase {};
+struct ImportObjC : ASTImporterOptionSpecificTestBase {};
+struct ImportObjCDecl : TestImportBase {};
 } // namespace
 
-TEST_P(ImportObjCDecl, ImplicitlyDeclareSelf) {
+TEST_P(ImportObjCDecl, ImportEmptyInterface) {
+  MatchVerifier<Decl> Verifier;
+  testImport(
+      "@interface declToImport {}"
+      "@end",
+      Lang_OBJCXX, "", Lang_OBJCXX, Verifier,
+      objcInterfaceDecl(hasName("declToImport")));
+}
+
+TEST_P(ImportObjCDecl, ImportImpl) {
+  MatchVerifier<Decl> Verifier;
+  testImport(
+      "@interface declToImport {}"
+      "@end\n"
+      "@implementation declToImport {}"
+      "@end",
+      Lang_OBJCXX, "", Lang_OBJCXX, Verifier,
+      objcImplementationDecl(hasName("declToImport")));
+}
+
+TEST_P(ImportObjC, ImplicitlyDeclareSelf) {
   Decl *FromTU = getTuDecl(R"(
                            __attribute__((objc_root_class))
                            @interface Root
@@ -48,7 +69,7 @@ TEST_P(ImportObjCDecl, ImplicitlyDeclareSelf) {
   EXPECT_TRUE(ToMethod->getSelfDecl() != nullptr);
 }
 
-TEST_P(ImportObjCDecl, ObjPropertyNameConflict) {
+TEST_P(ImportObjC, ObjPropertyNameConflict) {
   // Tests that properties that share the same name are correctly imported.
   // This is only possible with one instance and one class property.
   Decl *FromTU = getTuDecl(R"(
@@ -85,5 +106,7 @@ static const auto ObjCTestArrayForRunOptions =
 const auto ObjCTestValuesForRunOptions =
     ::testing::ValuesIn(ObjCTestArrayForRunOptions);
 
+INSTANTIATE_TEST_CASE_P(ParameterizedTests, ImportObjC,
+                        ObjCTestValuesForRunOptions, );
 INSTANTIATE_TEST_CASE_P(ParameterizedTests, ImportObjCDecl,
                         ObjCTestValuesForRunOptions, );
