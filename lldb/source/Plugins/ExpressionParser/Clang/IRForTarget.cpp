@@ -364,7 +364,9 @@ bool IRForTarget::CreateResultVariable(llvm::Function &llvm_function) {
   LLDB_LOG(log, "Replacing \"{0}\" with \"{1}\"", PrintValue(result_global),
            PrintValue(new_result_global));
 
-  if (result_global->use_empty()) {
+  // If the old global had an initializer, create a store that initializes
+  // the new global with the same value.
+  if (result_global->hasInitializer()) {
     // We need to synthesize a store for this variable, because otherwise
     // there's nothing to put into its equivalent persistent variable.
 
@@ -374,16 +376,6 @@ bool IRForTarget::CreateResultVariable(llvm::Function &llvm_function) {
     if (!first_entry_instruction)
       return false;
 
-    if (!result_global->hasInitializer()) {
-      LLDB_LOG(log, "Couldn't find initializer for unused variable");
-
-      m_error_stream.Format("Internal error [IRForTarget]: Result variable "
-                            "({0}) has no writes and no initializer\n",
-                            result_name);
-
-      return false;
-    }
-
     Constant *initializer = result_global->getInitializer();
 
     StoreInst *synthesized_store =
@@ -391,9 +383,9 @@ bool IRForTarget::CreateResultVariable(llvm::Function &llvm_function) {
 
     LLDB_LOG(log, "Synthesized result store \"{0}\"\n",
              PrintValue(synthesized_store));
-  } else {
-    result_global->replaceAllUsesWith(new_result_global);
   }
+  // About to remove the old result global, so RAUW the new global.
+  result_global->replaceAllUsesWith(new_result_global);
 
   if (!m_decl_map->AddPersistentVariable(
           result_decl, m_result_name, m_result_type, true, m_result_is_pointer))
@@ -2021,6 +2013,24 @@ bool IRForTarget::runOnModule(Module &llvm_module) {
   }
 
   return true;
+}
+
+void IRForTarget::RemoveAllCallsToFunction(llvm::StringRef function_name) {
+  for (llvm::Function &function : *m_module) {
+    for (BasicBlock &bb : function) {
+      for (BasicBlock::iterator i = bb.begin(), end = bb.end(); i != end;) {
+        if (CallInst *call = dyn_cast<CallInst>(&(*i))) {
+          if (llvm::Function *func = call->getCalledFunction()) {
+            if (func->getName() == function_name) {
+              i = call->eraseFromParent();
+              continue;
+            }
+          }
+        }
+        ++i;
+      }
+    }
+  }
 }
 
 void IRForTarget::assignPassManager(PMStack &pass_mgr_stack,

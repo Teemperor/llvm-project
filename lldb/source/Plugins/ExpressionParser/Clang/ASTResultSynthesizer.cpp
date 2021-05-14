@@ -9,6 +9,7 @@
 #include "ASTResultSynthesizer.h"
 
 #include "ClangASTImporter.h"
+#include "ClangExpressionSourceCode.h"
 #include "ClangPersistentVariables.h"
 
 #include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
@@ -209,6 +210,14 @@ bool ASTResultSynthesizer::SynthesizeBodyResult(CompoundStmt *Body,
     return false;
 
   Stmt **last_stmt_ptr = Body->body_end() - 1;
+  // The last statement in the expression is our injected call to
+  // __lldb_use_expr_result. The expression before is the actual user expression
+  // so skip the injected function call.
+  CallExpr *use_call = cast<CallExpr>(*last_stmt_ptr);
+  assert(cast<FunctionDecl>(use_call->getCalleeDecl())->getName() ==
+         ClangExpressionSourceCode::GetUseExprResultFunctionName());
+  --last_stmt_ptr;
+
   Stmt *last_stmt = *last_stmt_ptr;
 
   while (dyn_cast<NullStmt>(last_stmt)) {
@@ -379,6 +388,52 @@ bool ASTResultSynthesizer::SynthesizeBodyResult(CompoundStmt *Body,
   //
 
   *last_stmt_ptr = static_cast<Stmt *>(result_initialization_stmt_result.get());
+
+  // At this point we created the result variable that stores the result of
+  // the last expression. However, in a situation where we finish on a local
+  // variable, the expression result is just a pointer to something on the stack
+  // and LLVM will optimize that away. E.g., `MyClass c; c` becomes:
+  //
+  //       MyClass c;
+  //       static MyClass *__lldb_expr_result_ptr = &c; // Points to stack.
+  //     } // End of expression function.
+  //
+  // The optimizer will just remove this store. So we add a trailing call to
+  // the undefined function `__lldb_use_expr_result` which will take an address
+  // of `__lldb_expr_result_ptr`. We will manually remove that call later,
+  // but until we remove that function the optimizer can no longer remove
+  // the store to our result variable:
+  //
+  //       MyClass c;
+  //       static MyClass *__lldb_expr_result_ptr = &c; // Points to stack.
+  //       __lldb_expr_result_ptr(__lldb_expr_result_ptr);
+  //     } // End of expression function.
+  //
+  // We already have a call at the end in the form:
+  //     __lldb_expr_result_ptr(nullptr);
+  // which we injected into the wrapping source code. We just need to change
+  // the placeholder `nullptr` argument to the result variable we created above
+  // and do any casting.
+  Expr *ref_result = DeclRefExpr::Create(
+      Ctx, NestedNameSpecifierLoc(), SourceLocation(), result_decl,
+      /*RefersToEnclosingVariableOrCapture=*/false, SourceLocation(),
+      result_decl->getType(), ExprValueKind::VK_LValue);
+  QualType ref_type = ref_result->getType();
+  // __lldb_expr_result isn't a pointer for non-lvalues, so inject an &:
+  // __lldb_expr_result_ptr(&__lldb_expression_result)
+  if (!ref_type->isPointerType())
+    ref_result = UnaryOperator::Create(
+        Ctx, ref_result, UnaryOperator::Opcode::UO_AddrOf,
+        Ctx.getPointerType(ref_type), ExprValueKind::VK_RValue,
+        ExprObjectKind::OK_Ordinary, SourceLocation(), /*CanOverflow=*/false,
+        FPOptionsOverride());
+  // Cast the pointer type we have to void so that the type system is not
+  // complaining.
+  ImplicitCastExpr *c = ImplicitCastExpr::Create(
+      Ctx, Ctx.VoidPtrTy, CastKind::CK_BitCast, ref_result, nullptr,
+      ExprValueKind::VK_RValue, FPOptionsOverride());
+  // Overwrite the placeholder argument.
+  use_call->getArgs()[0] = c;
 
   return true;
 }

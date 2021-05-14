@@ -103,6 +103,11 @@ public:
   ///     True on success; false otherwise
   bool runOnModule(llvm::Module &llvm_module) override;
 
+  /// Removes all calls to the function with the given name in the module.
+  ///
+  /// All calls found by this function must be safe to remove.
+  void RemoveAllCallsToFunction(llvm::StringRef function_name);
+
   /// Interface stub
   ///
   /// Implementation of the llvm::ModulePass::assignPassManager() function.

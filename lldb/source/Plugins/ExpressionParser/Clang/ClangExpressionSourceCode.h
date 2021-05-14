@@ -73,6 +73,10 @@ public:
   bool GetOriginalBodyBounds(std::string transformed_text,
                              size_t &start_loc, size_t &end_loc);
 
+  /// Returns the name of the function that is injected in the source code
+  /// to make sure the expression result is considered used by the optimizer.
+  static llvm::StringRef GetUseExprResultFunctionName();
+
 protected:
   ClangExpressionSourceCode(llvm::StringRef filename, llvm::StringRef name,
                             llvm::StringRef prefix, llvm::StringRef body,

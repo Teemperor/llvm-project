@@ -32,6 +32,8 @@ using namespace lldb_private;
 
 #define PREFIX_NAME "<lldb wrapper prefix>"
 #define SUFFIX_NAME "<lldb wrapper suffix>"
+/// \see ClangExpressionSourceCode::GetUseExprResultFunctionName
+#define LLDB_USE_EXPR_RESULT "__lldb_use_expr_result"
 
 const llvm::StringRef ClangExpressionSourceCode::g_prefix_file_name = PREFIX_NAME;
 
@@ -71,6 +73,7 @@ typedef unsigned short unichar;
 extern "C"
 {
     int printf(const char * __restrict, ...);
+    void )" LLDB_USE_EXPR_RESULT R"((void *);
 }
 )";
 
@@ -415,6 +418,7 @@ bool ClangExpressionSourceCode::GetText(
                          "{                              \n"
                          "    %s;                        \n"
                          "%s"
+                         "    " LLDB_USE_EXPR_RESULT "(0);\n"
                          "}                              \n",
                          module_imports.c_str(), m_name.c_str(),
                          lldb_local_var_decls.GetData(), tagged_body.c_str());
@@ -427,6 +431,7 @@ bool ClangExpressionSourceCode::GetText(
                          "{                                      \n"
                          "    %s;                                \n"
                          "%s"
+                         "    " LLDB_USE_EXPR_RESULT "(nullptr); \n"
                          "}                                      \n",
                          module_imports.c_str(), m_name.c_str(),
                          lldb_local_var_decls.GetData(), tagged_body.c_str());
@@ -442,6 +447,7 @@ bool ClangExpressionSourceCode::GetText(
           "{                                                      \n"
           "    %s;                                                \n"
           "%s"
+          "    " LLDB_USE_EXPR_RESULT "(0);                       \n"
           "}                                                      \n"
           "@end                                                   \n",
           module_imports.c_str(), m_name.c_str(), m_name.c_str(),
@@ -459,6 +465,7 @@ bool ClangExpressionSourceCode::GetText(
           "{                                                       \n"
           "    %s;                                                 \n"
           "%s"
+          "    " LLDB_USE_EXPR_RESULT "(0);                        \n"
           "}                                                       \n"
           "@end                                                    \n",
           module_imports.c_str(), m_name.c_str(), m_name.c_str(),
@@ -482,4 +489,8 @@ bool ClangExpressionSourceCode::GetOriginalBodyBounds(
   start_loc += m_start_marker.size();
   end_loc = transformed_text.find(m_end_marker);
   return end_loc != std::string::npos;
+}
+
+llvm::StringRef ClangExpressionSourceCode::GetUseExprResultFunctionName() {
+  return LLDB_USE_EXPR_RESULT;
 }
