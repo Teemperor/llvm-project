@@ -28,3 +28,7 @@ class TestSBLaunchInfo(TestBase):
         self.assertEquals(2, info.GetNumEnvironmentEntries())
         self.assertEquals("BAR", lookup(info, "FOO"))
         self.assertEquals("BAZ", lookup(info, "BAR"))
+
+    def test_paths_propagated_to_settings(self):
+        self.build()
+        target = self.createTestTarget()

@@ -22,6 +22,21 @@ class PlatformProcessCrashInfoTestCase(TestBase):
     def tearDown(self):
         TestBase.tearDown(self)
 
+    def test_file_paths_scripted_process(self):
+        """Tests that setting a in/out/err file paths for a scripted process
+        changes the respective target.* setting."""
+        self.build()
+        target = self.dbg.CreateTarget(self.getBuildArtifact("a.out"))
+        self.assertTrue(target, VALID_TARGET)
+
+        # FIXME: This should use a proper process plugin but right now this
+        # hasn't been implemented yet.
+        self.expect("process launch -C NoKnownClass -i in_path -o out_path -e err_path", error=True)
+        self.expect("settings show target.input-path", substrs=['"in_path"'])
+        self.expect("settings show target.output-path", substrs=['"out_path"'])
+        self.expect("settings show target.error-path", substrs=['"err_path"'])
+
+
     def test_python_plugin_package(self):
         """Test that the lldb python module has a `plugins.scripted_process`
         package."""

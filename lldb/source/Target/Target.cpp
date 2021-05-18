@@ -4099,9 +4099,9 @@ FileSpec TargetProperties::GetStandardInputPath() const {
   return m_collection_sp->GetPropertyAtIndexAsFileSpec(nullptr, idx);
 }
 
-void TargetProperties::SetStandardInputPath(llvm::StringRef path) {
+void TargetProperties::SetStandardInputPath(FileSpec path) {
   const uint32_t idx = ePropertyInputPath;
-  m_collection_sp->SetPropertyAtIndexAsString(nullptr, idx, path);
+  m_collection_sp->SetPropertyAtIndexAsFileSpec(nullptr, idx, path);
 }
 
 FileSpec TargetProperties::GetStandardOutputPath() const {
@@ -4109,9 +4109,9 @@ FileSpec TargetProperties::GetStandardOutputPath() const {
   return m_collection_sp->GetPropertyAtIndexAsFileSpec(nullptr, idx);
 }
 
-void TargetProperties::SetStandardOutputPath(llvm::StringRef path) {
+void TargetProperties::SetStandardOutputPath(FileSpec path) {
   const uint32_t idx = ePropertyOutputPath;
-  m_collection_sp->SetPropertyAtIndexAsString(nullptr, idx, path);
+  m_collection_sp->SetPropertyAtIndexAsFileSpec(nullptr, idx, path);
 }
 
 FileSpec TargetProperties::GetStandardErrorPath() const {
@@ -4119,9 +4119,9 @@ FileSpec TargetProperties::GetStandardErrorPath() const {
   return m_collection_sp->GetPropertyAtIndexAsFileSpec(nullptr, idx);
 }
 
-void TargetProperties::SetStandardErrorPath(llvm::StringRef path) {
+void TargetProperties::SetStandardErrorPath(FileSpec path) {
   const uint32_t idx = ePropertyErrorPath;
-  m_collection_sp->SetPropertyAtIndexAsString(nullptr, idx, path);
+  m_collection_sp->SetPropertyAtIndexAsFileSpec(nullptr, idx, path);
 }
 
 LanguageType TargetProperties::GetLanguage() const {
@@ -4258,17 +4258,17 @@ void TargetProperties::SetProcessLaunchInfo(
   const FileAction *input_file_action =
       launch_info.GetFileActionForFD(STDIN_FILENO);
   if (input_file_action) {
-    SetStandardInputPath(input_file_action->GetPath());
+    SetStandardInputPath(input_file_action->GetFileSpec());
   }
   const FileAction *output_file_action =
       launch_info.GetFileActionForFD(STDOUT_FILENO);
   if (output_file_action) {
-    SetStandardOutputPath(output_file_action->GetPath());
+    SetStandardOutputPath(output_file_action->GetFileSpec());
   }
   const FileAction *error_file_action =
       launch_info.GetFileActionForFD(STDERR_FILENO);
   if (error_file_action) {
-    SetStandardErrorPath(error_file_action->GetPath());
+    SetStandardErrorPath(error_file_action->GetFileSpec());
   }
   SetDetachOnError(launch_info.GetFlags().Test(lldb::eLaunchFlagDetachOnError));
   SetDisableASLR(launch_info.GetFlags().Test(lldb::eLaunchFlagDisableASLR));

@@ -163,9 +163,9 @@ public:
   FileSpec GetStandardErrorPath() const;
   FileSpec GetStandardOutputPath() const;
 
-  void SetStandardInputPath(llvm::StringRef path);
-  void SetStandardOutputPath(llvm::StringRef path);
-  void SetStandardErrorPath(llvm::StringRef path);
+  void SetStandardInputPath(FileSpec path);
+  void SetStandardOutputPath(FileSpec path);
+  void SetStandardErrorPath(FileSpec path);
 
   void SetStandardInputPath(const char *path) = delete;
   void SetStandardOutputPath(const char *path) = delete;
