@@ -29,6 +29,7 @@
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/Optional.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/bit.h"
 
 #include <limits>
 #include <memory>
@@ -47,23 +48,37 @@ using namespace lldb;
 
 #define NON_PRINTABLE_CHAR '.'
 
-static float half2float(uint16_t half) {
-  union {
-    float f;
-    uint32_t u;
-  } u;
-  // Sign extend to 4 byte.
-  int32_t sign_extended = static_cast<int16_t>(half);
-  uint32_t v = static_cast<uint32_t>(sign_extended);
+static float half2float(uint16_t data) {
+  constexpr unsigned HalfBitsSignificant = 10;
+  struct IEEE754Half {
+    unsigned short significant : HalfBitsSignificant;
+    unsigned short exp : 5;
+    unsigned short sign : 1;
+    bool IsSubnormal() const {
+      return exp == 0;
+    }
+  };
+  const IEEE754Half half = llvm::bit_cast<IEEE754Half>(data);
 
-  if (0 == (v & 0x7c00)) {
-    u.u = v & 0x80007FFFU;
-    return u.f * ldexpf(1, 125);
-  }
+  constexpr unsigned SingleBitsSignificant = 23;
+  struct IEEE754Single {
+    unsigned significant : SingleBitsSignificant;
+    unsigned exp : 8;
+    unsigned sign : 1;
+    float AsFloat() const {
+      return llvm::bit_cast<float>(*this);
+    }
+  };
+  IEEE754Single single;
+  single.sign = half.sign;
+  single.exp = half.exp;
+  single.significant = half.significant;
+  if (half.IsSubnormal())
+    return single.AsFloat() * ldexpf(1, 125);
 
-  v <<= 13;
-  u.u = v | 0x70000000U;
-  return u.f * ldexpf(1, -112);
+  single.significant <<= SingleBitsSignificant - HalfBitsSignificant;
+  single.exp |= 0b11100000;
+  return single.AsFloat() * ldexpf(1, -112);
 }
 
 static llvm::Optional<llvm::APInt> GetAPInt(const DataExtractor &data,
