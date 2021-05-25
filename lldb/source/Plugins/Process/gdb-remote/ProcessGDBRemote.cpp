@@ -8,8 +8,8 @@
 
 #include "lldb/Host/Config.h"
 
-#include <errno.h>
-#include <stdlib.h>
+#include <cerrno>
+#include <cstdlib>
 #if LLDB_ENABLE_POSIX
 #include <netinet/in.h>
 #include <sys/mman.h>
@@ -21,7 +21,7 @@
 #include <sys/sysctl.h>
 #endif
 #include <sys/types.h>
-#include <time.h>
+#include <ctime>
 
 #include <algorithm>
 #include <csignal>

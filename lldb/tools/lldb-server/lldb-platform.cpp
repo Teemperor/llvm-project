@@ -6,15 +6,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <errno.h>
+#include <cerrno>
 #if defined(__APPLE__)
 #include <netinet/in.h>
 #endif
-#include <signal.h>
-#include <stdint.h>
+#include <csignal>
+#include <cstdint>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 #if !defined(_WIN32)
 #include <sys/wait.h>
 #endif

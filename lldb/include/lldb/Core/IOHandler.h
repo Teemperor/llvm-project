@@ -26,7 +26,7 @@
 #include <string>
 #include <vector>
 
-#include <stdint.h>
+#include <cstdint>
 #include <stdio.h>
 
 namespace lldb_private {

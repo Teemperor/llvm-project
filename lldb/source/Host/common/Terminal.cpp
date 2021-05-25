@@ -13,7 +13,7 @@
 #include "llvm/ADT/STLExtras.h"
 
 #include <fcntl.h>
-#include <signal.h>
+#include <csignal>
 
 #if LLDB_ENABLE_TERMIOS
 #include <termios.h>

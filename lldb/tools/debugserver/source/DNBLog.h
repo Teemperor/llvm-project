@@ -14,7 +14,7 @@
 #define LLDB_TOOLS_DEBUGSERVER_SOURCE_DNBLOG_H
 
 #include "DNBDefs.h"
-#include <stdint.h>
+#include <cstdint>
 #include <stdio.h>
 
 #ifdef __cplusplus

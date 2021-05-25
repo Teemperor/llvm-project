@@ -8,12 +8,12 @@
 
 #include "VSCode.h"
 
-#include <assert.h>
+#include <cassert>
 #include <limits.h>
-#include <stdarg.h>
+#include <cstdarg>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 #include <sys/stat.h>
 #include <sys/types.h>
 #if defined(_WIN32)

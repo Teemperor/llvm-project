@@ -10,7 +10,7 @@
 #include <fstream>
 #include <mutex>
 #include <sstream>
-#include <stdarg.h>
+#include <cstdarg>
 
 #include "LLDBUtils.h"
 #include "VSCode.h"

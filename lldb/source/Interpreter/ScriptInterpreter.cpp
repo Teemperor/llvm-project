@@ -20,7 +20,7 @@
 #endif
 #include <memory>
 #include <stdio.h>
-#include <stdlib.h>
+#include <cstdlib>
 #include <string>
 
 using namespace lldb;

@@ -27,8 +27,8 @@
 #include <cstring>
 #include <memory>
 
-#include <errno.h>
-#include <inttypes.h>
+#include <cerrno>
+#include <cinttypes>
 #include <stdio.h>
 
 using namespace lldb;

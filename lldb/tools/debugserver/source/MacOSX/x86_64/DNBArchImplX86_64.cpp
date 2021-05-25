@@ -21,7 +21,7 @@
 #include "MachProcess.h"
 #include "MachThread.h"
 #include <mach/mach.h>
-#include <stdlib.h>
+#include <cstdlib>
 
 #if defined(LLDB_DEBUGSERVER_RELEASE) || defined(LLDB_DEBUGSERVER_DEBUG)
 enum debugState { debugStateUnknown, debugStateOff, debugStateOn };

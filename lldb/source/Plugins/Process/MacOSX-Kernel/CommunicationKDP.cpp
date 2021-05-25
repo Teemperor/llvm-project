@@ -8,9 +8,9 @@
 
 #include "CommunicationKDP.h"
 
-#include <errno.h>
+#include <cerrno>
 #include <limits.h>
-#include <string.h>
+#include <cstring>
 
 
 #include "lldb/Core/DumpDataExtractor.h"

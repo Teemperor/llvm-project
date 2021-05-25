@@ -18,7 +18,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
-#include <stddef.h>
+#include <cstddef>
 #include <string>
 #include <vector>
 

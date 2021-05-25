@@ -15,7 +15,7 @@
 
 #include <limits.h>
 #include <stdio.h>
-#include <string.h>
+#include <cstring>
 #include <sys/utsname.h>
 #include <unistd.h>
 

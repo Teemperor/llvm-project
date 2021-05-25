@@ -9,7 +9,7 @@
 #include "JSON.h"
 
 // C includes
-#include <assert.h>
+#include <cassert>
 #include <limits.h>
 
 // C++ includes

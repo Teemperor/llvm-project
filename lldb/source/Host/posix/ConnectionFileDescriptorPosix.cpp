@@ -20,10 +20,10 @@
 #include "lldb/Utility/SelectHelper.h"
 #include "lldb/Utility/Timeout.h"
 
-#include <errno.h>
+#include <cerrno>
 #include <fcntl.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 #include <sys/types.h>
 
 #if LLDB_ENABLE_POSIX

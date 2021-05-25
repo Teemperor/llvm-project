@@ -12,7 +12,7 @@
 #include "llvm/Support/MemoryBuffer.h"
 #include <cerrno>
 #include <cstdlib>
-#include <inttypes.h>
+#include <cinttypes>
 
 using namespace lldb_private;
 using namespace llvm;

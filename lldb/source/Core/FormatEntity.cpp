@@ -59,12 +59,12 @@
 #include "llvm/ADT/Triple.h"
 #include "llvm/Support/Compiler.h"
 
-#include <ctype.h>
-#include <inttypes.h>
+#include <cctype>
+#include <cinttypes>
 #include <memory>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 #include <type_traits>
 #include <utility>
 

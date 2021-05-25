@@ -69,8 +69,8 @@
 #include <mutex>
 #include <set>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 #include <string>
 #include <system_error>
 

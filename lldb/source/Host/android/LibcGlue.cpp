@@ -15,7 +15,7 @@
 #if __ANDROID_API__ < 21
 
 #include <fcntl.h>
-#include <signal.h>
+#include <csignal>
 #include <sys/stat.h>
 #include <sys/types.h>
 

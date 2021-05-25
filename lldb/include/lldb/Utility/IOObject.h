@@ -9,7 +9,7 @@
 #ifndef LLDB_UTILITY_IOOBJECT_H
 #define LLDB_UTILITY_IOOBJECT_H
 
-#include <stdarg.h>
+#include <cstdarg>
 #include <stdio.h>
 #include <sys/types.h>
 

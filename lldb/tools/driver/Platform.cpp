@@ -9,9 +9,9 @@
 // this file is only relevant for Visual C++
 #if defined(_WIN32)
 
-#include <assert.h>
+#include <cassert>
 #include <process.h>
-#include <stdlib.h>
+#include <cstdlib>
 
 #include "Platform.h"
 #include "llvm/Support/ErrorHandling.h"

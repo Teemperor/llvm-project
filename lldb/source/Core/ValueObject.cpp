@@ -57,10 +57,10 @@
 #include <memory>
 #include <tuple>
 
-#include <assert.h>
-#include <inttypes.h>
+#include <cassert>
+#include <cinttypes>
 #include <stdio.h>
-#include <string.h>
+#include <cstring>
 
 #include <lldb/Core/ValueObject.h>
 

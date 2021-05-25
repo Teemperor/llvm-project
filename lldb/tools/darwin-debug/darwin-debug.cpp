@@ -25,11 +25,11 @@
 #include <getopt.h>
 #include <limits.h>
 #include <mach/machine.h>
-#include <signal.h>
+#include <csignal>
 #include <spawn.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>

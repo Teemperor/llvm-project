@@ -30,7 +30,7 @@
 #include <cstring>
 #include <memory>
 
-#include <inttypes.h>
+#include <cinttypes>
 #include <stdio.h>
 
 namespace lldb_private {

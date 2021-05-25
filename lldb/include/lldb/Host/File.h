@@ -16,7 +16,7 @@
 #include "llvm/ADT/BitmaskEnum.h"
 
 #include <mutex>
-#include <stdarg.h>
+#include <cstdarg>
 #include <stdio.h>
 #include <sys/types.h>
 

@@ -35,7 +35,7 @@
 #include <memory>
 #include <utility>
 
-#include <assert.h>
+#include <cassert>
 #include <stdio.h>
 
 namespace lldb_private {

@@ -38,13 +38,13 @@
 #include <memory>
 #include <mutex>
 
-#include <assert.h>
-#include <ctype.h>
-#include <errno.h>
+#include <cassert>
+#include <cctype>
+#include <cerrno>
 #include <locale.h>
-#include <stdint.h>
+#include <cstdint>
 #include <stdio.h>
-#include <string.h>
+#include <cstring>
 #include <type_traits>
 
 using namespace lldb;

@@ -18,7 +18,7 @@
 #include "llvm/Support/Signals.h"
 
 #include <stdio.h>
-#include <stdlib.h>
+#include <cstdlib>
 
 static llvm::ManagedStatic<lldb_private::SystemLifetimeManager>
     g_debugger_lifetime;

@@ -59,12 +59,12 @@
 #include "llvm/Support/Signals.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <assert.h>
+#include <cassert>
 #include <cstdint>
-#include <inttypes.h>
+#include <cinttypes>
 #include <map>
-#include <stdarg.h>
-#include <string.h>
+#include <cstdarg>
+#include <cstring>
 #include <type_traits>
 #include <utility>
 

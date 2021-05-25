@@ -24,9 +24,9 @@
 
 #include "DNBDefs.h"
 #include <limits.h>
-#include <stdint.h>
+#include <cstdint>
 #include <stdio.h>
-#include <string.h>
+#include <cstring>
 
 class DNBDataRef {
 public:

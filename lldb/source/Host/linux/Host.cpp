@@ -7,10 +7,10 @@
 //===----------------------------------------------------------------------===//
 
 #include <dirent.h>
-#include <errno.h>
+#include <cerrno>
 #include <fcntl.h>
 #include <stdio.h>
-#include <string.h>
+#include <cstring>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/utsname.h>

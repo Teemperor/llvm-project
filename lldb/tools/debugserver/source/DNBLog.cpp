@@ -20,9 +20,9 @@ static int g_verbose = 0;
 #include "PThreadMutex.h"
 #include <mach/mach.h>
 #include <pthread.h>
-#include <stdarg.h>
+#include <cstdarg>
 #include <stdio.h>
-#include <stdlib.h>
+#include <cstdlib>
 #include <sys/time.h>
 #include <unistd.h>
 

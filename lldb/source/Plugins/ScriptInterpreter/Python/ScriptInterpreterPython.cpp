@@ -48,7 +48,7 @@
 #include <memory>
 #include <mutex>
 #include <stdio.h>
-#include <stdlib.h>
+#include <cstdlib>
 #include <string>
 
 using namespace lldb;

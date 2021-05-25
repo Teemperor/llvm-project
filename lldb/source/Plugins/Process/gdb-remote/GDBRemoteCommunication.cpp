@@ -10,7 +10,7 @@
 
 #include <future>
 #include <limits.h>
-#include <string.h>
+#include <cstring>
 #include <sys/stat.h>
 
 #include "lldb/Core/StreamFile.h"

@@ -8,10 +8,10 @@
 
 #include "lldb/Host/File.h"
 
-#include <errno.h>
+#include <cerrno>
 #include <fcntl.h>
 #include <limits.h>
-#include <stdarg.h>
+#include <cstdarg>
 #include <stdio.h>
 
 #ifdef _WIN32

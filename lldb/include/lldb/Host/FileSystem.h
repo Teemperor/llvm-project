@@ -21,7 +21,7 @@
 
 #include "lldb/lldb-types.h"
 
-#include <stdint.h>
+#include <cstdint>
 #include <stdio.h>
 #include <sys/stat.h>
 

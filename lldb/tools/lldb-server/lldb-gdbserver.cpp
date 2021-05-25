@@ -6,14 +6,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include <errno.h>
-#include <stdint.h>
+#include <cerrno>
+#include <cstdint>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 
 #ifndef _WIN32
-#include <signal.h>
+#include <csignal>
 #include <unistd.h>
 #endif
 

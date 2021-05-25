@@ -34,8 +34,8 @@
 #include <atomic>
 #include <memory>
 #include <mutex>
-#include <stddef.h>
-#include <stdint.h>
+#include <cstddef>
+#include <cstdint>
 #include <string>
 #include <vector>
 

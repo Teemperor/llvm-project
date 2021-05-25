@@ -16,9 +16,9 @@
 #include <utility>
 #include <vector>
 
-#include <assert.h>
-#include <inttypes.h>
-#include <stdarg.h>
+#include <cassert>
+#include <cinttypes>
+#include <cstdarg>
 #include <stdio.h>
 
 using namespace lldb_private;

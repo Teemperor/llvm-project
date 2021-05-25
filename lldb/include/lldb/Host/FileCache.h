@@ -9,7 +9,7 @@
 #define LLDB_HOST_FILECACHE_H
 
 #include <map>
-#include <stdint.h>
+#include <cstdint>
 
 #include "lldb/lldb-forward.h"
 #include "lldb/lldb-types.h"

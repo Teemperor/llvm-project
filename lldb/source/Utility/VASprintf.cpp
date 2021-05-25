@@ -12,8 +12,8 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 
-#include <assert.h>
-#include <stdarg.h>
+#include <cassert>
+#include <cstdarg>
 #include <stdio.h>
 
 bool lldb_private::VASprintf(llvm::SmallVectorImpl<char> &buf, const char *fmt,

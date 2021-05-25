@@ -24,10 +24,10 @@
 #include <system_error>
 #include <vector>
 
-#include <assert.h>
+#include <cassert>
 #include <limits.h>
 #include <stdio.h>
-#include <string.h>
+#include <cstring>
 
 using namespace lldb;
 using namespace lldb_private;

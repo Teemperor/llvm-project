@@ -8,11 +8,11 @@
 
 #include "lldb/Host/netbsd/HostInfoNetBSD.h"
 
-#include <inttypes.h>
+#include <cinttypes>
 #include <limits.h>
 #include <pthread.h>
 #include <stdio.h>
-#include <string.h>
+#include <cstring>
 #include <sys/sysctl.h>
 #include <sys/types.h>
 #include <sys/utsname.h>

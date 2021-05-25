@@ -19,10 +19,10 @@
 #include "llvm/Support/Program.h"
 #include "llvm/Support/Threading.h"
 
-#include <errno.h>
+#include <cerrno>
 #include <fcntl.h>
 #include <limits.h>
-#include <stdarg.h>
+#include <cstdarg>
 #include <stdio.h>
 
 #ifdef _WIN32

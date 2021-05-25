@@ -10,7 +10,7 @@
 #include "lldb/Utility/Reproducer.h"
 #include <limits>
 #include <stdio.h>
-#include <stdlib.h>
+#include <cstdlib>
 #include <thread>
 
 using namespace lldb_private;

@@ -14,8 +14,8 @@
 #include <limits.h>
 #include <mutex>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 #if defined(TIOCSCTTY)
 #include <sys/ioctl.h>
 #endif

@@ -39,8 +39,8 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
+#include <cstdlib>
+#include <cstring>
 
 // Includes for pipe()
 #if defined(_WIN32)

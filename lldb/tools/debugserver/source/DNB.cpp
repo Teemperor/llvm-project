@@ -11,12 +11,12 @@
 //===----------------------------------------------------------------------===//
 
 #include "DNB.h"
-#include <inttypes.h>
+#include <cinttypes>
 #include <libproc.h>
 #include <map>
-#include <signal.h>
+#include <csignal>
 #include <stdio.h>
-#include <stdlib.h>
+#include <cstdlib>
 #include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/sysctl.h>

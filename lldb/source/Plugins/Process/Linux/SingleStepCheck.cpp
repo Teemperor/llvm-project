@@ -9,7 +9,7 @@
 #include "SingleStepCheck.h"
 
 #include <sched.h>
-#include <signal.h>
+#include <csignal>
 #include <sys/wait.h>
 #include <unistd.h>
 

@@ -19,7 +19,7 @@
 #include <limits.h>
 #include <mutex>
 #include <pwd.h>
-#include <stdlib.h>
+#include <cstdlib>
 #include <sys/types.h>
 #include <unistd.h>
 
