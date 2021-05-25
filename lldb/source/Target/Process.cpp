@@ -1356,7 +1356,7 @@ bool Process::StateChangedIsExternallyHijacked() {
   if (IsHijackedForEvent(eBroadcastBitStateChanged)) {
     const char *hijacking_name = GetHijackingListenerName();
     if (hijacking_name &&
-        strcmp(hijacking_name, g_resume_sync_name))
+        std::strcmp(hijacking_name, g_resume_sync_name))
       return true;
   }
   return false;
@@ -1366,7 +1366,7 @@ bool Process::StateChangedIsHijackedForSynchronousResume() {
   if (IsHijackedForEvent(eBroadcastBitStateChanged)) {
     const char *hijacking_name = GetHijackingListenerName();
     if (hijacking_name &&
-        strcmp(hijacking_name, g_resume_sync_name) == 0)
+        std::strcmp(hijacking_name, g_resume_sync_name) == 0)
       return true;
   }
   return false;
@@ -1695,7 +1695,7 @@ size_t Process::RemoveBreakpointOpcodesFromBuffer(addr_t bp_addr, size_t size,
                  intersect_addr + intersect_size <= bp_addr + size);
           assert(opcode_offset + intersect_size <= bp_site->GetByteSize());
           size_t buf_offset = intersect_addr - bp_addr;
-          ::memcpy(buf + buf_offset,
+          std::memcpy(buf + buf_offset,
                    bp_site->GetSavedOpcodeBytes() + opcode_offset,
                    intersect_size);
         }
@@ -1949,7 +1949,7 @@ size_t Process::ReadStringFromMemory(addr_t addr, char *dst, size_t max_bytes,
   if (dst && max_bytes && type_width && max_bytes >= type_width) {
     // Ensure a null terminator independent of the number of bytes that is
     // read.
-    memset(dst, 0, max_bytes);
+    std::memset(dst, 0, max_bytes);
     size_t bytes_left = max_bytes - type_width;
 
     const char terminator[4] = {'\0', '\0', '\0', '\0'};
@@ -2003,7 +2003,7 @@ size_t Process::ReadCStringFromMemory(addr_t addr, char *dst,
   if (dst && dst_max_len) {
     result_error.Clear();
     // NULL out everything just to be safe
-    memset(dst, 0, dst_max_len);
+    std::memset(dst, 0, dst_max_len);
     Status error;
     addr_t curr_addr = addr;
     const size_t cache_line_size = m_memory_cache.GetMemoryCacheLineSize();
@@ -2022,7 +2022,7 @@ size_t Process::ReadCStringFromMemory(addr_t addr, char *dst,
         dst[total_cstr_len] = '\0';
         break;
       }
-      const size_t len = strlen(curr_dst);
+      const size_t len = std::strlen(curr_dst);
 
       total_cstr_len += len;
 
@@ -2189,7 +2189,7 @@ size_t Process::WriteMemory(addr_t addr, const void *buf, size_t size,
     }
     // Now write any bytes that would cover up any software breakpoints
     // directly into the breakpoint opcode buffer
-    ::memcpy(bp->GetSavedOpcodeBytes() + opcode_offset, ubuf + bytes_written,
+    std::memcpy(bp->GetSavedOpcodeBytes() + opcode_offset, ubuf + bytes_written,
              intersect_size);
     bytes_written += intersect_size;
   });
@@ -4231,11 +4231,11 @@ size_t Process::GetAsyncProfileData(char *buf, size_t buf_size, Status &error) {
     LLDB_LOGF(log, "Process::GetProfileData (buf = %p, size = %" PRIu64 ")",
               static_cast<void *>(buf), static_cast<uint64_t>(buf_size));
     if (bytes_available > buf_size) {
-      memcpy(buf, one_profile_data.c_str(), buf_size);
+      std::memcpy(buf, one_profile_data.c_str(), buf_size);
       one_profile_data.erase(0, buf_size);
       bytes_available = buf_size;
     } else {
-      memcpy(buf, one_profile_data.c_str(), bytes_available);
+      std::memcpy(buf, one_profile_data.c_str(), bytes_available);
       m_profile_data.erase(m_profile_data.begin());
     }
   }
@@ -4252,11 +4252,11 @@ size_t Process::GetSTDOUT(char *buf, size_t buf_size, Status &error) {
     LLDB_LOGF(log, "Process::GetSTDOUT (buf = %p, size = %" PRIu64 ")",
               static_cast<void *>(buf), static_cast<uint64_t>(buf_size));
     if (bytes_available > buf_size) {
-      memcpy(buf, m_stdout_data.c_str(), buf_size);
+      std::memcpy(buf, m_stdout_data.c_str(), buf_size);
       m_stdout_data.erase(0, buf_size);
       bytes_available = buf_size;
     } else {
-      memcpy(buf, m_stdout_data.c_str(), bytes_available);
+      std::memcpy(buf, m_stdout_data.c_str(), bytes_available);
       m_stdout_data.clear();
     }
   }
@@ -4271,11 +4271,11 @@ size_t Process::GetSTDERR(char *buf, size_t buf_size, Status &error) {
     LLDB_LOGF(log, "Process::GetSTDERR (buf = %p, size = %" PRIu64 ")",
               static_cast<void *>(buf), static_cast<uint64_t>(buf_size));
     if (bytes_available > buf_size) {
-      memcpy(buf, m_stderr_data.c_str(), buf_size);
+      std::memcpy(buf, m_stderr_data.c_str(), buf_size);
       m_stderr_data.erase(0, buf_size);
       bytes_available = buf_size;
     } else {
-      memcpy(buf, m_stderr_data.c_str(), bytes_available);
+      std::memcpy(buf, m_stderr_data.c_str(), bytes_available);
       m_stderr_data.clear();
     }
   }

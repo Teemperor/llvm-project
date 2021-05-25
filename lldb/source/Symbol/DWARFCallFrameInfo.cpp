@@ -312,7 +312,7 @@ DWARFCallFrameInfo::ParseCIE(const dw_offset_t cie_offset) {
       // ULEB128 length in bytes
       const size_t aug_data_len = (size_t)m_cfi_data.GetULEB128(&offset);
       const size_t aug_data_end = offset + aug_data_len;
-      const size_t aug_str_len = strlen(cie_sp->augmentation);
+      const size_t aug_str_len = std::strlen(cie_sp->augmentation);
       // A 'z' may be present as the first character of the string.
       // If present, the Augmentation Data field shall be present. The contents
       // of the Augmentation Data shall be interpreted according to other
@@ -365,7 +365,7 @@ DWARFCallFrameInfo::ParseCIE(const dw_offset_t cie_offset) {
             break;
           }
         }
-      } else if (strcmp(cie_sp->augmentation, "eh") == 0) {
+      } else if (std::strcmp(cie_sp->augmentation, "eh") == 0) {
         // If the Augmentation string has the value "eh", then the EH Data
         // field shall be present
       }
@@ -602,7 +602,7 @@ bool DWARFCallFrameInfo::FDEToUnwindPlan(dw_offset_t dwarf_offset,
     offset += aug_data_len;
   }
   unwind_plan.SetUnwindPlanForSignalTrap(
-    strchr(cie->augmentation, 'S') ? eLazyBoolYes : eLazyBoolNo);
+    std::strchr(cie->augmentation, 'S') ? eLazyBoolYes : eLazyBoolNo);
 
   Address lsda_data;
   Address personality_function_ptr;

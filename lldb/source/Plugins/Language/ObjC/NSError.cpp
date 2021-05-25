@@ -202,9 +202,9 @@ lldb_private::formatters::NSErrorSyntheticFrontEndCreator(
   if (!class_name || !*class_name)
     return nullptr;
 
-  if (!strcmp(class_name, "NSError"))
+  if (!std::strcmp(class_name, "NSError"))
     return (new NSErrorSyntheticFrontEnd(valobj_sp));
-  else if (!strcmp(class_name, "__NSCFError"))
+  else if (!std::strcmp(class_name, "__NSCFError"))
     return (new NSErrorSyntheticFrontEnd(valobj_sp));
 
   return nullptr;

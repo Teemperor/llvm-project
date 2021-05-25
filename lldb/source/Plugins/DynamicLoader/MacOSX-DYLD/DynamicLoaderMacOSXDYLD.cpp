@@ -762,7 +762,7 @@ bool DynamicLoaderMacOSXDYLD::ReadMachHeader(lldb::addr_t addr,
                                             header_bytes.GetByteSize(), error);
   if (bytes_read == sizeof(llvm::MachO::mach_header)) {
     lldb::offset_t offset = 0;
-    ::memset(header, 0, sizeof(llvm::MachO::mach_header));
+    std::memset(header, 0, sizeof(llvm::MachO::mach_header));
 
     // Get the magic byte unswapped so we can figure out what we are dealing
     // with

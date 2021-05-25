@@ -38,7 +38,7 @@ SocketScheme socket_schemes[] = {
 bool FindProtocolByScheme(const char *scheme,
                           Socket::SocketProtocol &protocol) {
   for (auto s : socket_schemes) {
-    if (!strcmp(s.m_scheme, scheme)) {
+    if (!std::strcmp(s.m_scheme, scheme)) {
       protocol = s.m_protocol;
       return true;
     }
@@ -92,7 +92,7 @@ std::unique_ptr<Acceptor> Acceptor::Create(StringRef name,
       error.SetErrorStringWithFormat("Unknown protocol scheme \"%s\"",
                                      scheme.str().c_str());
     else
-      name = name.drop_front(scheme.size() + strlen("://"));
+      name = name.drop_front(scheme.size() + std::strlen("://"));
   } else {
     std::string host_str;
     std::string port_str;

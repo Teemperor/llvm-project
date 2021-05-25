@@ -62,7 +62,7 @@ TypeFilterImpl::FrontEnd::GetIndexOfChildWithName(ConstString name) {
           expr_cstr += 2;
       }
       if (expr_cstr) {
-        if (!::strcmp(name_cstr, expr_cstr))
+        if (!std::strcmp(name_cstr, expr_cstr))
           return i;
       }
     }

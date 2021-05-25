@@ -69,7 +69,7 @@ Status HostProcessPosix::GetMainModule(FileSpec &file_spec) const {
   // Remove if there.
   if (file_spec.GetFilename().GetStringRef().endswith(" (deleted)")) {
     const char *filename = file_spec.GetFilename().GetCString();
-    static const size_t deleted_len = strlen(" (deleted)");
+    static const size_t deleted_len = std::strlen(" (deleted)");
     const size_t len = file_spec.GetFilename().GetLength();
     file_spec.GetFilename().SetCStringWithLength(filename, len - deleted_len);
   }

@@ -378,7 +378,7 @@ Status ProcessMachCore::DoLoadCore() {
 
     // Search for UUID= and stext= strings in the identifier str.
     if (corefile_identifier.find("UUID=") != std::string::npos) {
-      size_t p = corefile_identifier.find("UUID=") + strlen("UUID=");
+      size_t p = corefile_identifier.find("UUID=") + std::strlen("UUID=");
       std::string uuid_str = corefile_identifier.substr(p, 36);
       ident_uuid.SetFromStringRef(uuid_str);
       if (log)
@@ -386,7 +386,7 @@ Status ProcessMachCore::DoLoadCore() {
                     ident_uuid.GetAsString().c_str());
     }
     if (corefile_identifier.find("stext=") != std::string::npos) {
-      size_t p = corefile_identifier.find("stext=") + strlen("stext=");
+      size_t p = corefile_identifier.find("stext=") + std::strlen("stext=");
       if (corefile_identifier[p] == '0' && corefile_identifier[p + 1] == 'x') {
         ident_binary_addr =
             ::strtoul(corefile_identifier.c_str() + p, nullptr, 16);

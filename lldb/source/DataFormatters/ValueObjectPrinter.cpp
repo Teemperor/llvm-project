@@ -454,7 +454,7 @@ bool ValueObjectPrinter::PrintObjectDescriptionIfNeeded(bool value_printed,
         object_desc = GetDescriptionForDisplay();
       if (object_desc && *object_desc) {
         // If the description already ends with a \n don't add another one.
-        size_t object_end = strlen(object_desc) - 1;
+        size_t object_end = std::strlen(object_desc) - 1;
         if (object_desc[object_end] == '\n')
           m_stream->Printf("%s", object_desc);
         else

@@ -259,7 +259,7 @@ int SBCommandInterpreter::HandleCompletionWithDescriptions(
   if (cursor < current_line || last_char < current_line)
     return 0;
 
-  size_t current_line_size = strlen(current_line);
+  size_t current_line_size = std::strlen(current_line);
   if (cursor - current_line > static_cast<ptrdiff_t>(current_line_size) ||
       last_char - current_line > static_cast<ptrdiff_t>(current_line_size))
     return 0;
@@ -322,7 +322,7 @@ int SBCommandInterpreter::HandleCompletionWithDescriptions(
                      max_return_elements, matches, descriptions);
 
   const char *cursor = current_line + cursor_pos;
-  const char *last_char = current_line + strlen(current_line);
+  const char *last_char = current_line + std::strlen(current_line);
   return HandleCompletionWithDescriptions(
       current_line, cursor, last_char, match_start_point, max_return_elements,
       matches, descriptions);
@@ -339,7 +339,7 @@ int SBCommandInterpreter::HandleCompletion(const char *current_line,
                      max_return_elements, matches);
 
   const char *cursor = current_line + cursor_pos;
-  const char *last_char = current_line + strlen(current_line);
+  const char *last_char = current_line + std::strlen(current_line);
   return HandleCompletion(current_line, cursor, last_char, match_start_point,
                           max_return_elements, matches);
 }

@@ -234,7 +234,7 @@ void x86AssemblyInspectionEngine::Initialize(
   for (MachineRegnumToNameAndLLDBRegnum::iterator it = m_reg_map.begin();
        it != m_reg_map.end(); ++it) {
     for (size_t i = 0; i < reg_info.size(); ++i) {
-      if (::strcmp(reg_info[i].name, it->second.name) == 0) {
+      if (std::strcmp(reg_info[i].name, it->second.name) == 0) {
         it->second.lldb_regnum = reg_info[i].lldb_regnum;
         break;
       }

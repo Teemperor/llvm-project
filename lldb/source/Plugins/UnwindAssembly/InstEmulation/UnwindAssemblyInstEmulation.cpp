@@ -402,7 +402,7 @@ size_t UnwindAssemblyInstEmulation::ReadMemory(
     context.Dump(strm, instruction);
     log->PutString(strm.GetString());
   }
-  memset(dst, 0, dst_len);
+  std::memset(dst, 0, dst_len);
   return dst_len;
 }
 

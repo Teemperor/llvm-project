@@ -1003,7 +1003,7 @@ EnableOptionsSP ParseAutoEnableOptions(Status &error, Debugger &debugger) {
     // Eliminate the initial '--' that would be required to set the settings
     // that themselves include '-' and/or '--'.
     const char *first_arg = args.GetArgumentAtIndex(0);
-    if (first_arg && (strcmp(first_arg, "--") == 0))
+    if (first_arg && (std::strcmp(first_arg, "--") == 0))
       args.Shift();
   }
 

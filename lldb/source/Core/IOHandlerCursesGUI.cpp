@@ -656,7 +656,7 @@ public:
     }
 
     if (bottom_message && bottom_message[0]) {
-      int bottom_message_length = strlen(bottom_message);
+      int bottom_message_length = std::strlen(bottom_message);
       int x = GetWidth() - 3 - (bottom_message_length + 2);
 
       if (x > 0) {
@@ -3686,7 +3686,7 @@ public:
             if (stop_info_sp) {
               const char *stop_description = stop_info_sp->GetDescription();
               if (stop_description && stop_description[0]) {
-                size_t stop_description_len = strlen(stop_description);
+                size_t stop_description_len = std::strlen(stop_description);
                 int desc_x = window_width - stop_description_len - 16;
                 if (desc_x - window.GetCursorX() > 0)
                   window.Printf("%*s", desc_x - window.GetCursorX(), "");
@@ -3839,7 +3839,7 @@ public:
             if (stop_info_sp) {
               const char *stop_description = stop_info_sp->GetDescription();
               if (stop_description && stop_description[0]) {
-                size_t stop_description_len = strlen(stop_description);
+                size_t stop_description_len = std::strlen(stop_description);
                 int desc_x = window_width - stop_description_len - 16;
                 if (desc_x - window.GetCursorX() > 0)
                   window.Printf("%*s", desc_x - window.GetCursorX(), "");

@@ -3166,7 +3166,7 @@ int main(int argc, char *argv[]) {
     if (llvm::opt::Arg *comm_file = input_args.getLastArg(OPT_comm_file)) {
       int target_args_pos = argc;
       for (int i = 0; i < argc; i++)
-        if (strcmp(argv[i], "--launch-target") == 0) {
+        if (std::strcmp(argv[i], "--launch-target") == 0) {
           target_args_pos = i + 1;
           break;
         }

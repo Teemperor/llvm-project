@@ -302,7 +302,7 @@ Status AdbClient::ReadResponseStatus() {
 }
 
 Status AdbClient::GetResponseError(const char *response_id) {
-  if (strcmp(response_id, kFAIL) != 0)
+  if (std::strcmp(response_id, kFAIL) != 0)
     return Status("Got unexpected response id from adb: \"%s\"", response_id);
 
   std::vector<char> error_message;
@@ -376,8 +376,8 @@ Status AdbClient::internalShell(const char *command, milliseconds timeout,
   // ADB doesn't propagate return code of shell execution - if
   // output starts with /system/bin/sh: most likely command failed.
   static const char *kShellPrefix = "/system/bin/sh:";
-  if (output_buf.size() > strlen(kShellPrefix)) {
-    if (!memcmp(&output_buf[0], kShellPrefix, strlen(kShellPrefix)))
+  if (output_buf.size() > std::strlen(kShellPrefix)) {
+    if (!memcmp(&output_buf[0], kShellPrefix, std::strlen(kShellPrefix)))
       return Status("Shell command %s failed: %s", command,
                     std::string(output_buf.begin(), output_buf.end()).c_str());
   }
@@ -518,7 +518,7 @@ Status AdbClient::SyncService::internalStat(const FileSpec &remote_file,
   if (error.Fail())
     return Status("Failed to send request: %s", error.AsCString());
 
-  static const size_t stat_len = strlen(kSTAT);
+  static const size_t stat_len = std::strlen(kSTAT);
   static const size_t response_len = stat_len + (sizeof(uint32_t) * 3);
 
   std::vector<char> buffer(response_len);
@@ -590,7 +590,7 @@ Status AdbClient::SyncService::SendSyncRequest(const char *request_id,
                                                const void *data) {
   const DataBufferSP data_sp(new DataBufferHeap(kSyncPacketLen, 0));
   DataEncoder encoder(data_sp, eByteOrderLittle, sizeof(void *));
-  auto offset = encoder.PutData(0, request_id, strlen(request_id));
+  auto offset = encoder.PutData(0, request_id, std::strlen(request_id));
   encoder.PutUnsigned(offset, 4, data_len);
 
   Status error;

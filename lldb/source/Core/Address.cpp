@@ -202,7 +202,7 @@ static size_t ReadCStringFromMemory(ExecutionContextScope *exe_scope,
   strm->PutChar('"');
   while ((bytes_read = ReadBytes(exe_scope, curr_address, buf, k_buf_len)) >
          0) {
-    size_t len = strlen(buf);
+    size_t len = std::strlen(buf);
     if (len == 0)
       break;
     if (len > bytes_read)

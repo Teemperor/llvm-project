@@ -76,7 +76,7 @@ ObjectContainerUniversalMachO::ObjectContainerUniversalMachO(
     : ObjectContainer(module_sp, file, file_offset, length, data_sp,
                       data_offset),
       m_header(), m_fat_archs() {
-  memset(&m_header, 0, sizeof(m_header));
+  std::memset(&m_header, 0, sizeof(m_header));
 }
 
 ObjectContainerUniversalMachO::~ObjectContainerUniversalMachO() {}
@@ -120,7 +120,7 @@ bool ObjectContainerUniversalMachO::ParseHeader(
     }
     success = true;
   } else {
-    memset(&header, 0, sizeof(header));
+    std::memset(&header, 0, sizeof(header));
   }
   return success;
 }

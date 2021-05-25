@@ -1566,11 +1566,11 @@ GDBRemoteCommunicationServerLLGS::Handle_vCont(
   }
 
   // Check if this is all continue (no options or ";c").
-  if (::strcmp(packet.Peek(), ";c") == 0) {
+  if (std::strcmp(packet.Peek(), ";c") == 0) {
     // Move past the ';', then do a simple 'c'.
     packet.SetFilePos(packet.GetFilePos() + 1);
     return Handle_c(packet);
-  } else if (::strcmp(packet.Peek(), ";s") == 0) {
+  } else if (std::strcmp(packet.Peek(), ";s") == 0) {
     // Move past the ';', then do a simple 's'.
     packet.SetFilePos(packet.GetFilePos() + 1);
     return Handle_s(packet);
@@ -1908,7 +1908,7 @@ GDBRemoteCommunicationServerLLGS::Handle_g(StringExtractorGDBRemote &packet) {
       regs_buffer.resize(reg_info->byte_offset + reg_info->byte_size);
 
     // Copy the register offsetted data to the buffer.
-    memcpy(regs_buffer.data() + reg_info->byte_offset, reg_value.GetBytes(),
+    std::memcpy(regs_buffer.data() + reg_info->byte_offset, reg_value.GetBytes(),
            reg_info->byte_size);
   }
 

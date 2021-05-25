@@ -548,7 +548,7 @@ void IRMemoryMap::WriteMemory(lldb::addr_t process_address,
       error.SetErrorString("Couldn't write: data buffer is empty");
       return;
     }
-    ::memcpy(allocation.m_data.GetBytes() + offset, bytes, size);
+    std::memcpy(allocation.m_data.GetBytes() + offset, bytes, size);
     break;
   case eAllocationPolicyMirror:
     if (!allocation.m_data.GetByteSize()) {
@@ -556,7 +556,7 @@ void IRMemoryMap::WriteMemory(lldb::addr_t process_address,
       error.SetErrorString("Couldn't write: data buffer is empty");
       return;
     }
-    ::memcpy(allocation.m_data.GetBytes() + offset, bytes, size);
+    std::memcpy(allocation.m_data.GetBytes() + offset, bytes, size);
     process_sp = m_process_wp.lock();
     if (process_sp) {
       process_sp->WriteMemory(process_address, bytes, size, error);
@@ -678,7 +678,7 @@ void IRMemoryMap::ReadMemory(uint8_t *bytes, lldb::addr_t process_address,
       return;
     }
 
-    ::memcpy(bytes, allocation.m_data.GetBytes() + offset, size);
+    std::memcpy(bytes, allocation.m_data.GetBytes() + offset, size);
     break;
   case eAllocationPolicyMirror:
     process_sp = m_process_wp.lock();
@@ -692,7 +692,7 @@ void IRMemoryMap::ReadMemory(uint8_t *bytes, lldb::addr_t process_address,
         error.SetErrorString("Couldn't read: data buffer is empty");
         return;
       }
-      ::memcpy(bytes, allocation.m_data.GetBytes() + offset, size);
+      std::memcpy(bytes, allocation.m_data.GetBytes() + offset, size);
     }
     break;
   case eAllocationPolicyProcessOnly:

@@ -261,7 +261,7 @@ bool MachThread::GetBasicInfo(thread_t thread,
     if (err == KERN_SUCCESS)
       return true;
   }
-  ::memset(basicInfoPtr, 0, sizeof(struct thread_basic_info));
+  std::memset(basicInfoPtr, 0, sizeof(struct thread_basic_info));
   return false;
 }
 

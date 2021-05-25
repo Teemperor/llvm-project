@@ -466,9 +466,9 @@ bool CommandObjectExpression::EvaluateExpression(llvm::StringRef expr,
       } else {
         const char *error_cstr = result_valobj_sp->GetError().AsCString();
         if (error_cstr && error_cstr[0]) {
-          const size_t error_cstr_len = strlen(error_cstr);
+          const size_t error_cstr_len = std::strlen(error_cstr);
           const bool ends_with_newline = error_cstr[error_cstr_len - 1] == '\n';
-          if (strstr(error_cstr, "error:") != error_cstr)
+          if (std::strstr(error_cstr, "error:") != error_cstr)
             error_stream.PutCString("error: ");
           error_stream.Write(error_cstr, error_cstr_len);
           if (!ends_with_newline)

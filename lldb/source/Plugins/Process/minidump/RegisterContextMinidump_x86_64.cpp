@@ -41,7 +41,7 @@ static llvm::MutableArrayRef<uint8_t> getDestRegister(uint8_t *context,
 static void writeRegister(const void *reg_src, uint8_t *context,
                           const RegisterInfo &reg) {
   llvm::MutableArrayRef<uint8_t> reg_dest = getDestRegister(context, reg);
-  memcpy(reg_dest.data(), reg_src, reg_dest.size());
+  std::memcpy(reg_dest.data(), reg_src, reg_dest.size());
 }
 
 lldb::DataBufferSP lldb_private::minidump::ConvertMinidumpContext_x86_64(

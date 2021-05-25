@@ -54,9 +54,9 @@ public:
 
   void SetObjectPtrName(const char *name) {
     m_has_object_ptr = true;
-    if (strcmp(name, "self") == 0)
+    if (std::strcmp(name, "self") == 0)
       m_is_self = true;
-    else if (strcmp(name, "this") == 0)
+    else if (std::strcmp(name, "this") == 0)
       m_is_self = false;
     else
       m_has_object_ptr = false;

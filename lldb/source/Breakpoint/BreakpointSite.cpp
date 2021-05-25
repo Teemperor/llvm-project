@@ -105,7 +105,7 @@ bool BreakpointSite::SetTrapOpcode(const uint8_t *trap_opcode,
                                    uint32_t trap_opcode_size) {
   if (trap_opcode_size > 0 && trap_opcode_size <= sizeof(m_trap_opcode)) {
     m_byte_size = trap_opcode_size;
-    ::memcpy(m_trap_opcode, trap_opcode, trap_opcode_size);
+    std::memcpy(m_trap_opcode, trap_opcode, trap_opcode_size);
     return true;
   }
   m_byte_size = 0;

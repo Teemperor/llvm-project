@@ -339,7 +339,7 @@ bool Options::SupportsLongOption(const char *long_option) {
     if (!def.long_option)
       continue;
 
-    if (strcmp(def.long_option, long_option_name) == 0)
+    if (std::strcmp(def.long_option, long_option_name) == 0)
       return true;
   }
 
@@ -786,7 +786,7 @@ void Options::HandleOptionArgumentCompletion(
 
       // If this is the "shlib" option and there was an argument provided,
       // restrict it to that shared library.
-      if (cur_opt_name && strcmp(cur_opt_name, "shlib") == 0 &&
+      if (cur_opt_name && std::strcmp(cur_opt_name, "shlib") == 0 &&
           cur_arg_pos != -1) {
         const char *module_name =
             request.GetParsedLine().GetArgumentAtIndex(cur_arg_pos);
@@ -1148,7 +1148,7 @@ OptionElementVector Options::ParseForCompletion(const Args &args,
 
       if (static_cast<size_t>(OptionParser::GetOptionIndex()) <
               dummy_vec.size() &&
-          (strcmp(dummy_vec[OptionParser::GetOptionIndex() - 1], "--") == 0)) {
+          (std::strcmp(dummy_vec[OptionParser::GetOptionIndex() - 1], "--") == 0)) {
         dash_dash_pos = FindOriginalIndex(
             dummy_vec[OptionParser::GetOptionIndex() - 1], args);
         if (dash_dash_pos == cursor_index) {

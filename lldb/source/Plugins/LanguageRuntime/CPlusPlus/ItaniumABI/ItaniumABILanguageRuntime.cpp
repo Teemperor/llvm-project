@@ -75,7 +75,7 @@ TypeAndOrName ItaniumABILanguageRuntime::GetTypeInfoFromVTableAddress(
         if (symbol != nullptr) {
           const char *name =
               symbol->GetMangled().GetDemangledName().AsCString();
-          if (name && strstr(name, vtable_demangled_prefix) == name) {
+          if (name && std::strstr(name, vtable_demangled_prefix) == name) {
             Log *log(
                 lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_OBJECT));
             LLDB_LOGF(log,
@@ -84,7 +84,7 @@ TypeAndOrName ItaniumABILanguageRuntime::GetTypeInfoFromVTableAddress(
                       original_ptr, in_value.GetTypeName().GetCString(), name);
             // We are a C++ class, that's good.  Get the class name and look it
             // up:
-            const char *class_name = name + strlen(vtable_demangled_prefix);
+            const char *class_name = name + std::strlen(vtable_demangled_prefix);
             // We know the class name is absolute, so tell FindTypes that by
             // prefixing it with the root namespace:
             std::string lookup_name("::");

@@ -1433,7 +1433,7 @@ bool CommandObjectTypeSummaryAdd::Execute_StringSummary(
                                  : m_options.m_format_string.c_str());
 
   // ${var%S} is an endless recursion, prevent it
-  if (strcmp(format_cstr, "${var%S}") == 0) {
+  if (std::strcmp(format_cstr, "${var%S}") == 0) {
     result.AppendError("recursive summary not allowed");
     result.SetStatus(eReturnStatusFailed);
     return false;
@@ -1925,7 +1925,7 @@ protected:
       return false;
     }
 
-    if (argc == 1 && strcmp(command.GetArgumentAtIndex(0), "*") == 0) {
+    if (argc == 1 && std::strcmp(command.GetArgumentAtIndex(0), "*") == 0) {
       DataVisualization::Categories::EnableStar();
     } else if (argc > 0) {
       for (int i = argc - 1; i >= 0; i--) {
@@ -2108,7 +2108,7 @@ protected:
       return false;
     }
 
-    if (argc == 1 && strcmp(command.GetArgumentAtIndex(0), "*") == 0) {
+    if (argc == 1 && std::strcmp(command.GetArgumentAtIndex(0), "*") == 0) {
       DataVisualization::Categories::DisableStar();
     } else if (argc > 0) {
       // the order is not relevant here

@@ -213,7 +213,7 @@ Status PlatformAndroid::GetFile(const FileSpec &source,
   LLDB_LOGF(log, "Got mode == 0 on '%s': try to get file via 'shell cat'",
             source_file);
 
-  if (strchr(source_file, '\'') != nullptr)
+  if (std::strchr(source_file, '\'') != nullptr)
     return Status("Doesn't support single-quotes in filenames");
 
   // mode == 0 can signify that adbd cannot access the file due security

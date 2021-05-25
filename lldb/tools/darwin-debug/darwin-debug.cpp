@@ -41,7 +41,7 @@
 #define _POSIX_SPAWN_DISABLE_ASLR 0x0100
 #endif
 
-#define streq(a, b) strcmp(a, b) == 0
+#define streq(a, b) std::strcmp(a, b) == 0
 
 static struct option g_long_options[] = {
     {"arch", required_argument, NULL, 'a'},
@@ -159,7 +159,7 @@ pid_t posix_spawn_for_debug(char *const *argv, char *const *envp,
 
 int main(int argc, char *const *argv, char *const *envp, const char **apple) {
 #if defined(DEBUG_LLDB_LAUNCHER)
-  const char *program_name = strrchr(apple[0], '/');
+  const char *program_name = std::strrchr(apple[0], '/');
 
   if (program_name)
     program_name++; // Skip the last slash..
@@ -200,7 +200,7 @@ int main(int argc, char *const *argv, char *const *envp, const char **apple) {
           cpu_type = CPU_TYPE_X86_64;
         else if (streq(optarg, "x86_64h"))
           cpu_type = 0; // Don't set CPU type when we have x86_64h
-        else if (strstr(optarg, "arm") == optarg)
+        else if (std::strstr(optarg, "arm") == optarg)
           cpu_type = CPU_TYPE_ARM;
         else {
           ::fprintf(stderr, "error: unsupported cpu type '%s'\n", optarg);
@@ -223,7 +223,7 @@ int main(int argc, char *const *argv, char *const *envp, const char **apple) {
       // variables in this process and they will make it into the child process.
       std::string name;
       std::string value;
-      const char *equal_pos = strchr(optarg, '=');
+      const char *equal_pos = std::strchr(optarg, '=');
       if (equal_pos) {
         name.assign(optarg, equal_pos - optarg);
         value.assign(equal_pos + 1);
@@ -280,7 +280,7 @@ int main(int argc, char *const *argv, char *const *envp, const char **apple) {
   }
 
   saddr_un.sun_family = AF_UNIX;
-  ::strncpy(saddr_un.sun_path, unix_socket_name.c_str(),
+  std::strncpy(saddr_un.sun_path, unix_socket_name.c_str(),
             sizeof(saddr_un.sun_path) - 1);
   saddr_un.sun_path[sizeof(saddr_un.sun_path) - 1] = '\0';
   saddr_un.sun_len = SUN_LEN(&saddr_un);

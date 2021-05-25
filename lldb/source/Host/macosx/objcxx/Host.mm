@@ -141,7 +141,7 @@ static void *AcceptPIDFromInferior(void *arg) {
   Status error;
   if (file_conn.Connect(connect_url, &error) == eConnectionStatusSuccess) {
     char pid_str[256];
-    ::memset(pid_str, 0, sizeof(pid_str));
+    std::memset(pid_str, 0, sizeof(pid_str));
     ConnectionStatus status;
     const size_t pid_str_len = file_conn.Read(
         pid_str, sizeof(pid_str), std::chrono::seconds(0), status, NULL);
@@ -360,7 +360,7 @@ bool Host::OpenFileInExternalEditor(const FileSpec &file_spec,
   static FSRef g_app_fsref;
 
   LSApplicationParameters app_params;
-  ::memset(&app_params, 0, sizeof(app_params));
+  std::memset(&app_params, 0, sizeof(app_params));
   app_params.flags =
       kLSLaunchDefaults | kLSLaunchDontAddToRecents | kLSLaunchDontSwitch;
 
@@ -370,7 +370,7 @@ bool Host::OpenFileInExternalEditor(const FileSpec &file_spec,
     LLDB_LOGF(log, "Looking for external editor \"%s\".\n", external_editor);
 
     if (g_app_name.empty() ||
-        strcmp(g_app_name.c_str(), external_editor) != 0) {
+        std::strcmp(g_app_name.c_str(), external_editor) != 0) {
       CFCString editor_name(external_editor, kCFStringEncodingUTF8);
       error = ::LSFindApplicationForInfo(kLSUnknownCreator, NULL,
                                          editor_name.get(), &g_app_fsref, NULL);
@@ -537,7 +537,7 @@ static bool GetMacOSXProcessArgs(const ProcessInstanceInfoMatch *match_info_ptr,
               break;
 
             if (check_for_ios_simulator) {
-              if (strncmp(cstr, "SIMULATOR_UDID=", strlen("SIMULATOR_UDID=")) ==
+              if (std::strncmp(cstr, "SIMULATOR_UDID=", std::strlen("SIMULATOR_UDID=")) ==
                   0)
                 process_info.GetArchitecture().GetTriple().setOS(
                     llvm::Triple::IOS);
@@ -691,11 +691,11 @@ static void PackageXPCArguments(xpc_object_t message, const char *prefix,
                                 const Args &args) {
   size_t count = args.GetArgumentCount();
   char buf[50]; // long enough for 'argXXX'
-  memset(buf, 0, 50);
+  std::memset(buf, 0, 50);
   sprintf(buf, "%sCount", prefix);
   xpc_dictionary_set_int64(message, buf, count);
   for (size_t i = 0; i < count; i++) {
-    memset(buf, 0, 50);
+    std::memset(buf, 0, 50);
     sprintf(buf, "%s%zi", prefix, i);
     xpc_dictionary_set_string(message, buf, args.GetArgumentAtIndex(i));
   }
@@ -1369,7 +1369,7 @@ Status Host::ShellExpandArguments(ProcessLaunchInfo &launch_info) {
         return error;
       } else {
         FileSpec working_dir(wd);
-        free(wd);
+        std::free(wd);
         launch_info.SetWorkingDirectory(working_dir);
       }
     }

@@ -393,7 +393,7 @@ lldb::SBData SBData::CreateDataFromCString(lldb::ByteOrder endian,
   if (!data || !data[0])
     return LLDB_RECORD_RESULT(SBData());
 
-  uint32_t data_len = strlen(data);
+  uint32_t data_len = std::strlen(data);
 
   lldb::DataBufferSP buffer_sp(new DataBufferHeap(data, data_len));
   lldb::DataExtractorSP data_sp(
@@ -522,7 +522,7 @@ bool SBData::SetDataFromCString(const char *data) {
     return false;
   }
 
-  size_t data_len = strlen(data);
+  size_t data_len = std::strlen(data);
 
   lldb::DataBufferSP buffer_sp(new DataBufferHeap(data, data_len));
 

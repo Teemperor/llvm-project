@@ -48,11 +48,11 @@ TEST(StringListTest, AppendStringStdString) {
 
 TEST(StringListTest, AppendStringCString) {
   StringList s;
-  s.AppendString("foo", strlen("foo"));
+  s.AppendString("foo", std::strlen("foo"));
   ASSERT_EQ(1U, s.GetSize());
   EXPECT_STREQ("foo", s.GetStringAtIndex(0));
 
-  s.AppendString("bar", strlen("bar"));
+  s.AppendString("bar", std::strlen("bar"));
   ASSERT_EQ(2U, s.GetSize());
   EXPECT_STREQ("foo", s.GetStringAtIndex(0));
   EXPECT_STREQ("bar", s.GetStringAtIndex(1));

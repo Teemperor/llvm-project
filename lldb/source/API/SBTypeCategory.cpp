@@ -415,7 +415,7 @@ bool SBTypeCategory::AddTypeSummary(SBTypeNameSpecifier type_name,
         (const void *)ConstString(type_name.GetName()).GetCString();
     const char *script = summary.GetData();
     StringList input;
-    input.SplitIntoLines(script, strlen(script));
+    input.SplitIntoLines(script, std::strlen(script));
     uint32_t num_debuggers = lldb_private::Debugger::GetNumDebuggers();
     bool need_set = true;
     for (uint32_t j = 0; j < num_debuggers; j++) {
@@ -535,7 +535,7 @@ bool SBTypeCategory::AddTypeSynthetic(SBTypeNameSpecifier type_name,
         (const void *)ConstString(type_name.GetName()).GetCString();
     const char *script = synth.GetData();
     StringList input;
-    input.SplitIntoLines(script, strlen(script));
+    input.SplitIntoLines(script, std::strlen(script));
     uint32_t num_debuggers = lldb_private::Debugger::GetNumDebuggers();
     bool need_set = true;
     for (uint32_t j = 0; j < num_debuggers; j++) {
@@ -649,7 +649,7 @@ bool SBTypeCategory::IsDefaultCategory() {
   if (!IsValid())
     return false;
 
-  return (strcmp(m_opaque_sp->GetName(), "default") == 0);
+  return (std::strcmp(m_opaque_sp->GetName(), "default") == 0);
 }
 
 namespace lldb_private {

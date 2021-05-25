@@ -225,7 +225,7 @@ bool ThreadElfCore::CalculateStopInfo() {
 
 // Parse PRSTATUS from NOTE entry
 ELFLinuxPrStatus::ELFLinuxPrStatus() {
-  memset(this, 0, sizeof(ELFLinuxPrStatus));
+  std::memset(this, 0, sizeof(ELFLinuxPrStatus));
 }
 
 size_t ELFLinuxPrStatus::GetSize(const lldb_private::ArchSpec &arch) {
@@ -299,7 +299,7 @@ Status ELFLinuxPrStatus::Parse(const DataExtractor &data,
 
 // Parse PRPSINFO from NOTE entry
 ELFLinuxPrPsInfo::ELFLinuxPrPsInfo() {
-  memset(this, 0, sizeof(ELFLinuxPrPsInfo));
+  std::memset(this, 0, sizeof(ELFLinuxPrPsInfo));
 }
 
 size_t ELFLinuxPrPsInfo::GetSize(const lldb_private::ArchSpec &arch) {
@@ -374,7 +374,7 @@ Status ELFLinuxPrPsInfo::Parse(const DataExtractor &data,
 }
 
 // Parse SIGINFO from NOTE entry
-ELFLinuxSigInfo::ELFLinuxSigInfo() { memset(this, 0, sizeof(ELFLinuxSigInfo)); }
+ELFLinuxSigInfo::ELFLinuxSigInfo() { std::memset(this, 0, sizeof(ELFLinuxSigInfo)); }
 
 size_t ELFLinuxSigInfo::GetSize(const lldb_private::ArchSpec &arch) {
   if (arch.IsMIPS())

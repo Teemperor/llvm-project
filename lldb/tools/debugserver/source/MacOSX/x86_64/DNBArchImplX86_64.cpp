@@ -2335,7 +2335,7 @@ bool DNBArchImplX86_64::GetRegisterValue(uint32_t set, uint32_t reg,
             *((uint16_t *)(&m_state.context.fpu.no_avx.__fpu_fsw));
         return true;
       case fpu_ftw:
-        memcpy (&value->value.uint16, &m_state.context.fpu.no_avx.__fpu_ftw, 2);
+        std::memcpy (&value->value.uint16, &m_state.context.fpu.no_avx.__fpu_ftw, 2);
         return true;
       case fpu_fop:
         value->value.uint16 = m_state.context.fpu.no_avx.__fpu_fop;
@@ -2367,7 +2367,7 @@ bool DNBArchImplX86_64::GetRegisterValue(uint32_t set, uint32_t reg,
       case fpu_stmm5:
       case fpu_stmm6:
       case fpu_stmm7:
-        memcpy(&value->value.uint8,
+        std::memcpy(&value->value.uint8,
                &m_state.context.fpu.no_avx.__fpu_stmm0 + (reg - fpu_stmm0), 10);
         return true;
 
@@ -2387,7 +2387,7 @@ bool DNBArchImplX86_64::GetRegisterValue(uint32_t set, uint32_t reg,
       case fpu_xmm13:
       case fpu_xmm14:
       case fpu_xmm15:
-        memcpy(&value->value.uint8,
+        std::memcpy(&value->value.uint8,
                &m_state.context.fpu.no_avx.__fpu_xmm0 + (reg - fpu_xmm0), 16);
         return true;
 
@@ -2407,9 +2407,9 @@ bool DNBArchImplX86_64::GetRegisterValue(uint32_t set, uint32_t reg,
       case fpu_ymm13:
       case fpu_ymm14:
       case fpu_ymm15:
-        memcpy(&value->value.uint8,
+        std::memcpy(&value->value.uint8,
                &m_state.context.fpu.avx.__fpu_xmm0 + (reg - fpu_ymm0), 16);
-        memcpy((&value->value.uint8) + 16,
+        std::memcpy((&value->value.uint8) + 16,
                &m_state.context.fpu.avx.__fpu_ymmh0 + (reg - fpu_ymm0), 16);
         return true;
       case fpu_k0:
@@ -2420,7 +2420,7 @@ bool DNBArchImplX86_64::GetRegisterValue(uint32_t set, uint32_t reg,
       case fpu_k5:
       case fpu_k6:
       case fpu_k7:
-        memcpy((&value->value.uint8),
+        std::memcpy((&value->value.uint8),
                &m_state.context.fpu.avx512f.__fpu_k0 + (reg - fpu_k0), 8);
         return true;
       case fpu_zmm0:
@@ -2439,11 +2439,11 @@ bool DNBArchImplX86_64::GetRegisterValue(uint32_t set, uint32_t reg,
       case fpu_zmm13:
       case fpu_zmm14:
       case fpu_zmm15:
-        memcpy(&value->value.uint8,
+        std::memcpy(&value->value.uint8,
                &m_state.context.fpu.avx512f.__fpu_xmm0 + (reg - fpu_zmm0), 16);
-        memcpy((&value->value.uint8) + 16,
+        std::memcpy((&value->value.uint8) + 16,
                &m_state.context.fpu.avx512f.__fpu_ymmh0 + (reg - fpu_zmm0), 16);
-        memcpy((&value->value.uint8) + 32,
+        std::memcpy((&value->value.uint8) + 32,
                &m_state.context.fpu.avx512f.__fpu_zmmh0 + (reg - fpu_zmm0), 32);
         return true;
       case fpu_zmm16:
@@ -2462,7 +2462,7 @@ bool DNBArchImplX86_64::GetRegisterValue(uint32_t set, uint32_t reg,
       case fpu_zmm29:
       case fpu_zmm30:
       case fpu_zmm31:
-        memcpy(&value->value.uint8,
+        std::memcpy(&value->value.uint8,
                &m_state.context.fpu.avx512f.__fpu_zmm16 + (reg - fpu_zmm16), 64);
         return true;
       }
@@ -2546,7 +2546,7 @@ bool DNBArchImplX86_64::SetRegisterValue(uint32_t set, uint32_t reg,
         success = true;
         break;
       case fpu_ftw:
-        memcpy (&m_state.context.fpu.no_avx.__fpu_ftw, &value->value.uint8, 2);
+        std::memcpy(&m_state.context.fpu.no_avx.__fpu_ftw, &value->value.uint8, 2);
         success = true;
         break;
       case fpu_fop:
@@ -2586,7 +2586,7 @@ bool DNBArchImplX86_64::SetRegisterValue(uint32_t set, uint32_t reg,
       case fpu_stmm5:
       case fpu_stmm6:
       case fpu_stmm7:
-        memcpy(&m_state.context.fpu.no_avx.__fpu_stmm0 + (reg - fpu_stmm0),
+        std::memcpy(&m_state.context.fpu.no_avx.__fpu_stmm0 + (reg - fpu_stmm0),
                &value->value.uint8, 10);
         success = true;
         break;
@@ -2607,7 +2607,7 @@ bool DNBArchImplX86_64::SetRegisterValue(uint32_t set, uint32_t reg,
       case fpu_xmm13:
       case fpu_xmm14:
       case fpu_xmm15:
-        memcpy(&m_state.context.fpu.no_avx.__fpu_xmm0 + (reg - fpu_xmm0),
+        std::memcpy(&m_state.context.fpu.no_avx.__fpu_xmm0 + (reg - fpu_xmm0),
                &value->value.uint8, 16);
         success = true;
         break;
@@ -2628,9 +2628,9 @@ bool DNBArchImplX86_64::SetRegisterValue(uint32_t set, uint32_t reg,
       case fpu_ymm13:
       case fpu_ymm14:
       case fpu_ymm15:
-        memcpy(&m_state.context.fpu.avx.__fpu_xmm0 + (reg - fpu_ymm0),
+        std::memcpy(&m_state.context.fpu.avx.__fpu_xmm0 + (reg - fpu_ymm0),
                &value->value.uint8, 16);
-        memcpy(&m_state.context.fpu.avx.__fpu_ymmh0 + (reg - fpu_ymm0),
+        std::memcpy(&m_state.context.fpu.avx.__fpu_ymmh0 + (reg - fpu_ymm0),
                (&value->value.uint8) + 16, 16);
         return true;
       case fpu_k0:
@@ -2641,7 +2641,7 @@ bool DNBArchImplX86_64::SetRegisterValue(uint32_t set, uint32_t reg,
       case fpu_k5:
       case fpu_k6:
       case fpu_k7:
-        memcpy(&m_state.context.fpu.avx512f.__fpu_k0 + (reg - fpu_k0),
+        std::memcpy(&m_state.context.fpu.avx512f.__fpu_k0 + (reg - fpu_k0),
                &value->value.uint8, 8);
         return true;
       case fpu_zmm0:
@@ -2660,11 +2660,11 @@ bool DNBArchImplX86_64::SetRegisterValue(uint32_t set, uint32_t reg,
       case fpu_zmm13:
       case fpu_zmm14:
       case fpu_zmm15:
-        memcpy(&m_state.context.fpu.avx512f.__fpu_xmm0 + (reg - fpu_zmm0),
+        std::memcpy(&m_state.context.fpu.avx512f.__fpu_xmm0 + (reg - fpu_zmm0),
                &value->value.uint8, 16);
-        memcpy(&m_state.context.fpu.avx512f.__fpu_ymmh0 + (reg - fpu_zmm0),
+        std::memcpy(&m_state.context.fpu.avx512f.__fpu_ymmh0 + (reg - fpu_zmm0),
                &value->value.uint8 + 16, 16);
-        memcpy(&m_state.context.fpu.avx512f.__fpu_zmmh0 + (reg - fpu_zmm0),
+        std::memcpy(&m_state.context.fpu.avx512f.__fpu_zmmh0 + (reg - fpu_zmm0),
                &value->value.uint8 + 32, 32);
         return true;
       case fpu_zmm16:
@@ -2683,7 +2683,7 @@ bool DNBArchImplX86_64::SetRegisterValue(uint32_t set, uint32_t reg,
       case fpu_zmm29:
       case fpu_zmm30:
       case fpu_zmm31:
-        memcpy(&m_state.context.fpu.avx512f.__fpu_zmm16 + (reg - fpu_zmm16),
+        std::memcpy(&m_state.context.fpu.avx512f.__fpu_zmm16 + (reg - fpu_zmm16),
                &value->value.uint8, 64);
         return true;
       }
@@ -2773,31 +2773,31 @@ nub_size_t DNBArchImplX86_64::GetRegisterContext(void *buf,
     } else {
       uint8_t *p = (uint8_t *)buf;
       // Copy the GPR registers
-      memcpy(p, &m_state.context.gpr, sizeof(GPR));
+      std::memcpy(p, &m_state.context.gpr, sizeof(GPR));
       p += sizeof(GPR);
 
       // Walk around the gaps in the FPU regs
-      memcpy(p, &m_state.context.fpu.no_avx.__fpu_fcw, 5);
+      std::memcpy(p, &m_state.context.fpu.no_avx.__fpu_fcw, 5);
       // We read 5 bytes, but we skip 6 to account for __fpu_rsrv1
       // to match the g_fpu_registers_* tables.
       p += 6;
-      memcpy(p, &m_state.context.fpu.no_avx.__fpu_fop, 8);
+      std::memcpy(p, &m_state.context.fpu.no_avx.__fpu_fop, 8);
       p += 8;
-      memcpy(p, &m_state.context.fpu.no_avx.__fpu_dp, 6);
+      std::memcpy(p, &m_state.context.fpu.no_avx.__fpu_dp, 6);
       p += 6;
-      memcpy(p, &m_state.context.fpu.no_avx.__fpu_mxcsr, 8);
+      std::memcpy(p, &m_state.context.fpu.no_avx.__fpu_mxcsr, 8);
       p += 8;
 
       // Work around the padding between the stmm registers as they are 16
       // byte structs with 10 bytes of the value in each
       for (size_t i = 0; i < 8; ++i) {
-        memcpy(p, &m_state.context.fpu.no_avx.__fpu_stmm0 + i, 10);
+        std::memcpy(p, &m_state.context.fpu.no_avx.__fpu_stmm0 + i, 10);
         p += 10;
       }
 
       if(CPUHasAVX512f() || FORCE_AVX_REGS) {
         for (size_t i = 0; i < 8; ++i) {
-          memcpy(p, &m_state.context.fpu.avx512f.__fpu_k0 + i, 8);
+          std::memcpy(p, &m_state.context.fpu.avx512f.__fpu_k0 + i, 8);
           p += 8;
         }
       }
@@ -2805,29 +2805,29 @@ nub_size_t DNBArchImplX86_64::GetRegisterContext(void *buf,
       if (CPUHasAVX() || FORCE_AVX_REGS) {
         // Interleave the XMM and YMMH registers to make the YMM registers
         for (size_t i = 0; i < 16; ++i) {
-          memcpy(p, &m_state.context.fpu.avx.__fpu_xmm0 + i, 16);
+          std::memcpy(p, &m_state.context.fpu.avx.__fpu_xmm0 + i, 16);
           p += 16;
-          memcpy(p, &m_state.context.fpu.avx.__fpu_ymmh0 + i, 16);
+          std::memcpy(p, &m_state.context.fpu.avx.__fpu_ymmh0 + i, 16);
           p += 16;
         }
         if(CPUHasAVX512f() || FORCE_AVX_REGS) {
           for (size_t i = 0; i < 16; ++i) {
-            memcpy(p, &m_state.context.fpu.avx512f.__fpu_zmmh0 + i, 32);
+            std::memcpy(p, &m_state.context.fpu.avx512f.__fpu_zmmh0 + i, 32);
             p += 32;
           }
           for (size_t i = 0; i < 16; ++i) {
-            memcpy(p, &m_state.context.fpu.avx512f.__fpu_zmm16 + i, 64);
+            std::memcpy(p, &m_state.context.fpu.avx512f.__fpu_zmm16 + i, 64);
             p += 64;
           }
         }
       } else {
         // Copy the XMM registers in a single block
-        memcpy(p, &m_state.context.fpu.no_avx.__fpu_xmm0, 16 * 16);
+        std::memcpy(p, &m_state.context.fpu.no_avx.__fpu_xmm0, 16 * 16);
         p += 16 * 16;
       }
 
       // Copy the exception registers
-      memcpy(p, &m_state.context.exc, sizeof(EXC));
+      std::memcpy(p, &m_state.context.exc, sizeof(EXC));
       p += sizeof(EXC);
 
       // make sure we end up with exactly what we think we should have
@@ -2857,31 +2857,31 @@ nub_size_t DNBArchImplX86_64::SetRegisterContext(const void *buf,
 
     const uint8_t *p = (const uint8_t *)buf;
     // Copy the GPR registers
-    memcpy(&m_state.context.gpr, p, sizeof(GPR));
+    std::memcpy(&m_state.context.gpr, p, sizeof(GPR));
     p += sizeof(GPR);
 
     // Copy fcw through mxcsrmask as there is no padding
-    memcpy(&m_state.context.fpu.no_avx.__fpu_fcw, p, 5);
+    std::memcpy(&m_state.context.fpu.no_avx.__fpu_fcw, p, 5);
     // We wrote 5 bytes, but we skip 6 to account for __fpu_rsrv1
     // to match the g_fpu_registers_* tables.
     p += 6;
-    memcpy(&m_state.context.fpu.no_avx.__fpu_fop, p, 8);
+    std::memcpy(&m_state.context.fpu.no_avx.__fpu_fop, p, 8);
     p += 8;
-    memcpy(&m_state.context.fpu.no_avx.__fpu_dp, p, 6);
+    std::memcpy(&m_state.context.fpu.no_avx.__fpu_dp, p, 6);
     p += 6;
-    memcpy(&m_state.context.fpu.no_avx.__fpu_mxcsr, p, 8);
+    std::memcpy(&m_state.context.fpu.no_avx.__fpu_mxcsr, p, 8);
     p += 8;
 
     // Work around the padding between the stmm registers as they are 16
     // byte structs with 10 bytes of the value in each
     for (size_t i = 0; i < 8; ++i) {
-      memcpy(&m_state.context.fpu.no_avx.__fpu_stmm0 + i, p, 10);
+      std::memcpy(&m_state.context.fpu.no_avx.__fpu_stmm0 + i, p, 10);
       p += 10;
     }
 
     if(CPUHasAVX512f() || FORCE_AVX_REGS) {
       for (size_t i = 0; i < 8; ++i) {
-        memcpy(&m_state.context.fpu.avx512f.__fpu_k0 + i, p, 8);
+        std::memcpy(&m_state.context.fpu.avx512f.__fpu_k0 + i, p, 8);
         p += 8;
       }
     }
@@ -2889,29 +2889,29 @@ nub_size_t DNBArchImplX86_64::SetRegisterContext(const void *buf,
     if (CPUHasAVX() || FORCE_AVX_REGS) {
       // Interleave the XMM and YMMH registers to make the YMM registers
       for (size_t i = 0; i < 16; ++i) {
-        memcpy(&m_state.context.fpu.avx.__fpu_xmm0 + i, p, 16);
+        std::memcpy(&m_state.context.fpu.avx.__fpu_xmm0 + i, p, 16);
         p += 16;
-        memcpy(&m_state.context.fpu.avx.__fpu_ymmh0 + i, p, 16);
+        std::memcpy(&m_state.context.fpu.avx.__fpu_ymmh0 + i, p, 16);
         p += 16;
       }
       if(CPUHasAVX512f() || FORCE_AVX_REGS) {
           for (size_t i = 0; i < 16; ++i) {
-            memcpy(&m_state.context.fpu.avx512f.__fpu_zmmh0 + i, p, 32);
+            std::memcpy(&m_state.context.fpu.avx512f.__fpu_zmmh0 + i, p, 32);
             p += 32;
           }
           for (size_t i = 0; i < 16; ++i) {
-            memcpy(&m_state.context.fpu.avx512f.__fpu_zmm16 + i, p, 64);
+            std::memcpy(&m_state.context.fpu.avx512f.__fpu_zmm16 + i, p, 64);
             p += 64;
           }
         }
     } else {
       // Copy the XMM registers in a single block
-      memcpy(&m_state.context.fpu.no_avx.__fpu_xmm0, p, 16 * 16);
+      std::memcpy(&m_state.context.fpu.no_avx.__fpu_xmm0, p, 16 * 16);
       p += 16 * 16;
     }
 
     // Copy the exception registers
-    memcpy(&m_state.context.exc, p, sizeof(EXC));
+    std::memcpy(&m_state.context.exc, p, sizeof(EXC));
     p += sizeof(EXC);
 
     // make sure we end up with exactly what we think we should have

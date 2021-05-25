@@ -134,6 +134,6 @@ TEST(RichManglingContextTest, IPDRealloc) {
 
   // Make sure a new buffer was allocated or the default buffer was extended.
   bool AllocatedNewBuffer = (ShortDemangled != LongDemangled);
-  bool ExtendedExistingBuffer = (strlen(LongDemangled) > 2048);
+  bool ExtendedExistingBuffer = (std::strlen(LongDemangled) > 2048);
   EXPECT_TRUE(AllocatedNewBuffer || ExtendedExistingBuffer);
 }

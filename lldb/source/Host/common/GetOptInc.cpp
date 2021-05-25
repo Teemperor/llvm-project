@@ -121,19 +121,19 @@ static int parse_long_options(char *const *nargv, const char *options,
 
   optind++;
 
-  if ((has_equal = strchr(current_argv, '=')) != NULL) {
+  if ((has_equal = std::strchr(current_argv, '=')) != NULL) {
     /* argument found (--option=arg) */
     current_argv_len = has_equal - current_argv;
     has_equal++;
   } else
-    current_argv_len = strlen(current_argv);
+    current_argv_len = std::strlen(current_argv);
 
   for (i = 0; long_options[i].name; i++) {
     /* find matching long option */
-    if (strncmp(current_argv, long_options[i].name, current_argv_len))
+    if (std::strncmp(current_argv, long_options[i].name, current_argv_len))
       continue;
 
-    if (strlen(long_options[i].name) == current_argv_len) {
+    if (std::strlen(long_options[i].name) == current_argv_len) {
       /* exact match */
       match = i;
       break;
@@ -273,7 +273,7 @@ start:
       return (-1);
     }
     if (*(place = nargv[optind]) != '-' ||
-        (place[1] == '\0' && strchr(options, '-') == NULL)) {
+        (place[1] == '\0' && std::strchr(options, '-') == NULL)) {
       place = EMSG; /* found non-option */
       if (flags & FLAG_ALLARGS) {
         /*
@@ -335,7 +335,7 @@ start:
     short_too = 0;
     if (*place == '-')
       place++; /* --foo long option */
-    else if (*place != ':' && strchr(options, *place) != NULL)
+    else if (*place != ':' && std::strchr(options, *place) != NULL)
       short_too = 1; /* could be short option too */
 
     optchar = parse_long_options(nargv, options, long_options, idx, short_too);
@@ -347,7 +347,7 @@ start:
 
   if ((optchar = (int)*place++) == (int)':' ||
       (optchar == (int)'-' && *place != '\0') ||
-      (oli = strchr(options, optchar)) == NULL) {
+      (oli = std::strchr(options, optchar)) == NULL) {
     /*
     * If the user specified "-" and  '-' isn't listed in
     * options, return -1 (non-option) as per POSIX.

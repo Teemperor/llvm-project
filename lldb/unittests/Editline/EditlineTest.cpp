@@ -144,7 +144,7 @@ bool EditlineAdapter::SendLine(const std::string &line) {
               line.length() * sizeof(std::string::value_type));
 
   const char *eoln = "\n";
-  const size_t eoln_length = strlen(eoln);
+  const size_t eoln_length = std::strlen(eoln);
   input_bytes_written =
       ::write(_pty_master_fd, eoln, eoln_length * sizeof(char));
 

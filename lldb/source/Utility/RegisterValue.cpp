@@ -198,7 +198,7 @@ Status RegisterValue::SetValueFromData(const RegisterInfo *reg_info,
     src_len = reg_info->byte_size;
 
   // Zero out the value in case we get partial data...
-  memset(buffer.bytes, 0, sizeof(buffer.bytes));
+  std::memset(buffer.bytes, 0, sizeof(buffer.bytes));
 
   type128 int128;
 
@@ -496,7 +496,7 @@ bool RegisterValue::CopyValue(const RegisterValue &rhs) {
     break;
   case eTypeBytes:
     assert(rhs.buffer.length <= kMaxRegisterByteSize);
-    ::memcpy(buffer.bytes, rhs.buffer.bytes, kMaxRegisterByteSize);
+    std::memcpy(buffer.bytes, rhs.buffer.bytes, kMaxRegisterByteSize);
     buffer.length = rhs.buffer.length;
     buffer.byte_order = rhs.buffer.byte_order;
     break;
@@ -759,7 +759,7 @@ void RegisterValue::SetBytes(const void *bytes, size_t length,
            "Storing too many bytes in a RegisterValue.");
     m_type = eTypeBytes;
     buffer.length = length;
-    memcpy(buffer.bytes, bytes, length);
+    std::memcpy(buffer.bytes, bytes, length);
     buffer.byte_order = byte_order;
   } else {
     m_type = eTypeInvalid;

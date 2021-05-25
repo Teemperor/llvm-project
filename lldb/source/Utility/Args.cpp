@@ -46,7 +46,7 @@ static llvm::StringRef ParseDoubleQuotes(llvm::StringRef quoted,
 
     // If the character after the backslash is not an allowed escapable
     // character, we leave the character sequence untouched.
-    if (strchr(k_escapable_characters, quoted.front()) == nullptr)
+    if (std::strchr(k_escapable_characters, quoted.front()) == nullptr)
       result += '\\';
 
     result += quoted.front();
@@ -113,7 +113,7 @@ ParseSingleArgument(llvm::StringRef command) {
 
       // If the character after the backslash is not an allowed escapable
       // character, we leave the character sequence untouched.
-      if (strchr(" \t\\'\"`", command.front()) == nullptr)
+      if (std::strchr(" \t\\'\"`", command.front()) == nullptr)
         arg += '\\';
 
       arg += command.front();
@@ -161,7 +161,7 @@ Args::ArgEntry::ArgEntry(llvm::StringRef str, char quote) : quote(quote) {
   size_t size = str.size();
   ptr.reset(new char[size + 1]);
 
-  ::memcpy(data(), str.data() ? str.data() : "", size);
+  std::memcpy(data(), str.data() ? str.data() : "", size);
   ptr[size] = 0;
 }
 
@@ -613,7 +613,7 @@ std::string Args::EscapeLLDBCommandArgument(const std::string &arg,
   std::string res;
   res.reserve(arg.size());
   for (char c : arg) {
-    if (::strchr(chars_to_escape, c))
+    if (std::strchr(chars_to_escape, c))
       res.push_back('\\');
     res.push_back(c);
   }

@@ -447,7 +447,7 @@ bool Type::ReadFromMemory(ExecutionContext *exe_ctx, lldb::addr_t addr,
       // The address is an address in this process, so just copy it
       if (addr == 0)
         return false;
-      memcpy(dst, reinterpret_cast<uint8_t *>(addr), byte_size);
+      std::memcpy(dst, reinterpret_cast<uint8_t *>(addr), byte_size);
       return true;
     } else {
       if (exe_ctx) {

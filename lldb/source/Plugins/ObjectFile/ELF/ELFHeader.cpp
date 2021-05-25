@@ -68,7 +68,7 @@ static bool GetMaxS64(const lldb_private::DataExtractor &data,
 
 // ELFHeader
 
-ELFHeader::ELFHeader() { memset(this, 0, sizeof(ELFHeader)); }
+ELFHeader::ELFHeader() { std::memset(this, 0, sizeof(ELFHeader)); }
 
 ByteOrder ELFHeader::GetByteOrder() const {
   if (e_ident[EI_DATA] == ELFDATA2MSB)
@@ -155,7 +155,7 @@ bool ELFHeader::Parse(lldb_private::DataExtractor &data,
 }
 
 bool ELFHeader::MagicBytesMatch(const uint8_t *magic) {
-  return memcmp(magic, ElfMagic, strlen(ElfMagic)) == 0;
+  return memcmp(magic, ElfMagic, std::strlen(ElfMagic)) == 0;
 }
 
 unsigned ELFHeader::AddressSizeInBytes(const uint8_t *magic) {
@@ -216,7 +216,7 @@ unsigned ELFHeader::GetRelocationJumpSlotType() const {
 // ELFSectionHeader
 
 ELFSectionHeader::ELFSectionHeader() {
-  memset(this, 0, sizeof(ELFSectionHeader));
+  std::memset(this, 0, sizeof(ELFSectionHeader));
 }
 
 bool ELFSectionHeader::Parse(const lldb_private::DataExtractor &data,
@@ -248,7 +248,7 @@ bool ELFSectionHeader::Parse(const lldb_private::DataExtractor &data,
 
 // ELFSymbol
 
-ELFSymbol::ELFSymbol() { memset(this, 0, sizeof(ELFSymbol)); }
+ELFSymbol::ELFSymbol() { std::memset(this, 0, sizeof(ELFSymbol)); }
 
 #define ENUM_TO_CSTR(e)                                                        \
   case e:                                                                      \
@@ -356,7 +356,7 @@ bool ELFSymbol::Parse(const lldb_private::DataExtractor &data,
 // ELFProgramHeader
 
 ELFProgramHeader::ELFProgramHeader() {
-  memset(this, 0, sizeof(ELFProgramHeader));
+  std::memset(this, 0, sizeof(ELFProgramHeader));
 }
 
 bool ELFProgramHeader::Parse(const lldb_private::DataExtractor &data,
@@ -395,7 +395,7 @@ bool ELFProgramHeader::Parse(const lldb_private::DataExtractor &data,
 
 // ELFDynamic
 
-ELFDynamic::ELFDynamic() { memset(this, 0, sizeof(ELFDynamic)); }
+ELFDynamic::ELFDynamic() { std::memset(this, 0, sizeof(ELFDynamic)); }
 
 bool ELFDynamic::Parse(const lldb_private::DataExtractor &data,
                        lldb::offset_t *offset) {
@@ -405,7 +405,7 @@ bool ELFDynamic::Parse(const lldb_private::DataExtractor &data,
 
 // ELFRel
 
-ELFRel::ELFRel() { memset(this, 0, sizeof(ELFRel)); }
+ELFRel::ELFRel() { std::memset(this, 0, sizeof(ELFRel)); }
 
 bool ELFRel::Parse(const lldb_private::DataExtractor &data,
                    lldb::offset_t *offset) {
@@ -417,7 +417,7 @@ bool ELFRel::Parse(const lldb_private::DataExtractor &data,
 
 // ELFRela
 
-ELFRela::ELFRela() { memset(this, 0, sizeof(ELFRela)); }
+ELFRela::ELFRela() { std::memset(this, 0, sizeof(ELFRela)); }
 
 bool ELFRela::Parse(const lldb_private::DataExtractor &data,
                     lldb::offset_t *offset) {

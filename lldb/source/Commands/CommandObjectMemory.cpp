@@ -737,7 +737,7 @@ protected:
         } else
           ++read; // account for final NULL byte
 
-        memcpy(data_ptr, &buffer[0], read);
+        std::memcpy(data_ptr, &buffer[0], read);
         data_ptr += read;
         data_addr += read;
         bytes_read += read;

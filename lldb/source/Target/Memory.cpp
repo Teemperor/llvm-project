@@ -142,7 +142,7 @@ size_t MemoryCache::Read(addr_t addr, void *dst, size_t dst_len,
     }
     AddrRange chunk_range(pos->first, pos->second->GetByteSize());
     if (chunk_range.Contains(read_range)) {
-      memcpy(dst, pos->second->GetBytes() + (addr - chunk_range.GetRangeBase()),
+      std::memcpy(dst, pos->second->GetBytes() + (addr - chunk_range.GetRangeBase()),
              dst_len);
       return dst_len;
     }
@@ -186,7 +186,7 @@ size_t MemoryCache::Read(addr_t addr, void *dst, size_t dst_len,
         if (curr_read_size > bytes_left)
           curr_read_size = bytes_left;
 
-        memcpy(dst_buf + dst_len - bytes_left,
+        std::memcpy(dst_buf + dst_len - bytes_left,
                pos->second->GetBytes() + cache_offset, curr_read_size);
 
         bytes_left -= curr_read_size;
@@ -205,7 +205,7 @@ size_t MemoryCache::Read(addr_t addr, void *dst, size_t dst_len,
             if (curr_read_size > bytes_left)
               curr_read_size = bytes_left;
 
-            memcpy(dst_buf + dst_len - bytes_left, pos->second->GetBytes(),
+            std::memcpy(dst_buf + dst_len - bytes_left, pos->second->GetBytes(),
                    curr_read_size);
 
             bytes_left -= curr_read_size;

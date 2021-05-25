@@ -1862,7 +1862,7 @@ size_t Target::ReadCStringFromMemory(const Address &addr, char *dst,
   if (dst && dst_max_len) {
     result_error.Clear();
     // NULL out everything just to be safe
-    memset(dst, 0, dst_max_len);
+    std::memset(dst, 0, dst_max_len);
     Status error;
     addr_t curr_addr = addr.GetLoadAddress(this);
     Address address(addr);
@@ -1888,7 +1888,7 @@ size_t Target::ReadCStringFromMemory(const Address &addr, char *dst,
         dst[total_cstr_len] = '\0';
         break;
       }
-      const size_t len = strlen(curr_dst);
+      const size_t len = std::strlen(curr_dst);
 
       total_cstr_len += len;
 

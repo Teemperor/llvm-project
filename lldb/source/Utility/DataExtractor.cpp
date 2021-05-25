@@ -42,66 +42,66 @@ using namespace lldb_private;
 
 static inline uint16_t ReadInt16(const unsigned char *ptr, offset_t offset) {
   uint16_t value;
-  memcpy(&value, ptr + offset, 2);
+  std::memcpy(&value, ptr + offset, 2);
   return value;
 }
 
 static inline uint32_t ReadInt32(const unsigned char *ptr,
                                  offset_t offset = 0) {
   uint32_t value;
-  memcpy(&value, ptr + offset, 4);
+  std::memcpy(&value, ptr + offset, 4);
   return value;
 }
 
 static inline uint64_t ReadInt64(const unsigned char *ptr,
                                  offset_t offset = 0) {
   uint64_t value;
-  memcpy(&value, ptr + offset, 8);
+  std::memcpy(&value, ptr + offset, 8);
   return value;
 }
 
 static inline uint16_t ReadInt16(const void *ptr) {
   uint16_t value;
-  memcpy(&value, ptr, 2);
+  std::memcpy(&value, ptr, 2);
   return value;
 }
 
 static inline uint16_t ReadSwapInt16(const unsigned char *ptr,
                                      offset_t offset) {
   uint16_t value;
-  memcpy(&value, ptr + offset, 2);
+  std::memcpy(&value, ptr + offset, 2);
   return llvm::ByteSwap_16(value);
 }
 
 static inline uint32_t ReadSwapInt32(const unsigned char *ptr,
                                      offset_t offset) {
   uint32_t value;
-  memcpy(&value, ptr + offset, 4);
+  std::memcpy(&value, ptr + offset, 4);
   return llvm::ByteSwap_32(value);
 }
 
 static inline uint64_t ReadSwapInt64(const unsigned char *ptr,
                                      offset_t offset) {
   uint64_t value;
-  memcpy(&value, ptr + offset, 8);
+  std::memcpy(&value, ptr + offset, 8);
   return llvm::ByteSwap_64(value);
 }
 
 static inline uint16_t ReadSwapInt16(const void *ptr) {
   uint16_t value;
-  memcpy(&value, ptr, 2);
+  std::memcpy(&value, ptr, 2);
   return llvm::ByteSwap_16(value);
 }
 
 static inline uint32_t ReadSwapInt32(const void *ptr) {
   uint32_t value;
-  memcpy(&value, ptr, 4);
+  std::memcpy(&value, ptr, 4);
   return llvm::ByteSwap_32(value);
 }
 
 static inline uint64_t ReadSwapInt64(const void *ptr) {
   uint64_t value;
-  memcpy(&value, ptr, 8);
+  std::memcpy(&value, ptr, 8);
   return llvm::ByteSwap_64(value);
 }
 
@@ -335,7 +335,7 @@ void *DataExtractor::GetU8(offset_t *offset_ptr, void *dst,
       static_cast<const uint8_t *>(GetData(offset_ptr, count));
   if (data) {
     // Copy the data into the buffer
-    memcpy(dst, data, count);
+    std::memcpy(dst, data, count);
     // Return a non-nullptr pointer to the converted data as an indicator of
     // success
     return dst;
@@ -412,7 +412,7 @@ void *DataExtractor::GetU16(offset_t *offset_ptr, void *void_dst,
         ++src_pos;
       }
     } else {
-      memcpy(void_dst, src, src_size);
+      std::memcpy(void_dst, src, src_size);
     }
     // Return a non-nullptr pointer to the converted data as an indicator of
     // success
@@ -433,7 +433,7 @@ uint32_t DataExtractor::GetU32(offset_t *offset_ptr) const {
     if (m_byte_order != endian::InlHostByteOrder()) {
       val = ReadSwapInt32(data);
     } else {
-      memcpy(&val, data, 4);
+      std::memcpy(&val, data, 4);
     }
   }
   return val;
@@ -461,7 +461,7 @@ void *DataExtractor::GetU32(offset_t *offset_ptr, void *void_dst,
         ++src_pos;
       }
     } else {
-      memcpy(void_dst, src, src_size);
+      std::memcpy(void_dst, src, src_size);
     }
     // Return a non-nullptr pointer to the converted data as an indicator of
     // success
@@ -482,7 +482,7 @@ uint64_t DataExtractor::GetU64(offset_t *offset_ptr) const {
     if (m_byte_order != endian::InlHostByteOrder()) {
       val = ReadSwapInt64(data);
     } else {
-      memcpy(&val, data, 8);
+      std::memcpy(&val, data, 8);
     }
   }
   return val;
@@ -509,7 +509,7 @@ void *DataExtractor::GetU64(offset_t *offset_ptr, void *void_dst,
         ++src_pos;
       }
     } else {
-      memcpy(void_dst, src, src_size);
+      std::memcpy(void_dst, src, src_size);
     }
     // Return a non-nullptr pointer to the converted data as an indicator of
     // success
@@ -671,7 +671,7 @@ size_t DataExtractor::ExtractBytes(offset_t offset, offset_t length,
       for (uint32_t i = 0; i < length; ++i)
         (static_cast<uint8_t *>(dst))[i] = src[length - i - 1];
     } else
-      ::memcpy(dst, src, length);
+      std::memcpy(dst, src, length);
     return length;
   }
   return 0;
@@ -682,7 +682,7 @@ lldb::offset_t DataExtractor::CopyData(offset_t offset, offset_t length,
                                        void *dst) const {
   const uint8_t *src = PeekData(offset, length);
   if (src) {
-    ::memcpy(dst, src, length);
+    std::memcpy(dst, src, length);
     return length;
   }
   return 0;
@@ -726,10 +726,10 @@ DataExtractor::CopyByteOrderedData(offset_t src_offset, offset_t src_len,
       if (dst_byte_order == eByteOrderBig) {
         // Big endian, so we lead with zeroes...
         if (num_zeroes > 0)
-          ::memset(dst, 0, num_zeroes);
+          std::memset(dst, 0, num_zeroes);
         // Then either copy or swap the rest
         if (m_byte_order == eByteOrderBig) {
-          ::memcpy(dst + num_zeroes, src, src_len);
+          std::memcpy(dst + num_zeroes, src, src_len);
         } else {
           for (uint32_t i = 0; i < src_len; ++i)
             dst[i + num_zeroes] = src[src_len - 1 - i];
@@ -740,11 +740,11 @@ DataExtractor::CopyByteOrderedData(offset_t src_offset, offset_t src_len,
           for (uint32_t i = 0; i < src_len; ++i)
             dst[i] = src[src_len - 1 - i];
         } else {
-          ::memcpy(dst, src, src_len);
+          std::memcpy(dst, src, src_len);
         }
         // And zero the rest...
         if (num_zeroes > 0)
-          ::memset(dst + src_len, 0, num_zeroes);
+          std::memset(dst + src_len, 0, num_zeroes);
       }
       return src_len;
     } else {
@@ -754,7 +754,7 @@ DataExtractor::CopyByteOrderedData(offset_t src_offset, offset_t src_len,
         // Big endian dst
         if (m_byte_order == eByteOrderBig) {
           // Big endian dst, with big endian src
-          ::memcpy(dst, src + (src_len - dst_len), dst_len);
+          std::memcpy(dst, src + (src_len - dst_len), dst_len);
         } else {
           // Big endian dst, with little endian src
           for (uint32_t i = 0; i < dst_len; ++i)
@@ -768,7 +768,7 @@ DataExtractor::CopyByteOrderedData(offset_t src_offset, offset_t src_len,
             dst[i] = src[src_len - 1 - i];
         } else {
           // Little endian dst, with big endian src
-          ::memcpy(dst, src, dst_len);
+          std::memcpy(dst, src, dst_len);
         }
       }
       return dst_len;
@@ -994,8 +994,8 @@ bool DataExtractor::Append(DataExtractor &rhs) {
 
   uint8_t *bytes_ptr = buffer_heap_ptr->GetBytes();
 
-  memcpy(bytes_ptr, GetDataStart(), GetByteSize());
-  memcpy(bytes_ptr + GetByteSize(), rhs.GetDataStart(), rhs.GetByteSize());
+  std::memcpy(bytes_ptr, GetDataStart(), GetByteSize());
+  std::memcpy(bytes_ptr + GetByteSize(), rhs.GetDataStart(), rhs.GetByteSize());
 
   SetData(buffer_sp);
 
@@ -1020,9 +1020,9 @@ bool DataExtractor::Append(void *buf, offset_t length) {
   uint8_t *bytes_ptr = buffer_heap_ptr->GetBytes();
 
   if (GetByteSize() > 0)
-    memcpy(bytes_ptr, GetDataStart(), GetByteSize());
+    std::memcpy(bytes_ptr, GetDataStart(), GetByteSize());
 
-  memcpy(bytes_ptr + GetByteSize(), buf, length);
+  std::memcpy(bytes_ptr + GetByteSize(), buf, length);
 
   SetData(buffer_sp);
 

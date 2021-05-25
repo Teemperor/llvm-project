@@ -1195,7 +1195,7 @@ Status ProcessGDBRemote::DoAttachToProcessWithName(
       } else
         packet.PutCString("vAttachName");
       packet.PutChar(';');
-      packet.PutBytesAsRawHex8(process_name, strlen(process_name),
+      packet.PutBytesAsRawHex8(process_name, std::strlen(process_name),
                                endian::InlHostByteOrder(),
                                endian::InlHostByteOrder());
 
@@ -1574,7 +1574,7 @@ bool ProcessGDBRemote::UpdateThreadIDList() {
         m_thread_pcs.clear();
         const size_t thread_pcs_pos = stop_info_str.find(";thread-pcs:");
         if (thread_pcs_pos != std::string::npos) {
-          const size_t start = thread_pcs_pos + strlen(";thread-pcs:");
+          const size_t start = thread_pcs_pos + std::strlen(";thread-pcs:");
           const size_t end = stop_info_str.find(';', start);
           if (end != std::string::npos) {
             std::string value = stop_info_str.substr(start, end - start);
@@ -1584,7 +1584,7 @@ bool ProcessGDBRemote::UpdateThreadIDList() {
 
         const size_t threads_pos = stop_info_str.find(";threads:");
         if (threads_pos != std::string::npos) {
-          const size_t start = threads_pos + strlen(";threads:");
+          const size_t start = threads_pos + std::strlen(";threads:");
           const size_t end = stop_info_str.find(';', start);
           if (end != std::string::npos) {
             std::string value = stop_info_str.substr(start, end - start);
@@ -2747,7 +2747,7 @@ size_t ProcessGDBRemote::DoReadMemory(addr_t addr, void *buf, size_t size,
           // too much data for some reason.
           data_received_size = size;
         }
-        memcpy(buf, response.GetStringRef().data(), data_received_size);
+        std::memcpy(buf, response.GetStringRef().data(), data_received_size);
         return data_received_size;
       } else {
         return response.GetHexBytes(
@@ -3730,7 +3730,7 @@ thread_result_t ProcessGDBRemote::AsyncThread(void *arg) {
                       ") got eBroadcastBitAsyncContinue: %s",
                       __FUNCTION__, arg, process->GetID(), continue_cstr);
 
-            if (::strstr(continue_cstr, "vAttach") == nullptr)
+            if (std::strstr(continue_cstr, "vAttach") == nullptr)
               process->SetPrivateState(eStateRunning);
             StringExtractorGDBRemote response;
 
@@ -3796,11 +3796,11 @@ thread_result_t ProcessGDBRemote::AsyncThread(void *arg) {
                 // the "E87" error code from debugserver -- this indicates that
                 // the process is not debuggable.  Return a slightly more
                 // helpful error message about why the attach failed.
-                if (::strstr(continue_cstr, "vAttach") != nullptr &&
+                if (std::strstr(continue_cstr, "vAttach") != nullptr &&
                     response.GetError() == 0x87) {
                   process->SetExitStatus(-1, "cannot attach to process due to "
                                              "System Integrity Protection");
-                } else if (::strstr(continue_cstr, "vAttach") != nullptr &&
+                } else if (std::strstr(continue_cstr, "vAttach") != nullptr &&
                            response.GetStatus().Fail()) {
                   process->SetExitStatus(-1, response.GetStatus().AsCString());
                 } else {
@@ -5090,7 +5090,7 @@ ParseStructuredDataPacket(llvm::StringRef packet) {
           "but was not a StructuredData packet: packet starts with "
           "%s",
           __FUNCTION__,
-          packet.slice(0, strlen(s_async_json_packet_prefix)).str().c_str());
+          packet.slice(0, std::strlen(s_async_json_packet_prefix)).str().c_str());
     }
     return StructuredData::ObjectSP();
   }
@@ -5306,7 +5306,7 @@ public:
         output_strm.Printf("  packet: %s\n", packet_cstr);
         std::string response_str = std::string(response.GetStringRef());
 
-        if (strstr(packet_cstr, "qGetProfileData") != nullptr) {
+        if (std::strstr(packet_cstr, "qGetProfileData") != nullptr) {
           response_str = process->HarmonizeThreadIdsForProfileData(response);
         }
 

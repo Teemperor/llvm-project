@@ -56,7 +56,7 @@ public:
   lldb::SBValue GetFirstValueByName(const char *name) const {
     if (name) {
       for (auto val : m_values) {
-        if (val.IsValid() && val.GetName() && strcmp(name, val.GetName()) == 0)
+        if (val.IsValid() && val.GetName() && std::strcmp(name, val.GetName()) == 0)
           return val;
       }
     }

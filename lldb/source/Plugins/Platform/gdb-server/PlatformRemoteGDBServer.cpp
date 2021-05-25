@@ -833,7 +833,7 @@ std::string PlatformRemoteGDBServer::MakeUrl(const char *scheme,
   if (port != 0)
     result.Printf(":%u", port);
   if (path)
-    result.Write(path, strlen(path));
+    result.Write(path, std::strlen(path));
   return std::string(result.GetString());
 }
 

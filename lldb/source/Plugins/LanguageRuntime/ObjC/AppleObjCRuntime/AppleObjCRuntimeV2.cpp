@@ -2164,7 +2164,7 @@ lldb::addr_t AppleObjCRuntimeV2::LookupRuntimeSymbol(ConstString name) {
                             ivar_name_cstr](const char *name, const char *type,
                                             lldb::addr_t offset_addr,
                                             uint64_t size) -> lldb::addr_t {
-            if (!strcmp(name, ivar_name_cstr)) {
+            if (!std::strcmp(name, ivar_name_cstr)) {
               ret = offset_addr;
               return true;
             }

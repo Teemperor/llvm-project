@@ -785,7 +785,7 @@ bool RegisterContextDarwin_i386::WriteRegister(const RegisterInfo *reg_info,
   case fpu_stmm7:
     // These values don't fit into scalar types,
     // RegisterContext::ReadRegisterBytes() must be used for these registers
-    ::memcpy(fpu.stmm[reg - fpu_stmm0].bytes, value.GetBytes(),
+    std::memcpy(fpu.stmm[reg - fpu_stmm0].bytes, value.GetBytes(),
              value.GetByteSize());
     return false;
 
@@ -799,7 +799,7 @@ bool RegisterContextDarwin_i386::WriteRegister(const RegisterInfo *reg_info,
   case fpu_xmm7:
     // These values don't fit into scalar types,
     // RegisterContext::ReadRegisterBytes() must be used for these registers
-    ::memcpy(fpu.xmm[reg - fpu_xmm0].bytes, value.GetBytes(),
+    std::memcpy(fpu.xmm[reg - fpu_xmm0].bytes, value.GetBytes(),
              value.GetByteSize());
     return false;
 
@@ -826,13 +826,13 @@ bool RegisterContextDarwin_i386::ReadAllRegisterValues(
   data_sp = std::make_shared<DataBufferHeap>(REG_CONTEXT_SIZE, 0);
   if (ReadGPR(false) == 0 && ReadFPU(false) == 0 && ReadEXC(false) == 0) {
     uint8_t *dst = data_sp->GetBytes();
-    ::memcpy(dst, &gpr, sizeof(gpr));
+    std::memcpy(dst, &gpr, sizeof(gpr));
     dst += sizeof(gpr);
 
-    ::memcpy(dst, &fpu, sizeof(fpu));
+    std::memcpy(dst, &fpu, sizeof(fpu));
     dst += sizeof(gpr);
 
-    ::memcpy(dst, &exc, sizeof(exc));
+    std::memcpy(dst, &exc, sizeof(exc));
     return true;
   }
   return false;
@@ -842,13 +842,13 @@ bool RegisterContextDarwin_i386::WriteAllRegisterValues(
     const lldb::DataBufferSP &data_sp) {
   if (data_sp && data_sp->GetByteSize() == REG_CONTEXT_SIZE) {
     const uint8_t *src = data_sp->GetBytes();
-    ::memcpy(&gpr, src, sizeof(gpr));
+    std::memcpy(&gpr, src, sizeof(gpr));
     src += sizeof(gpr);
 
-    ::memcpy(&fpu, src, sizeof(fpu));
+    std::memcpy(&fpu, src, sizeof(fpu));
     src += sizeof(gpr);
 
-    ::memcpy(&exc, src, sizeof(exc));
+    std::memcpy(&exc, src, sizeof(exc));
     uint32_t success_count = 0;
     if (WriteGPR() == 0)
       ++success_count;

@@ -439,16 +439,16 @@ bool GDBRemoteCommunicationClient::GetVContSupported(char flavor) {
     if (SendPacketAndWaitForResponse("vCont?", response, false) ==
         PacketResult::Success) {
       const char *response_cstr = response.GetStringRef().data();
-      if (::strstr(response_cstr, ";c"))
+      if (std::strstr(response_cstr, ";c"))
         m_supports_vCont_c = eLazyBoolYes;
 
-      if (::strstr(response_cstr, ";C"))
+      if (std::strstr(response_cstr, ";C"))
         m_supports_vCont_C = eLazyBoolYes;
 
-      if (::strstr(response_cstr, ";s"))
+      if (std::strstr(response_cstr, ";s"))
         m_supports_vCont_s = eLazyBoolYes;
 
-      if (::strstr(response_cstr, ";S"))
+      if (std::strstr(response_cstr, ";S"))
         m_supports_vCont_S = eLazyBoolYes;
 
       if (m_supports_vCont_c == eLazyBoolYes &&
@@ -773,7 +773,7 @@ int GDBRemoteCommunicationClient::SendArgumentsPacket(
     packet.PutChar('A');
     for (size_t i = 0, n = argv.size(); i < n; ++i) {
       arg = argv[i];
-      const int arg_len = strlen(arg);
+      const int arg_len = std::strlen(arg);
       if (i > 0)
         packet.PutChar(',');
       packet.Printf("%i,%i,", arg_len * 2, (int)i);
@@ -830,7 +830,7 @@ int GDBRemoteCommunicationClient::SendEnvironmentPacket(
     if (send_hex_encoding) {
       if (m_supports_QEnvironmentHexEncoded) {
         packet.PutCString("QEnvironmentHexEncoded:");
-        packet.PutBytesAsRawHex8(name_equal_value, strlen(name_equal_value));
+        packet.PutBytesAsRawHex8(name_equal_value, std::strlen(name_equal_value));
         if (SendPacketAndWaitForResponse(packet.GetString(), response, false) ==
             PacketResult::Success) {
           if (response.IsOKResponse())
@@ -2195,7 +2195,7 @@ uint32_t GDBRemoteCommunicationClient::FindProcesses(
         }
         if (has_name_match) {
           packet.PutCString("name:");
-          packet.PutBytesAsRawHex8(name, ::strlen(name));
+          packet.PutBytesAsRawHex8(name, std::strlen(name));
           packet.PutChar(';');
         }
       }
@@ -3092,7 +3092,7 @@ uint64_t GDBRemoteCommunicationClient::ReadFile(lldb::user_id_t fd,
         const uint64_t data_to_write =
             std::min<uint64_t>(dst_len, buffer.size());
         if (data_to_write > 0)
-          memcpy(dst, &buffer[0], data_to_write);
+          std::memcpy(dst, &buffer[0], data_to_write);
         return data_to_write;
       }
     }
@@ -3254,7 +3254,7 @@ bool GDBRemoteCommunicationClient::AvoidGPackets(ProcessGDBRemote *process) {
         uint32_t gdb_server_version = GetGDBServerProgramVersion();
         if (gdb_server_version != 0) {
           const char *gdb_server_name = GetGDBServerProgramName();
-          if (gdb_server_name && strcmp(gdb_server_name, "debugserver") == 0) {
+          if (gdb_server_name && std::strcmp(gdb_server_name, "debugserver") == 0) {
             if (gdb_server_version >= 310)
               m_avoid_g_packets = eLazyBoolNo;
           }
@@ -3884,7 +3884,7 @@ void GDBRemoteCommunicationClient::ServeSymbolLookups(
         } else {
           llvm::StringRef response_str(response.GetStringRef());
           if (response_str.startswith("qSymbol:")) {
-            response.SetFilePos(strlen("qSymbol:"));
+            response.SetFilePos(std::strlen("qSymbol:"));
             std::string symbol_name;
             if (response.GetHexByteString(symbol_name)) {
               if (symbol_name.empty())
@@ -4078,7 +4078,7 @@ Status GDBRemoteCommunicationClient::ConfigureRemoteStructuredData(
       SendPacketAndWaitForResponse(stream.GetString(), response, send_async);
   if (result == PacketResult::Success) {
     // We failed if the config result comes back other than OK.
-    if (strcmp(response.GetStringRef().data(), "OK") == 0) {
+    if (std::strcmp(response.GetStringRef().data(), "OK") == 0) {
       // Okay!
       error.Clear();
     } else {

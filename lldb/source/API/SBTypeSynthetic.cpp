@@ -167,7 +167,7 @@ bool SBTypeSynthetic::IsEqualTo(lldb::SBTypeSynthetic &rhs) {
   if (IsClassCode() != rhs.IsClassCode())
     return false;
 
-  if (strcmp(GetData(), rhs.GetData()))
+  if (std::strcmp(GetData(), rhs.GetData()))
     return false;
 
   return GetOptions() == rhs.GetOptions();

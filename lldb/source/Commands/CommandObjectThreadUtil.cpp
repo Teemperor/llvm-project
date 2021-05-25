@@ -32,8 +32,8 @@ bool CommandObjectIterateOverThreads::DoExecute(Args &command,
       return false;
     return result.Succeeded();
   } else if (command.GetArgumentCount() == 1) {
-    all_threads = ::strcmp(command.GetArgumentAtIndex(0), "all") == 0;
-    m_unique_stacks = ::strcmp(command.GetArgumentAtIndex(0), "unique") == 0;
+    all_threads = std::strcmp(command.GetArgumentAtIndex(0), "all") == 0;
+    m_unique_stacks = std::strcmp(command.GetArgumentAtIndex(0), "unique") == 0;
   }
 
   // Use tids instead of ThreadSPs to prevent deadlocking problems which
@@ -167,7 +167,7 @@ bool CommandObjectMultipleThreads::DoExecute(Args &command,
   std::lock_guard<std::recursive_mutex> guard(
       process.GetThreadList().GetMutex());
 
-  if (num_args > 0 && ::strcmp(command.GetArgumentAtIndex(0), "all") == 0) {
+  if (num_args > 0 && std::strcmp(command.GetArgumentAtIndex(0), "all") == 0) {
     for (ThreadSP thread_sp : process.Threads())
       tids.push_back(thread_sp->GetID());
   } else {

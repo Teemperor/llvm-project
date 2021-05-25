@@ -2743,7 +2743,7 @@ bool SymbolFileDWARF::DIEDeclContextsMatch(const DWARFDIE &die1,
     // NULL.
     if (name1 && name2) {
       // If the strings don't compare, we are done...
-      if (strcmp(name1, name2) != 0)
+      if (std::strcmp(name1, name2) != 0)
         return false;
     } else {
       // One name was NULL while the other wasn't
@@ -3173,7 +3173,7 @@ VariableSP SymbolFileDWARF::ParseVariableDIE(const SymbolContext &sc,
       // it.
       use_type_size_for_value = true;
     } else if (const char *str = const_value_form.AsCString()) {
-      uint32_t string_length = strlen(str) + 1;
+      uint32_t string_length = std::strlen(str) + 1;
       location = DWARFExpression(
           module,
           DataExtractor(str, string_length, die.GetCU()->GetByteOrder(),

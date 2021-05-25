@@ -1278,12 +1278,12 @@ const char *DisassemblerLLVMC::SymbolLookupCallback(void *disassembler,
 bool DisassemblerLLVMC::FlavorValidForArchSpec(
     const lldb_private::ArchSpec &arch, const char *flavor) {
   llvm::Triple triple = arch.GetTriple();
-  if (flavor == nullptr || strcmp(flavor, "default") == 0)
+  if (flavor == nullptr || std::strcmp(flavor, "default") == 0)
     return true;
 
   if (triple.getArch() == llvm::Triple::x86 ||
       triple.getArch() == llvm::Triple::x86_64) {
-    return strcmp(flavor, "intel") == 0 || strcmp(flavor, "att") == 0;
+    return std::strcmp(flavor, "intel") == 0 || std::strcmp(flavor, "att") == 0;
   } else
     return false;
 }
@@ -1296,7 +1296,7 @@ int DisassemblerLLVMC::OpInfo(uint64_t PC, uint64_t Offset, uint64_t Size,
   default:
     break;
   case 1:
-    memset(tag_bug, 0, sizeof(::LLVMOpInfo1));
+    std::memset(tag_bug, 0, sizeof(::LLVMOpInfo1));
     break;
   }
   return 0;

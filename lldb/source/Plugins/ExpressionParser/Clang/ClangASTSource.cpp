@@ -1041,7 +1041,7 @@ void ClangASTSource::FindObjCMethodDecls(NameSearchContext &context) {
 
       size_t interface_len = interface_name.length();
 
-      if (strncmp(cursor, interface_name.c_str(), interface_len))
+      if (std::strncmp(cursor, interface_name.c_str(), interface_len))
         continue;
 
       cursor += interface_len;

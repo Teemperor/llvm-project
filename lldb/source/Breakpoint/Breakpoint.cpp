@@ -386,7 +386,7 @@ uint32_t Breakpoint::GetThreadIndex() const {
 
 void Breakpoint::SetThreadName(const char *thread_name) {
   if (m_options_up->GetThreadSpec()->GetName() != nullptr &&
-      ::strcmp(m_options_up->GetThreadSpec()->GetName(), thread_name) == 0)
+      std::strcmp(m_options_up->GetThreadSpec()->GetName(), thread_name) == 0)
     return;
 
   m_options_up->GetThreadSpec()->SetName(thread_name);
@@ -402,7 +402,7 @@ const char *Breakpoint::GetThreadName() const {
 
 void Breakpoint::SetQueueName(const char *queue_name) {
   if (m_options_up->GetThreadSpec()->GetQueueName() != nullptr &&
-      ::strcmp(m_options_up->GetThreadSpec()->GetQueueName(), queue_name) == 0)
+      std::strcmp(m_options_up->GetThreadSpec()->GetQueueName(), queue_name) == 0)
     return;
 
   m_options_up->GetThreadSpec()->SetQueueName(queue_name);

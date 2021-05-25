@@ -443,7 +443,7 @@ RegisterContextPOSIX_x86::RegisterContextPOSIX_x86(
     break;
   }
 
-  ::memset(&m_fpr, 0, sizeof(FPR));
+  std::memset(&m_fpr, 0, sizeof(FPR));
 
   m_fpr_type = eNotValid;
 }

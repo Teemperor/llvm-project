@@ -324,7 +324,7 @@ public:
     bool is_zero_argument = true;
 
     while (*name_cursor != '\0') {
-      const char *colon_loc = strchr(name_cursor, ':');
+      const char *colon_loc = std::strchr(name_cursor, ':');
       if (!colon_loc) {
         selector_components.push_back(
             &ast_ctx.Idents.get(llvm::StringRef(name_cursor)));

@@ -18,7 +18,7 @@ using namespace minidump;
 
 static void writeRegister(const void *reg_src,
                           llvm::MutableArrayRef<uint8_t> reg_dest) {
-  memcpy(reg_dest.data(), reg_src, reg_dest.size());
+  std::memcpy(reg_dest.data(), reg_src, reg_dest.size());
 }
 
 lldb::DataBufferSP lldb_private::minidump::ConvertMinidumpContext_x86_32(

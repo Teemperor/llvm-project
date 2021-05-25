@@ -1333,7 +1333,7 @@ public:
     auto pybuffer = PythonBuffer::Create(pybuffer_obj.get());
     if (!pybuffer)
       return Status(pybuffer.takeError());
-    memcpy(buf, pybuffer.get().get().buf, pybuffer.get().get().len);
+    std::memcpy(buf, pybuffer.get().get().buf, pybuffer.get().get().len);
     num_bytes = pybuffer.get().get().len;
     return Status();
   }
@@ -1391,7 +1391,7 @@ public:
     if (!stringref)
       return Status(stringref.takeError());
     num_bytes = stringref.get().size();
-    memcpy(buf, stringref.get().begin(), num_bytes);
+    std::memcpy(buf, stringref.get().begin(), num_bytes);
     return Status();
   }
 };

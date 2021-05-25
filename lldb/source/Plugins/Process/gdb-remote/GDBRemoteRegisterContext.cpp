@@ -112,7 +112,7 @@ bool GDBRemoteRegisterContext::PrivateSetRegisterValue(
   InvalidateIfNeeded(false);
 
   const size_t reg_byte_size = reg_info->byte_size;
-  memcpy(const_cast<uint8_t *>(
+  std::memcpy(const_cast<uint8_t *>(
              m_reg_data.PeekData(reg_info->byte_offset, reg_byte_size)),
          data.data(), std::min(data.size(), reg_byte_size));
   bool success = data.size() >= reg_byte_size;
@@ -204,7 +204,7 @@ bool GDBRemoteRegisterContext::ReadRegisterBytes(const RegisterInfo *reg_info,
     if (m_read_all_at_once && !m_gpacket_cached) {
       if (DataBufferSP buffer_sp =
               gdb_comm.ReadAllRegisters(m_thread.GetProtocolID())) {
-        memcpy(const_cast<uint8_t *>(m_reg_data.GetDataStart()),
+        std::memcpy(const_cast<uint8_t *>(m_reg_data.GetDataStart()),
                buffer_sp->GetBytes(),
                std::min(buffer_sp->GetByteSize(), m_reg_data.GetByteSize()));
         if (buffer_sp->GetByteSize() >= m_reg_data.GetByteSize()) {
@@ -355,7 +355,7 @@ bool GDBRemoteRegisterContext::WriteRegisterBytes(const RegisterInfo *reg_info,
   bool do_reconfigure_arm64_sve = false;
   const ArchSpec &arch = process->GetTarget().GetArchitecture();
   if (arch.IsValid() && arch.GetTriple().isAArch64())
-    if (strcmp(reg_info->name, "vg") == 0)
+    if (std::strcmp(reg_info->name, "vg") == 0)
       do_reconfigure_arm64_sve = true;
 
   if (data.CopyByteOrderedData(data_offset,                // src offset
@@ -696,8 +696,8 @@ bool GDBRemoteRegisterContext::WriteAllRegisterValues(
         // Skip the fpsr and fpcr floating point status/control register
         // writing to work around a bug in an older version of debugserver that
         // would lead to register context corruption when writing fpsr/fpcr.
-        if (arm64_debugserver && (strcmp(reg_info->name, "fpsr") == 0 ||
-                                  strcmp(reg_info->name, "fpcr") == 0)) {
+        if (arm64_debugserver && (std::strcmp(reg_info->name, "fpsr") == 0 ||
+                                  std::strcmp(reg_info->name, "fpcr") == 0)) {
           continue;
         }
 
@@ -1021,7 +1021,7 @@ void GDBRemoteDynamicRegisterInfo::HardcodeARMRegisters(bool from_scratch) {
       for (i = 0; match && i < num_dynamic_regs; ++i) {
         // Make sure all register names match
         if (m_regs[i].name && g_register_infos[i].name) {
-          if (strcmp(m_regs[i].name, g_register_infos[i].name)) {
+          if (std::strcmp(m_regs[i].name, g_register_infos[i].name)) {
             match = false;
             break;
           }

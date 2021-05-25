@@ -227,7 +227,7 @@ bool ELFNote::Parse(const DataExtractor &data, lldb::offset_t *offset) {
     char buf[4];
     if (data.ExtractBytes(*offset, 4, data.GetByteOrder(), buf) != 4)
       return false;
-    if (strncmp(buf, "CORE", 4) == 0) {
+    if (std::strncmp(buf, "CORE", 4) == 0) {
       n_name = "CORE";
       *offset += 4;
       return true;
@@ -1937,7 +1937,7 @@ static char FindArmAarch64MappingSymbol(const char *symbol_name) {
   if (!symbol_name)
     return '\0';
 
-  const char *dollar_pos = ::strchr(symbol_name, '$');
+  const char *dollar_pos = std::strchr(symbol_name, '$');
   if (!dollar_pos || dollar_pos[1] == '\0')
     return '\0';
 
@@ -2012,8 +2012,8 @@ unsigned ObjectFileELF::ParseSymbols(Symtab *symtab, user_id_t start_id,
 
     // Skipping oatdata and oatexec sections if it is requested. See details
     // above the definition of skip_oatdata_oatexec for the reasons.
-    if (skip_oatdata_oatexec && (::strcmp(symbol_name, "oatdata") == 0 ||
-                                 ::strcmp(symbol_name, "oatexec") == 0))
+    if (skip_oatdata_oatexec && (std::strcmp(symbol_name, "oatdata") == 0 ||
+                                 std::strcmp(symbol_name, "oatexec") == 0))
       continue;
 
     SectionSP symbol_section_sp;
@@ -2616,7 +2616,7 @@ unsigned ObjectFileELF::ApplyRelocations(
               data_buffer_sp->GetBytes() + rel_section->GetFileOffset() +
               ELFRelocation::RelocOffset64(rel));
           uint64_t val_offset = value + ELFRelocation::RelocAddend64(rel);
-          memcpy(dst, &val_offset, sizeof(uint64_t));
+          std::memcpy(dst, &val_offset, sizeof(uint64_t));
         }
         break;
       }
@@ -2642,7 +2642,7 @@ unsigned ObjectFileELF::ApplyRelocations(
           uint32_t *dst = reinterpret_cast<uint32_t *>(
               data_buffer_sp->GetBytes() + rel_section->GetFileOffset() +
               ELFRelocation::RelocOffset32(rel));
-          memcpy(dst, &truncated_addr, sizeof(uint32_t));
+          std::memcpy(dst, &truncated_addr, sizeof(uint32_t));
         }
         break;
       }
@@ -2865,7 +2865,7 @@ void ObjectFileELF::RelocateSection(lldb_private::Section *section)
     return;
 
   // We don't relocate non-debug sections at the moment
-  if (strncmp(section_name, debug_prefix, strlen(debug_prefix)))
+  if (std::strncmp(section_name, debug_prefix, std::strlen(debug_prefix)))
     return;
 
   // Relocation section names to look for

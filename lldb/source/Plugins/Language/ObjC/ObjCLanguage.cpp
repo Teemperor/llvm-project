@@ -125,14 +125,14 @@ ConstString ObjCLanguage::MethodName::GetClassName() {
     if (IsValid(false)) {
       const char *full = m_full.GetCString();
       const char *class_start = (full[0] == '[' ? full + 1 : full + 2);
-      const char *paren_pos = strchr(class_start, '(');
+      const char *paren_pos = std::strchr(class_start, '(');
       if (paren_pos) {
         m_class.SetCStringWithLength(class_start, paren_pos - class_start);
       } else {
         // No '(' was found in the full name, we can definitively say that our
         // category was valid (and empty).
         m_category_is_valid = true;
-        const char *space_pos = strchr(full, ' ');
+        const char *space_pos = std::strchr(full, ' ');
         if (space_pos) {
           m_class.SetCStringWithLength(class_start, space_pos - class_start);
           if (!m_class_category) {
@@ -151,13 +151,13 @@ ConstString ObjCLanguage::MethodName::GetClassNameWithCategory() {
     if (IsValid(false)) {
       const char *full = m_full.GetCString();
       const char *class_start = (full[0] == '[' ? full + 1 : full + 2);
-      const char *space_pos = strchr(full, ' ');
+      const char *space_pos = std::strchr(full, ' ');
       if (space_pos) {
         m_class_category.SetCStringWithLength(class_start,
                                               space_pos - class_start);
         // If m_class hasn't been filled in and the class with category doesn't
         // contain a '(', then we can also fill in the m_class
-        if (!m_class && strchr(m_class_category.GetCString(), '(') == nullptr) {
+        if (!m_class && std::strchr(m_class_category.GetCString(), '(') == nullptr) {
           m_class = m_class_category;
           // No '(' was found in the full name, we can definitively say that
           // our category was valid (and empty).
@@ -173,7 +173,7 @@ ConstString ObjCLanguage::MethodName::GetSelector() {
   if (!m_selector) {
     if (IsValid(false)) {
       const char *full = m_full.GetCString();
-      const char *space_pos = strchr(full, ' ');
+      const char *space_pos = std::strchr(full, ' ');
       if (space_pos) {
         ++space_pos; // skip the space
         m_selector.SetCStringWithLength(space_pos, m_full.GetLength() -
@@ -190,10 +190,10 @@ ConstString ObjCLanguage::MethodName::GetCategory() {
       m_category_is_valid = true;
       const char *full = m_full.GetCString();
       const char *class_start = (full[0] == '[' ? full + 1 : full + 2);
-      const char *open_paren_pos = strchr(class_start, '(');
+      const char *open_paren_pos = std::strchr(class_start, '(');
       if (open_paren_pos) {
         ++open_paren_pos; // Skip the open paren
-        const char *close_paren_pos = strchr(open_paren_pos, ')');
+        const char *close_paren_pos = std::strchr(open_paren_pos, ')');
         if (close_paren_pos)
           m_category.SetCStringWithLength(open_paren_pos,
                                           close_paren_pos - open_paren_pos);

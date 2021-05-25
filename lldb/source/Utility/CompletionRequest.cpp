@@ -30,7 +30,7 @@ CompletionRequest::CompletionRequest(llvm::StringRef command_line,
   } else {
     m_cursor_index = GetParsedLine().GetArgumentCount() - 1U;
     m_cursor_char_position =
-        strlen(GetParsedLine().GetArgumentAtIndex(m_cursor_index));
+        std::strlen(GetParsedLine().GetArgumentAtIndex(m_cursor_index));
   }
 
   // The cursor is after a space but the space is not part of the argument.

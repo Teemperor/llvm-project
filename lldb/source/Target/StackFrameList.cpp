@@ -866,7 +866,7 @@ size_t StackFrameList::GetStatus(Stream &strm, uint32_t first_frame,
   const char *unselected_marker = nullptr;
   std::string buffer;
   if (selected_frame_marker) {
-    size_t len = strlen(selected_frame_marker);
+    size_t len = std::strlen(selected_frame_marker);
     buffer.insert(buffer.begin(), len, ' ');
     unselected_marker = buffer.c_str();
   }

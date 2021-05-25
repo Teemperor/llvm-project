@@ -245,7 +245,7 @@ static void SplitEventData(const char *data, std::vector<std::string> &elements)
   const char *start = data;
 
   while (*start != '\0') {
-    const char *token = strchr(start, ':');
+    const char *token = std::strchr(start, ':');
     if (!token) {
       elements.push_back(std::string(start));
       return;
@@ -804,7 +804,7 @@ bool MachProcess::GetMachOInformationFromMemory(
       }
       struct mach_o_segment this_seg;
       char name[17];
-      ::memset(name, 0, sizeof(name));
+      std::memset(name, 0, sizeof(name));
       memcpy(name, seg.segname, sizeof(seg.segname));
       this_seg.name = name;
       this_seg.vmaddr = seg.vmaddr;
@@ -827,7 +827,7 @@ bool MachProcess::GetMachOInformationFromMemory(
       }
       struct mach_o_segment this_seg;
       char name[17];
-      ::memset(name, 0, sizeof(name));
+      std::memset(name, 0, sizeof(name));
       memcpy(name, seg.segname, sizeof(seg.segname));
       this_seg.name = name;
       this_seg.vmaddr = seg.vmaddr;

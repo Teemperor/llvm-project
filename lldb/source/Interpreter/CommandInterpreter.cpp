@@ -1471,7 +1471,7 @@ CommandObject *CommandInterpreter::BuildAliasResult(
       size_t strpos = raw_input_string.find(cmd_args.GetArgumentAtIndex(index));
       if (strpos != std::string::npos)
         raw_input_string = raw_input_string.erase(
-            strpos, strlen(cmd_args.GetArgumentAtIndex(index)));
+            strpos, std::strlen(cmd_args.GetArgumentAtIndex(index)));
       result_str.Printf("%s", cmd_args.GetArgumentAtIndex(index));
     }
   }
@@ -1831,7 +1831,7 @@ void CommandInterpreter::HandleCompletionMatches(CompletionRequest &request) {
 
     if (new_matches.GetSize() && cmd_obj && cmd_obj->IsMultiwordObject() &&
         new_matches.GetStringAtIndex(0) != nullptr &&
-        strcmp(request.GetParsedLine().GetArgumentAtIndex(0),
+        std::strcmp(request.GetParsedLine().GetArgumentAtIndex(0),
                new_matches.GetStringAtIndex(0)) == 0) {
       if (request.GetParsedLine().GetArgumentCount() != 1) {
         look_for_subcommand = true;
@@ -2007,7 +2007,7 @@ void CommandInterpreter::BuildAliasCommandArgs(CommandObject *alias_cmd_obj,
             raw_input_string.find(cmd_args.GetArgumentAtIndex(index));
         if (strpos != std::string::npos) {
           raw_input_string = raw_input_string.erase(
-              strpos, strlen(cmd_args.GetArgumentAtIndex(index)));
+              strpos, std::strlen(cmd_args.GetArgumentAtIndex(index)));
         }
 
         if (value_type != OptionParser::eOptionalArgument)

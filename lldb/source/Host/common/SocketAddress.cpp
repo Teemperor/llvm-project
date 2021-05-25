@@ -46,8 +46,8 @@ const char *inet_ntop(int af, const void *src, char *dst, socklen_t size) {
   case AF_INET: {
     {
       const char *formatted = inet_ntoa(*static_cast<const in_addr *>(src));
-      if (formatted && strlen(formatted) < static_cast<size_t>(size)) {
-        return ::strcpy(dst, formatted);
+      if (formatted && std::strlen(formatted) < static_cast<size_t>(size)) {
+        return std::strcpy(dst, formatted);
       }
     }
     return nullptr;
@@ -59,7 +59,7 @@ const char *inet_ntop(int af, const void *src, char *dst, socklen_t size) {
         ntohs(src16[1]), ntohs(src16[2]), ntohs(src16[3]), ntohs(src16[4]),
         ntohs(src16[5]), ntohs(src16[6]), ntohs(src16[7]));
     if (full_size < static_cast<int>(size)) {
-      return ::strcpy(dst, tmp);
+      return std::strcpy(dst, tmp);
     }
     return nullptr;
   }
@@ -96,7 +96,7 @@ SocketAddress::SocketAddress(const struct addrinfo *addr_info) {
 SocketAddress::~SocketAddress() {}
 
 void SocketAddress::Clear() {
-  memset(&m_socket_addr, 0, sizeof(m_socket_addr));
+  std::memset(&m_socket_addr, 0, sizeof(m_socket_addr));
 }
 
 bool SocketAddress::IsValid() const { return GetLength() != 0; }
@@ -179,7 +179,7 @@ operator=(const struct addrinfo *addr_info) {
   Clear();
   if (addr_info && addr_info->ai_addr && addr_info->ai_addrlen > 0 &&
       size_t(addr_info->ai_addrlen) <= sizeof m_socket_addr) {
-    ::memcpy(&m_socket_addr, addr_info->ai_addr, addr_info->ai_addrlen);
+    std::memcpy(&m_socket_addr, addr_info->ai_addr, addr_info->ai_addrlen);
   }
   return *this;
 }
@@ -224,7 +224,7 @@ SocketAddress::GetAddressInfo(const char *hostname, const char *servname,
   std::vector<SocketAddress> addr_list;
 
   struct addrinfo hints;
-  memset(&hints, 0, sizeof(hints));
+  std::memset(&hints, 0, sizeof(hints));
   hints.ai_family = ai_family;
   hints.ai_socktype = ai_socktype;
   hints.ai_protocol = ai_protocol;

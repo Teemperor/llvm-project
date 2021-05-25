@@ -100,7 +100,7 @@ DynamicRegisterInfo::SetRegisterInfo(const StructuredData::Dictionary &dict,
     RegisterInfo reg_info;
     std::vector<uint32_t> value_regs;
     std::vector<uint32_t> invalidate_regs;
-    memset(&reg_info, 0, sizeof(reg_info));
+    std::memset(&reg_info, 0, sizeof(reg_info));
 
     ConstString name_val;
     ConstString alt_name_val;
@@ -534,18 +534,18 @@ void DynamicRegisterInfo::Finalize(const ArchSpec &arch) {
     case llvm::Triple::aarch64_32:
     case llvm::Triple::aarch64_be:
       for (auto &reg : m_regs) {
-        if (strcmp(reg.name, "pc") == 0)
+        if (std::strcmp(reg.name, "pc") == 0)
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_PC;
-        else if ((strcmp(reg.name, "fp") == 0) ||
-                 (strcmp(reg.name, "x29") == 0))
+        else if ((std::strcmp(reg.name, "fp") == 0) ||
+                 (std::strcmp(reg.name, "x29") == 0))
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_FP;
-        else if ((strcmp(reg.name, "lr") == 0) ||
-                 (strcmp(reg.name, "x30") == 0))
+        else if ((std::strcmp(reg.name, "lr") == 0) ||
+                 (std::strcmp(reg.name, "x30") == 0))
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_RA;
-        else if ((strcmp(reg.name, "sp") == 0) ||
-                 (strcmp(reg.name, "x31") == 0))
+        else if ((std::strcmp(reg.name, "sp") == 0) ||
+                 (std::strcmp(reg.name, "x31") == 0))
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_SP;
-        else if (strcmp(reg.name, "cpsr") == 0)
+        else if (std::strcmp(reg.name, "cpsr") == 0)
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_FLAGS;
       }
       break;
@@ -555,55 +555,55 @@ void DynamicRegisterInfo::Finalize(const ArchSpec &arch) {
     case llvm::Triple::thumb:
     case llvm::Triple::thumbeb:
       for (auto &reg : m_regs) {
-        if ((strcmp(reg.name, "pc") == 0) || (strcmp(reg.name, "r15") == 0))
+        if ((std::strcmp(reg.name, "pc") == 0) || (std::strcmp(reg.name, "r15") == 0))
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_PC;
-        else if ((strcmp(reg.name, "sp") == 0) ||
-                 (strcmp(reg.name, "r13") == 0))
+        else if ((std::strcmp(reg.name, "sp") == 0) ||
+                 (std::strcmp(reg.name, "r13") == 0))
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_SP;
-        else if ((strcmp(reg.name, "lr") == 0) ||
-                 (strcmp(reg.name, "r14") == 0))
+        else if ((std::strcmp(reg.name, "lr") == 0) ||
+                 (std::strcmp(reg.name, "r14") == 0))
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_RA;
-        else if ((strcmp(reg.name, "r7") == 0) &&
+        else if ((std::strcmp(reg.name, "r7") == 0) &&
                  arch.GetTriple().getVendor() == llvm::Triple::Apple)
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_FP;
-        else if ((strcmp(reg.name, "r11") == 0) &&
+        else if ((std::strcmp(reg.name, "r11") == 0) &&
                  arch.GetTriple().getVendor() != llvm::Triple::Apple)
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_FP;
-        else if (strcmp(reg.name, "fp") == 0)
+        else if (std::strcmp(reg.name, "fp") == 0)
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_FP;
-        else if (strcmp(reg.name, "cpsr") == 0)
+        else if (std::strcmp(reg.name, "cpsr") == 0)
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_FLAGS;
       }
       break;
 
     case llvm::Triple::x86:
       for (auto &reg : m_regs) {
-        if ((strcmp(reg.name, "eip") == 0) || (strcmp(reg.name, "pc") == 0))
+        if ((std::strcmp(reg.name, "eip") == 0) || (std::strcmp(reg.name, "pc") == 0))
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_PC;
-        else if ((strcmp(reg.name, "esp") == 0) ||
-                 (strcmp(reg.name, "sp") == 0))
+        else if ((std::strcmp(reg.name, "esp") == 0) ||
+                 (std::strcmp(reg.name, "sp") == 0))
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_SP;
-        else if ((strcmp(reg.name, "ebp") == 0) ||
-                 (strcmp(reg.name, "fp") == 0))
+        else if ((std::strcmp(reg.name, "ebp") == 0) ||
+                 (std::strcmp(reg.name, "fp") == 0))
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_FP;
-        else if ((strcmp(reg.name, "eflags") == 0) ||
-                 (strcmp(reg.name, "flags") == 0))
+        else if ((std::strcmp(reg.name, "eflags") == 0) ||
+                 (std::strcmp(reg.name, "flags") == 0))
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_FLAGS;
       }
       break;
 
     case llvm::Triple::x86_64:
       for (auto &reg : m_regs) {
-        if ((strcmp(reg.name, "rip") == 0) || (strcmp(reg.name, "pc") == 0))
+        if ((std::strcmp(reg.name, "rip") == 0) || (std::strcmp(reg.name, "pc") == 0))
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_PC;
-        else if ((strcmp(reg.name, "rsp") == 0) ||
-                 (strcmp(reg.name, "sp") == 0))
+        else if ((std::strcmp(reg.name, "rsp") == 0) ||
+                 (std::strcmp(reg.name, "sp") == 0))
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_SP;
-        else if ((strcmp(reg.name, "rbp") == 0) ||
-                 (strcmp(reg.name, "fp") == 0))
+        else if ((std::strcmp(reg.name, "rbp") == 0) ||
+                 (std::strcmp(reg.name, "fp") == 0))
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_FP;
-        else if ((strcmp(reg.name, "rflags") == 0) ||
-                 (strcmp(reg.name, "flags") == 0))
+        else if ((std::strcmp(reg.name, "rflags") == 0) ||
+                 (std::strcmp(reg.name, "flags") == 0))
           reg.kinds[eRegisterKindGeneric] = LLDB_REGNUM_GENERIC_FLAGS;
       }
       break;
@@ -622,7 +622,7 @@ void DynamicRegisterInfo::Finalize(const ArchSpec &arch) {
   // AArch64 SVE register set has configurable register sizes
   if (arch.GetTriple().isAArch64()) {
     for (const auto &reg : m_regs) {
-      if (strcmp(reg.name, "vg") == 0) {
+      if (std::strcmp(reg.name, "vg") == 0) {
         m_is_reconfigurable = true;
         break;
       }

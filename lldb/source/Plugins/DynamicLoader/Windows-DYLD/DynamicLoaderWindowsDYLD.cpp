@@ -214,8 +214,8 @@ DynamicLoaderWindowsDYLD::GetStepThroughTrampolinePlan(Thread &thread,
 
   ExecutionContext exe_ctx(m_process->GetTarget());
   if (first_insn == nullptr || second_insn == nullptr ||
-      strcmp(first_insn->GetMnemonic(&exe_ctx), "jmpl") != 0 ||
-      strcmp(second_insn->GetMnemonic(&exe_ctx), "nop") != 0) {
+      std::strcmp(first_insn->GetMnemonic(&exe_ctx), "jmpl") != 0 ||
+      std::strcmp(second_insn->GetMnemonic(&exe_ctx), "nop") != 0) {
     return ThreadPlanSP();
   }
 

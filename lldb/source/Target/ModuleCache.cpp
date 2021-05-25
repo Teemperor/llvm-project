@@ -40,7 +40,7 @@ std::string GetEscapedHostname(const char *hostname) {
   size_t size = result.size();
   for (size_t i = 0; i < size; ++i) {
     if ((result[i] >= 1 && result[i] <= 31) ||
-        strchr(kFSIllegalChars, result[i]) != nullptr)
+        std::strchr(kFSIllegalChars, result[i]) != nullptr)
       result[i] = '_';
   }
   return result;

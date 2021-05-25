@@ -131,7 +131,7 @@ loadMatchingPDBFile(std::string exe_path, llvm::BumpPtrAllocator &allocator) {
     return nullptr;
   }
   llvm::codeview::GUID guid;
-  memcpy(&guid, pdb_info->PDB70.Signature, 16);
+  std::memcpy(&guid, pdb_info->PDB70.Signature, 16);
 
   if (expected_info->getGuid() != guid)
     return nullptr;

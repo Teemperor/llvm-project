@@ -96,7 +96,7 @@ const char *CFCString::UTF8(CFStringRef cf_str, std::string &str) {
       str.resize(max_utf8_str_len);
       if (!str.empty()) {
         if (CFStringGetCString(cf_str, &str[0], str.size(), encoding)) {
-          str.resize(strlen(str.c_str()));
+          str.resize(std::strlen(str.c_str()));
           return str.c_str();
         }
       }
@@ -133,7 +133,7 @@ const char *CFCString::FileSystemRepresentation(CFStringRef cf_str,
       if (!str.empty()) {
         if (::CFStringGetFileSystemRepresentation(cf_str, &str[0],
                                                   str.size())) {
-          str.erase(::strlen(str.c_str()));
+          str.erase(std::strlen(str.c_str()));
           return str.c_str();
         }
       }

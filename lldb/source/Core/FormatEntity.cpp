@@ -1040,7 +1040,7 @@ static bool FormatThreadExtendedInfoRecurse(
 }
 
 static inline bool IsToken(const char *var_name_begin, const char *var) {
-  return (::strncmp(var_name_begin, var, strlen(var)) == 0);
+  return (std::strncmp(var_name_begin, var, std::strlen(var)) == 0);
 }
 
 bool FormatEntity::FormatStringRef(const llvm::StringRef &format_str, Stream &s,
@@ -1649,9 +1649,9 @@ bool FormatEntity::Format(const Entry &entry, Stream &s,
             variable_list_sp->AppendVariablesWithScope(
                 eValueTypeVariableArgument, args);
           if (args.GetSize() > 0) {
-            const char *open_paren = strchr(cstr, '(');
+            const char *open_paren = std::strchr(cstr, '(');
             const char *close_paren = nullptr;
-            const char *generic = strchr(cstr, '<');
+            const char *generic = std::strchr(cstr, '<');
             // if before the arguments list begins there is a template sign
             // then scan to the end of the generic args before you try to find
             // the arguments list
@@ -1665,18 +1665,18 @@ bool FormatEntity::Format(const Entry &entry, Stream &s,
                   generic_depth--;
               }
               if (*generic)
-                open_paren = strchr(generic, '(');
+                open_paren = std::strchr(generic, '(');
               else
                 open_paren = nullptr;
             }
             if (open_paren) {
               if (IsToken(open_paren, "(anonymous namespace)")) {
                 open_paren =
-                    strchr(open_paren + strlen("(anonymous namespace)"), '(');
+                    std::strchr(open_paren + std::strlen("(anonymous namespace)"), '(');
                 if (open_paren)
-                  close_paren = strchr(open_paren, ')');
+                  close_paren = std::strchr(open_paren, ')');
               } else
-                close_paren = strchr(open_paren, ')');
+                close_paren = std::strchr(open_paren, ')');
             }
 
             if (open_paren)
@@ -2378,7 +2378,7 @@ static void AddMatches(const Definition *def, const llvm::StringRef &prefix,
       std::string match = prefix.str();
       if (match_prefix.empty())
         matches.AppendString(MakeMatch(prefix, def->children[i].name));
-      else if (strncmp(def->children[i].name, match_prefix.data(),
+      else if (std::strncmp(def->children[i].name, match_prefix.data(),
                        match_prefix.size()) == 0)
         matches.AppendString(
             MakeMatch(prefix, def->children[i].name + match_prefix.size()));

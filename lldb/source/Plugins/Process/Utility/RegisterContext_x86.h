@@ -371,16 +371,16 @@ LLVM_ENABLE_BITMASK_ENUMS_IN_NAMESPACE();
 inline YMMReg XStateToYMM(const void* xmm_bytes, const void* ymmh_bytes) {
   YMMReg ret;
 
-  ::memcpy(ret.bytes, xmm_bytes, sizeof(XMMReg));
-  ::memcpy(ret.bytes + sizeof(XMMReg), ymmh_bytes, sizeof(YMMHReg));
+  std::memcpy(ret.bytes, xmm_bytes, sizeof(XMMReg));
+  std::memcpy(ret.bytes + sizeof(XMMReg), ymmh_bytes, sizeof(YMMHReg));
 
   return ret;
 }
 
 // Convenience function to copy YMM register data into XSAVE-style output.
 inline void YMMToXState(const YMMReg& input, void* xmm_bytes, void* ymmh_bytes) {
-  ::memcpy(xmm_bytes, input.bytes, sizeof(XMMReg));
-  ::memcpy(ymmh_bytes, input.bytes + sizeof(XMMReg), sizeof(YMMHReg));
+  std::memcpy(xmm_bytes, input.bytes, sizeof(XMMReg));
+  std::memcpy(ymmh_bytes, input.bytes + sizeof(XMMReg), sizeof(YMMHReg));
 }
 
 uint16_t AbridgedToFullTagWord(uint8_t abridged_tw, uint16_t sw,

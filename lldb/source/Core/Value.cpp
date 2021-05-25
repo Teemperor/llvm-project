@@ -167,7 +167,7 @@ size_t Value::AppendDataToHostBuffer(const Value &rhs) {
     if (src && src_len > 0) {
       const size_t new_size = curr_size + src_len;
       if (ResizeData(new_size) == new_size) {
-        ::memcpy(m_data_buffer.GetBytes() + curr_size, src, src_len);
+        std::memcpy(m_data_buffer.GetBytes() + curr_size, src, src_len);
         return src_len;
       }
     }
@@ -521,7 +521,7 @@ Status Value::GetValueAsData(ExecutionContext *exe_ctx, DataExtractor &data,
         error.SetErrorString("trying to read from host address of 0.");
         return error;
       }
-      memcpy(dst, reinterpret_cast<uint8_t *>(address), byte_size);
+      std::memcpy(dst, reinterpret_cast<uint8_t *>(address), byte_size);
     } else if ((address_type == eAddressTypeLoad) ||
                (address_type == eAddressTypeFile)) {
       if (file_so_addr.IsValid()) {

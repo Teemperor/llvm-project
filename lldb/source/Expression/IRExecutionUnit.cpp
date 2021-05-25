@@ -759,7 +759,7 @@ void IRExecutionUnit::CollectFallbackNames(
       continue;
 
     const char *demangled_cstr = demangled_name.AsCString();
-    const char *lparen_loc = strchr(demangled_cstr, '(');
+    const char *lparen_loc = std::strchr(demangled_cstr, '(');
     if (!lparen_loc)
       continue;
 

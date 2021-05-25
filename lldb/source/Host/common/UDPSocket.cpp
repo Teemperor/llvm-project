@@ -73,7 +73,7 @@ UDPSocket::Connect(llvm::StringRef name, bool child_processes_inherit) {
   struct addrinfo hints;
   struct addrinfo *service_info_list = nullptr;
 
-  ::memset(&hints, 0, sizeof(hints));
+  std::memset(&hints, 0, sizeof(hints));
   hints.ai_family = kDomain;
   hints.ai_socktype = kType;
   int err = ::getaddrinfo(host_str.c_str(), port_str.c_str(), &hints,

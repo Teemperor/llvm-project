@@ -275,7 +275,7 @@ size_t StringExtractor::GetHexBytes(llvm::MutableArrayRef<uint8_t> dest,
   }
 
   if (!dest.empty())
-    ::memset(dest.data(), fail_fill_value, dest.size());
+    std::memset(dest.data(), fail_fill_value, dest.size());
 
   return bytes_extracted;
 }

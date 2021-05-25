@@ -357,9 +357,9 @@ ObjectContainer *ObjectContainerBSDArchive::CreateInstance(
 bool ObjectContainerBSDArchive::MagicBytesMatch(const DataExtractor &data) {
   uint32_t offset = 0;
   const char *armag = (const char *)data.PeekData(offset, sizeof(ar_hdr));
-  if (armag && ::strncmp(armag, ARMAG, SARMAG) == 0) {
+  if (armag && std::strncmp(armag, ARMAG, SARMAG) == 0) {
     armag += offsetof(struct ar_hdr, ar_fmag) + SARMAG;
-    if (strncmp(armag, ARFMAG, 2) == 0)
+    if (std::strncmp(armag, ARFMAG, 2) == 0)
       return true;
   }
   return false;

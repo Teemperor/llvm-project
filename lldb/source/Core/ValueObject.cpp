@@ -850,7 +850,7 @@ bool ValueObject::SetData(DataExtractor &data, Status &error) {
 static bool CopyStringDataToBufferSP(const StreamString &source,
                                      lldb::DataBufferSP &destination) {
   destination = std::make_shared<DataBufferHeap>(source.GetSize() + 1, 0);
-  memcpy(destination->GetBytes(), source.GetString().data(), source.GetSize());
+  std::memcpy(destination->GetBytes(), source.GetString().data(), source.GetSize());
   return true;
 }
 
@@ -913,7 +913,7 @@ ValueObject::ReadPointedString(lldb::DataBufferSP &buffer_sp, Status &error,
           return {0, was_capped};
         }
         buffer_sp = std::make_shared<DataBufferHeap>(cstr_len, 0);
-        memcpy(buffer_sp->GetBytes(), cstr, cstr_len);
+        std::memcpy(buffer_sp->GetBytes(), cstr, cstr_len);
         return {cstr_len, was_capped};
       } else {
         s << "<invalid address>";

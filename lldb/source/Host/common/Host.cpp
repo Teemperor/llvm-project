@@ -186,7 +186,7 @@ static thread_result_t MonitorChildProcessThreadFunction(void *arg) {
 #ifdef __linux__
   // This signal is only used to interrupt the thread from waitpid
   struct sigaction sigUsr1Action;
-  memset(&sigUsr1Action, 0, sizeof(sigUsr1Action));
+  std::memset(&sigUsr1Action, 0, sizeof(sigUsr1Action));
   sigUsr1Action.sa_handler = SigUsr1Handler;
   ::sigaction(SIGUSR1, &sigUsr1Action, nullptr);
 #endif // __linux__

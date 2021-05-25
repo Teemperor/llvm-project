@@ -732,7 +732,7 @@ Debugger::Debugger(lldb::LogOutputCallback log_callback, void *baton)
 
   // Turn off use-color if this is a dumb terminal.
   const char *term = getenv("TERM");
-  if (term && !strcmp(term, "dumb"))
+  if (term && !std::strcmp(term, "dumb"))
     SetUseColor(false);
   // Turn off use-color if we don't write to a terminal with color support.
   if (!GetOutputFile().GetIsTerminalWithColors())

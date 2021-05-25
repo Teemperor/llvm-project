@@ -239,7 +239,7 @@ size_t ObjectFileJIT::ReadSectionData(lldb_private::Section *section,
     const uint8_t *src =
         ((uint8_t *)(uintptr_t)section->GetFileOffset()) + section_offset;
 
-    memcpy(dst, src, src_len);
+    std::memcpy(dst, src, src_len);
     return src_len;
   }
   return 0;

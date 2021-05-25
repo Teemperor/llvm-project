@@ -626,8 +626,8 @@ bool EmulateInstructionMIPS::GetRegisterInfo(RegisterKind reg_kind,
   }
 
   if (reg_kind == eRegisterKindDWARF) {
-    ::memset(&reg_info, 0, sizeof(RegisterInfo));
-    ::memset(reg_info.kinds, LLDB_INVALID_REGNUM, sizeof(reg_info.kinds));
+    std::memset(&reg_info, 0, sizeof(RegisterInfo));
+    std::memset(reg_info.kinds, LLDB_INVALID_REGNUM, sizeof(reg_info.kinds));
 
     if (reg_num == dwarf_sr_mips || reg_num == dwarf_fcsr_mips ||
         reg_num == dwarf_fir_mips || reg_num == dwarf_mcsr_mips ||

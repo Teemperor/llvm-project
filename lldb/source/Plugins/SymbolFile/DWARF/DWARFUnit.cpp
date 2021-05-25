@@ -634,7 +634,7 @@ void DWARFUnit::ParseProducerInfo() {
                           "[\\.0-9]+\\)$"));
       if (llvm_gcc_regex.Execute(llvm::StringRef(producer_cstr))) {
         m_producer = eProducerLLVMGCC;
-      } else if (strstr(producer_cstr, "clang")) {
+      } else if (std::strstr(producer_cstr, "clang")) {
         static RegularExpression g_clang_version_regex(
             llvm::StringRef("clang-([0-9]+)\\.([0-9]+)\\.([0-9]+)"));
         llvm::SmallVector<llvm::StringRef, 4> matches;
@@ -648,7 +648,7 @@ void DWARFUnit::ParseProducerInfo() {
               StringConvert::ToUInt32(matches[3].str().c_str(), UINT32_MAX, 10);
         }
         m_producer = eProducerClang;
-      } else if (strstr(producer_cstr, "GNU"))
+      } else if (std::strstr(producer_cstr, "GNU"))
         m_producer = eProducerGCC;
     }
   }

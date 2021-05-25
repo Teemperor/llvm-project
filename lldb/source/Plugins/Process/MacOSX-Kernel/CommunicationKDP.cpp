@@ -343,7 +343,7 @@ bool CommunicationKDP::SendRequestConnect(uint16_t reply_port,
   const CommandType command = KDP_CONNECT;
   // Length is 82 uint16_t and the length of the greeting C string with the
   // terminating NULL
-  const uint32_t command_length = 8 + 2 + 2 + ::strlen(greeting) + 1;
+  const uint32_t command_length = 8 + 2 + 2 + std::strlen(greeting) + 1;
   MakeRequestPacketHeader(command, request_packet, command_length);
   // Always send connect ports as little endian
   request_packet.SetByteOrder(eByteOrderLittle);
@@ -440,7 +440,7 @@ lldb_private::UUID CommunicationKDP::GetUUID() {
   if (m_kernel_version.find("UUID=") == std::string::npos)
     return uuid;
 
-  size_t p = m_kernel_version.find("UUID=") + strlen("UUID=");
+  size_t p = m_kernel_version.find("UUID=") + std::strlen("UUID=");
   std::string uuid_str = m_kernel_version.substr(p, 36);
   if (uuid_str.size() < 32)
     return uuid;
@@ -471,7 +471,7 @@ lldb::addr_t CommunicationKDP::GetLoadAddress() {
 
   if (m_kernel_version.find("stext=") == std::string::npos)
     return LLDB_INVALID_ADDRESS;
-  size_t p = m_kernel_version.find("stext=") + strlen("stext=");
+  size_t p = m_kernel_version.find("stext=") + std::strlen("stext=");
   if (m_kernel_version[p] != '0' || m_kernel_version[p + 1] != 'x')
     return LLDB_INVALID_ADDRESS;
 
@@ -566,7 +566,7 @@ uint32_t CommunicationKDP::SendRequestReadMemory(lldb::addr_t addr, void *dst,
     if (src_len > 0) {
       const void *src = reply_packet.GetData(&offset, src_len);
       if (src) {
-        ::memcpy(dst, src, src_len);
+        std::memcpy(dst, src, src_len);
         error.Clear();
         return src_len;
       }
@@ -1187,7 +1187,7 @@ uint32_t CommunicationKDP::SendRequestReadRegisters(uint32_t cpu,
       const uint32_t bytes_to_copy = std::min<uint32_t>(src_len, dst_len);
       const void *src = reply_packet.GetData(&offset, bytes_to_copy);
       if (src) {
-        ::memcpy(dst, src, bytes_to_copy);
+        std::memcpy(dst, src, bytes_to_copy);
         error.Clear();
         // Return the number of bytes we could have returned regardless if we
         // copied them or not, just so we know when things don't match up

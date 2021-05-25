@@ -2323,7 +2323,7 @@ void RegisterContextUnwind::UnwindLogMsg(const char *fmt, ...) {
     char *logmsg;
     if (vasprintf(&logmsg, fmt, args) == -1 || logmsg == nullptr) {
       if (logmsg)
-        free(logmsg);
+        std::free(logmsg);
       va_end(args);
       return;
     }
@@ -2332,7 +2332,7 @@ void RegisterContextUnwind::UnwindLogMsg(const char *fmt, ...) {
     LLDB_LOGF(log, "%*sth%d/fr%u %s",
               m_frame_number < 100 ? m_frame_number : 100, "",
               m_thread.GetIndexID(), m_frame_number, logmsg);
-    free(logmsg);
+    std::free(logmsg);
   }
 }
 
@@ -2345,7 +2345,7 @@ void RegisterContextUnwind::UnwindLogMsgVerbose(const char *fmt, ...) {
     char *logmsg;
     if (vasprintf(&logmsg, fmt, args) == -1 || logmsg == nullptr) {
       if (logmsg)
-        free(logmsg);
+        std::free(logmsg);
       va_end(args);
       return;
     }
@@ -2354,6 +2354,6 @@ void RegisterContextUnwind::UnwindLogMsgVerbose(const char *fmt, ...) {
     LLDB_LOGF(log, "%*sth%d/fr%u %s",
               m_frame_number < 100 ? m_frame_number : 100, "",
               m_thread.GetIndexID(), m_frame_number, logmsg);
-    free(logmsg);
+    std::free(logmsg);
   }
 }

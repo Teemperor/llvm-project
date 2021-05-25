@@ -870,7 +870,7 @@ bool EmulateInstructionARM64::EmulateLDPSTP(const uint32_t opcode) {
     context_t2.SetAddress(address + size);
 
     if (rt_unknown)
-      memset(buffer, 'U', reg_info_Rt.byte_size);
+      std::memset(buffer, 'U', reg_info_Rt.byte_size);
     else {
       if (!ReadMemory(context_t, address, buffer, reg_info_Rt.byte_size))
         return false;

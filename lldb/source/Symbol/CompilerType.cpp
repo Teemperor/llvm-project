@@ -590,7 +590,7 @@ uint32_t CompilerType::GetIndexOfFieldWithName(
     CompilerType field_compiler_type(
         GetFieldAtIndex(index, field_name, bit_offset_ptr,
                         bitfield_bit_size_ptr, is_bitfield_ptr));
-    if (strcmp(field_name.c_str(), name) == 0) {
+    if (std::strcmp(field_name.c_str(), name) == 0) {
       if (field_compiler_type_ptr)
         *field_compiler_type_ptr = field_compiler_type;
       return index;

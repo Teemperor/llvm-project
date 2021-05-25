@@ -88,7 +88,7 @@ public:
 
   const char *GetConstCString(const char *cstr) {
     if (cstr != nullptr)
-      return GetConstCStringWithLength(cstr, strlen(cstr));
+      return GetConstCStringWithLength(cstr, std::strlen(cstr));
     return nullptr;
   }
 

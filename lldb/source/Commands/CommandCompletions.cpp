@@ -146,11 +146,11 @@ public:
 
       bool match = false;
       if (m_file_name && cur_file_name &&
-          strstr(cur_file_name, m_file_name) == cur_file_name)
+          std::strstr(cur_file_name, m_file_name) == cur_file_name)
         match = true;
 
       if (match && m_dir_name && cur_dir_name &&
-          strstr(cur_dir_name, m_dir_name) != cur_dir_name)
+          std::strstr(cur_dir_name, m_dir_name) != cur_dir_name)
         match = false;
 
       if (match) {
@@ -275,11 +275,11 @@ public:
 
       bool match = false;
       if (m_file_name && cur_file_name &&
-          strstr(cur_file_name, m_file_name) == cur_file_name)
+          std::strstr(cur_file_name, m_file_name) == cur_file_name)
         match = true;
 
       if (match && m_dir_name && cur_dir_name &&
-          strstr(cur_dir_name, m_dir_name) != cur_dir_name)
+          std::strstr(cur_dir_name, m_dir_name) != cur_dir_name)
         match = false;
 
       if (match) {

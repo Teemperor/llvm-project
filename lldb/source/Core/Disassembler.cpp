@@ -808,7 +808,7 @@ OptionValueSP Instruction::ReadDictionary(FILE *in_file, Stream *out_stream) {
         // indicating the
         // data type of an upcoming array (usually the next bit of data to be
         // read in).
-        if (strcmp(value.c_str(), "uint32_t") == 0)
+        if (std::strcmp(value.c_str(), "uint32_t") == 0)
           data_type = OptionValue::eTypeUInt64;
       } else
         option_value_sp->GetAsDictionary()->SetValueForKey(const_key, value_sp,
@@ -842,7 +842,7 @@ bool Instruction::TestEmulation(Stream *out_stream, const char *file_name) {
     return false;
   }
 
-  if (strncmp(buffer, "InstructionEmulationState={", 27) != 0) {
+  if (std::strncmp(buffer, "InstructionEmulationState={", 27) != 0) {
     out_stream->Printf("Instructin::TestEmulation: Test file does not contain "
                        "emulation state dictionary\n");
     fclose(test_file);

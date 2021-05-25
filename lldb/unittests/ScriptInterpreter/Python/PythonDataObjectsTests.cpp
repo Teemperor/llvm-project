@@ -234,7 +234,7 @@ TEST_F(PythonDataObjectsTest, TestPythonBytes) {
 #endif
 
   llvm::ArrayRef<uint8_t> bytes = python_bytes.GetBytes();
-  EXPECT_EQ(bytes.size(), strlen(test_bytes));
+  EXPECT_EQ(bytes.size(), std::strlen(test_bytes));
   EXPECT_EQ(0, ::memcmp(bytes.data(), test_bytes, bytes.size()));
 }
 

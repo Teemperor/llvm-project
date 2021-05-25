@@ -391,7 +391,7 @@ bool ThreadPlanStepInRange::DefaultShouldStopHereCallback(
 
           if (function_name == nullptr)
             should_stop_here = false;
-          else if (strstr(function_name, target_name) == nullptr)
+          else if (std::strstr(function_name, target_name) == nullptr)
             should_stop_here = false;
         }
         if (log && !should_stop_here)

@@ -292,7 +292,7 @@ bool ValueObjectDynamicValue::SetValueFromCString(const char *value_str,
   // parser instead of the value editing facility
   if (my_value != parent_value) {
     // but NULL'ing out a value should always be allowed
-    if (strcmp(value_str, "0")) {
+    if (std::strcmp(value_str, "0")) {
       error.SetErrorString(
           "unable to modify dynamic value, use 'expression' command");
       return false;

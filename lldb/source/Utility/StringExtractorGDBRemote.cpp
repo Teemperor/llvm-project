@@ -56,7 +56,7 @@ StringExtractorGDBRemote::GetResponseType() const {
 StringExtractorGDBRemote::ServerPacketType
 StringExtractorGDBRemote::GetServerPacketType() const {
 #define PACKET_MATCHES(s)                                                      \
-  ((packet_size == (sizeof(s) - 1)) && (strcmp((packet_cstr), (s)) == 0))
+  ((packet_size == (sizeof(s) - 1)) && (std::strcmp((packet_cstr), (s)) == 0))
 #define PACKET_STARTS_WITH(s)                                                  \
   ((packet_size >= (sizeof(s) - 1)) &&                                         \
    ::strncmp(packet_cstr, s, (sizeof(s) - 1)) == 0)

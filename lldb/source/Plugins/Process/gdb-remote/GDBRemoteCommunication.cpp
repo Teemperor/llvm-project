@@ -141,11 +141,11 @@ GDBRemoteCommunication::SendRawPacketNoLock(llvm::StringRef packet,
     size_t bytes_written = Write(packet_data, packet_length, status, nullptr);
     if (log) {
       size_t binary_start_offset = 0;
-      if (strncmp(packet_data, "$vFile:pwrite:", strlen("$vFile:pwrite:")) ==
+      if (strncmp(packet_data, "$vFile:pwrite:", std::strlen("$vFile:pwrite:")) ==
           0) {
-        const char *first_comma = strchr(packet_data, ',');
+        const char *first_comma = std::strchr(packet_data, ',');
         if (first_comma) {
-          const char *second_comma = strchr(first_comma + 1, ',');
+          const char *second_comma = std::strchr(first_comma + 1, ',');
           if (second_comma)
             binary_start_offset = second_comma - packet_data + 1;
         }
@@ -529,7 +529,7 @@ bool GDBRemoteCommunication::DecompressPacket() {
   size_t decompressed_bytes = 0;
 
   if (decompressed_bufsize != ULONG_MAX) {
-    decompressed_buffer = (uint8_t *)malloc(decompressed_bufsize);
+    decompressed_buffer = (uint8_t *)std::malloc(decompressed_bufsize);
     if (decompressed_buffer == nullptr) {
       m_bytes.erase(0, size_of_first_packet);
       return false;
@@ -568,7 +568,7 @@ bool GDBRemoteCommunication::DecompressPacket() {
       else if (m_compression_type == CompressionType::LZFSE)
         scratchbuf_size = compression_decode_scratch_buffer_size (COMPRESSION_LZFSE);
       if (scratchbuf_size > 0) {
-        m_decompression_scratch = (void*) malloc (scratchbuf_size);
+        m_decompression_scratch = (void*) std::malloc(scratchbuf_size);
         m_decompression_scratch_type = m_compression_type;
       }
     }
@@ -587,7 +587,7 @@ bool GDBRemoteCommunication::DecompressPacket() {
       decompressed_buffer != nullptr &&
       m_compression_type == CompressionType::ZlibDeflate) {
     z_stream stream;
-    memset(&stream, 0, sizeof(z_stream));
+    std::memset(&stream, 0, sizeof(z_stream));
     stream.next_in = (Bytef *)unescaped_content.data();
     stream.avail_in = (uInt)unescaped_content.size();
     stream.total_in = 0;
@@ -610,7 +610,7 @@ bool GDBRemoteCommunication::DecompressPacket() {
 
   if (decompressed_bytes == 0 || decompressed_buffer == nullptr) {
     if (decompressed_buffer)
-      free(decompressed_buffer);
+      std::free(decompressed_buffer);
     m_bytes.erase(0, size_of_first_packet);
     return false;
   }
@@ -634,7 +634,7 @@ bool GDBRemoteCommunication::DecompressPacket() {
   m_bytes.replace(0, size_of_first_packet, new_packet.data(),
                   new_packet.size());
 
-  free(decompressed_buffer);
+  std::free(decompressed_buffer);
   return true;
 }
 

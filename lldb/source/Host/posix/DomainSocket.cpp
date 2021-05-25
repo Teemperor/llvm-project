@@ -22,7 +22,7 @@ using namespace lldb_private;
 // Android does not have SUN_LEN
 #ifndef SUN_LEN
 #define SUN_LEN(ptr)                                                           \
-  (offsetof(struct sockaddr_un, sun_path) + strlen((ptr)->sun_path))
+  (offsetof(struct sockaddr_un, sun_path) + std::strlen((ptr)->sun_path))
 #endif
 #endif // #ifdef __ANDROID__
 
@@ -36,10 +36,10 @@ bool SetSockAddr(llvm::StringRef name, const size_t name_offset,
   if (name.size() + name_offset > sizeof(saddr_un->sun_path))
     return false;
 
-  memset(saddr_un, 0, sizeof(*saddr_un));
+  std::memset(saddr_un, 0, sizeof(*saddr_un));
   saddr_un->sun_family = kDomain;
 
-  memcpy(saddr_un->sun_path + name_offset, name.data(), name.size());
+  std::memcpy(saddr_un->sun_path + name_offset, name.data(), name.size());
 
   // For domain sockets we can use SUN_LEN in order to calculate size of
   // sockaddr_un, but for abstract sockets we have to calculate size manually

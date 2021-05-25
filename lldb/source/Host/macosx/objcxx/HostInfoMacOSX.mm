@@ -116,14 +116,14 @@ FileSpec HostInfoMacOSX::GetProgramFileSpec() {
     if (err == 0)
       g_program_filespec.SetFile(program_fullpath, FileSpec::Style::native);
     else if (err == -1) {
-      char *large_program_fullpath = (char *)::malloc(len + 1);
+      char *large_program_fullpath = (char *)std::malloc(len + 1);
 
       err = _NSGetExecutablePath(large_program_fullpath, &len);
       if (err == 0)
         g_program_filespec.SetFile(large_program_fullpath,
                                    FileSpec::Style::native);
 
-      ::free(large_program_fullpath);
+      std::free(large_program_fullpath);
     }
   }
   return g_program_filespec;
@@ -138,7 +138,7 @@ bool HostInfoMacOSX::ComputeSupportExeDirectory(FileSpec &file_spec) {
 
   size_t framework_pos = raw_path.find("LLDB.framework");
   if (framework_pos != std::string::npos) {
-    framework_pos += strlen("LLDB.framework");
+    framework_pos += std::strlen("LLDB.framework");
 #if TARGET_OS_IPHONE
     // Shallow bundle
     raw_path.resize(framework_pos);
@@ -171,7 +171,7 @@ bool HostInfoMacOSX::ComputeSupportExeDirectory(FileSpec &file_spec) {
         realpath(support_dir_spec.GetPath().c_str(), NULL);
     if (dir_realpath) {
       raw_path = dir_realpath;
-      free(dir_realpath);
+      std::free(dir_realpath);
     } else {
       raw_path = support_dir_spec.GetPath();
     }
@@ -191,7 +191,7 @@ bool HostInfoMacOSX::ComputeHeaderDirectory(FileSpec &file_spec) {
 
   size_t framework_pos = raw_path.find("LLDB.framework");
   if (framework_pos != std::string::npos) {
-    framework_pos += strlen("LLDB.framework");
+    framework_pos += std::strlen("LLDB.framework");
     raw_path.resize(framework_pos);
     raw_path.append("/Headers");
   }
@@ -211,7 +211,7 @@ bool HostInfoMacOSX::ComputeSystemPluginsDirectory(FileSpec &file_spec) {
   if (framework_pos == std::string::npos)
     return false;
 
-  framework_pos += strlen("LLDB.framework");
+  framework_pos += std::strlen("LLDB.framework");
   raw_path.resize(framework_pos);
   raw_path.append("/Resources/PlugIns");
   file_spec.GetDirectory().SetString(

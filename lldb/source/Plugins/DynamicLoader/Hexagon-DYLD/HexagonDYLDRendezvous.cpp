@@ -161,7 +161,7 @@ bool HexagonDYLDRendezvous::UpdateSOEntriesForAddition() {
     // Only add shared libraries and not the executable. On Linux this is
     // indicated by an empty path in the entry. On FreeBSD it is the name of
     // the executable.
-    if (entry.path.empty() || ::strcmp(entry.path.c_str(), m_exe_path) == 0)
+    if (entry.path.empty() || std::strcmp(entry.path.c_str(), m_exe_path) == 0)
       continue;
 
     pos = std::find(m_soentries.begin(), m_soentries.end(), entry);
@@ -206,7 +206,7 @@ bool HexagonDYLDRendezvous::TakeSnapshot(SOEntryList &entry_list) {
     // Only add shared libraries and not the executable. On Linux this is
     // indicated by an empty path in the entry. On FreeBSD it is the name of
     // the executable.
-    if (entry.path.empty() || ::strcmp(entry.path.c_str(), m_exe_path) == 0)
+    if (entry.path.empty() || std::strcmp(entry.path.c_str(), m_exe_path) == 0)
       continue;
 
     entry_list.push_back(entry);

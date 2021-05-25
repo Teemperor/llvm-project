@@ -172,7 +172,7 @@ uint32_t DataEncoder::PutData(uint32_t offset, const void *src,
     return offset;
 
   if (ValidOffsetForDataOfSize(offset, src_len)) {
-    memcpy(m_start + offset, src, src_len);
+    std::memcpy(m_start + offset, src, src_len);
     return offset + src_len;
   }
   return UINT32_MAX;
@@ -184,6 +184,6 @@ uint32_t DataEncoder::PutAddress(uint32_t offset, lldb::addr_t addr) {
 
 uint32_t DataEncoder::PutCString(uint32_t offset, const char *cstr) {
   if (cstr != nullptr)
-    return PutData(offset, cstr, strlen(cstr) + 1);
+    return PutData(offset, cstr, std::strlen(cstr) + 1);
   return UINT32_MAX;
 }

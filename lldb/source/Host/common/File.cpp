@@ -220,7 +220,7 @@ size_t File::PrintfVarArg(const char *format, va_list args) {
       Write(s, s_len);
       result = s_len;
     }
-    free(s);
+    std::free(s);
   }
   return result;
 }

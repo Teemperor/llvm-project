@@ -2288,7 +2288,7 @@ void RenderScriptRuntime::FindStructTypeName(Element &elem,
 
       for (uint32_t i = 0; i < size_diff; ++i) {
         ConstString name = elem.children[num_children + i].type_name;
-        if (strcmp(name.AsCString(), "#rs_padding") < 0)
+        if (std::strcmp(name.AsCString(), "#rs_padding") < 0)
           found = false;
       }
     }
@@ -2475,7 +2475,7 @@ bool RenderScriptRuntime::LoadAllocation(Stream &strm, const uint32_t alloc_id,
 
   // Look at the type of the root element in the header
   AllocationDetails::ElementHeader root_el_hdr;
-  memcpy(&root_el_hdr, static_cast<uint8_t *>(file_buf) +
+  std::memcpy(&root_el_hdr, static_cast<uint8_t *>(file_buf) +
                            sizeof(AllocationDetails::FileHeader),
          sizeof(AllocationDetails::ElementHeader));
 
@@ -2583,7 +2583,7 @@ size_t RenderScriptRuntime::PopulateElementHeaders(
 
   // Copy struct into buffer and advance offset We assume that header_buffer
   // has been checked for nullptr before this method is called
-  memcpy(header_buffer.get() + offset, &elem_header, elem_header_size);
+  std::memcpy(header_buffer.get() + offset, &elem_header, elem_header_size);
   offset += elem_header_size;
 
   // Starting offset of child ElementHeader struct
@@ -2593,14 +2593,14 @@ size_t RenderScriptRuntime::PopulateElementHeaders(
     // Recursively populate the buffer with the element header structs of
     // children. Then save the offsets where they were set after the parent
     // element header.
-    memcpy(header_buffer.get() + offset, &child_offset, sizeof(uint32_t));
+    std::memcpy(header_buffer.get() + offset, &child_offset, sizeof(uint32_t));
     offset += sizeof(uint32_t);
 
     child_offset = PopulateElementHeaders(header_buffer, child_offset, child);
   }
 
   // Zero indicates no more children
-  memset(header_buffer.get() + offset, 0, sizeof(uint32_t));
+  std::memset(header_buffer.get() + offset, 0, sizeof(uint32_t));
 
   return child_offset;
 }
@@ -2681,7 +2681,7 @@ bool RenderScriptRuntime::SaveAllocation(Stream &strm, const uint32_t alloc_id,
 
   // Create the file header
   AllocationDetails::FileHeader head;
-  memcpy(head.ident, "RSAD", 4);
+  std::memcpy(head.ident, "RSAD", 4);
   head.dims[0] = static_cast<uint32_t>(alloc->dimension.get()->dim_1);
   head.dims[1] = static_cast<uint32_t>(alloc->dimension.get()->dim_2);
   head.dims[2] = static_cast<uint32_t>(alloc->dimension.get()->dim_3);
@@ -3455,7 +3455,7 @@ void RenderScriptRuntime::BreakOnModuleKernels(
     const RSModuleDescriptorSP rsmodule_sp) {
   for (const auto &kernel : rsmodule_sp->m_kernels) {
     // Don't set breakpoint on 'root' kernel
-    if (strcmp(kernel.m_name.AsCString(), "root") == 0)
+    if (std::strcmp(kernel.m_name.AsCString(), "root") == 0)
       continue;
 
     CreateKernelBreakpoint(kernel.m_name);
@@ -4352,10 +4352,10 @@ public:
 
     bool do_break = false;
     const char *argument = command.GetArgumentAtIndex(0);
-    if (strcmp(argument, "enable") == 0) {
+    if (std::strcmp(argument, "enable") == 0) {
       do_break = true;
       result.AppendMessage("Breakpoints will be set on all kernels.");
-    } else if (strcmp(argument, "disable") == 0) {
+    } else if (std::strcmp(argument, "disable") == 0) {
       do_break = false;
       result.AppendMessage("Breakpoints will not be set on any new kernels.");
     } else {

@@ -30,7 +30,7 @@ public:
       if (name == rhs.name)
         return true;
       else if (name && rhs.name)
-        return strcmp(name, rhs.name) == 0;
+        return std::strcmp(name, rhs.name) == 0;
       return false;
     }
 

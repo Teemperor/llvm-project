@@ -205,14 +205,14 @@ PlatformNetBSD::GetResumeCountForLaunchInfo(ProcessLaunchInfo &launch_info) {
   ++resume_count;
 
   // Figure out what shell we're planning on using.
-  const char *shell_name = strrchr(shell_string.c_str(), '/');
+  const char *shell_name = std::strrchr(shell_string.c_str(), '/');
   if (shell_name == nullptr)
     shell_name = shell_string.c_str();
   else
     shell_name++;
 
-  if (strcmp(shell_name, "csh") == 0 || strcmp(shell_name, "tcsh") == 0 ||
-      strcmp(shell_name, "zsh") == 0 || strcmp(shell_name, "sh") == 0) {
+  if (std::strcmp(shell_name, "csh") == 0 || std::strcmp(shell_name, "tcsh") == 0 ||
+      std::strcmp(shell_name, "zsh") == 0 || std::strcmp(shell_name, "sh") == 0) {
     // These shells seem to re-exec themselves.  Add another resume.
     ++resume_count;
   }

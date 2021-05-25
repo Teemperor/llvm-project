@@ -60,15 +60,15 @@ simple_readline(FILE *stdin, FILE *stdout, char *prompt)
   }
   if (*line)
     add_history(line);
-  int n = strlen(line);
+  int n = std::strlen(line);
 #if PY_MAJOR_VERSION >= 3
   char *ret = (char *)PyMem_RawMalloc(n + 2);
 #else
   char *ret = (char *)PyMem_Malloc(n + 2);
 #endif
   if (ret) {
-    memcpy(ret, line, n);
-    free(line);
+    std::memcpy(ret, line, n);
+    std::free(line);
     ret[n] = '\n';
     ret[n + 1] = '\0';
   }

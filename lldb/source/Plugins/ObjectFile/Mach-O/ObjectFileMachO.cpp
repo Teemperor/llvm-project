@@ -909,8 +909,8 @@ ObjectFileMachO::ObjectFileMachO(const lldb::ModuleSP &module_sp,
       m_mach_segments(), m_mach_sections(), m_entry_point_address(),
       m_thread_context_offsets(), m_thread_context_offsets_valid(false),
       m_reexported_dylibs(), m_allow_assembly_emulation_unwind_plans(true) {
-  ::memset(&m_header, 0, sizeof(m_header));
-  ::memset(&m_dysymtab, 0, sizeof(m_dysymtab));
+  std::memset(&m_header, 0, sizeof(m_header));
+  std::memset(&m_dysymtab, 0, sizeof(m_dysymtab));
 }
 
 ObjectFileMachO::ObjectFileMachO(const lldb::ModuleSP &module_sp,
@@ -921,8 +921,8 @@ ObjectFileMachO::ObjectFileMachO(const lldb::ModuleSP &module_sp,
       m_mach_segments(), m_mach_sections(), m_entry_point_address(),
       m_thread_context_offsets(), m_thread_context_offsets_valid(false),
       m_reexported_dylibs(), m_allow_assembly_emulation_unwind_plans(true) {
-  ::memset(&m_header, 0, sizeof(m_header));
-  ::memset(&m_dysymtab, 0, sizeof(m_dysymtab));
+  std::memset(&m_header, 0, sizeof(m_header));
+  std::memset(&m_dysymtab, 0, sizeof(m_dysymtab));
 }
 
 bool ObjectFileMachO::ParseHeader(DataExtractor &data,
@@ -974,7 +974,7 @@ bool ObjectFileMachO::ParseHeader(DataExtractor &data,
       *data_offset_ptr += 4;
     return true;
   } else {
-    memset(&header, 0, sizeof(header));
+    std::memset(&header, 0, sizeof(header));
   }
   return false;
 }
@@ -1063,7 +1063,7 @@ bool ObjectFileMachO::ParseHeader() {
     // None found.
     return false;
   } else {
-    memset(&m_header, 0, sizeof(struct mach_header));
+    std::memset(&m_header, 0, sizeof(struct mach_header));
   }
   return false;
 }
@@ -1284,7 +1284,7 @@ bool ObjectFileMachO::IsStripped() {
               nullptr) {
             // Clear m_dysymtab if we were unable to read all items from the
             // load command
-            ::memset(&m_dysymtab, 0, sizeof(m_dysymtab));
+            std::memset(&m_dysymtab, 0, sizeof(m_dysymtab));
           }
         }
         offset = load_cmd_offset + lc.cmdsize;
@@ -1335,9 +1335,9 @@ void ObjectFileMachO::SanitizeSegmentCommand(segment_command_64 &seg_cmd,
     // shared cache file, and not the the specific image we are
     // examining. Let's fix this up so that it looks like a normal
     // image.
-    if (strncmp(seg_cmd.segname, "__TEXT", sizeof(seg_cmd.segname)) == 0)
+    if (std::strncmp(seg_cmd.segname, "__TEXT", sizeof(seg_cmd.segname)) == 0)
       m_text_address = seg_cmd.vmaddr;
-    if (strncmp(seg_cmd.segname, "__LINKEDIT", sizeof(seg_cmd.segname)) == 0)
+    if (std::strncmp(seg_cmd.segname, "__LINKEDIT", sizeof(seg_cmd.segname)) == 0)
       m_linkedit_original_offset = seg_cmd.fileoff;
 
     seg_cmd.fileoff = seg_cmd.vmaddr - m_text_address;
@@ -1555,7 +1555,7 @@ void ObjectFileMachO::ProcessSegmentCommand(const load_command &load_cmd_,
                                             uint32_t cmd_idx,
                                             SegmentParsingContext &context) {
   segment_command_64 load_cmd;
-  memcpy(&load_cmd, &load_cmd_, sizeof(load_cmd_));
+  std::memcpy(&load_cmd, &load_cmd_, sizeof(load_cmd_));
 
   if (!m_data.GetU8(&offset, (uint8_t *)load_cmd.segname, 16))
     return;
@@ -1656,7 +1656,7 @@ void ObjectFileMachO::ProcessSegmentCommand(const load_command &load_cmd_,
   }
 
   struct section_64 sect64;
-  ::memset(&sect64, 0, sizeof(sect64));
+  std::memset(&sect64, 0, sizeof(sect64));
   // Push a section into our mach sections for the section at index zero
   // (NO_SECT) if we don't have any mach sections yet...
   if (m_mach_sections.empty())
@@ -2078,7 +2078,7 @@ static SymbolType GetSymbolType(const char *&symbol_name,
              symbol_section->IsDescendant(data_dirty_section_sp.get()) ||
              symbol_section->IsDescendant(data_const_section_sp.get())) {
     if (symbol_sect_name &&
-        ::strstr(symbol_sect_name, "__objc") == symbol_sect_name) {
+        std::strstr(symbol_sect_name, "__objc") == symbol_sect_name) {
       type = eSymbolTypeRuntime;
 
       if (symbol_name) {
@@ -2104,14 +2104,14 @@ static SymbolType GetSymbolType(const char *&symbol_name,
         }
       }
     } else if (symbol_sect_name &&
-               ::strstr(symbol_sect_name, "__gcc_except_tab") ==
+               std::strstr(symbol_sect_name, "__gcc_except_tab") ==
                    symbol_sect_name) {
       type = eSymbolTypeException;
     } else {
       type = eSymbolTypeData;
     }
   } else if (symbol_sect_name &&
-             ::strstr(symbol_sect_name, "__IMPORT") == symbol_sect_name) {
+             std::strstr(symbol_sect_name, "__IMPORT") == symbol_sect_name) {
     type = eSymbolTypeTrampoline;
   }
   return type;
@@ -2130,9 +2130,9 @@ UUID ObjectFileMachO::GetSharedCacheUUID(FileSpec dyld_shared_cache,
 
   char version_str[7];
   lldb::offset_t offset = 0;
-  memcpy(version_str, dsc_header_data.GetData(&offset, 6), 6);
+  std::memcpy(version_str, dsc_header_data.GetData(&offset, 6), 6);
   version_str[6] = '\0';
-  if (strcmp(version_str, "dyld_v") == 0) {
+  if (std::strcmp(version_str, "dyld_v") == 0) {
     offset = offsetof(struct lldb_copy_dyld_cache_header_v1, uuid);
     dsc_uuid = UUID::fromOptionalData(
         dsc_header_data.GetData(&offset, sizeof(uuid_t)), sizeof(uuid_t));
@@ -2216,7 +2216,7 @@ size_t ObjectFileMachO::ParseSymtab() {
         dyld_info.cmd = lc.cmd;
         dyld_info.cmdsize = lc.cmdsize;
       } else {
-        memset(&dyld_info, 0, sizeof(dyld_info));
+        std::memset(&dyld_info, 0, sizeof(dyld_info));
       }
       break;
 
@@ -2247,7 +2247,7 @@ size_t ObjectFileMachO::ParseSymtab() {
       function_starts_load_command.cmdsize = lc.cmdsize;
       if (m_data.GetU32(&offset, &function_starts_load_command.dataoff, 2) ==
           nullptr) // fill in symoff, nsyms, stroff, strsize fields
-        memset(&function_starts_load_command, 0,
+        std::memset(&function_starts_load_command, 0,
                sizeof(function_starts_load_command));
       break;
 
@@ -3370,7 +3370,7 @@ size_t ObjectFileMachO::ParseSymtab() {
                                        symbol_section->IsDescendant(
                                            data_const_section_sp.get())) {
                               if (symbol_sect_name &&
-                                  ::strstr(symbol_sect_name, "__objc") ==
+                                  std::strstr(symbol_sect_name, "__objc") ==
                                       symbol_sect_name) {
                                 type = eSymbolTypeRuntime;
 
@@ -3417,7 +3417,7 @@ size_t ObjectFileMachO::ParseSymtab() {
                                   }
                                 }
                               } else if (symbol_sect_name &&
-                                         ::strstr(symbol_sect_name,
+                                         std::strstr(symbol_sect_name,
                                                   "__gcc_except_tab") ==
                                              symbol_sect_name) {
                                 type = eSymbolTypeException;
@@ -3425,7 +3425,7 @@ size_t ObjectFileMachO::ParseSymtab() {
                                 type = eSymbolTypeData;
                               }
                             } else if (symbol_sect_name &&
-                                       ::strstr(symbol_sect_name, "__IMPORT") ==
+                                       std::strstr(symbol_sect_name, "__IMPORT") ==
                                            symbol_sect_name) {
                               type = eSymbolTypeTrampoline;
                             } else if (symbol_section->IsDescendant(
@@ -4251,7 +4251,7 @@ size_t ObjectFileMachO::ParseSymtab() {
                          symbol_section->IsDescendant(
                              data_const_section_sp.get())) {
                 if (symbol_sect_name &&
-                    ::strstr(symbol_sect_name, "__objc") == symbol_sect_name) {
+                    std::strstr(symbol_sect_name, "__objc") == symbol_sect_name) {
                   type = eSymbolTypeRuntime;
 
                   if (symbol_name) {
@@ -4287,14 +4287,14 @@ size_t ObjectFileMachO::ParseSymtab() {
                     }
                   }
                 } else if (symbol_sect_name &&
-                           ::strstr(symbol_sect_name, "__gcc_except_tab") ==
+                           std::strstr(symbol_sect_name, "__gcc_except_tab") ==
                                symbol_sect_name) {
                   type = eSymbolTypeException;
                 } else {
                   type = eSymbolTypeData;
                 }
               } else if (symbol_sect_name &&
-                         ::strstr(symbol_sect_name, "__IMPORT") ==
+                         std::strstr(symbol_sect_name, "__IMPORT") ==
                              symbol_sect_name) {
                 type = eSymbolTypeTrampoline;
               } else if (symbol_section->IsDescendant(objc_section_sp.get())) {
@@ -5160,12 +5160,12 @@ uint32_t ObjectFileMachO::GetDependentModules(FileSpecList &files) {
             rpath_paths.push_back(path);
           else {
             if (path[0] == '@') {
-              if (strncmp(path, "@rpath", strlen("@rpath")) == 0)
+              if (std::strncmp(path, "@rpath", std::strlen("@rpath")) == 0)
                 rpath_relative_paths.push_back(path + strlen("@rpath"));
-              else if (strncmp(path, "@executable_path",
-                               strlen("@executable_path")) == 0)
+              else if (std::strncmp(path, "@executable_path",
+                               std::strlen("@executable_path")) == 0)
                 at_exec_relative_paths.push_back(path +
-                                                 strlen("@executable_path"));
+                                                 std::strlen("@executable_path"));
             } else {
               FileSpec file_spec(path);
               if (files.AppendIfUnique(file_spec))
@@ -5469,19 +5469,19 @@ std::string ObjectFileMachO::GetIdentifierString() {
 
         // "kern ver str" has a uint32_t version and then a nul terminated
         // c-string.
-        if (strcmp("kern ver str", data_owner) == 0) {
+        if (std::strcmp("kern ver str", data_owner) == 0) {
           offset = fileoff;
           uint32_t version;
           if (m_data.GetU32(&offset, &version, 1) != nullptr) {
             if (version == 1) {
               uint32_t strsize = size - sizeof(uint32_t);
-              char *buf = (char *)malloc(strsize);
+              char *buf = (char *)std::malloc(strsize);
               if (buf) {
                 m_data.CopyData(offset, strsize, buf);
                 buf[strsize - 1] = '\0';
                 result = buf;
                 if (buf)
-                  free(buf);
+                  std::free(buf);
                 return result;
               }
             }
@@ -5500,14 +5500,14 @@ std::string ObjectFileMachO::GetIdentifierString() {
       if (m_data.GetU32(&offset, &ident_command, 2) == nullptr)
         break;
       if (ident_command.cmd == LC_IDENT && ident_command.cmdsize != 0) {
-        char *buf = (char *)malloc(ident_command.cmdsize);
+        char *buf = (char *)std::malloc(ident_command.cmdsize);
         if (buf != nullptr && m_data.CopyData(offset, ident_command.cmdsize,
                                               buf) == ident_command.cmdsize) {
           buf[ident_command.cmdsize - 1] = '\0';
           result = buf;
         }
         if (buf)
-          free(buf);
+          std::free(buf);
       }
       offset = cmd_offset + ident_command.cmdsize;
     }
@@ -5530,7 +5530,7 @@ bool ObjectFileMachO::GetCorefileMainBinaryInfo(addr_t &address, UUID &uuid,
         break;
       if (lc.cmd == LC_NOTE) {
         char data_owner[17];
-        memset(data_owner, 0, sizeof(data_owner));
+        std::memset(data_owner, 0, sizeof(data_owner));
         m_data.CopyData(offset, 16, data_owner);
         offset += 16;
         uint64_t fileoff = m_data.GetU64_unchecked(&offset);
@@ -5548,13 +5548,13 @@ bool ObjectFileMachO::GetCorefileMainBinaryInfo(addr_t &address, UUID &uuid,
         //                             0 for unspecified ]
         //    uint32_t unused        [ for alignment ]
 
-        if (strcmp("main bin spec", data_owner) == 0 && size >= 32) {
+        if (std::strcmp("main bin spec", data_owner) == 0 && size >= 32) {
           offset = fileoff;
           uint32_t version;
           if (m_data.GetU32(&offset, &version, 1) != nullptr && version == 1) {
             uint32_t binspec_type = 0;
             uuid_t raw_uuid;
-            memset(raw_uuid, 0, sizeof(uuid_t));
+            std::memset(raw_uuid, 0, sizeof(uuid_t));
 
             if (m_data.GetU32(&offset, &binspec_type, 1) &&
                 m_data.GetU64(&offset, &address, 1) &&
@@ -5876,7 +5876,7 @@ void ObjectFileMachO::GetLLDBSharedCacheUUID(addr_t &base_addr, UUID &uuid) {
           dyld_process_info_create(::mach_task_self(), 0, &kern_ret);
       if (process_info) {
         struct lldb_copy__dyld_process_cache_info sc_info;
-        memset(&sc_info, 0, sizeof(struct lldb_copy__dyld_process_cache_info));
+        std::memset(&sc_info, 0, sizeof(struct lldb_copy__dyld_process_cache_info));
         dyld_process_info_get_cache(process_info, &sc_info);
         if (sc_info.cacheBaseAddress != 0) {
           base_addr = sc_info.cacheBaseAddress;
@@ -6418,7 +6418,7 @@ bool ObjectFileMachO::SaveCore(const lldb::ProcessSP &process_sp,
                 } else {
                   // Some pages within regions are not readable, those should
                   // be zero filled
-                  memset(bytes, 0, bytes_to_read);
+                  std::memset(bytes, 0, bytes_to_read);
                   size_t bytes_written = bytes_to_read;
                   error = core_file.get()->Write(bytes, bytes_written);
                   bytes_left -= bytes_to_read;

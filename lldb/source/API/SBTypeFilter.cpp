@@ -149,7 +149,7 @@ bool SBTypeFilter::IsEqualTo(lldb::SBTypeFilter &rhs) {
     return false;
 
   for (uint32_t j = 0; j < GetNumberOfExpressionPaths(); j++)
-    if (strcmp(GetExpressionPathAtIndex(j), rhs.GetExpressionPathAtIndex(j)) !=
+    if (std::strcmp(GetExpressionPathAtIndex(j), rhs.GetExpressionPathAtIndex(j)) !=
         0)
       return false;
 

@@ -186,7 +186,7 @@ static bool LocateDSYMInVincinityOfExecutable(const ModuleSpec &module_spec,
         const char *fn = parent_dirs.GetFilename().AsCString();
         if (fn == nullptr)
           break;
-        if (::strchr(fn, '.') != nullptr) {
+        if (std::strchr(fn, '.') != nullptr) {
           if (::LookForDsymNextToExecutablePath(module_spec, parent_dirs,
                                                 dsym_fspec)) {
             if (log) {

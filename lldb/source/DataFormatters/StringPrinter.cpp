@@ -38,7 +38,7 @@ public:
   DecodedCharBuffer(const uint8_t *bytes, size_t size) : m_size(size) {
     if (size > MaxLength)
       llvm_unreachable("unsupported length");
-    memcpy(m_data, bytes, size);
+    std::memcpy(m_data, bytes, size);
   }
 
   DecodedCharBuffer(const char *bytes, size_t size)

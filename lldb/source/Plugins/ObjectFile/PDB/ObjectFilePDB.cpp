@@ -29,7 +29,7 @@ LLDB_PLUGIN_DEFINE(ObjectFilePDB)
 
 static UUID GetPDBUUID(InfoStream &IS) {
   UUID::CvRecordPdb70 debug_info;
-  memcpy(&debug_info.Uuid, IS.getGuid().Guid, sizeof(debug_info.Uuid));
+  std::memcpy(&debug_info.Uuid, IS.getGuid().Guid, sizeof(debug_info.Uuid));
   debug_info.Age = IS.getAge();
   return UUID::fromCvRecord(debug_info);
 }

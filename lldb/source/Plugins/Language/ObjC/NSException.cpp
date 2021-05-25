@@ -195,11 +195,11 @@ lldb_private::formatters::NSExceptionSyntheticFrontEndCreator(
   if (!class_name || !*class_name)
     return nullptr;
 
-  if (!strcmp(class_name, "NSException"))
+  if (!std::strcmp(class_name, "NSException"))
     return (new NSExceptionSyntheticFrontEnd(valobj_sp));
-  else if (!strcmp(class_name, "NSCFException"))
+  else if (!std::strcmp(class_name, "NSCFException"))
     return (new NSExceptionSyntheticFrontEnd(valobj_sp));
-  else if (!strcmp(class_name, "__NSCFException"))
+  else if (!std::strcmp(class_name, "__NSCFException"))
     return (new NSExceptionSyntheticFrontEnd(valobj_sp));
 
   return nullptr;

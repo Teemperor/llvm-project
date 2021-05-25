@@ -43,8 +43,8 @@ LLDB_PLUGIN_DEFINE_ADV(EmulateInstructionARM, InstructionARM)
 //
 
 static bool GetARMDWARFRegisterInfo(unsigned reg_num, RegisterInfo &reg_info) {
-  ::memset(&reg_info, 0, sizeof(RegisterInfo));
-  ::memset(reg_info.kinds, LLDB_INVALID_REGNUM, sizeof(reg_info.kinds));
+  std::memset(&reg_info, 0, sizeof(RegisterInfo));
+  std::memset(reg_info.kinds, LLDB_INVALID_REGNUM, sizeof(reg_info.kinds));
 
   if (reg_num >= dwarf_q0 && reg_num <= dwarf_q15) {
     reg_info.byte_size = 16;

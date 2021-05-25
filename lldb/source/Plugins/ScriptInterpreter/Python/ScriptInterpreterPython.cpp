@@ -245,7 +245,7 @@ public:
     // Provide a patched version local to the embedded interpreter.
     bool ReadlinePatched = false;
     for (auto *p = PyImport_Inittab; p->name != NULL; p++) {
-      if (strcmp(p->name, "readline") == 0) {
+      if (std::strcmp(p->name, "readline") == 0) {
         p->initfunc = initlldb_readline;
         break;
       }
@@ -2153,14 +2153,14 @@ ScriptInterpreterPythonImpl::CreateScriptCommandObject(const char *class_name) {
 bool ScriptInterpreterPythonImpl::GenerateTypeScriptFunction(
     const char *oneliner, std::string &output, const void *name_token) {
   StringList input;
-  input.SplitIntoLines(oneliner, strlen(oneliner));
+  input.SplitIntoLines(oneliner, std::strlen(oneliner));
   return GenerateTypeScriptFunction(input, output, name_token);
 }
 
 bool ScriptInterpreterPythonImpl::GenerateTypeSynthClass(
     const char *oneliner, std::string &output, const void *name_token) {
   StringList input;
-  input.SplitIntoLines(oneliner, strlen(oneliner));
+  input.SplitIntoLines(oneliner, std::strlen(oneliner));
   return GenerateTypeSynthClass(input, output, name_token);
 }
 
@@ -2803,7 +2803,7 @@ bool ScriptInterpreterPythonImpl::LoadScriptingModule(
         st.type() == fs::file_type::file_not_found) {
       // if not a valid file of any sort, check if it might be a filename still
       // dot can't be used but / and \ can, and if either is found, reject
-      if (strchr(pathname, '\\') || strchr(pathname, '/')) {
+      if (std::strchr(pathname, '\\') || std::strchr(pathname, '/')) {
         error.SetErrorString("invalid pathname");
         return false;
       }

@@ -181,7 +181,7 @@ Status MainLoop::RunImpl::Poll() {
     sigset_t set;
     uint64_t pad;
   } kernel_sigset;
-  memset(&kernel_sigset, 0, sizeof(kernel_sigset));
+  std::memset(&kernel_sigset, 0, sizeof(kernel_sigset));
   kernel_sigset.set = get_sigmask();
 
   struct {

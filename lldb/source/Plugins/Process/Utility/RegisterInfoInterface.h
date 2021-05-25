@@ -49,7 +49,7 @@ public:
       std::vector<lldb_private::RegisterInfo>::const_iterator pos =
           d_register_infos->begin();
       for (; pos < d_register_infos->end(); pos++) {
-        if (::strcmp(reg_name, pos->name) == 0)
+        if (std::strcmp(reg_name, pos->name) == 0)
           return (d_register_infos->data() + (pos - d_register_infos->begin()));
       }
     }

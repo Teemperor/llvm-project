@@ -61,13 +61,13 @@ static_assert(sizeof(FieldListMemberIdRepr) == 8, "Invalid structure size!");
 
 template <typename OutT, typename InT> static OutT repr_cast(const InT &value) {
   OutT result;
-  ::memcpy(&result, &value, sizeof(value));
+  std::memcpy(&result, &value, sizeof(value));
   return result;
 }
 
 PdbSymUid::PdbSymUid(const PdbCompilandId &cid) {
   CompilandIdRepr repr;
-  ::memset(&repr, 0, sizeof(repr));
+  std::memset(&repr, 0, sizeof(repr));
   repr.modi = cid.modi;
   repr.tag = static_cast<uint64_t>(PdbSymUidKind::Compiland);
   m_repr = repr_cast<uint64_t>(repr);
@@ -75,7 +75,7 @@ PdbSymUid::PdbSymUid(const PdbCompilandId &cid) {
 
 PdbSymUid::PdbSymUid(const PdbCompilandSymId &csid) {
   CompilandSymIdRepr repr;
-  ::memset(&repr, 0, sizeof(repr));
+  std::memset(&repr, 0, sizeof(repr));
   repr.modi = csid.modi;
   repr.offset = csid.offset;
   repr.tag = static_cast<uint64_t>(PdbSymUidKind::CompilandSym);
@@ -84,7 +84,7 @@ PdbSymUid::PdbSymUid(const PdbCompilandSymId &csid) {
 
 PdbSymUid::PdbSymUid(const PdbGlobalSymId &gsid) {
   GlobalSymIdRepr repr;
-  ::memset(&repr, 0, sizeof(repr));
+  std::memset(&repr, 0, sizeof(repr));
   repr.pub = gsid.is_public;
   repr.offset = gsid.offset;
   repr.tag = static_cast<uint64_t>(PdbSymUidKind::GlobalSym);
@@ -93,7 +93,7 @@ PdbSymUid::PdbSymUid(const PdbGlobalSymId &gsid) {
 
 PdbSymUid::PdbSymUid(const PdbTypeSymId &tsid) {
   TypeSymIdRepr repr;
-  ::memset(&repr, 0, sizeof(repr));
+  std::memset(&repr, 0, sizeof(repr));
   repr.index = tsid.index.getIndex();
   repr.ipi = tsid.is_ipi;
   repr.tag = static_cast<uint64_t>(PdbSymUidKind::Type);
@@ -102,7 +102,7 @@ PdbSymUid::PdbSymUid(const PdbTypeSymId &tsid) {
 
 PdbSymUid::PdbSymUid(const PdbFieldListMemberId &flmid) {
   FieldListMemberIdRepr repr;
-  ::memset(&repr, 0, sizeof(repr));
+  std::memset(&repr, 0, sizeof(repr));
   repr.index = flmid.index.getIndex();
   repr.offset = flmid.offset;
   repr.tag = static_cast<uint64_t>(PdbSymUidKind::FieldListMember);

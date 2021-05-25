@@ -747,7 +747,7 @@ void Module::LookupInfo::Prune(SymbolContextList &sc_list,
         break;
       ConstString full_name(sc.GetFunctionName());
       if (full_name &&
-          ::strstr(full_name.GetCString(), m_name.GetCString()) == nullptr) {
+          std::strstr(full_name.GetCString(), m_name.GetCString()) == nullptr) {
         sc_list.RemoveContextAtIndex(i);
       } else {
         ++i;
@@ -1112,7 +1112,7 @@ void Module::ReportError(const char *format, ...) {
     strm.PrintfVarArg(format, args);
     va_end(args);
 
-    const int format_len = strlen(format);
+    const int format_len = std::strlen(format);
     if (format_len > 0) {
       const char last_char = format[format_len - 1];
       if (last_char != '\n' && last_char != '\r')
@@ -1148,7 +1148,7 @@ void Module::ReportErrorIfModifyDetected(const char *format, ...) {
         strm.PrintfVarArg(format, args);
         va_end(args);
 
-        const int format_len = strlen(format);
+        const int format_len = std::strlen(format);
         if (format_len > 0) {
           const char last_char = format[format_len - 1];
           if (last_char != '\n' && last_char != '\r')
@@ -1174,7 +1174,7 @@ void Module::ReportWarning(const char *format, ...) {
     strm.PrintfVarArg(format, args);
     va_end(args);
 
-    const int format_len = strlen(format);
+    const int format_len = std::strlen(format);
     if (format_len > 0) {
       const char last_char = format[format_len - 1];
       if (last_char != '\n' && last_char != '\r')

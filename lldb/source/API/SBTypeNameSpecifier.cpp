@@ -131,7 +131,7 @@ bool SBTypeNameSpecifier::IsEqualTo(lldb::SBTypeNameSpecifier &rhs) {
   if (GetName() == nullptr || rhs.GetName() == nullptr)
     return false;
 
-  return (strcmp(GetName(), rhs.GetName()) == 0);
+  return (std::strcmp(GetName(), rhs.GetName()) == 0);
 }
 
 bool SBTypeNameSpecifier::operator!=(lldb::SBTypeNameSpecifier &rhs) {

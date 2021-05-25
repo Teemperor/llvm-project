@@ -1204,22 +1204,22 @@ PlatformDarwin::GetResumeCountForLaunchInfo(ProcessLaunchInfo &launch_info) {
     return 1;
 
   std::string shell_string = shell.GetPath();
-  const char *shell_name = strrchr(shell_string.c_str(), '/');
+  const char *shell_name = std::strrchr(shell_string.c_str(), '/');
   if (shell_name == nullptr)
     shell_name = shell_string.c_str();
   else
     shell_name++;
 
-  if (strcmp(shell_name, "sh") == 0) {
+  if (std::strcmp(shell_name, "sh") == 0) {
     // /bin/sh re-exec's itself as /bin/bash requiring another resume. But it
     // only does this if the COMMAND_MODE environment variable is set to
     // "legacy".
     if (launch_info.GetEnvironment().lookup("COMMAND_MODE") == "legacy")
       return 2;
     return 1;
-  } else if (strcmp(shell_name, "csh") == 0 ||
-             strcmp(shell_name, "tcsh") == 0 ||
-             strcmp(shell_name, "zsh") == 0) {
+  } else if (std::strcmp(shell_name, "csh") == 0 ||
+             std::strcmp(shell_name, "tcsh") == 0 ||
+             std::strcmp(shell_name, "zsh") == 0) {
     // csh and tcsh always seem to re-exec themselves.
     return 2;
   } else
@@ -1622,7 +1622,7 @@ ConstString PlatformDarwin::GetFullNameForDylib(ConstString basename) {
 }
 
 llvm::VersionTuple PlatformDarwin::GetOSVersion(Process *process) {
-  if (process && strstr(GetPluginName().GetCString(), "-simulator")) {
+  if (process && std::strstr(GetPluginName().GetCString(), "-simulator")) {
     lldb_private::ProcessInstanceInfo proc_info;
     if (Host::GetProcessInfo(process->GetID(), proc_info)) {
       const Environment &env = proc_info.GetEnvironment();

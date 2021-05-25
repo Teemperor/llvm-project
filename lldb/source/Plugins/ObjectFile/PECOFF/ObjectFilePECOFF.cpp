@@ -50,7 +50,7 @@ static UUID GetCoffUUID(llvm::object::COFFObjectFile &coff_obj) {
   if (!coff_obj.getDebugPDBInfo(pdb_info, pdb_file) && pdb_info) {
     if (pdb_info->PDB70.CVSignature == llvm::OMF::Signature::PDB70) {
       UUID::CvRecordPdb70 info;
-      memcpy(&info.Uuid, pdb_info->PDB70.Signature, sizeof(info.Uuid));
+      std::memcpy(&info.Uuid, pdb_info->PDB70.Signature, sizeof(info.Uuid));
       info.Age = pdb_info->PDB70.Age;
       return UUID::fromCvRecord(info);
     }
@@ -246,8 +246,8 @@ ObjectFilePECOFF::ObjectFilePECOFF(const lldb::ModuleSP &module_sp,
     : ObjectFile(module_sp, file, file_offset, length, data_sp, data_offset),
       m_dos_header(), m_coff_header(), m_sect_headers(),
       m_entry_point_address(), m_deps_filespec() {
-  ::memset(&m_dos_header, 0, sizeof(m_dos_header));
-  ::memset(&m_coff_header, 0, sizeof(m_coff_header));
+  std::memset(&m_dos_header, 0, sizeof(m_dos_header));
+  std::memset(&m_coff_header, 0, sizeof(m_coff_header));
 }
 
 ObjectFilePECOFF::ObjectFilePECOFF(const lldb::ModuleSP &module_sp,
@@ -257,8 +257,8 @@ ObjectFilePECOFF::ObjectFilePECOFF(const lldb::ModuleSP &module_sp,
     : ObjectFile(module_sp, process_sp, header_addr, header_data_sp),
       m_dos_header(), m_coff_header(), m_sect_headers(),
       m_entry_point_address(), m_deps_filespec() {
-  ::memset(&m_dos_header, 0, sizeof(m_dos_header));
-  ::memset(&m_coff_header, 0, sizeof(m_coff_header));
+  std::memset(&m_dos_header, 0, sizeof(m_dos_header));
+  std::memset(&m_coff_header, 0, sizeof(m_coff_header));
 }
 
 ObjectFilePECOFF::~ObjectFilePECOFF() {}
@@ -399,7 +399,7 @@ bool ObjectFilePECOFF::ParseDOSHeader(DataExtractor &data,
     }
   }
   if (!success)
-    memset(&dos_header, 0, sizeof(dos_header));
+    std::memset(&dos_header, 0, sizeof(dos_header));
   return success;
 }
 
@@ -419,7 +419,7 @@ bool ObjectFilePECOFF::ParseCOFFHeader(DataExtractor &data,
     coff_header.flags = data.GetU16(offset_ptr);
   }
   if (!success)
-    memset(&coff_header, 0, sizeof(coff_header));
+    std::memset(&coff_header, 0, sizeof(coff_header));
   return success;
 }
 

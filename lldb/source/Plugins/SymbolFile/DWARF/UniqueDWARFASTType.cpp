@@ -46,7 +46,7 @@ bool UniqueDWARFASTTypeList::Find(const DWARFDIE &die,
                   const char *parent_pos_die_name = parent_pos_die.GetName();
                   if (parent_pos_die_name == nullptr ||
                       ((parent_arg_die_name != parent_pos_die_name) &&
-                       strcmp(parent_arg_die_name, parent_pos_die_name)))
+                       std::strcmp(parent_arg_die_name, parent_pos_die_name)))
                     match = false;
                 }
               } break;

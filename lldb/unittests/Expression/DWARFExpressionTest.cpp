@@ -48,7 +48,7 @@ static llvm::Expected<Scalar> Evaluate(llvm::ArrayRef<uint8_t> expr,
     DataBufferHeap &buf = result.GetBuffer();
     if (buf.GetByteSize() <= 8) {
       uint64_t val = 0;
-      memcpy(&val, buf.GetBytes(), buf.GetByteSize());
+      std::memcpy(&val, buf.GetBytes(), buf.GetByteSize());
       return Scalar(llvm::APInt(buf.GetByteSize()*8, val, false));
     }
   }

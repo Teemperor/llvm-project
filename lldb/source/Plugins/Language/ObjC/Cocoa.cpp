@@ -606,7 +606,7 @@ bool lldb_private::formatters::NSNumberSummaryProvider(
         if (error.Fail())
           return false;
         float flt_value = 0.0f;
-        memcpy(&flt_value, &flt_as_int, sizeof(flt_as_int));
+        std::memcpy(&flt_value, &flt_as_int, sizeof(flt_as_int));
         NSNumber_FormatFloat(valobj, stream, flt_value, options.GetLanguage());
         success = true;
         break;
@@ -617,7 +617,7 @@ bool lldb_private::formatters::NSNumberSummaryProvider(
         if (error.Fail())
           return false;
         double dbl_value = 0.0;
-        memcpy(&dbl_value, &dbl_as_lng, sizeof(dbl_as_lng));
+        std::memcpy(&dbl_value, &dbl_as_lng, sizeof(dbl_as_lng));
         NSNumber_FormatDouble(valobj, stream, dbl_value, options.GetLanguage());
         success = true;
         break;
@@ -865,7 +865,7 @@ bool lldb_private::formatters::NSDateSummaryProvider(
       (class_name == g___NSTaggedDate) || (class_name == g_NSConstantDate)) {
     if (descriptor->GetTaggedPointerInfo(&info_bits, &value_bits)) {
       date_value_bits = ((value_bits << 8) | (info_bits << 4));
-      memcpy(&date_value, &date_value_bits, sizeof(date_value_bits));
+      std::memcpy(&date_value, &date_value_bits, sizeof(date_value_bits));
     } else {
       llvm::Triple triple(
           process_sp->GetTarget().GetArchitecture().GetTriple());
@@ -874,7 +874,7 @@ bool lldb_private::formatters::NSDateSummaryProvider(
       Status error;
       date_value_bits = process_sp->ReadUnsignedIntegerFromMemory(
           valobj_addr + delta, 8, 0, error);
-      memcpy(&date_value, &date_value_bits, sizeof(date_value_bits));
+      std::memcpy(&date_value, &date_value_bits, sizeof(date_value_bits));
       if (error.Fail())
         return false;
     }
@@ -882,7 +882,7 @@ bool lldb_private::formatters::NSDateSummaryProvider(
     Status error;
     date_value_bits = process_sp->ReadUnsignedIntegerFromMemory(
         valobj_addr + 2 * ptr_size, 8, 0, error);
-    memcpy(&date_value, &date_value_bits, sizeof(date_value_bits));
+    std::memcpy(&date_value, &date_value_bits, sizeof(date_value_bits));
     if (error.Fail())
       return false;
   } else

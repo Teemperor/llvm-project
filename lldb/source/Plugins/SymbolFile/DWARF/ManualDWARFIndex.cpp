@@ -289,7 +289,7 @@ void ManualDWARFIndex::IndexUnitImpl(DWARFUnit &unit,
           // duplicate entries
           if (name && name != mangled_cstr &&
               ((mangled_cstr[0] == '_') ||
-               (::strcmp(name, mangled_cstr) != 0))) {
+               (std::strcmp(name, mangled_cstr) != 0))) {
             set.function_fullnames.Insert(ConstString(mangled_cstr), ref);
           }
         }
@@ -331,7 +331,7 @@ void ManualDWARFIndex::IndexUnitImpl(DWARFUnit &unit,
         // to make sure it isn't the same and we don't end up with duplicate
         // entries
         if (mangled_cstr && name != mangled_cstr &&
-            ((mangled_cstr[0] == '_') || (::strcmp(name, mangled_cstr) != 0))) {
+            ((mangled_cstr[0] == '_') || (std::strcmp(name, mangled_cstr) != 0))) {
           set.globals.Insert(ConstString(mangled_cstr), ref);
         }
       }

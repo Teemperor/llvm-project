@@ -264,7 +264,7 @@ bool Mangled::DemangleWithRichManglingInfo(
         // the counterparts to accelerate later access in GetDemangledName().
         m_demangled.SetStringWithMangledCounterpart(llvm::StringRef(d),
                                                     m_mangled);
-        ::free(d);
+        std::free(d);
       } else {
         m_demangled.SetCString("");
       }
@@ -313,7 +313,7 @@ ConstString Mangled::GetDemangledName() const {
       if (demangled_name) {
         m_demangled.SetStringWithMangledCounterpart(
             llvm::StringRef(demangled_name), m_mangled);
-        free(demangled_name);
+        std::free(demangled_name);
       }
     }
     if (m_demangled.IsNull()) {

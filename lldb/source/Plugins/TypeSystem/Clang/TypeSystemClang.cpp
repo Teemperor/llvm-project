@@ -7751,7 +7751,7 @@ bool TypeSystemClang::AddObjCClassProperty(
 
   if (property_setter_name) {
     std::string property_setter_no_colon(property_setter_name,
-                                         strlen(property_setter_name) - 1);
+                                         std::strlen(property_setter_name) - 1);
     clang::IdentifierInfo *setter_ident =
         &clang_ast.Idents.get(property_setter_no_colon);
     setter_sel = clang_ast.Selectors.getSelector(1, &setter_ident);
@@ -7928,7 +7928,7 @@ clang::ObjCMethodDecl *TypeSystemClang::AddMethodToObjCObjectType(
     return nullptr;
   clang::ASTContext &ast = lldb_ast->getASTContext();
 
-  const char *selector_start = ::strchr(name, ' ');
+  const char *selector_start = std::strchr(name, ' ');
   if (selector_start == nullptr)
     return nullptr;
 
@@ -8948,7 +8948,7 @@ void TypeSystemClang::DumpSummary(lldb::opaque_compiler_type_t type,
         Status error;
         while ((bytes_read = process->ReadMemory(pointer_address, &buf.front(),
                                                  buf.size(), error)) > 0) {
-          const size_t len = strlen((const char *)&buf.front());
+          const size_t len = std::strlen((const char *)&buf.front());
           if (len == 0)
             break;
           if (total_cstr_len == 0)

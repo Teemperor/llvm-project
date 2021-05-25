@@ -1088,7 +1088,7 @@ bool DWARFExpression::Evaluate(
       case Value::ValueType::HostAddress: {
         void *src = (void *)stack.back().GetScalar().ULongLong();
         intptr_t ptr;
-        ::memcpy(&ptr, src, sizeof(void *));
+        std::memcpy(&ptr, src, sizeof(void *));
         stack.back().GetScalar() = ptr;
         stack.back().ClearContext();
       } break;
@@ -1188,7 +1188,7 @@ bool DWARFExpression::Evaluate(
       case Value::ValueType::HostAddress: {
         void *src = (void *)stack.back().GetScalar().ULongLong();
         intptr_t ptr;
-        ::memcpy(&ptr, src, sizeof(void *));
+        std::memcpy(&ptr, src, sizeof(void *));
         // I can't decide whether the size operand should apply to the bytes in
         // their
         // lldb-host endianness or the target endianness.. I doubt this'll ever
@@ -2160,7 +2160,7 @@ bool DWARFExpression::Evaluate(
           // It would be better to also return a mask of valid bits together
           // with the expression result, so the debugger can print missing
           // members as "<optimized out>" or something.
-          ::memset(curr_piece.GetBuffer().GetBytes(), 0, piece_byte_size);
+          std::memset(curr_piece.GetBuffer().GetBytes(), 0, piece_byte_size);
           pieces.AppendDataToHostBuffer(curr_piece);
         } else {
           Status error;

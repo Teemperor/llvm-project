@@ -668,7 +668,7 @@ DWARFASTParserClang::ParseTypeModifier(const SymbolContext &sc,
 
         for (DWARFDIE child_die = target_die.GetFirstChild();
              child_die.IsValid(); child_die = child_die.GetSibling()) {
-          if (!strcmp(child_die.GetAttributeValueAsString(DW_AT_name, ""),
+          if (!std::strcmp(child_die.GetAttributeValueAsString(DW_AT_name, ""),
                       "__FuncPtr")) {
             DWARFDIE function_pointer_type =
                 child_die.GetReferencedDIE(DW_AT_type);
@@ -2277,7 +2277,7 @@ Function *DWARFASTParserClang::ParseFunctionFromDWARF(CompileUnit &comp_unit,
                    SymbolFileDWARF::GetLanguage(*die.GetCU())) &&
                !Language::LanguageIsObjC(
                    SymbolFileDWARF::GetLanguage(*die.GetCU())) &&
-               name && strcmp(name, "main") != 0) {
+               name && std::strcmp(name, "main") != 0) {
         // If the mangled name is not present in the DWARF, generate the
         // demangled name using the decl context. We skip if the function is
         // "main" as its name is never mangled.
@@ -2985,7 +2985,7 @@ size_t DWARFASTParserClang::ParseChildParameters(
               // Often times compilers omit the "this" name for the
               // specification DIEs, so we can't rely upon the name being in
               // the formal parameter DIE...
-              (name == nullptr || ::strcmp(name, "this") == 0)) {
+              (name == nullptr || std::strcmp(name, "this") == 0)) {
             Type *this_type =
                 die.ResolveTypeUID(param_type_die_form.Reference());
             if (this_type) {
@@ -3598,7 +3598,7 @@ bool DWARFASTParserClang::CopyUniqueClassMethodTypes(
       const char *dst_name = dst_die.GetMangledName();
 
       // Make sure the names match
-      if (src_name == dst_name || (strcmp(src_name, dst_name) == 0))
+      if (src_name == dst_name || (std::strcmp(src_name, dst_name) == 0))
         continue;
 
       LLDB_LOGF(log,

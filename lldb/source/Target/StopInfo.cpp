@@ -1239,7 +1239,7 @@ StopInfo::GetCrashingDereference(StopInfoSP &stop_info_sp,
 
   const char address_string[] = "address=";
 
-  const char *address_loc = strstr(description, address_string);
+  const char *address_loc = std::strstr(description, address_string);
   if (!address_loc) {
     return ValueObjectSP();
   }

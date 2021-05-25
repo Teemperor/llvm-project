@@ -486,31 +486,31 @@ protected:
       if (name_str.find("objc_msgSend") == std::string::npos)
         return true;
 
-      if (!strcmp(name_cstr, "objc_msgSend")) {
+      if (!std::strcmp(name_cstr, "objc_msgSend")) {
         RegisterInstruction(i);
         msgSend_types[&i] = eMsgSend;
         return true;
       }
 
-      if (!strcmp(name_cstr, "objc_msgSend_stret")) {
+      if (!std::strcmp(name_cstr, "objc_msgSend_stret")) {
         RegisterInstruction(i);
         msgSend_types[&i] = eMsgSend_stret;
         return true;
       }
 
-      if (!strcmp(name_cstr, "objc_msgSend_fpret")) {
+      if (!std::strcmp(name_cstr, "objc_msgSend_fpret")) {
         RegisterInstruction(i);
         msgSend_types[&i] = eMsgSend_fpret;
         return true;
       }
 
-      if (!strcmp(name_cstr, "objc_msgSendSuper")) {
+      if (!std::strcmp(name_cstr, "objc_msgSendSuper")) {
         RegisterInstruction(i);
         msgSend_types[&i] = eMsgSendSuper;
         return true;
       }
 
-      if (!strcmp(name_cstr, "objc_msgSendSuper_stret")) {
+      if (!std::strcmp(name_cstr, "objc_msgSendSuper_stret")) {
         RegisterInstruction(i);
         msgSend_types[&i] = eMsgSendSuper_stret;
         return true;

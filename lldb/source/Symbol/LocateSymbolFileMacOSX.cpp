@@ -98,7 +98,7 @@ int LocateMacOSXFilesUsingDebugSymbols(const ModuleSpec &module_spec,
           char exec_cf_path[PATH_MAX];
           if (exec_fspec->GetPath(exec_cf_path, sizeof(exec_cf_path)))
             exec_url.reset(::CFURLCreateFromFileSystemRepresentation(
-                NULL, (const UInt8 *)exec_cf_path, strlen(exec_cf_path),
+                NULL, (const UInt8 *)exec_cf_path, std::strlen(exec_cf_path),
                 FALSE));
         }
 
@@ -174,7 +174,7 @@ int LocateMacOSXFilesUsingDebugSymbols(const ModuleSpec &module_spec,
             // matches...
             if (::CFURLGetFileSystemRepresentation(
                     dsym_url.get(), true, (UInt8 *)path, sizeof(path) - 1)) {
-              char *dsym_extension_pos = ::strstr(path, ".dSYM");
+              char *dsym_extension_pos = std::strstr(path, ".dSYM");
               if (dsym_extension_pos) {
                 *dsym_extension_pos = '\0';
                 if (log) {
@@ -379,9 +379,9 @@ static bool GetModuleSpecInfoFromUUIDDictionary(CFDictionaryRef uuid_dict,
       CFIndex kv_pair_count = CFDictionaryGetCount((CFDictionaryRef)uuid_dict);
       if (kv_pair_count > 0) {
         CFStringRef *keys =
-            (CFStringRef *)malloc(kv_pair_count * sizeof(CFStringRef));
+            (CFStringRef *)std::malloc(kv_pair_count * sizeof(CFStringRef));
         CFStringRef *values =
-            (CFStringRef *)malloc(kv_pair_count * sizeof(CFStringRef));
+            (CFStringRef *)std::malloc(kv_pair_count * sizeof(CFStringRef));
         if (keys != nullptr && values != nullptr) {
           CFDictionaryGetKeysAndValues((CFDictionaryRef)uuid_dict,
                                        (const void **)keys,
@@ -431,9 +431,9 @@ static bool GetModuleSpecInfoFromUUIDDictionary(CFDictionaryRef uuid_dict,
           }
         }
         if (keys)
-          free(keys);
+          std::free(keys);
         if (values)
-          free(values);
+          std::free(values);
       }
     }
 

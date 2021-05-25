@@ -625,7 +625,7 @@ void IOHandlerEditline::PrintAsync(Stream *stream, const char *s, size_t len) {
       HANDLE console_handle = GetStdHandle(STD_OUTPUT_HANDLE);
       GetConsoleScreenBufferInfo(console_handle, &screen_buffer_info);
       COORD coord = screen_buffer_info.dwCursorPosition;
-      coord.X -= strlen(prompt);
+      coord.X -= std::strlen(prompt);
       if (coord.X < 0)
         coord.X = 0;
       SetConsoleCursorPosition(console_handle, coord);
@@ -635,7 +635,7 @@ void IOHandlerEditline::PrintAsync(Stream *stream, const char *s, size_t len) {
 #ifdef _WIN32
     if (prompt)
       IOHandler::PrintAsync(GetOutputStreamFileSP().get(), prompt,
-                            strlen(prompt));
+                            std::strlen(prompt));
 #endif
   }
 }

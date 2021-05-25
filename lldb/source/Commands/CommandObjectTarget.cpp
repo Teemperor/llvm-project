@@ -70,7 +70,7 @@ static void DumpTargetInfo(uint32_t target_idx, Target *target,
     exe_valid = exe_module->GetFileSpec().GetPath(exe_path, sizeof(exe_path));
 
   if (!exe_valid)
-    ::strcpy(exe_path, "<none>");
+    std::strcpy(exe_path, "<none>");
 
   strm.Printf("%starget #%u: %s", prefix_cstr ? prefix_cstr : "", target_idx,
               exe_path);
@@ -3416,7 +3416,7 @@ protected:
       size_t count = args.GetArgumentCount();
       for (size_t i = 0; i < count; i++) {
         const char *trap_func_name = args.GetArgumentAtIndex(i);
-        if (strcmp(funcname.GetCString(), trap_func_name) == 0)
+        if (std::strcmp(funcname.GetCString(), trap_func_name) == 0)
           result.GetOutputStream().Printf(
               "This function is "
               "treated as a trap handler function via user setting.\n");

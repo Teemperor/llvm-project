@@ -130,7 +130,7 @@ protected:
         slide = 0;
         mod_date = 0;
         file_spec.Clear();
-        ::memset(&header, 0, sizeof(header));
+        std::memset(&header, 0, sizeof(header));
       }
       uuid.Clear();
       segments.clear();

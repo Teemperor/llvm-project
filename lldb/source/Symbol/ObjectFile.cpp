@@ -508,7 +508,7 @@ size_t ObjectFile::ReadSectionData(Section *section,
         uint64_t section_dst_len = dst_len;
         if (section_dst_len > section_bytes_left)
           section_dst_len = section_bytes_left;
-        memset(dst, 0, section_dst_len);
+        std::memset(dst, 0, section_dst_len);
         return section_dst_len;
       }
     }

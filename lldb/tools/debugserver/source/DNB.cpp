@@ -1714,7 +1714,7 @@ nub_bool_t DNBResolveExecutablePath(const char *path, char *resolved_path,
       const char *curr_path_start = PATH;
       const char *curr_path_end;
       while (curr_path_start && *curr_path_start) {
-        curr_path_end = strchr(curr_path_start, ':');
+        curr_path_end = std::strchr(curr_path_start, ':');
         if (curr_path_end == NULL) {
           result.assign(curr_path_start);
           curr_path_start = NULL;

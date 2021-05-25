@@ -138,7 +138,7 @@ public:
     if (!name)
       return false;
     bool starts_right = (name[0] == '+' || name[0] == '-') && name[1] == '[';
-    bool ends_right = (name[strlen(name) - 1] == ']');
+    bool ends_right = (name[std::strlen(name) - 1] == ']');
     return (starts_right && ends_right);
   }
 
@@ -146,9 +146,9 @@ public:
     if (!name)
       return false;
 
-    if (strchr(name, ':') == nullptr)
+    if (std::strchr(name, ':') == nullptr)
       return true;
-    else if (name[strlen(name) - 1] == ':')
+    else if (name[std::strlen(name) - 1] == ':')
       return true;
     else
       return false;

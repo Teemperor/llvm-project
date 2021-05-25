@@ -403,16 +403,16 @@ uint32_t CPlusPlusLanguage::FindAlternateFunctionManglings(
 
   // Maybe we're looking for a const symbol but the debug info told us it was
   // non-const...
-  if (!strncmp(mangled_name.GetCString(), "_ZN", 3) &&
-      strncmp(mangled_name.GetCString(), "_ZNK", 4)) {
+  if (!std::strncmp(mangled_name.GetCString(), "_ZN", 3) &&
+      std::strncmp(mangled_name.GetCString(), "_ZNK", 4)) {
     std::string fixed_scratch("_ZNK");
     fixed_scratch.append(mangled_name.GetCString() + 3);
     alternates.insert(ConstString(fixed_scratch));
   }
 
   // Maybe we're looking for a static symbol but we thought it was global...
-  if (!strncmp(mangled_name.GetCString(), "_Z", 2) &&
-      strncmp(mangled_name.GetCString(), "_ZL", 3)) {
+  if (!std::strncmp(mangled_name.GetCString(), "_Z", 2) &&
+      std::strncmp(mangled_name.GetCString(), "_ZL", 3)) {
     std::string fixed_scratch("_ZL");
     fixed_scratch.append(mangled_name.GetCString() + 2);
     alternates.insert(ConstString(fixed_scratch));
