@@ -105,6 +105,8 @@ public:
   std::vector<ConstString>
   GetMethodNameVariants(ConstString method_name) const override;
 
+  bool SymbolFitsToLanguage(Mangled mangled) const override;
+
   lldb::TypeCategoryImplSP GetFormatters() override;
 
   std::vector<ConstString>

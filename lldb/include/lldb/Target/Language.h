@@ -192,6 +192,10 @@ public:
     return std::vector<ConstString>();
   };
 
+  virtual bool SymbolFitsToLanguage(Mangled mangled) const {
+    return false;
+  }
+
   // if an individual data formatter can apply to several types and cross a
   // language boundary it makes sense for individual languages to want to
   // customize the printing of values of that type by appending proper

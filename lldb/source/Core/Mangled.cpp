@@ -17,7 +17,6 @@
 #include "lldb/lldb-enumerations.h"
 
 #include "Plugins/Language/CPlusPlus/CPlusPlusLanguage.h"
-#include "Plugins/Language/ObjC/ObjCLanguage.h"
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Demangle/Demangle.h"
@@ -395,22 +394,15 @@ size_t Mangled::MemorySize() const {
 // of mangling names from a given language, likewise the compilation units
 // within those targets.
 lldb::LanguageType Mangled::GuessLanguage() const {
-  ConstString mangled = GetMangledName();
-
-  if (mangled) {
-    const char *mangled_name = mangled.GetCString();
-    if (CPlusPlusLanguage::IsCPPMangledName(mangled_name))
-      return lldb::eLanguageTypeC_plus_plus;
-  } else {
-    // ObjC names aren't really mangled, so they won't necessarily be in the
-    // mangled name slot.
-    ConstString demangled_name = GetDemangledName();
-    if (demangled_name 
-        && ObjCLanguage::IsPossibleObjCMethodName(demangled_name.GetCString()))
-      return lldb::eLanguageTypeObjC;
-  
-  }
-  return lldb::eLanguageTypeUnknown;
+  lldb::LanguageType result = lldb::eLanguageTypeUnknown;
+  Language::ForEach([this, &result](Language *l){
+    if (l->SymbolFitsToLanguage(*this)) {
+      result = l->GetLanguageType();
+      return false;
+    }
+    return true;
+  });
+  return result;
 }
 
 // Dump OBJ to the supplied stream S.
