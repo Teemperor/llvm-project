@@ -500,6 +500,12 @@ public:
   /// TypeSystemClang.
   CompilerDeclContext CreateDeclContext(clang::DeclContext *ctx);
 
+
+  bool DeclContextIsEquivalent(void *opaque_decl_ctx,
+                               const CompilerDeclContext &other_ctx) override;
+
+  static bool IsTranslationUnitContext(CompilerDeclContext dc);
+
   /// Set the owning module for \p decl.
   static void SetOwningModule(clang::Decl *decl,
                               OptionalClangModuleID owning_module);

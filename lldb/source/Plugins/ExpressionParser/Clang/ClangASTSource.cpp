@@ -544,7 +544,8 @@ void ClangASTSource::FindExternalVisibleDecls(NameSearchContext &context) {
     // we shouldn't be getting FindExternalVisibleDecls calls for these
     return;
   } else {
-    CompilerDeclContext namespace_decl;
+      CompilerDeclContext namespace_decl = m_clang_ast_context->CreateDeclContext(
+            const_cast<clang::DeclContext *>(context.m_decl_context));
 
     LLDB_LOG(log, "  CAS::FEVD Searching the root namespace");
 
@@ -656,18 +657,18 @@ void ClangASTSource::FindExternalVisibleDecls(
 
 void ClangASTSource::FillNamespaceMap(
     NameSearchContext &context, lldb::ModuleSP module_sp,
-    const CompilerDeclContext &namespace_decl) {
+    const CompilerDeclContext &decl_context) {
   const ConstString name(context.m_decl_name.getAsString().c_str());
   if (IgnoreName(name, true))
     return;
 
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
 
-  if (module_sp && namespace_decl) {
+  if (module_sp && decl_context) {
     CompilerDeclContext found_namespace_decl;
 
     if (SymbolFile *symbol_file = module_sp->GetSymbolFile()) {
-      found_namespace_decl = symbol_file->FindNamespace(name, namespace_decl);
+      found_namespace_decl = symbol_file->FindNamespace(name, decl_context);
 
       if (found_namespace_decl) {
         context.m_namespace_map->push_back(
@@ -692,7 +693,7 @@ void ClangASTSource::FillNamespaceMap(
     if (!symbol_file)
       continue;
 
-    found_namespace_decl = symbol_file->FindNamespace(name, namespace_decl);
+    found_namespace_decl = symbol_file->FindNamespace(name, decl_context);
 
     if (found_namespace_decl) {
       context.m_namespace_map->push_back(

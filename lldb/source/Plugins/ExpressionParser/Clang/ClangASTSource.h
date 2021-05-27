@@ -365,9 +365,9 @@ protected:
   /// \param context The NameSearchContext with the namespace map to fill.
   /// \param module_sp The module to search for namespaces or a nullptr if
   ///                  the current target should be searched.
-  /// \param namespace_decl The DeclContext in which to search for namespaces.
+  /// \param decl_context The DeclContext in which to search for namespaces.
   void FillNamespaceMap(NameSearchContext &context, lldb::ModuleSP module_sp,
-                        const CompilerDeclContext &namespace_decl);
+                        const CompilerDeclContext &decl_context);
 
   clang::TagDecl *FindCompleteType(const clang::TagDecl *decl);
 

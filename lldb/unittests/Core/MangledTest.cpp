@@ -24,6 +24,7 @@
 #include "llvm/Testing/Support/Error.h"
 
 #include "gtest/gtest.h"
+#include <thread>
 
 using namespace lldb;
 using namespace lldb_private;

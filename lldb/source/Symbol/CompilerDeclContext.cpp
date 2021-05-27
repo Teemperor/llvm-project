@@ -13,6 +13,12 @@
 
 using namespace lldb_private;
 
+bool CompilerDeclContext::IsEquivalent(const CompilerDeclContext &other) const {
+  if (!IsValid() || !other.IsValid())
+    return false;
+  return m_type_system->DeclContextIsEquivalent(m_opaque_decl_ctx, other);
+}
+
 std::vector<CompilerDecl>
 CompilerDeclContext::FindDeclByName(ConstString name,
                                     const bool ignore_using_decls) {

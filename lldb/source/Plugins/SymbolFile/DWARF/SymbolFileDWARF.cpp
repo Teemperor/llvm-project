@@ -2018,6 +2018,9 @@ bool SymbolFileDWARF::DeclContextMatchesThisSymbolFile(
   if (decl_ctx_type_system == &type_system_or_err.get())
     return true; // The type systems match, return true
 
+  if (TypeSystemClang::IsTranslationUnitContext(decl_ctx))
+    return true;
+
   // The namespace AST was valid, and it does not match...
   Log *log(LogChannelDWARF::GetLogIfAll(DWARF_LOG_LOOKUPS));
 
@@ -2078,8 +2081,7 @@ void SymbolFileDWARF::FindGlobalVariables(
       if (DWARFASTParser *dwarf_ast = GetDWARFParser(*die.GetCU())) {
         CompilerDeclContext actual_parent_decl_ctx =
             dwarf_ast->GetDeclContextContainingUIDFromDWARF(die);
-        if (!actual_parent_decl_ctx ||
-            actual_parent_decl_ctx != parent_decl_ctx)
+        if (!parent_decl_ctx.IsEquivalent(actual_parent_decl_ctx))
           return true;
       }
     }
@@ -2211,7 +2213,7 @@ bool SymbolFileDWARF::DIEInDeclContext(const CompilerDeclContext &decl_ctx,
     if (DWARFASTParser *dwarf_ast = GetDWARFParser(*die.GetCU())) {
       if (CompilerDeclContext actual_decl_ctx =
               dwarf_ast->GetDeclContextContainingUIDFromDWARF(die))
-        return decl_ctx.IsContainedInLookup(actual_decl_ctx);
+        return actual_decl_ctx.IsEquivalent(decl_ctx);
     }
   }
   return false;

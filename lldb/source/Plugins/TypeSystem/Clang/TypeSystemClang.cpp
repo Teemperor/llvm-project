@@ -1217,6 +1217,37 @@ CompilerDeclContext TypeSystemClang::CreateDeclContext(DeclContext *ctx) {
   return CompilerDeclContext(this, ctx);
 }
 
+static DeclContext* GetClangContext(const CompilerDeclContext &decl_ctx) {
+  return static_cast<DeclContext *>(decl_ctx.GetOpaqueDeclContext());
+}
+
+bool TypeSystemClang::DeclContextIsEquivalent(void *opaque_decl_ctx,
+                                              const CompilerDeclContext &other_ctx) {
+  auto *clang_ctx = static_cast<DeclContext *>(opaque_decl_ctx);
+  assert(other_ctx.IsValid() && "CompilerDeclContext should have checked"
+         " if other_ctx is valid");
+  clang::DeclContext *other_clang_ctx = GetClangContext(other_ctx);
+  if (!other_clang_ctx)
+    return false;
+  // Two translation units are always equivalent.
+  if (clang_ctx->isTranslationUnit() && other_clang_ctx->isTranslationUnit())
+    return true;
+  if (auto *ns = dyn_cast<NamespaceDecl>(clang_ctx))
+    if (auto *other = dyn_cast<NamespaceDecl>(other_clang_ctx))
+      return ns->getQualifiedNameAsString() == other->getQualifiedNameAsString();
+
+  if (auto *ns = dyn_cast<CXXRecordDecl>(clang_ctx))
+    if (auto *other = dyn_cast<CXXRecordDecl>(other_clang_ctx))
+      return ns->getQualifiedNameAsString() == other->getQualifiedNameAsString();
+  return false;
+}
+
+bool TypeSystemClang::IsTranslationUnitContext(CompilerDeclContext dc) {
+  TypeSystemClang *d = llvm::cast<TypeSystemClang>(dc.GetTypeSystem());
+  DeclContext *clang_dc = static_cast<DeclContext *>(dc.GetOpaqueDeclContext());
+  return d->GetTranslationUnitDecl() == clang_dc;
+}
+
 CompilerType TypeSystemClang::GetTypeForDecl(clang::NamedDecl *decl) {
   if (clang::ObjCInterfaceDecl *interface_decl =
       llvm::dyn_cast<clang::ObjCInterfaceDecl>(decl))

@@ -615,7 +615,7 @@ lldb::VariableSP ClangExpressionDeclMap::FindGlobalVariable(
   if (module && namespace_decl)
     module->FindGlobalVariables(name, namespace_decl, -1, vars);
   else
-    target.GetImages().FindGlobalVariables(name, -1, vars);
+    target.GetImages().FindGlobalVariables(name, -1, vars, namespace_decl);
 
   if (vars.GetSize() == 0)
     return VariableSP();
@@ -696,7 +696,8 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
       FindExternalVisibleDecls(context, n.first, n.second);
     }
   } else if (isa<TranslationUnitDecl>(context.m_decl_context)) {
-    CompilerDeclContext namespace_decl;
+    CompilerDeclContext namespace_decl = m_clang_ast_context->CreateDeclContext(
+          const_cast<clang::DeclContext *>(context.m_decl_context));
 
     LLDB_LOG(log, "  CEDM::FEVD Searching the root namespace");
 
@@ -1236,6 +1237,8 @@ void ClangExpressionDeclMap::LookupFunction(
     target->GetImages().FindFunctions(
         name, eFunctionNameTypeFull | eFunctionNameTypeBase, include_symbols,
         include_inlines, sc_list);
+  } else if (target && namespace_decl) {
+    target->GetImages().FindFunctions(name, namespace_decl, /*include_symbols=*/true, /*include_inlines=*/false, sc_list);
   }
 
   // If we found more than one function, see if we can use the frame's decl
@@ -1354,7 +1357,8 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
   if (!namespace_decl)
     SearchPersistenDecls(context, name);
 
-  if (name.GetStringRef().startswith("$") && !namespace_decl) {
+  if (name.GetStringRef().startswith("$") &&
+      TypeSystemClang::IsTranslationUnitContext(namespace_decl)) {
     if (name == "$__lldb_class") {
       LookUpLldbClass(context);
       return;
@@ -1402,7 +1406,7 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
     return;
   }
 
-  bool local_var_lookup = !namespace_decl || (namespace_decl.GetName() ==
+  bool local_var_lookup = TypeSystemClang::IsTranslationUnitContext(namespace_decl) || (namespace_decl.GetName() ==
                                               g_lldb_local_vars_namespace_cstr);
   if (frame && local_var_lookup)
     if (LookupLocalVariable(context, name, sym_ctx, namespace_decl))
@@ -1427,7 +1431,7 @@ void ClangExpressionDeclMap::FindExternalVisibleDecls(
   if (!context.m_found_function_with_type_info)
     LookupInModulesDeclVendor(context, name);
 
-  if (target && !context.m_found_variable && !namespace_decl) {
+  if (target && !context.m_found_variable && !namespace_decl && false) {
     // We couldn't find a non-symbol variable for this.  Now we'll hunt for a
     // generic data symbol, and -- if it is found -- treat it as a variable.
     Status error;

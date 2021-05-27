@@ -128,6 +128,9 @@ public:
   virtual bool DeclContextIsContainedInLookup(void *opaque_decl_ctx,
                                               void *other_opaque_decl_ctx) = 0;
 
+  virtual bool DeclContextIsEquivalent(void *opaque_decl_ctx,
+                                       const CompilerDeclContext &other_ctx) = 0;
+
   // Tests
 #ifndef NDEBUG
   /// Verify the integrity of the type to catch CompilerTypes that mix

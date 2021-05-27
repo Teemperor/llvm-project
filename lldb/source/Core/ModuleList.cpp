@@ -432,6 +432,16 @@ void ModuleList::FindFunctions(const RegularExpression &name,
   }
 }
 
+void ModuleList::FindFunctions(ConstString name, CompilerDeclContext ctx, bool include_symbols, bool include_inlines, SymbolContextList &sc_list) {
+  std::lock_guard<std::recursive_mutex> guard(m_modules_mutex);
+  collection::const_iterator pos, end = m_modules.end();
+  for (pos = m_modules.begin(); pos != end; ++pos) {
+    (*pos)->FindFunctions(name, ctx, eFunctionNameTypeBase, /*include_symbols=*/include_symbols,
+                          /*include_inlines=*/include_inlines, sc_list);
+  }
+
+}
+
 void ModuleList::FindCompileUnits(const FileSpec &path,
                                   SymbolContextList &sc_list) const {
   std::lock_guard<std::recursive_mutex> guard(m_modules_mutex);
@@ -442,12 +452,12 @@ void ModuleList::FindCompileUnits(const FileSpec &path,
 }
 
 void ModuleList::FindGlobalVariables(ConstString name, size_t max_matches,
-                                     VariableList &variable_list) const {
+                                     VariableList &variable_list,
+                                     CompilerDeclContext ctx) const {
   std::lock_guard<std::recursive_mutex> guard(m_modules_mutex);
   collection::const_iterator pos, end = m_modules.end();
   for (pos = m_modules.begin(); pos != end; ++pos) {
-    (*pos)->FindGlobalVariables(name, CompilerDeclContext(), max_matches,
-                                variable_list);
+    (*pos)->FindGlobalVariables(name, ctx, max_matches, variable_list);
   }
 }
 

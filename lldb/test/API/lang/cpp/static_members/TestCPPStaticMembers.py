@@ -17,7 +17,7 @@ class TestCase(TestBase):
 
     # We fail to lookup static members on Windows.
     @expectedFailureAll(oslist=["windows"])
-    def test_access_from_main(self):
+    def atest_access_from_main(self):
         self.build()
         lldbutil.run_to_source_breakpoint(self, "// stop in main", lldb.SBFileSpec("main.cpp"))
 
@@ -25,19 +25,22 @@ class TestCase(TestBase):
         self.expect_expr("my_a.s_b", result_type="long", result_value="2")
         self.expect_expr("my_a.s_c", result_type="int", result_value="3")
 
+        self.expect_expr("A::s_c", result_type="int", result_value="3")
+        self.expect("expression s_c", error=True,
+                    substrs=["use of undeclared identifier 's_c'"])
+
     # We fail to lookup static members on Windows.
     @expectedFailureAll(oslist=["windows"])
-    def test_access_from_member_function(self):
+    def atest_access_from_member_function(self):
         self.build()
         lldbutil.run_to_source_breakpoint(self, "// stop in member function", lldb.SBFileSpec("main.cpp"))
         self.expect_expr("m_a", result_type="short", result_value="1")
         self.expect_expr("s_b", result_type="long", result_value="2")
         self.expect_expr("s_c", result_type="int", result_value="3")
 
-    # Currently lookups find variables that are in any scope.
-    @expectedFailureAll()
     def test_access_without_scope(self):
         self.build()
         self.createTestTarget()
         self.expect("expression s_c", error=True,
-                    startstr="error: use of undeclared identifier 's_d'")
+                    substrs=["use of undeclared identifier 's_c'"])
+

@@ -56,6 +56,8 @@ public:
     return m_type_system != nullptr && m_opaque_decl_ctx != nullptr;
   }
 
+  bool IsEquivalent(const CompilerDeclContext &other) const;
+
   std::vector<CompilerDecl> FindDeclByName(ConstString name,
                                            const bool ignore_using_decls);
 

@@ -12,6 +12,7 @@
 #include "lldb/Core/Address.h"
 #include "lldb/Core/ModuleSpec.h"
 #include "lldb/Core/UserSettingsController.h"
+#include "lldb/Symbol/CompilerDeclContext.h"
 #include "lldb/Utility/FileSpec.h"
 #include "lldb/Utility/Iterable.h"
 #include "lldb/Utility/Status.h"
@@ -264,6 +265,10 @@ public:
   void FindFunctions(const RegularExpression &name, bool include_symbols,
                      bool include_inlines, SymbolContextList &sc_list);
 
+  void FindFunctions(ConstString name, CompilerDeclContext ctx,
+                     bool include_symbols,
+                     bool include_inlines, SymbolContextList &sc_list);
+
   /// Find global and static variables by name.
   ///
   /// \param[in] name
@@ -277,7 +282,8 @@ public:
   /// \param[in] variable_list
   ///     A list of variables that gets the matches appended to.
   void FindGlobalVariables(ConstString name, size_t max_matches,
-                           VariableList &variable_list) const;
+                           VariableList &variable_list,
+                           CompilerDeclContext ctx = CompilerDeclContext()) const;
 
   /// Find global and static variables by regular expression.
   ///
