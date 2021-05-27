@@ -1507,7 +1507,9 @@ public:
   /// Determine whether this particular declaration of this class is
   /// actually also a definition.
   bool isThisDeclarationADefinition() const {
-    return getDefinition() == this;
+    if (!Data.getPointer())
+      return false;
+    return Data.getPointer()->Definition == this;
   }
 
   /// Determine whether this class has been defined.
@@ -2213,7 +2215,9 @@ public:
   /// Determine whether this particular declaration is also the
   /// definition.
   bool isThisDeclarationADefinition() const {
-    return getDefinition() == this;
+    if (!Data.getPointer())
+      return false;
+    return Data.getPointer()->Definition == this;
   }
 
   /// Starts the definition of this Objective-C protocol.

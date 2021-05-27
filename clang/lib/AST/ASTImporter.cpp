@@ -134,7 +134,7 @@ namespace clang {
   void updateFlags(const Decl *From, Decl *To) {
     // Check if some flags or attrs are new in 'From' and copy into 'To'.
     // FIXME: Other flags or attrs?
-    if (From->isUsed(false) && !To->isUsed(false))
+    //if (From->isUsed(false) && !To->isUsed(false))
       To->setIsUsed();
   }
 
@@ -251,6 +251,7 @@ namespace clang {
 
     void InitializeImportedDecl(Decl *FromD, Decl *ToD) {
       ToD->IdentifierNamespace = FromD->IdentifierNamespace;
+      return;
       if (FromD->isUsed())
         ToD->setIsUsed();
       if (FromD->isImplicit())
@@ -268,7 +269,7 @@ namespace clang {
     }
 
     void addDeclToContexts(Decl *FromD, Decl *ToD) {
-      if (Importer.isMinimalImport()) {
+      if (Importer.isMinimalImport() || Importer.getToContext().getLangOpts().DebuggerSupport || Importer.getFromContext().getLangOpts().DebuggerSupport) {
         // In minimal import case the decl must be added even if it is not
         // contained in original context, for LLDB compatibility.
         // FIXME: Check if a better solution is possible.
@@ -1982,7 +1983,7 @@ Error ASTNodeImporter::ImportDefinition(
     To->completeDefinition();
   };
 
-  if (To->getDefinition() || To->isBeingDefined()) {
+  if (To->isThisDeclarationADefinition() || To->isBeingDefined()) {
     if (Kind == IDK_Everything ||
         // In case of lambdas, the class already has a definition ptr set, but
         // the contained decls are not imported yet. Also, isBeingDefined was
