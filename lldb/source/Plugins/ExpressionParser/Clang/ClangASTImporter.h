@@ -26,7 +26,10 @@
 #include "lldb/Utility/LLDBAssert.h"
 #include "lldb/lldb-types.h"
 
+#include "Plugins/TypeSystem/Clang/TypeSystemClang.h" //remove me
+
 #include "Plugins/ExpressionParser/Clang/CxxModuleHandler.h"
+#include "Plugins/ExpressionParser/Clang/ClangUtil.h"
 
 #include "llvm/ADT/DenseMap.h"
 
@@ -116,7 +119,7 @@ public:
   ///
   /// \param decl The RecordDecl to set the layout for.
   /// \param layout The layout for the record.
-  void SetRecordLayout(clang::RecordDecl *decl, const LayoutInfo &layout);
+  void SetRecordLayout(const clang::RecordDecl *decl, const LayoutInfo &layout);
 
   bool LayoutRecordType(
       const clang::RecordDecl *record_decl, uint64_t &bit_size,
@@ -126,6 +129,8 @@ public:
           &base_offsets,
       llvm::DenseMap<const clang::CXXRecordDecl *, clang::CharUnits>
           &vbase_offsets);
+
+  bool CanImport(clang::Decl *d);
 
   /// Returns true iff the given type was copied from another TypeSystemClang
   /// and the original type in this other TypeSystemClang might contain
@@ -147,11 +152,11 @@ public:
 
   bool CompleteType(const CompilerType &compiler_type);
 
-  bool CompleteTagDecl(clang::TagDecl *decl);
+  bool CompleteTagDecl(const clang::TagDecl *decl);
 
-  bool CompleteTagDeclWithOrigin(clang::TagDecl *decl, clang::TagDecl *origin);
+  bool CompleteTagDeclWithOrigin(const clang::TagDecl *decl, clang::TagDecl *origin);
 
-  bool CompleteObjCInterfaceDecl(clang::ObjCInterfaceDecl *interface_decl);
+  bool CompleteObjCInterfaceDecl(const clang::ObjCInterfaceDecl *interface_decl);
 
   bool CompleteAndFetchChildren(clang::QualType type);
 
@@ -262,7 +267,7 @@ public:
     ASTImporterDelegate(ClangASTImporter &master, clang::ASTContext *target_ctx,
                         clang::ASTContext *source_ctx)
         : clang::ASTImporter(*target_ctx, master.m_file_manager, *source_ctx,
-                             master.m_file_manager, true /*minimal*/),
+                             master.m_file_manager, false /*minimal*/),
           m_master(master), m_source_ctx(source_ctx) {
       // Target and source ASTContext shouldn't be identical. Importing AST
       // nodes within the same AST doesn't make any sense as the whole idea
@@ -344,6 +349,9 @@ public:
   class ASTContextMetadata {
     typedef llvm::DenseMap<const clang::Decl *, DeclOrigin> OriginMap;
 
+    const clang::Decl *GetDeclForOriginMap(const clang::Decl *d) const {
+      return ClangUtil::GetFirstDecl(d);
+    }
   public:
     ASTContextMetadata(clang::ASTContext *dst_ctx) : m_dst_ctx(dst_ctx) {}
 
@@ -363,11 +371,13 @@ public:
       assert(&decl->getASTContext() != origin.ctx &&
              "Trying to set decl origin to its own ASTContext?");
       assert(decl != origin.decl && "Trying to set decl origin to itself?");
-      m_origins[decl] = origin;
+      m_origins[GetDeclForOriginMap(decl)] = origin;
     }
 
     /// Removes any tracked DeclOrigin for the given decl.
-    void removeOrigin(const clang::Decl *decl) { m_origins.erase(decl); }
+    void removeOrigin(const clang::Decl *decl) {
+      m_origins.erase(GetDeclForOriginMap(decl));
+    }
 
     /// Remove all DeclOrigin entries that point to the given ASTContext.
     /// Useful when an ASTContext is about to be deleted and all the dangling
@@ -385,7 +395,7 @@ public:
     /// Returns the DeclOrigin for the given Decl or an invalid DeclOrigin
     /// instance if there no known DeclOrigin for the given Decl.
     DeclOrigin getOrigin(const clang::Decl *decl) const {
-      auto iter = m_origins.find(decl);
+      auto iter = m_origins.find(GetDeclForOriginMap(decl));
       if (iter == m_origins.end())
         return DeclOrigin();
       return iter->second;

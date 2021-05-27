@@ -1507,7 +1507,7 @@ ObjCInterfaceDecl *ObjCInterfaceDecl::Create(const ASTContext &C,
   auto *Result = new (C, DC)
       ObjCInterfaceDecl(C, DC, atLoc, Id, typeParamList, ClassLoc, PrevDecl,
                         isInternal);
-  Result->Data.setInt(!C.getLangOpts().Modules);
+  Result->Data.setInt(!C.getLangOpts().Modules && !C.getLangOpts().DebuggerSupport);
   C.getObjCInterfaceType(Result, PrevDecl);
   return Result;
 }
@@ -1517,7 +1517,7 @@ ObjCInterfaceDecl *ObjCInterfaceDecl::CreateDeserialized(const ASTContext &C,
   auto *Result = new (C, ID)
       ObjCInterfaceDecl(C, nullptr, SourceLocation(), nullptr, nullptr,
                         SourceLocation(), nullptr, false);
-  Result->Data.setInt(!C.getLangOpts().Modules);
+  Result->Data.setInt(false);
   return Result;
 }
 
