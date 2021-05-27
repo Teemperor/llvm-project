@@ -341,6 +341,23 @@ void ClangASTSource::CompleteType(clang::ObjCInterfaceDecl *interface_decl) {
   LLDB_LOG(log, "      [COID] {0}", ClangUtil::DumpDecl(interface_decl));
 }
 
+void ClangASTSource::CompleteRedeclChain(const Decl *d) {
+  if (const clang::RecordDecl *td = llvm::dyn_cast<RecordDecl>(d)) {
+    if (td->isBeingDefined())
+      return;
+    m_ast_importer_sp->CompleteTagDecl(td);
+    if (!td->getDefinition()) {
+      if (TagDecl *alternate = FindCompleteType(td))
+        m_ast_importer_sp->CompleteTagDeclWithOrigin(td, alternate);
+    }
+  }
+  if (const auto *od = llvm::dyn_cast<ObjCInterfaceDecl>(d)) {
+    if (ObjCInterfaceDecl *i = GetCompleteObjCInterface(od))
+      m_ast_importer_sp->SetDeclOrigin(d, i);
+    m_ast_importer_sp->CompleteObjCInterfaceDecl(od);
+  }
+}
+
 clang::ObjCInterfaceDecl *ClangASTSource::GetCompleteObjCInterface(
     const clang::ObjCInterfaceDecl *interface_decl) {
   lldb::ProcessSP process(m_target->GetProcessSP());
@@ -379,7 +396,8 @@ clang::ObjCInterfaceDecl *ClangASTSource::GetCompleteObjCInterface(
 
   ObjCInterfaceDecl *complete_iface_decl(complete_interface_type->getDecl());
 
-  return complete_iface_decl;
+  ObjCInterfaceDecl *def = complete_iface_decl->getDefinition();
+  return def;
 }
 
 void ClangASTSource::FindExternalLexicalDecls(
@@ -1522,8 +1540,8 @@ bool ClangASTSource::layoutRecordType(const RecordDecl *record, uint64_t &size,
 
   int field_idx = 0, field_count = record_layout.getFieldCount();
 
-  for (RecordDecl::field_iterator fi = origin_record->field_begin(),
-                                  fe = origin_record->field_end();
+  for (RecordDecl::field_iterator fi = definition->field_begin(),
+                                  fe = definition->field_end();
        fi != fe; ++fi) {
     if (field_idx >= field_count)
       return false; // Layout didn't go well.  Bail out.
