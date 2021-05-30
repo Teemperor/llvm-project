@@ -1687,6 +1687,25 @@ void SBDebugger::SetLoggingCallback(lldb::LogOutputCallback log_callback,
   }
 }
 
+lldb::SBStringList lldb::SBDebugger::GetLogChannels() {
+  LLDB_RECORD_METHOD_NO_ARGS(lldb::SBStringList, SBDebugger, GetLogChannels);
+
+  if (!m_opaque_sp)
+    return LLDB_RECORD_RESULT(SBStringList());
+  return LLDB_RECORD_RESULT(
+      SBStringList(new StringList(m_opaque_sp->GetLogChannels())));
+}
+
+SBStringList SBDebugger::GetLogCategories(const char *channel) {
+  LLDB_RECORD_METHOD(lldb::SBStringList, SBDebugger, GetLogCategories,
+                     (const char *), channel);
+
+  if (!m_opaque_sp)
+    return LLDB_RECORD_RESULT(SBStringList());
+  return LLDB_RECORD_RESULT(
+      SBStringList(new StringList(m_opaque_sp->GetLogCategories(channel))));
+}
+
 namespace lldb_private {
 namespace repro {
 

@@ -1262,6 +1262,19 @@ bool Debugger::EnableLog(llvm::StringRef channel,
                                error_stream);
 }
 
+StringList Debugger::GetLogChannels() {
+  return StringList(Log::ListChannels());
+}
+
+StringList Debugger::GetLogCategories(llvm::StringRef channel) {
+  StringList result;
+  Log::ForEachChannelCategory(
+      channel, [&result](llvm::StringRef name, llvm::StringRef description) {
+        result.AppendString(name);
+      });
+  return result;
+}
+
 ScriptInterpreter *
 Debugger::GetScriptInterpreter(bool can_create,
                                llvm::Optional<lldb::ScriptLanguage> language) {

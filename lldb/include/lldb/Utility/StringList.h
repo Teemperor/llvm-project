@@ -9,6 +9,7 @@
 #ifndef LLDB_UTILITY_STRINGLIST_H
 #define LLDB_UTILITY_STRINGLIST_H
 
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 
 #include <cstddef>
@@ -31,6 +32,9 @@ public:
   explicit StringList(const char *str);
 
   StringList(const char **strv, int strc);
+
+  /// Creates a StringList with the contents of the given array of strings.
+  explicit StringList(llvm::ArrayRef<llvm::StringRef> strs);
 
   virtual ~StringList();
 

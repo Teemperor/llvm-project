@@ -259,6 +259,23 @@ public:
 
   bool EnableLog(const char *channel, const char **categories);
 
+  /// Returns a list of all registered log channels.
+  ///
+  /// Returns an empty list if SBDebugger object is invalid.
+  ///
+  /// \see SBDebugger::EnableLog
+  /// \see SBDebugger::GetLogCategories
+  SBStringList GetLogChannels();
+
+  /// Returns the log categories of the given log channel.
+  ///
+  /// Returns an empty list if the log channel doesn't exist or the SBDebugger
+  /// object is invalid.
+  ///
+  /// \see SBDebugger::EnableLog
+  /// \see SBDebugger::GetLogChannels
+  SBStringList GetLogCategories(const char *channel);
+
   void SetLoggingCallback(lldb::LogOutputCallback log_callback, void *baton);
 
   // DEPRECATED

@@ -268,6 +268,12 @@ public:
                  llvm::StringRef log_file, uint32_t log_options,
                  llvm::raw_ostream &error_stream);
 
+  /// \copydoc lldb::SBDebugger::GetLogChannels
+  StringList GetLogChannels();
+
+  /// \copydoc lldb::SBDebugger::GetLogCategories
+  StringList GetLogCategories(llvm::StringRef channel);
+
   void SetLoggingCallback(lldb::LogOutputCallback log_callback, void *baton);
 
   // Properties Functions

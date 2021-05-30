@@ -18,6 +18,16 @@ TEST(StringListTest, DefaultConstructor) {
   EXPECT_EQ(0U, s.GetSize());
 }
 
+TEST(StringListTest, ArrayRefConstructor) {
+  StringList s(llvm::ArrayRef<llvm::StringRef>({"a", "bc"}));
+  EXPECT_EQ(2U, s.GetSize());
+  EXPECT_STREQ("a", s.GetStringAtIndex(0));
+  EXPECT_STREQ("bc", s.GetStringAtIndex(1));
+
+  StringList empty(llvm::ArrayRef<llvm::StringRef>({}));
+  EXPECT_EQ(0U, empty.GetSize());
+}
+
 TEST(StringListTest, Assignment) {
   StringList orig;
   orig.AppendString("foo");

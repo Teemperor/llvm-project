@@ -389,6 +389,17 @@ public:
     bool
     EnableLog (const char *channel, const char ** types);
 
+    %feature("autodoc", "Returns a list of all registered log channels.
+    Returns an empty list if the SBDebugger object is invalid.") GetLogChannels;
+    lldb::SBStringList
+    GetLogChannels ();
+
+    %feature("autodoc", "Returns the log categories of the given log channel.
+    Returns an empty list if the log channel doesn't exist or the SBDebugger
+    object is invalid.") GetLogCat;
+    lldb::SBStringList
+    GetLogCategories (const char *channel);
+
     void
     SetLoggingCallback (lldb::LogOutputCallback log_callback, void *baton);
 

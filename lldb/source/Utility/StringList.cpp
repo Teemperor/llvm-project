@@ -33,6 +33,11 @@ StringList::StringList(const char **strv, int strc) : m_strings() {
   }
 }
 
+StringList::StringList(llvm::ArrayRef<llvm::StringRef> strs) {
+  for (llvm::StringRef s : strs)
+    m_strings.push_back(s.str());
+}
+
 StringList::~StringList() {}
 
 void StringList::AppendString(const char *str) {
