@@ -77,6 +77,9 @@ void SBTrace::StopTrace(SBError &error, lldb::tid_t thread_id) {
 }
 
 void SBTrace::GetTraceConfig(SBTraceOptions &options, SBError &error) {
+  LLDB_RECORD_METHOD(void, SBTrace, GetTraceConfig,
+                     (lldb::SBTraceOptions &, lldb::SBError &), options, error);
+
   error.SetErrorString("deprecated");
 }
 

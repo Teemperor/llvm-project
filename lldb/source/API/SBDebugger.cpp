@@ -162,6 +162,11 @@ const char *SBDebugger::GetProgressFromEvent(const lldb::SBEvent &event,
                                              uint64_t &completed,
                                              uint64_t &total,
                                              bool &is_debugger_specific) {
+  LLDB_RECORD_STATIC_METHOD(
+      const char *, SBDebugger, GetProgressFromEvent,
+      (const lldb::SBEvent &, uint64_t &, uint64_t &, uint64_t &, bool &),
+      event, progress_id, completed, total, is_debugger_specific);
+
   const Debugger::ProgressEventData *progress_data =
       Debugger::ProgressEventData::GetEventDataFromEvent(event.get());
   if (progress_data == nullptr)

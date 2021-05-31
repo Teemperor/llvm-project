@@ -224,7 +224,10 @@ CommandReturnObject &SBCommandReturnObject::operator*() const {
 }
 
 CommandReturnObject &SBCommandReturnObject::ref() const {
-  return **m_opaque_up;
+  LLDB_RECORD_METHOD_CONST_NO_ARGS(lldb_private::CommandReturnObject &,
+                                   SBCommandReturnObject, ref);
+
+  return LLDB_RECORD_RESULT(**m_opaque_up);
 }
 
 bool SBCommandReturnObject::GetDescription(SBStream &description) {

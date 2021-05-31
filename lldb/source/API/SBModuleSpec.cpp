@@ -127,6 +127,8 @@ void SBModuleSpec::SetTriple(const char *triple) {
 }
 
 const uint8_t *SBModuleSpec::GetUUIDBytes() {
+  LLDB_RECORD_METHOD_NO_ARGS(const uint8_t *, SBModuleSpec, GetUUIDBytes);
+
   return m_opaque_up->GetUUID().GetBytes().data();
 }
 
@@ -137,6 +139,9 @@ size_t SBModuleSpec::GetUUIDLength() {
 }
 
 bool SBModuleSpec::SetUUIDBytes(const uint8_t *uuid, size_t uuid_len) {
+  LLDB_RECORD_METHOD(bool, SBModuleSpec, SetUUIDBytes,
+                     (const uint8_t *, size_t), uuid, uuid_len);
+
   m_opaque_up->GetUUID() = UUID::fromOptionalData(uuid, uuid_len);
   return m_opaque_up->GetUUID().IsValid();
 }

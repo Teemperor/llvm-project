@@ -38,19 +38,25 @@
 using namespace lldb;
 using namespace lldb_private;
 
-SBBreakpointCallbackBaton::SBBreakpointCallbackBaton(SBBreakpointHitCallback 
-                                                         callback,
-                                                     void *baton)
-      : TypedBaton(std::make_unique<CallbackData>()) {
-    getItem()->callback = callback;
-    getItem()->callback_baton = baton;
-  }
+SBBreakpointCallbackBaton::SBBreakpointCallbackBaton(
+    SBBreakpointHitCallback callback, void *baton)
+    : TypedBaton(std::make_unique<CallbackData>()) {
+  LLDB_RECORD_DUMMY(void, SBBreakpointCallbackBaton, SBBreakpointCallbackBaton,
+                    (lldb::SBBreakpointHitCallback, void *), callback, baton);
 
- bool SBBreakpointCallbackBaton::PrivateBreakpointHitCallback(void *baton,
-                                                  StoppointCallbackContext *ctx,
-                                                  lldb::user_id_t break_id,
-                                                  lldb::user_id_t break_loc_id)
-{
+  getItem()->callback = callback;
+  getItem()->callback_baton = baton;
+}
+
+bool SBBreakpointCallbackBaton::PrivateBreakpointHitCallback(
+    void *baton, StoppointCallbackContext *ctx, lldb::user_id_t break_id,
+    lldb::user_id_t break_loc_id) {
+  LLDB_RECORD_STATIC_METHOD(bool, SBBreakpointCallbackBaton,
+                            PrivateBreakpointHitCallback,
+                            (void *, lldb_private::StoppointCallbackContext *,
+                             lldb::user_id_t, lldb::user_id_t),
+                            baton, ctx, break_id, break_loc_id);
+
   ExecutionContext exe_ctx(ctx->exe_ctx_ref);
   BreakpointSP bp_sp(
       exe_ctx.GetTargetRef().GetBreakpointList().FindBreakpointByID(break_id));

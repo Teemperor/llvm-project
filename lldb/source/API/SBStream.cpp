@@ -24,7 +24,9 @@ SBStream::SBStream() : m_opaque_up(new StreamString()), m_is_file(false) {
 }
 
 SBStream::SBStream(SBStream &&rhs)
-    : m_opaque_up(std::move(rhs.m_opaque_up)), m_is_file(rhs.m_is_file) {}
+    : m_opaque_up(std::move(rhs.m_opaque_up)), m_is_file(rhs.m_is_file) {
+  LLDB_RECORD_CONSTRUCTOR(SBStream, (lldb::SBStream &&), rhs);
+}
 
 SBStream::~SBStream() = default;
 
