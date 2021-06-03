@@ -599,7 +599,7 @@ ClangExpressionParser::ClangExpressionParser(
     // We want to implicitly build modules.
     lang_opts.ImplicitModules = true;
     // To automatically import all submodules when we import 'std'.
-    lang_opts.ModulesLocalVisibility = false;
+    lang_opts.ModulesLocalVisibility = true;
 
     // We use the @import statements, so we need this:
     // FIXME: We could use the modules-ts, but that currently doesn't work.
