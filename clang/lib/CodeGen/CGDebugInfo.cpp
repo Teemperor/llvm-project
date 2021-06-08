@@ -300,19 +300,6 @@ StringRef CGDebugInfo::getSelectorName(Selector S) {
 }
 
 StringRef CGDebugInfo::getClassName(const RecordDecl *RD) {
-  if (isa<ClassTemplateSpecializationDecl>(RD)) {
-    SmallString<128> Name;
-    llvm::raw_svector_ostream OS(Name);
-    PrintingPolicy PP = getPrintingPolicy();
-    PP.PrintCanonicalTypes = true;
-    PP.SuppressInlineNamespace = false;
-    RD->getNameForDiagnostic(OS, PP,
-                             /*Qualified*/ false);
-
-    // Copy this name on the side and use its reference.
-    return internString(Name);
-  }
-
   // quick optimization to avoid having to intern strings that are already
   // stored reliably elsewhere
   if (const IdentifierInfo *II = RD->getIdentifier())
