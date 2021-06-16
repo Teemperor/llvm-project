@@ -328,31 +328,35 @@ private:
 #endif
   }
 
-  void InitializeThreadsPrivate() {
-// Since Python 3.7 `Py_Initialize` calls `PyEval_InitThreads` inside itself,
-// so there is no way to determine whether the embedded interpreter
-// was already initialized by some external code. `PyEval_ThreadsInitialized`
-// would always return `true` and `PyGILState_Ensure/Release` flow would be
-// executed instead of unlocking GIL with `PyEval_SaveThread`. When
-// an another thread calls `PyGILState_Ensure` it would get stuck in deadlock.
-#if (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION >= 7) || (PY_MAJOR_VERSION > 3)
-    // The only case we should go further and acquire the GIL: it is unlocked.
+  void EnsureGIL() {
+    // If this thread already holds the GIL then there is nothing to initialize
+    // or set up.
     if (PyGILState_Check())
       return;
-#endif
+    Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_SCRIPT));
+    // Grab the GIL and
+    m_was_already_initialized = true;
+    m_gil_state = PyGILState_Ensure();
+    LLDB_LOGV(log, "Ensured PyGILState. Previous state = {0}locked\n",
+              m_gil_state == PyGILState_UNLOCKED ? "un" : "");
+  }
+
+  void InitializeThreadsPrivate() {
+// With Python 3.9 PyEval_InitThreads does nothing and is marked as deprecated.
+// With Python 3.11 the function also got removed. Its always called from
+// Py_Initialize/Py_InitializeEx since Python 3.7
+#if (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION >= 9)
+    EnsureGIL();
+#else
 
     if (PyEval_ThreadsInitialized()) {
-      Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_SCRIPT));
-
-      m_was_already_initialized = true;
-      m_gil_state = PyGILState_Ensure();
-      LLDB_LOGV(log, "Ensured PyGILState. Previous state = {0}locked\n",
-                m_gil_state == PyGILState_UNLOCKED ? "un" : "");
+      EnsureGIL();
       return;
     }
 
     // InitThreads acquires the GIL if it hasn't been called before.
     PyEval_InitThreads();
+#endif // (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION >= 9)
   }
 
   TerminalState m_stdin_tty_state;
