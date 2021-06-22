@@ -55,6 +55,50 @@
 
 using namespace lldb_private;
 
+namespace {
+  /// Contains the state of the HostInfoMacOSX plugin.
+  struct HostInfoMacOSXState {
+    llvm::VersionTuple os_version;
+    llvm::VersionTuple mac_catalyst_version;
+    FileSpec program_filespec;
+
+    /// The cached value of the DEVELOPER_DIR environment variable.
+    std::string env_developer_dir;
+    std::once_flag env_developer_dir_once;
+
+    /// The cached path to Xcode's Content directory.
+    FileSpec xcode_contents_path;
+    std::once_flag xcode_contents_path_once;
+
+    /// The cached path to Xcode's
+    lldb_private::FileSpec developer_directory;
+    llvm::once_flag developer_directory_once;
+
+    llvm::StringMap<std::string> sdk_path;
+    std::mutex sdk_path_mutex;
+  };
+} // namespace
+
+static HostInfoMacOSXState *g_macos_state = nullptr;
+static HostInfoMacOSXState &GetState() {
+  assert(g_macos_state && "Missing call to HostInfoMacOSX::Initialize?");
+  return *g_macos_state;
+}
+
+void HostInfoMacOSX::Initialize(SharedLibraryDirectoryHelper *helper) {
+  HostInfoBase::Initialize(helper);
+  assert(!g_macos_state && "Trying to reinitialize HostInfoMacOSX plugin?");
+  g_macos_state = new HostInfoMacOSXState();
+}
+
+void HostInfoMacOSX::Terminate() {
+  assert(g_macos_state && "Terminating HostInfoMacOSX plugin without previous"
+                          " Initialize call?");
+  delete g_macos_state;
+  g_macos_state = nullptr;
+  HostInfoBase::Terminate();
+}
+
 bool HostInfoMacOSX::GetOSBuildString(std::string &s) {
   int mib[2] = {CTL_KERN, KERN_OSVERSION};
   char cstr[PATH_MAX];
@@ -92,41 +136,38 @@ static void ParseOSVersion(llvm::VersionTuple &version, NSString *Key) {
 }
 
 llvm::VersionTuple HostInfoMacOSX::GetOSVersion() {
-  static llvm::VersionTuple g_version;
-  if (g_version.empty())
-    ParseOSVersion(g_version, @"ProductVersion");
-  return g_version;
+  if (GetState().os_version.empty())
+    ParseOSVersion(GetState().os_version, @"ProductVersion");
+  return GetState().os_version;
 }
 
 llvm::VersionTuple HostInfoMacOSX::GetMacCatalystVersion() {
-  static llvm::VersionTuple g_version;
-  if (g_version.empty())
-    ParseOSVersion(g_version, @"iOSSupportVersion");
-  return g_version;
+  if (GetState().mac_catalyst_version.empty())
+    ParseOSVersion(GetState().mac_catalyst_version, @"iOSSupportVersion");
+  return GetState().mac_catalyst_version;
 }
 
 
 FileSpec HostInfoMacOSX::GetProgramFileSpec() {
-  static FileSpec g_program_filespec;
-  if (!g_program_filespec) {
+  if (!GetState().program_filespec) {
     char program_fullpath[PATH_MAX];
     // If DST is NULL, then return the number of bytes needed.
     uint32_t len = sizeof(program_fullpath);
     int err = _NSGetExecutablePath(program_fullpath, &len);
     if (err == 0)
-      g_program_filespec.SetFile(program_fullpath, FileSpec::Style::native);
+      GetState().program_filespec.SetFile(program_fullpath, FileSpec::Style::native);
     else if (err == -1) {
       char *large_program_fullpath = (char *)::malloc(len + 1);
 
       err = _NSGetExecutablePath(large_program_fullpath, &len);
       if (err == 0)
-        g_program_filespec.SetFile(large_program_fullpath,
+        GetState().program_filespec.SetFile(large_program_fullpath,
                                    FileSpec::Style::native);
 
       ::free(large_program_fullpath);
     }
   }
-  return g_program_filespec;
+  return GetState().program_filespec;
 }
 
 bool HostInfoMacOSX::ComputeSupportExeDirectory(FileSpec &file_spec) {
@@ -311,28 +352,24 @@ void HostInfoMacOSX::ComputeHostArchitectureSupport(ArchSpec &arch_32,
 
 /// Return and cache $DEVELOPER_DIR if it is set and exists.
 static std::string GetEnvDeveloperDir() {
-  static std::string g_env_developer_dir;
-  static std::once_flag g_once_flag;
-  std::call_once(g_once_flag, [&]() {
+  std::call_once(GetState().env_developer_dir_once, [&]() {
     if (const char *developer_dir_env_var = getenv("DEVELOPER_DIR")) {
       FileSpec fspec(developer_dir_env_var);
       if (FileSystem::Instance().Exists(fspec))
-        g_env_developer_dir = fspec.GetPath();
+        GetState().env_developer_dir = fspec.GetPath();
     }});
-  return g_env_developer_dir;
+  return GetState().env_developer_dir;
 }
 
 FileSpec HostInfoMacOSX::GetXcodeContentsDirectory() {
-  static FileSpec g_xcode_contents_path;
-  static std::once_flag g_once_flag;
-  std::call_once(g_once_flag, [&]() {
+  std::call_once(GetState().xcode_contents_path_once, [&]() {
     // Try the shlib dir first.
     if (FileSpec fspec = HostInfo::GetShlibDir()) {
       if (FileSystem::Instance().Exists(fspec)) {
         std::string xcode_contents_dir =
             XcodeSDK::FindXcodeContentsDirectoryInPath(fspec.GetPath());
         if (!xcode_contents_dir.empty()) {
-          g_xcode_contents_path = FileSpec(xcode_contents_dir);
+          GetState().xcode_contents_path = FileSpec(xcode_contents_dir);
           return;
         }
       }
@@ -344,7 +381,7 @@ FileSpec HostInfoMacOSX::GetXcodeContentsDirectory() {
       std::string xcode_contents_dir =
           XcodeSDK::FindXcodeContentsDirectoryInPath(env_developer_dir);
       if (!xcode_contents_dir.empty()) {
-        g_xcode_contents_path = FileSpec(xcode_contents_dir);
+        GetState().xcode_contents_path = FileSpec(xcode_contents_dir);
         return;
       }
     }
@@ -355,26 +392,24 @@ FileSpec HostInfoMacOSX::GetXcodeContentsDirectory() {
         std::string xcode_contents_dir =
             XcodeSDK::FindXcodeContentsDirectoryInPath(fspec.GetPath());
         if (!xcode_contents_dir.empty()) {
-          g_xcode_contents_path = FileSpec(xcode_contents_dir);
+          GetState().xcode_contents_path = FileSpec(xcode_contents_dir);
           return;
         }
       }
     }
   });
-  return g_xcode_contents_path;
+  return GetState().xcode_contents_path;
 }
 
 lldb_private::FileSpec HostInfoMacOSX::GetXcodeDeveloperDirectory() {
-  static lldb_private::FileSpec g_developer_directory;
-  static llvm::once_flag g_once_flag;
-  llvm::call_once(g_once_flag, []() {
+  llvm::call_once(GetState().developer_directory_once, []() {
     if (FileSpec fspec = GetXcodeContentsDirectory()) {
       fspec.AppendPathComponent("Developer");
       if (FileSystem::Instance().Exists(fspec))
-        g_developer_directory = fspec;
+        GetState().developer_directory = fspec;
     }
   });
-  return g_developer_directory;
+  return GetState().developer_directory;
 }
 
 static std::string GetXcodeSDK(XcodeSDK sdk) {
@@ -476,16 +511,14 @@ static std::string GetXcodeSDK(XcodeSDK sdk) {
 }
 
 llvm::StringRef HostInfoMacOSX::GetXcodeSDKPath(XcodeSDK sdk) {
-  static llvm::StringMap<std::string> g_sdk_path;
-  static std::mutex g_sdk_path_mutex;
-
-  std::lock_guard<std::mutex> guard(g_sdk_path_mutex);
+  std::lock_guard<std::mutex> guard(GetState().sdk_path_mutex);
   LLDB_SCOPED_TIMER();
 
-  auto it = g_sdk_path.find(sdk.GetString());
-  if (it != g_sdk_path.end())
+  auto it = GetState().sdk_path.find(sdk.GetString());
+  if (it != GetState().sdk_path.end())
     return it->second;
-  auto it_new = g_sdk_path.insert({sdk.GetString(), GetXcodeSDK(sdk)});
+  auto it_new = GetState().sdk_path.insert({sdk.GetString(),
+                                                GetXcodeSDK(sdk)});
   return it_new.first->second;
 }
 

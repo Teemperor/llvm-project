@@ -22,6 +22,9 @@ class HostInfoMacOSX : public HostInfoPosix {
   friend class HostInfoBase;
 
 public:
+  static void Initialize(SharedLibraryDirectoryHelper *helper = nullptr);
+  static void Terminate();
+
   static llvm::VersionTuple GetOSVersion();
   static llvm::VersionTuple GetMacCatalystVersion();
   static bool GetOSBuildString(std::string &s);
