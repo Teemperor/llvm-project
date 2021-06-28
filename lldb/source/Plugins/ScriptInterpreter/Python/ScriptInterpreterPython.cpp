@@ -1050,6 +1050,17 @@ void ScriptInterpreterPythonImpl::ExecuteInterpreterLoop() {
 }
 
 bool ScriptInterpreterPythonImpl::Interrupt() {
+  // PyErr_SetInterrupt was introduced in 3.2.
+#if (PY_MAJOR_VERSION == 3 && PY_MINOR_VERSION >= 2) || (PY_MAJOR_VERSION > 3)
+  // Tell Python that it should pretend to have received a SIGINT.
+  PyErr_SetInterrupt();
+  // PyErr_SetInterrupt has no way to return an error so we can only pretend the
+  // signal got successfully handled and return true.
+  // Python 3.10 introduces PyErr_SetInterruptEx that could return an error, but
+  // the error handling is limited to checking the arguments which would be
+  // just our (hardcoded) input signal code SIGINT, so that's not useful at all.
+  return true;
+#else
   Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_SCRIPT));
 
   if (IsExecutingPython()) {
@@ -1071,6 +1082,7 @@ bool ScriptInterpreterPythonImpl::Interrupt() {
             "ScriptInterpreterPythonImpl::Interrupt() python code not running, "
             "can't interrupt");
   return false;
+#endif
 }
 
 bool ScriptInterpreterPythonImpl::ExecuteOneLineWithReturn(
@@ -3275,6 +3287,19 @@ void ScriptInterpreterPythonImpl::InitializePrivate() {
                      "lldb.embedded_interpreter; from "
                      "lldb.embedded_interpreter import run_python_interpreter; "
                      "from lldb.embedded_interpreter import run_one_line");
+
+  // Setup a default SIGINT signal handler that works the same way as the
+  // normal Python REPL signal handler which raises a KeyboardInterrupt.
+  // Also make sure to not pollute the user's REPL with the signal module nor
+  // our utility function.
+  PyRun_SimpleString(
+  "def lldb_setup_sigint_handler():\n"
+  "  import signal;\n"
+  "  def signal_handler(sig, frame):\n"
+  "    raise KeyboardInterrupt()\n"
+  "  signal.signal(signal.SIGINT, signal_handler);\n"
+  "lldb_setup_sigint_handler();\n"
+  "del lldb_setup_sigint_handler\n");
 }
 
 void ScriptInterpreterPythonImpl::AddToSysPath(AddLocation location,
