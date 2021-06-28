@@ -527,10 +527,15 @@ void StmtPrinter::VisitObjCAtTryStmt(ObjCAtTryStmt *Node) {
 }
 
 void StmtPrinter::VisitObjCAtFinallyStmt(ObjCAtFinallyStmt *Node) {
+  Indent() << "@finally {";
+  PrintStmt(Node->getFinallyBody());
+  Indent() << "} " << NL;
 }
 
 void StmtPrinter::VisitObjCAtCatchStmt (ObjCAtCatchStmt *Node) {
-  Indent() << "@catch (...) { /* todo */ } " << NL;
+  Indent() << "@catch (...) {";
+  PrintStmt(Node->getCatchBody());
+  Indent() << "} " << NL;
 }
 
 void StmtPrinter::VisitObjCAtThrowStmt(ObjCAtThrowStmt *Node) {

@@ -34,6 +34,7 @@ typedef struct _NSZone NSZone;
     @try {}
     // the exception name is optional (weird)
     @catch (NSException *) {}
+    return 0;
 }
 @end
 

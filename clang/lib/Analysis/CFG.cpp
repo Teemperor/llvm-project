@@ -485,6 +485,7 @@ class CFGBuilder {
   // This can point either to a try or a __try block. The frontend forbids
   // mixing both kinds in one function, so having one for both is enough.
   CFGBlock *TryTerminatedBlock = nullptr;
+  CFGBlock *ObjCTryTerminatedBlock = nullptr;
 
   // Current position in local scope.
   LocalScope::const_iterator ScopePos;
@@ -589,6 +590,7 @@ private:
                                           AddStmtChoice asc);
   CFGBlock *VisitMemberExpr(MemberExpr *M, AddStmtChoice asc);
   CFGBlock *VisitObjCAtCatchStmt(ObjCAtCatchStmt *S);
+  CFGBlock *VisitObjCAtFinallyStmt(ObjCAtFinallyStmt *S);
   CFGBlock *VisitObjCAtSynchronizedStmt(ObjCAtSynchronizedStmt *S);
   CFGBlock *VisitObjCAtThrowStmt(ObjCAtThrowStmt *S);
   CFGBlock *VisitObjCAtTryStmt(ObjCAtTryStmt *S);
@@ -1504,8 +1506,10 @@ std::unique_ptr<CFG> CFGBuilder::buildCFG(const Decl *D, Stmt *Statement) {
   // Visit the statements and create the CFG.
   CFGBlock *B = addStmt(Statement);
 
-  if (badCFG)
+  if (badCFG) {
     return nullptr;
+  }
+  //cfg->dump(Context->getLangOpts(), true);
 
   // For C++ constructor add initializers to CFG. Constructors of virtual bases
   // are ignored unless the object is of the most derived class.
@@ -2671,6 +2675,9 @@ CFGBlock *CFGBuilder::VisitCallExpr(CallExpr *C, AddStmtChoice asc) {
 
   appendCall(Block, C);
 
+  if (ObjCTryTerminatedBlock)
+    addSuccessor(Block, ObjCTryTerminatedBlock);
+
   if (AddEHEdge) {
     // Add exceptional edges.
     if (TryTerminatedBlock)
@@ -3670,9 +3677,72 @@ CFGBlock *CFGBuilder::VisitObjCAtSynchronizedStmt(ObjCAtSynchronizedStmt *S) {
   return addStmt(S->getSynchExpr());
 }
 
-CFGBlock *CFGBuilder::VisitObjCAtTryStmt(ObjCAtTryStmt *S) {
-  // FIXME
-  return NYS();
+CFGBlock *CFGBuilder::VisitObjCAtTryStmt(ObjCAtTryStmt *Terminator) {
+  // "@try"/"@catch" is a control-flow statement.  Thus we stop processing the
+  // current block.
+  CFGBlock *TrySuccessor = nullptr;
+
+  if (Block) {
+    if (badCFG)
+      return nullptr;
+    TrySuccessor = Block;
+  } else TrySuccessor = Succ;
+
+  CFGBlock *PrevTryTerminatedBlock = ObjCTryTerminatedBlock;
+
+  // Create a new block that will contain the @try statement.
+  CFGBlock *NewTryTerminatedBlock = createBlock(false);
+  // Add the terminator in the @try block.
+  NewTryTerminatedBlock->setTerminator(Terminator);
+
+  CFGBlock *FinallyBlock = nullptr;
+  if (ObjCAtFinallyStmt *Finally = Terminator->getFinallyStmt()) {
+      FinallyBlock = VisitObjCAtFinallyStmt(Finally);
+      if (!FinallyBlock)
+        return nullptr;
+      // @finally is a successor when an exception is caught.
+      addSuccessor(NewTryTerminatedBlock, FinallyBlock);
+  }
+
+  bool HasCatchAll = false;
+  for (unsigned h = 0; h < Terminator->getNumCatchStmts(); ++h) {
+    // The code after the try is the implicit successor.
+    Succ = TrySuccessor;
+    ObjCAtCatchStmt *CS = Terminator->getCatchStmt(h);
+    if (CS->hasEllipsis())
+      HasCatchAll = true;
+    Block = nullptr;
+    CFGBlock *CatchBlock = VisitObjCAtCatchStmt(CS);
+    if (!CatchBlock)
+      return nullptr;
+    // Add this block to the list of successors for the block with the try
+    // statement.
+    addSuccessor(NewTryTerminatedBlock, CatchBlock);
+    if (FinallyBlock)
+      addSuccessor(CatchBlock, FinallyBlock);
+    else
+      addSuccessor(CatchBlock, Succ);
+  }
+
+  // If there is no exhaustive @catch(...) then the caught exception block
+  // has either the previous @try or exit as a successor.
+  if (!HasCatchAll) {
+    if (PrevTryTerminatedBlock)
+      addSuccessor(NewTryTerminatedBlock, PrevTryTerminatedBlock);
+    else
+      addSuccessor(NewTryTerminatedBlock, &cfg->getExit());
+  }
+
+  // @finally or the code after the try is the implicit successor.
+  Succ = FinallyBlock ? FinallyBlock : TrySuccessor;
+
+  // Save the current "try" context.
+  SaveAndRestore<CFGBlock*> save_try(ObjCTryTerminatedBlock, NewTryTerminatedBlock);
+  cfg->addObjCTryDispatchBlock(ObjCTryTerminatedBlock);
+
+  assert(Terminator->getTryBody() && "@try must contain a non-NULL body");
+  Block = nullptr;
+  return addStmt(Terminator->getTryBody());
 }
 
 CFGBlock *CFGBuilder::VisitPseudoObjectExpr(PseudoObjectExpr *E) {
@@ -3836,15 +3906,68 @@ CFGBlock *CFGBuilder::VisitWhileStmt(WhileStmt *W) {
 }
 
 CFGBlock *CFGBuilder::VisitObjCAtCatchStmt(ObjCAtCatchStmt *S) {
-  // FIXME: For now we pretend that @catch and the code it contains does not
-  //  exit.
-  return Block;
+  // CXXCatchStmt are treated like labels, so they are the first statement in a
+  // block.
+
+  // Save local scope position because in case of exception variable ScopePos
+  // won't be restored when traversing AST.
+  SaveAndRestore<LocalScope::const_iterator> save_scope_pos(ScopePos);
+
+  // Create local scope for possible exception variable.
+  // Store scope position. Add implicit destructor.
+  if (VarDecl *VD = S->getCatchParamDecl()) {
+    LocalScope::const_iterator BeginScopePos = ScopePos;
+    addLocalScopeForVarDecl(VD);
+    addAutomaticObjHandling(ScopePos, BeginScopePos, S);
+  }
+
+  if (S->getCatchBody())
+    addStmt(S->getCatchBody());
+
+  CFGBlock *CatchBlock = createBlock(false);
+
+  // ObjCAtCatchStmt is more than just a label.  They have semantic meaning
+  // as well, as they implicitly "initialize" the catch variable.  Add
+  // it to the CFG as a CFGElement so that the control-flow of these
+  // semantics gets captured.
+  appendStmt(CatchBlock, S);
+
+  // Mirror handling of regular labels.
+  CatchBlock->setLabel(S);
+
+  // Bail out if the CFG is bad.
+  if (badCFG)
+    return nullptr;
+
+  // We set Block to NULL to allow lazy creation of a new block (if necessary)
+  Block = nullptr;
+
+  return CatchBlock;
+}
+
+
+CFGBlock *CFGBuilder::VisitObjCAtFinallyStmt(ObjCAtFinallyStmt *S) {
+  if (S->getFinallyBody())
+    addStmt(S->getFinallyBody());
+
+  CFGBlock *CatchBlock = Block;
+  if (!CatchBlock)
+    CatchBlock = createBlock();
+
+  // Mirror handling of regular labels.
+  CatchBlock->setLabel(S);
+
+  // Bail out if the CFG is bad.
+  if (badCFG)
+    return nullptr;
+
+  // We set Block to NULL to allow lazy creation of a new block (if necessary)
+  Block = nullptr;
+
+  return CatchBlock;
 }
 
 CFGBlock *CFGBuilder::VisitObjCAtThrowStmt(ObjCAtThrowStmt *S) {
-  // FIXME: This isn't complete.  We basically treat @throw like a return
-  //  statement.
-
   // If we were in the middle of a block we stop processing that block.
   if (badCFG)
     return nullptr;
@@ -3852,8 +3975,12 @@ CFGBlock *CFGBuilder::VisitObjCAtThrowStmt(ObjCAtThrowStmt *S) {
   // Create the new block.
   Block = createBlock(false);
 
-  // The Exit block is the only successor.
-  addSuccessor(Block, &cfg->getExit());
+  if (ObjCTryTerminatedBlock)
+    // The current try statement is the only successor.
+    addSuccessor(Block, ObjCTryTerminatedBlock);
+  else
+    // otherwise the Exit block is the only successor.
+    addSuccessor(Block, &cfg->getExit());
 
   // Add the statement to the block.  This may create new blocks if S contains
   // control-flow (short-circuit operations).
@@ -3862,10 +3989,14 @@ CFGBlock *CFGBuilder::VisitObjCAtThrowStmt(ObjCAtThrowStmt *S) {
 
 CFGBlock *CFGBuilder::VisitObjCMessageExpr(ObjCMessageExpr *ME,
                                            AddStmtChoice asc) {
-  findConstructionContextsForArguments(ME);
 
+  findConstructionContextsForArguments(ME);
   autoCreateBlock();
+
   appendObjCMessage(Block, ME);
+  if (ObjCTryTerminatedBlock)
+    // The current try statement is the only successor.
+    addSuccessor(Block, ObjCTryTerminatedBlock);
 
   return VisitChildren(ME);
 }
@@ -3980,6 +4111,9 @@ CFGBlock *CFGBuilder::VisitDoStmt(DoStmt *D) {
     else
       addSuccessor(ExitConditionBlock, nullptr);
   }
+
+  if (ObjCTryTerminatedBlock)
+    addSuccessor(Block, ObjCTryTerminatedBlock);
 
   // Link up the condition block with the code that follows the loop.
   // (the false branch).
@@ -5671,6 +5805,16 @@ static void print_block(raw_ostream &OS, const CFG* cfg,
       else
         OS << "...";
       OS << ")";
+    } else if (auto *CS = dyn_cast<ObjCAtCatchStmt>(Label)) {
+        OS << "@catch (";
+        if (CS->getCatchParamDecl())
+          CS->getCatchParamDecl()->print(OS, PrintingPolicy(Helper.getLangOpts()),
+                                        0);
+        else
+          OS << "...";
+        OS << ")";
+    } else if (auto *CS = dyn_cast<ObjCAtFinallyStmt>(Label)) {
+      OS << "@finally { ... }";
     } else if (SEHExceptStmt *ES = dyn_cast<SEHExceptStmt>(Label)) {
       OS << "__except (";
       ES->getFilterExpr()->printPretty(OS, &Helper,

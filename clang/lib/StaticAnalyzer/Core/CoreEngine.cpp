@@ -326,6 +326,7 @@ void CoreEngine::HandleBlockExit(const CFGBlock * B, ExplodedNode *Pred) {
         HandleBranch(cast<ChooseExpr>(Term)->getCond(), Term, B, Pred);
         return;
 
+      //case Stmt::ObjCAtTryStmtClass:
       case Stmt::CXXTryStmtClass:
         // Generate a node for each of the successors.
         // Our logic for EH analysis can certainly be improved.
@@ -409,6 +410,9 @@ void CoreEngine::HandleBlockExit(const CFGBlock * B, ExplodedNode *Pred) {
     HandleVirtualBaseBranch(B, Pred);
     return;
   }
+
+  if (B->succ_size() != 1)
+    B->dump();
 
   assert(B->succ_size() == 1 &&
          "Blocks with no terminator should have at most 1 successor.");
