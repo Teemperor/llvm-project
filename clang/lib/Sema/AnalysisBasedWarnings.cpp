@@ -493,7 +493,7 @@ static ControlFlowKind CheckFallThrough(AnalysisDeclContext &AC) {
       HasLiveReturn = true;
       continue;
     }
-    if (isa<CXXTryStmt>(S)) {
+    if (isa<CXXTryStmt>(S) || isa<ObjCAtTryStmt>(S)) {
       HasAbnormalEdge = true;
       continue;
     }

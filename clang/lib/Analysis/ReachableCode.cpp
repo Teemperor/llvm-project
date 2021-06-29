@@ -698,6 +698,10 @@ void FindUnreachableCode(AnalysisDeclContext &AC, Preprocessor &PP,
          E = cfg->try_blocks_end() ; I != E; ++I) {
       numReachable += scanMaybeReachableFromBlock(*I, PP, reachable);
     }
+    for (CFG::objc_try_block_iterator I = cfg->objc_try_blocks_begin(),
+         E = cfg->objc_try_blocks_end() ; I != E; ++I) {
+      numReachable += scanMaybeReachableFromBlock(*I, PP, reachable);
+    }
     if (numReachable == cfg->getNumBlockIDs())
       return;
   }

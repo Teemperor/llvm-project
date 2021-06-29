@@ -1350,6 +1350,20 @@ public:
     TryDispatchBlocks.push_back(block);
   }
 
+  using objc_try_block_iterator = std::vector<const CFGBlock *>::const_iterator;
+
+  objc_try_block_iterator objc_try_blocks_begin() const {
+    return ObjCTryDispatchBlocks.begin();
+  }
+
+  objc_try_block_iterator objc_try_blocks_end() const {
+    return ObjCTryDispatchBlocks.end();
+  }
+
+  void addObjCTryDispatchBlock(const CFGBlock *block) {
+    ObjCTryDispatchBlocks.push_back(block);
+  }
+
   /// Records a synthetic DeclStmt and the DeclStmt it was constructed from.
   ///
   /// The CFG uses synthetic DeclStmts when a single AST DeclStmt contains
@@ -1454,6 +1468,8 @@ private:
   /// C++ 'try' statements are modeled with an indirect dispatch block.
   /// This is the collection of such blocks present in the CFG.
   std::vector<const CFGBlock *> TryDispatchBlocks;
+
+  std::vector<const CFGBlock *> ObjCTryDispatchBlocks;
 
   /// Collects DeclStmts synthesized for this CFG and maps each one back to its
   /// source DeclStmt.
