@@ -1452,17 +1452,13 @@ clang::FunctionTemplateDecl *TypeSystemClang::CreateFunctionTemplateDecl(
   if (decl_ctx->isRecord())
     func_tmpl_decl->setAccess(clang::AccessSpecifier::AS_public);
 
-  return func_tmpl_decl;
-}
-
-void TypeSystemClang::CreateFunctionTemplateSpecializationInfo(
-    FunctionDecl *func_decl, clang::FunctionTemplateDecl *func_tmpl_decl,
-    const TemplateParameterInfos &infos) {
-  TemplateArgumentList *template_args_ptr =
-      TemplateArgumentList::CreateCopy(func_decl->getASTContext(), infos.args);
+  TemplateArgumentList *template_args_ptr = TemplateArgumentList::CreateCopy(
+      func_decl->getASTContext(), template_param_infos.args);
 
   func_decl->setFunctionTemplateSpecialization(func_tmpl_decl,
                                                template_args_ptr, nullptr);
+
+  return func_tmpl_decl;
 }
 
 /// Returns true if the given template parameter can represent the given value.

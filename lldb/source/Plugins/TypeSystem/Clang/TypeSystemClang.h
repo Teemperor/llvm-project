@@ -341,10 +341,6 @@ public:
       clang::DeclContext *decl_ctx, OptionalClangModuleID owning_module,
       clang::FunctionDecl *func_decl, const TemplateParameterInfos &infos);
 
-  void CreateFunctionTemplateSpecializationInfo(
-      clang::FunctionDecl *func_decl, clang::FunctionTemplateDecl *Template,
-      const TemplateParameterInfos &infos);
-
   clang::ClassTemplateDecl *
   CreateClassTemplateDecl(clang::DeclContext *decl_ctx,
                           OptionalClangModuleID owning_module,
