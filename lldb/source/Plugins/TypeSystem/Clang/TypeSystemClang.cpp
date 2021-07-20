@@ -33,6 +33,7 @@
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/TargetOptions.h"
+#include "clang/Frontend/CompilerInvocation.h"
 #include "clang/Frontend/FrontendOptions.h"
 #include "clang/Lex/HeaderSearch.h"
 #include "clang/Lex/HeaderSearchOptions.h"
@@ -453,99 +454,28 @@ TypeSystemClang::ConvertAccessTypeToAccessSpecifier(AccessType access) {
   return AS_none;
 }
 
-static void ParseLangArgs(LangOptions &Opts, InputKind IK, const char *triple) {
-  // FIXME: Cleanup per-file based stuff.
+static LangOptions CreateLangOpts(const llvm::Triple &triple) {
+  LangOptions opts;
+  std::vector<std::string> includes;
+  // We're always using Objective-C++ as the ASTContext's language.
+  // ASTs in LLDB can receive Objective-C and C++ declarations form other ASTs
+  // so this should allow any TypeSystemClang to receive all possible AST nodes.
+  // FIXME: This could potentially cause that C++ identifiers are turned into
+  // Objective-C keywords. Especially keywords that don't take the usual
+  // '@'-prefix could be affected by this (e.g., `__bridge`).
+  clang::CompilerInvocation::setLangDefaults(opts, clang::InputKind(clang::Language::ObjCXX), triple, includes, LangStandard::lang_gnucxx98);
 
-  // Set some properties which depend solely on the input kind; it would be
-  // nice to move these to the language standard, and have the driver resolve
-  // the input kind + language standard.
-  if (IK.getLanguage() == clang::Language::Asm) {
-    Opts.AsmPreprocessor = 1;
-  } else if (IK.isObjectiveC()) {
-    Opts.ObjC = 1;
-  }
+  opts.LangStd = LangStandard::lang_unspecified;
 
-  LangStandard::Kind LangStd = LangStandard::lang_unspecified;
+  opts.WChar = true;
 
-  if (LangStd == LangStandard::lang_unspecified) {
-    // Based on the base language, pick one.
-    switch (IK.getLanguage()) {
-    case clang::Language::Unknown:
-    case clang::Language::LLVM_IR:
-    case clang::Language::RenderScript:
-      llvm_unreachable("Invalid input kind!");
-    case clang::Language::OpenCL:
-      LangStd = LangStandard::lang_opencl10;
-      break;
-    case clang::Language::OpenCLCXX:
-      LangStd = LangStandard::lang_openclcpp;
-      break;
-    case clang::Language::CUDA:
-      LangStd = LangStandard::lang_cuda;
-      break;
-    case clang::Language::Asm:
-    case clang::Language::C:
-    case clang::Language::ObjC:
-      LangStd = LangStandard::lang_gnu99;
-      break;
-    case clang::Language::CXX:
-    case clang::Language::ObjCXX:
-      LangStd = LangStandard::lang_gnucxx98;
-      break;
-    case clang::Language::HIP:
-      LangStd = LangStandard::lang_hip;
-      break;
-    }
-  }
-
-  const LangStandard &Std = LangStandard::getLangStandardForKind(LangStd);
-  Opts.LineComment = Std.hasLineComments();
-  Opts.C99 = Std.isC99();
-  Opts.CPlusPlus = Std.isCPlusPlus();
-  Opts.CPlusPlus11 = Std.isCPlusPlus11();
-  Opts.Digraphs = Std.hasDigraphs();
-  Opts.GNUMode = Std.isGNUMode();
-  Opts.GNUInline = !Std.isC99();
-  Opts.HexFloats = Std.hasHexFloats();
-  Opts.ImplicitInt = Std.hasImplicitInt();
-
-  Opts.WChar = true;
-
-  // OpenCL has some additional defaults.
-  if (LangStd == LangStandard::lang_opencl10) {
-    Opts.OpenCL = 1;
-    Opts.AltiVec = 1;
-    Opts.CXXOperatorNames = 1;
-    Opts.setLaxVectorConversions(LangOptions::LaxVectorConversionKind::All);
-  }
-
-  // OpenCL and C++ both have bool, true, false keywords.
-  Opts.Bool = Opts.OpenCL || Opts.CPlusPlus;
-
-  Opts.setValueVisibilityMode(DefaultVisibility);
-
-  // Mimicing gcc's behavior, trigraphs are only enabled if -trigraphs is
-  // specified, or -std is set to a conforming mode.
-  Opts.Trigraphs = !Opts.GNUMode;
-  Opts.CharIsSigned = ArchSpec(triple).CharIsSignedByDefault();
-  Opts.OptimizeSize = 0;
-
-  // FIXME: Eliminate this dependency.
-  //    unsigned Opt =
-  //    Args.hasArg(OPT_Os) ? 2 : getLastArgIntValue(Args, OPT_O, 0, Diags);
-  //    Opts.Optimize = Opt != 0;
-  unsigned Opt = 0;
-
-  // This is the __NO_INLINE__ define, which just depends on things like the
-  // optimization level and -fno-inline, not actually whether the backend has
-  // inlining enabled.
-  //
-  // FIXME: This is affected by other options (-fno-inline).
-  Opts.NoInlineDefine = !Opt;
+  opts.setValueVisibilityMode(DefaultVisibility);
 
   // This is needed to allocate the extra space for the owning module
   // on each decl.
-  Opts.ModulesLocalVisibility = 1;
+  opts.ModulesLocalVisibility = 1;
+
+  return opts;
 }
 
 TypeSystemClang::TypeSystemClang(llvm::StringRef name,
@@ -555,7 +485,7 @@ TypeSystemClang::TypeSystemClang(llvm::StringRef name,
     SetTargetTriple(target_triple.str());
   // The caller didn't pass an ASTContext so create a new one for this
   // TypeSystemClang.
-  CreateASTContext();
+  CreateASTContext(target_triple);
 }
 
 TypeSystemClang::TypeSystemClang(llvm::StringRef name,
@@ -720,13 +650,12 @@ private:
   Log *m_log;
 };
 
-void TypeSystemClang::CreateASTContext() {
+void TypeSystemClang::CreateASTContext(const llvm::Triple &target_triple) {
   assert(!m_ast_up);
   m_ast_owned = true;
 
-  m_language_options_up = std::make_unique<LangOptions>();
-  ParseLangArgs(*m_language_options_up, clang::Language::ObjCXX,
-                GetTargetTriple());
+  m_language_options_up =
+      std::make_unique<LangOptions>(CreateLangOpts(target_triple));
 
   m_identifier_table_up =
       std::make_unique<IdentifierTable>(*m_language_options_up, nullptr);

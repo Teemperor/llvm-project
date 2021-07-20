@@ -1105,7 +1105,7 @@ private:
   TypeSystemClang(const TypeSystemClang &);
   const TypeSystemClang &operator=(const TypeSystemClang &);
   /// Creates the internal ASTContext.
-  void CreateASTContext();
+  void CreateASTContext(const llvm::Triple &target_triple);
   void SetTargetTriple(llvm::StringRef target_triple);
 };
 
