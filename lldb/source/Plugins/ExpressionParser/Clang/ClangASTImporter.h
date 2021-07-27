@@ -267,7 +267,7 @@ public:
     ASTImporterDelegate(ClangASTImporter &master, clang::ASTContext *target_ctx,
                         clang::ASTContext *source_ctx)
         : clang::ASTImporter(*target_ctx, master.m_file_manager, *source_ctx,
-                             master.m_file_manager, false /*minimal*/),
+                             master.m_file_manager, true /*minimal*/),
           m_master(master), m_source_ctx(source_ctx) {
       // Target and source ASTContext shouldn't be identical. Importing AST
       // nodes within the same AST doesn't make any sense as the whole idea
