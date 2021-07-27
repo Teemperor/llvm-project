@@ -1774,7 +1774,7 @@ ASTNodeImporter::ImportDeclarationNameLoc(
 
 Error
 ASTNodeImporter::ImportDeclContext(DeclContext *FromDC, bool ForceImport) {
-  if (Importer.isMinimalImport() && !ForceImport) {
+  if (Importer.isMinimalImport() && !ForceImport && isa<NamespaceDecl>(FromDC)) {
     auto ToDCOrErr = Importer.ImportContext(FromDC);
     return ToDCOrErr.takeError();
   }
@@ -1793,56 +1793,11 @@ ASTNodeImporter::ImportDeclContext(DeclContext *FromDC, bool ForceImport) {
   Error ChildErrors = Error::success();
   for (auto *From : FromDC->decls()) {
     ExpectedDecl ImportedOrErr = import(From);
-
-    // If we are in the process of ImportDefinition(...) for a RecordDecl we
-    // want to make sure that we are also completing each FieldDecl. There
-    // are currently cases where this does not happen and this is correctness
-    // fix since operations such as code generation will expect this to be so.
-    if (ImportedOrErr) {
-      FieldDecl *FieldFrom = dyn_cast_or_null<FieldDecl>(From);
-      Decl *ImportedDecl = *ImportedOrErr;
-      FieldDecl *FieldTo = dyn_cast_or_null<FieldDecl>(ImportedDecl);
-      if (FieldFrom && FieldTo) {
-        RecordDecl *FromRecordDecl = nullptr;
-        RecordDecl *ToRecordDecl = nullptr;
-        // If we have a field that is an ArrayType we need to check if the array
-        // element is a RecordDecl and if so we need to import the defintion.
-        if (FieldFrom->getType()->isArrayType()) {
-          // getBaseElementTypeUnsafe(...) handles multi-dimensonal arrays for us.
-          FromRecordDecl = FieldFrom->getType()->getBaseElementTypeUnsafe()->getAsRecordDecl();
-          ToRecordDecl = FieldTo->getType()->getBaseElementTypeUnsafe()->getAsRecordDecl();
-        }
-
-        if (!FromRecordDecl || !ToRecordDecl) {
-          const RecordType *RecordFrom =
-              FieldFrom->getType()->getAs<RecordType>();
-          const RecordType *RecordTo = FieldTo->getType()->getAs<RecordType>();
-
-          if (RecordFrom && RecordTo) {
-            FromRecordDecl = RecordFrom->getDecl();
-            ToRecordDecl = RecordTo->getDecl();
-          }
-        }
-
-        if (FromRecordDecl && ToRecordDecl) {
-          if (FromRecordDecl->isCompleteDefinition() &&
-              !ToRecordDecl->isCompleteDefinition()) {
-            Error Err = ImportDefinition(FromRecordDecl, ToRecordDecl);
-
-            if (Err && AccumulateChildErrors)
-              ChildErrors =  joinErrors(std::move(ChildErrors), std::move(Err));
-            else
-              consumeError(std::move(Err));
-          }
-        }
-      }
-    } else {
-      if (AccumulateChildErrors)
-        ChildErrors =
-            joinErrors(std::move(ChildErrors), ImportedOrErr.takeError());
-      else
-        consumeError(ImportedOrErr.takeError());
-    }
+    if (AccumulateChildErrors)
+      ChildErrors =
+          joinErrors(std::move(ChildErrors), ImportedOrErr.takeError());
+    else
+      consumeError(ImportedOrErr.takeError());
   }
 
   // We reorder declarations in RecordDecls because they may have another order
