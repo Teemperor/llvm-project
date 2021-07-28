@@ -212,7 +212,7 @@ class spawn(SpawnBase):
         s.append(repr(self))
         s.append('command: ' + str(self.command))
         s.append('args: %r' % (self.args,))
-        s.append('buffer (last 100 chars): %r' % self.buffer[-100:])
+        s.append('buffer (last 64000 chars): %r' % self.buffer[-64000:])
         s.append('before (last 100 chars): %r' % self.before[-100:] if self.before else '')
         s.append('after: %r' % (self.after,))
         s.append('match: %r' % (self.match,))
