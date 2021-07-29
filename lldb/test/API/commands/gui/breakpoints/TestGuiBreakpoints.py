@@ -18,7 +18,7 @@ class TestGuiBasicDebugCommandTest(PExpectTest):
     def test_gui(self):
         self.build()
 
-        self.launch(executable=self.getBuildArtifact("a.out"), dimensions=(100,500))
+        self.launch(executable=self.getBuildArtifact("a.out"), dimensions=(100, 100))
         self.expect('br set -o true -f main.c -p "// First break here"', substrs=["Breakpoint 1", "address ="])
         self.expect("run", substrs=["stop reason ="])
 

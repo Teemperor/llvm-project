@@ -20,7 +20,7 @@ class TestGuiExpandThreadsTree(PExpectTest):
     def test_gui(self):
         self.build()
 
-        self.launch(executable=self.getBuildArtifact("a.out"), dimensions=(100,500))
+        self.launch(executable=self.getBuildArtifact("a.out"), dimensions=(500, 100))
         self.expect("breakpoint set -r thread_start_routine", substrs=["Breakpoint 1", "address ="])
         self.expect("run", substrs=["stop reason ="])
 
