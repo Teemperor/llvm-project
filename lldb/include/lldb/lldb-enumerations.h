@@ -547,6 +547,7 @@ enum CommandArgumentType {
   eArgTypeLineNum,
   eArgTypeLogCategory,
   eArgTypeLogChannel,
+  eArgTypeLogFormat,
   eArgTypeMethod,
   eArgTypeName,
   eArgTypeNewPathPrefix,

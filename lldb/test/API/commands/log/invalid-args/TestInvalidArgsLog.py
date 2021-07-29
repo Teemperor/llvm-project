@@ -21,3 +21,8 @@ class InvalidArgsLogTestCase(TestBase):
         invalid_path = os.path.join("this", "is", "not", "a", "valid", "path")
         self.expect("log enable lldb all -f " + invalid_path, error=True,
                     substrs=["Unable to open log file '" + invalid_path + "': ", "\n"])
+
+    @no_debug_info_test
+    def test_disable_empty(self):
+        self.expect("log enable -O invalid_format lldb all", error=True,
+                    substrs=["error: Unknown log format: invalid_format"])

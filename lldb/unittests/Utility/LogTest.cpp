@@ -11,6 +11,7 @@
 
 #include "lldb/Utility/Log.h"
 #include "lldb/Utility/StreamString.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/Threading.h"
 #include <thread>
@@ -82,6 +83,16 @@ protected:
   llvm::StringRef takeOutput();
   llvm::StringRef logAndTakeOutput(llvm::StringRef Message);
 
+  llvm::json::Object logAndTakeLogObject(llvm::StringRef Message) {
+    llvm::StringRef Out = logAndTakeOutput(Message).trim();
+    EXPECT_TRUE(Out.consume_back(","));
+    llvm::Expected<llvm::json::Value> parsed = llvm::json::parse(Out);
+    EXPECT_TRUE(static_cast<bool>(parsed));
+    llvm::json::Object *parsed_obj = parsed->getAsObject();
+    EXPECT_NE(parsed_obj, nullptr);
+    return *parsed_obj;
+  }
+
 public:
   void SetUp() override;
 };
@@ -92,6 +103,11 @@ void LogChannelEnabledTest::SetUp() {
 
   std::string error;
   ASSERT_TRUE(EnableChannel(m_stream_sp, 0, "chan", {}, error));
+  llvm::raw_string_ostream error_stream(error);
+  // Use JSON logging by default so the log messages can be parsed.
+  ASSERT_TRUE(
+      Log::SetLogChannelFormat("chan", Log::OutputFormat::JSON, error_stream));
+  EXPECT_EQ(error, "");
 
   m_log = test_channel.GetLogIfAll(FOO);
   ASSERT_NE(nullptr, m_log);
@@ -211,37 +227,71 @@ TEST_F(LogChannelTest, List) {
 
 TEST_F(LogChannelEnabledTest, log_options) {
   std::string Err;
-  EXPECT_EQ("Hello World\n", logAndTakeOutput("Hello World"));
+  EXPECT_EQ("{\"message\":\"Hello World\"},\n",
+            logAndTakeOutput("Hello World"));
   EXPECT_TRUE(EnableChannel(getStream(), LLDB_LOG_OPTION_THREADSAFE, "chan", {},
                             Err));
-  EXPECT_EQ("Hello World\n", logAndTakeOutput("Hello World"));
+  EXPECT_EQ("{\"message\":\"Hello World\"},\n",
+            logAndTakeOutput("Hello World"));
 
   {
     EXPECT_TRUE(EnableChannel(getStream(), LLDB_LOG_OPTION_PREPEND_SEQUENCE,
                               "chan", {}, Err));
-    llvm::StringRef Msg = logAndTakeOutput("Hello World");
-    int seq_no;
-    EXPECT_EQ(1, sscanf(Msg.str().c_str(), "%d Hello World", &seq_no));
+    llvm::json::Object parsed_obj = logAndTakeLogObject("Hello World");
+    // Check that any sequence-id was added.
+    EXPECT_TRUE(parsed_obj.getInteger("sequence-id"));
   }
 
   {
     EXPECT_TRUE(EnableChannel(getStream(), LLDB_LOG_OPTION_PREPEND_FILE_FUNCTION,
                               "chan", {}, Err));
-    llvm::StringRef Msg = logAndTakeOutput("Hello World");
-    char File[12];
-    char Function[17];
-      
-    sscanf(Msg.str().c_str(), "%[^:]:%s                                 Hello World", File, Function);
-    EXPECT_STRCASEEQ("LogTest.cpp", File);
-    EXPECT_STREQ("logAndTakeOutput", Function);
+    llvm::json::Object parsed_obj = logAndTakeLogObject("Hello World");
+    // Check that function/file parameters were added.
+    llvm::Optional<llvm::StringRef> function = parsed_obj.getString("function");
+    llvm::Optional<llvm::StringRef> file = parsed_obj.getString("file");
+    EXPECT_TRUE(function.hasValue());
+    EXPECT_TRUE(file.hasValue());
+
+    EXPECT_EQ(*function, "logAndTakeOutput");
+    EXPECT_EQ(*file, "LogTest.cpp");
   }
 
-  EXPECT_TRUE(EnableChannel(
-      getStream(), LLDB_LOG_OPTION_PREPEND_PROC_AND_THREAD, "chan", {}, Err));
-  EXPECT_EQ(llvm::formatv("[{0,0+4}/{1,0+4}] Hello World\n", ::getpid(),
-                          llvm::get_threadid())
-                .str(),
-            logAndTakeOutput("Hello World"));
+  {
+    EXPECT_TRUE(EnableChannel(
+        getStream(), LLDB_LOG_OPTION_PREPEND_PROC_AND_THREAD, "chan", {}, Err));
+    llvm::json::Object parsed_obj = logAndTakeLogObject("Hello World");
+
+    // Check that function/file parameters were added.
+    llvm::Optional<int64_t> pid = parsed_obj.getInteger("pid");
+    llvm::Optional<int64_t> tid = parsed_obj.getInteger("tid");
+    EXPECT_TRUE(pid.hasValue());
+    EXPECT_TRUE(tid.hasValue());
+
+    EXPECT_EQ(*pid, static_cast<int64_t>(::getpid()));
+    EXPECT_EQ(*tid, static_cast<int64_t>(llvm::get_threadid()));
+  }
+}
+
+TEST_F(LogChannelEnabledTest, PlainTextFormat) {
+  std::string error;
+  llvm::raw_string_ostream error_stream(error);
+  EXPECT_TRUE(
+      Log::SetLogChannelFormat("chan", Log::OutputFormat::Plain, error_stream));
+  EXPECT_EQ(error, "");
+
+  std::string Err;
+  EXPECT_EQ("Hello World\n", logAndTakeOutput("Hello World"));
+
+  // Test plain text formatting with pid/tid option set.
+  {
+    EXPECT_TRUE(EnableChannel(
+        getStream(), LLDB_LOG_OPTION_PREPEND_PROC_AND_THREAD, "chan", {}, Err));
+    const std::string expected_msg =
+        llvm::formatv("{0,0+4} {1,0+4} Hello World\n", getpid(),
+                      llvm::get_threadid())
+            .str();
+    EXPECT_EQ(expected_msg, logAndTakeOutput("Hello World"));
+  }
 }
 
 TEST_F(LogChannelEnabledTest, LLDB_LOG_ERROR) {
@@ -252,7 +302,7 @@ TEST_F(LogChannelEnabledTest, LLDB_LOG_ERROR) {
                  llvm::make_error<llvm::StringError>(
                      "My Error", llvm::inconvertibleErrorCode()),
                  "Foo failed: {0}");
-  ASSERT_EQ("Foo failed: My Error\n", takeOutput());
+  ASSERT_EQ("{\"message\":\"Foo failed: My Error\"},\n", takeOutput());
 
   // Doesn't log, but doesn't assert either
   LLDB_LOG_ERROR(nullptr,
@@ -274,7 +324,8 @@ TEST_F(LogChannelEnabledTest, LogThread) {
   // The log thread either managed to write to the log in time, or it didn't. In
   // either case, we should not trip any undefined behavior (run the test under
   // TSAN to verify this).
-  EXPECT_THAT(takeOutput(), testing::AnyOf("", "Hello World\n"));
+  EXPECT_THAT(takeOutput(),
+              testing::AnyOf("", "{\"message\":\"Hello World\"},\n"));
 }
 
 TEST_F(LogChannelEnabledTest, LogVerboseThread) {
@@ -292,7 +343,8 @@ TEST_F(LogChannelEnabledTest, LogVerboseThread) {
   // The log thread either managed to write to the log, or it didn't. In either
   // case, we should not trip any undefined behavior (run the test under TSAN to
   // verify this).
-  EXPECT_THAT(takeOutput(), testing::AnyOf("", "Hello World\n"));
+  EXPECT_THAT(takeOutput(),
+              testing::AnyOf("", "{\"message\":\"Hello World\"},\n"));
 }
 
 TEST_F(LogChannelEnabledTest, LogGetLogThread) {

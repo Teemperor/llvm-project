@@ -160,6 +160,7 @@ interesting areas to contribute to lldb.
    design/overview
    design/reproducers
    design/sbapi
+   design/logging
 
 .. toctree::
    :hidden:

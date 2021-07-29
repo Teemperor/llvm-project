@@ -78,6 +78,7 @@ bool CommandCompletions::InvokeCommonCompletionCallbacks(
       {eRemoteDiskDirectoryCompletion,
        CommandCompletions::RemoteDiskDirectories},
       {eTypeCategoryNameCompletion, CommandCompletions::TypeCategoryNames},
+      {eLogFormatCompletion, CommandCompletions::LogFormats},
       {eNoCompletion, nullptr} // This one has to be last in the list.
   };
 
@@ -791,4 +792,11 @@ void CommandCompletions::TypeCategoryNames(CommandInterpreter &interpreter,
                                       category_sp->GetDescription());
         return true;
       });
+}
+
+void CommandCompletions::LogFormats(CommandInterpreter &,
+                                    CompletionRequest &request,
+                                    SearchFilter *) {
+  for (const auto &key_value : Log::GetOutputFormatNameMapping())
+    request.TryCompleteCurrentArg(key_value.first());
 }

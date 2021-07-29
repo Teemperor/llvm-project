@@ -244,6 +244,14 @@ class CommandLineCompletionTestCase(TestBase):
         self.complete_from_to('log enable lldb expr -f ' + src_dir,
                               [src_dir + os.sep], turn_off_re_match=True)
 
+    def test_log_enable_output_format(self):
+        self.complete_from_to('log enable -O js', ['json'])
+        self.complete_from_to('log enable -O pl', ['plain'])
+        self.complete_from_to('log enable -O ', ['json', 'plain'])
+        # No possible completion.
+        self.complete_from_to('log enable -O b',
+                              'log enable -O b')
+
     # <rdar://problem/11052829>
     def test_infinite_loop_while_completing(self):
         """Test that 'process print hello\' completes to itself and does not infinite loop."""

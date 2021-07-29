@@ -132,14 +132,11 @@ void Log::Printf(const char *format, ...) {
 void Log::VAPrintf(const char *format, va_list args) {
   llvm::SmallString<64> FinalMessage;
   llvm::raw_svector_ostream Stream(FinalMessage);
-  WriteHeader(Stream, "", "");
 
   llvm::SmallString<64> Content;
   lldb_private::VASprintf(Content, format, args);
 
-  Stream << Content << "\n";
-
-  WriteMessage(std::string(FinalMessage.str()));
+  Format(/*file=*/"", /*function=*/"", llvm::formatv("{0}", Content));
 }
 
 // Printing of errors that are not fatal.
@@ -230,6 +227,17 @@ bool Log::DisableLogChannel(llvm::StringRef channel,
   return true;
 }
 
+bool Log::SetLogChannelFormat(llvm::StringRef channel, Log::OutputFormat format,
+                              llvm::raw_ostream &error_stream) {
+  auto iter = g_channel_map->find(channel);
+  if (iter == g_channel_map->end()) {
+    error_stream << llvm::formatv("Invalid log channel '{0}'.\n", channel);
+    return false;
+  }
+  iter->second.m_output_format = format;
+  return true;
+}
+
 bool Log::ListChannelCategories(llvm::StringRef channel,
                                 llvm::raw_ostream &stream) {
   auto ch = g_channel_map->find(channel);
@@ -277,49 +285,7 @@ bool Log::GetVerbose() const {
   return m_options.load(std::memory_order_relaxed) & LLDB_LOG_OPTION_VERBOSE;
 }
 
-void Log::WriteHeader(llvm::raw_ostream &OS, llvm::StringRef file,
-                      llvm::StringRef function) {
-  Flags options = GetOptions();
-  static uint32_t g_sequence_id = 0;
-  // Add a sequence ID if requested
-  if (options.Test(LLDB_LOG_OPTION_PREPEND_SEQUENCE))
-    OS << ++g_sequence_id << " ";
-
-  // Timestamp if requested
-  if (options.Test(LLDB_LOG_OPTION_PREPEND_TIMESTAMP)) {
-    auto now = std::chrono::duration<double>(
-        std::chrono::system_clock::now().time_since_epoch());
-    OS << llvm::formatv("{0:f9} ", now.count());
-  }
-
-  // Add the process and thread if requested
-  if (options.Test(LLDB_LOG_OPTION_PREPEND_PROC_AND_THREAD))
-    OS << llvm::formatv("[{0,0+4}/{1,0+4}] ", getpid(),
-                        llvm::get_threadid());
-
-  // Add the thread name if requested
-  if (options.Test(LLDB_LOG_OPTION_PREPEND_THREAD_NAME)) {
-    llvm::SmallString<32> thread_name;
-    llvm::get_thread_name(thread_name);
-
-    llvm::SmallString<12> format_str;
-    llvm::raw_svector_ostream format_os(format_str);
-    format_os << "{0,-" << llvm::alignTo<16>(thread_name.size()) << "} ";
-    OS << llvm::formatv(format_str.c_str(), thread_name);
-  }
-
-  if (options.Test(LLDB_LOG_OPTION_BACKTRACE))
-    llvm::sys::PrintStackTrace(OS);
-
-  if (options.Test(LLDB_LOG_OPTION_PREPEND_FILE_FUNCTION) &&
-      (!file.empty() || !function.empty())) {
-    file = llvm::sys::path::filename(file).take_front(40);
-    function = function.take_front(40);
-    OS << llvm::formatv("{0,-60:60} ", (file + ":" + function).str());
-  }
-}
-
-void Log::WriteMessage(const std::string &message) {
+void Log::WriteMessage(llvm::StringRef json) {
   // Make a copy of our stream shared pointer in case someone disables our log
   // while we are logging and releases the stream
   auto stream_sp = GetStream();
@@ -330,20 +296,126 @@ void Log::WriteMessage(const std::string &message) {
   if (options.Test(LLDB_LOG_OPTION_THREADSAFE)) {
     static std::recursive_mutex g_LogThreadedMutex;
     std::lock_guard<std::recursive_mutex> guard(g_LogThreadedMutex);
-    *stream_sp << message;
+    *stream_sp << json;
     stream_sp->flush();
   } else {
-    *stream_sp << message;
+    *stream_sp << json;
     stream_sp->flush();
   }
+}
+
+namespace {
+struct PlainTextWriter {
+  llvm::raw_ostream &m_output;
+  /// True if any output has been written by this class to this point.
+  bool m_anything_written = false;
+  explicit PlainTextWriter(llvm::raw_ostream &output) : m_output(output) {}
+  ~PlainTextWriter() { m_output << "\n"; }
+  void PrintSeparatorIfNeeded() {
+    // The first output at the start of the line doesn't need a separating
+    // space.
+    if (!m_anything_written)
+      return;
+    m_output << " ";
+  }
+  template <class T> void Write(llvm::StringRef key, const T &value) {
+    PrintSeparatorIfNeeded();
+    m_anything_written = true;
+    m_output << value;
+  }
+  template <> void Write<double>(llvm::StringRef key, const double &value) {
+    PrintSeparatorIfNeeded();
+    m_anything_written = true;
+    // Limit the precision of printed doubles.
+    m_output << llvm::formatv("{0:f9}", value);
+  }
+};
+struct JSONWriter {
+  llvm::raw_ostream &m_output;
+  llvm::json::OStream m_json;
+  explicit JSONWriter(llvm::raw_ostream &output)
+      : m_output(output), m_json(output) {
+    m_json.objectBegin();
+  }
+  ~JSONWriter() {
+    m_json.objectEnd();
+    m_json.flush();
+    m_output << ",\n";
+  }
+  template <class T> void Write(llvm::StringRef key, const T &value) {
+    m_json.attribute(key, value);
+  }
+};
+} // namespace
+
+template <class Writer>
+static void BuildMessage(Writer &output, const Flags options,
+                         llvm::StringRef file, llvm::StringRef function,
+                         llvm::StringRef message) {
+  static uint32_t g_sequence_id = 0;
+  // Add a sequence ID if requested
+  if (options.Test(LLDB_LOG_OPTION_PREPEND_SEQUENCE))
+    output.Write("sequence-id", ++g_sequence_id);
+
+  // Timestamp if requested
+  if (options.Test(LLDB_LOG_OPTION_PREPEND_TIMESTAMP)) {
+    auto now = std::chrono::duration<double>(
+        std::chrono::system_clock::now().time_since_epoch());
+    output.Write("timestamp", now.count());
+  }
+
+  // Add the process and thread if requested
+  if (options.Test(LLDB_LOG_OPTION_PREPEND_PROC_AND_THREAD)) {
+    output.Write("pid", static_cast<int64_t>(getpid()));
+    output.Write("tid", static_cast<int64_t>(llvm::get_threadid()));
+  }
+
+  // Add the thread name if requested
+  if (options.Test(LLDB_LOG_OPTION_PREPEND_THREAD_NAME)) {
+    llvm::SmallString<32> thread_name;
+    llvm::get_thread_name(thread_name);
+
+    llvm::SmallString<12> format_str;
+    llvm::raw_svector_ostream format_os(format_str);
+    format_os << "{0,-" << llvm::alignTo<16>(thread_name.size()) << "} ";
+    output.Write("thread-name", thread_name);
+  }
+
+  if (options.Test(LLDB_LOG_OPTION_BACKTRACE)) {
+    std::string stacktrace;
+    llvm::raw_string_ostream stacktrace_stream(stacktrace);
+    llvm::sys::PrintStackTrace(stacktrace_stream);
+    stacktrace_stream.flush();
+    output.Write("stacktrace", stacktrace);
+  }
+
+  if (options.Test(LLDB_LOG_OPTION_PREPEND_FILE_FUNCTION) &&
+      (!file.empty() || !function.empty())) {
+    output.Write("file", llvm::sys::path::filename(file));
+    output.Write("function", function);
+  }
+
+  output.Write("message", message);
 }
 
 void Log::Format(llvm::StringRef file, llvm::StringRef function,
                  const llvm::formatv_object_base &payload) {
   std::string message_string;
   llvm::raw_string_ostream message(message_string);
-  WriteHeader(message, file, function);
-  message << payload << "\n";
+
+  switch (m_output_format.load(std::memory_order_relaxed)) {
+  case Log::OutputFormat::JSON: {
+    JSONWriter json_writer(message);
+    BuildMessage(json_writer, GetOptions(), file, function, payload.str());
+    break;
+  }
+  case Log::OutputFormat::Plain: {
+    PlainTextWriter plain_writer(message);
+    BuildMessage(plain_writer, GetOptions(), file, function, payload.str());
+    break;
+  }
+  }
+
   WriteMessage(message.str());
 }
 

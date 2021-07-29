@@ -19,6 +19,7 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Error.h"
 #include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/JSON.h"
 #include "llvm/Support/ManagedStatic.h"
 #include "llvm/Support/RWMutex.h"
 
@@ -54,6 +55,23 @@ public:
     llvm::StringLiteral description;
     uint32_t flag;
   };
+
+  /// The format used when emitting log messages.
+  enum class OutputFormat {
+    /// Log messages are printed as plain text.
+    Plain,
+    /// Log messages are printed as JSON objects.
+    JSON,
+  };
+
+  typedef llvm::StringMap<OutputFormat> OutputFormatMapping;
+  /// Returns the mapping from format names to their \b OutputFormat value.
+  static OutputFormatMapping GetOutputFormatNameMapping() {
+    return {
+        {"plain", OutputFormat::Plain},
+        {"json", OutputFormat::JSON},
+    };
+  }
 
   // This class describes a log channel. It also encapsulates the behavior
   // necessary to enable a log channel in an atomic manner.
@@ -109,6 +127,16 @@ public:
   static bool DisableLogChannel(llvm::StringRef channel,
                                 llvm::ArrayRef<const char *> categories,
                                 llvm::raw_ostream &error_stream);
+
+  /// Sets the log format for the specified channel.
+  ///
+  /// \param channel A string identifying the channel name such as 'lldb'.
+  /// \param format The log format that the channel should have.
+  /// \param error_stream On error, contains an error that should be displayed
+  ///                     to the user.
+  /// \return True iff the channel format was set successfully.
+  static bool SetLogChannelFormat(llvm::StringRef channel, OutputFormat format,
+                                  llvm::raw_ostream &error_stream);
 
   static bool ListChannelCategories(llvm::StringRef channel,
                                     llvm::raw_ostream &stream);
@@ -179,12 +207,12 @@ private:
   llvm::sys::RWMutex m_mutex;
 
   std::shared_ptr<llvm::raw_ostream> m_stream_sp;
+  /// Log output format of the current channel.
+  std::atomic<OutputFormat> m_output_format = {OutputFormat::Plain};
   std::atomic<uint32_t> m_options{0};
   std::atomic<uint32_t> m_mask{0};
 
-  void WriteHeader(llvm::raw_ostream &OS, llvm::StringRef file,
-                   llvm::StringRef function);
-  void WriteMessage(const std::string &message);
+  void WriteMessage(llvm::StringRef message);
 
   void Format(llvm::StringRef file, llvm::StringRef function,
               const llvm::formatv_object_base &payload);

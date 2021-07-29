@@ -443,6 +443,8 @@ let Command = "log" in {
     Desc<"Append to the log file instead of overwriting.">;
   def log_file_function : Option<"file-function", "F">, Group<1>,
     Desc<"Prepend the names of files and function that generate the logs.">;
+  def log_format : Option<"format", "O">, Group<1>, Arg<"LogFormat">,
+    Desc<"Specify the used log format for the enabled channels.">;
 }
 
 let Command = "reproducer dump" in {

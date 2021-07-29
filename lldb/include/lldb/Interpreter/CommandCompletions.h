@@ -50,6 +50,7 @@ public:
     eRemoteDiskFileCompletion = (1u << 22),
     eRemoteDiskDirectoryCompletion = (1u << 23),
     eTypeCategoryNameCompletion = (1u << 24),
+    eLogFormatCompletion = (1u << 25),
     // This item serves two purposes.  It is the last element in the enum, so
     // you can add custom enums starting from here in your Option class. Also
     // if you & in this bit the base code will not process the option.
@@ -151,6 +152,10 @@ public:
   static void TypeCategoryNames(CommandInterpreter &interpreter,
                                 CompletionRequest &request,
                                 SearchFilter *searcher);
+
+  /// Completes LLDB log format names.
+  static void LogFormats(CommandInterpreter &interpreter,
+                         CompletionRequest &request, SearchFilter *searcher);
 };
 
 } // namespace lldb_private

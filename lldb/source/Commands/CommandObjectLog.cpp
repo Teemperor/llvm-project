@@ -117,6 +117,16 @@ public:
       case 'F':
         log_options |= LLDB_LOG_OPTION_PREPEND_FILE_FUNCTION;
         break;
+      case 'O': {
+        Log::OutputFormatMapping mapping = Log::GetOutputFormatNameMapping();
+        auto found_format = mapping.find(option_arg);
+        if (found_format == mapping.end()) {
+          error.SetErrorString("Unknown log format: " + option_arg.str());
+          break;
+        }
+        log_format = found_format->second;
+        break;
+      }
       default:
         llvm_unreachable("Unimplemented option");
       }
@@ -127,6 +137,7 @@ public:
     void OptionParsingStarting(ExecutionContext *execution_context) override {
       log_file.Clear();
       log_options = 0;
+      log_format = Log::OutputFormat::Plain;
     }
 
     llvm::ArrayRef<OptionDefinition> GetDefinitions() override {
@@ -137,6 +148,7 @@ public:
 
     FileSpec log_file;
     uint32_t log_options = 0;
+    Log::OutputFormat log_format = Log::OutputFormat::Plain;
   };
 
   void
@@ -168,6 +180,10 @@ protected:
     bool success =
         GetDebugger().EnableLog(channel, args.GetArgumentArrayRef(), log_file,
                                 m_options.log_options, error_stream);
+    if (success)
+      success |=
+          Log::SetLogChannelFormat(channel, m_options.log_format, error_stream);
+
     result.GetErrorStream() << error_stream.str();
 
     if (success)
