@@ -1443,7 +1443,7 @@ ExpectedType ASTNodeImporter::VisitInjectedClassNameType(
 }
 
 ExpectedType ASTNodeImporter::VisitRecordType(const RecordType *T) {
-  Expected<RecordDecl *> ToDeclOrErr = import(T->getDecl());
+  Expected<RecordDecl *> ToDeclOrErr = import(T->getCanonicalDecl());
   if (!ToDeclOrErr)
     return ToDeclOrErr.takeError();
 
