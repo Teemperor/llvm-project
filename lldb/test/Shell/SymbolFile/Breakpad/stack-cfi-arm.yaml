@@ -24,7 +24,7 @@ Streams:
         Module Name:     '/tmp/stack-cfi-arm.out'
         CodeView Record: 4C457042E35C283BC327C28762DB788BF5A4078BE2351448
   - Type:            SystemInfo
-    Processor Arch:  ARM
+    Processor Arch:  SHX
     Platform ID:     Linux
     CPU:             
       CPUID:           0

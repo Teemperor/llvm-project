@@ -361,23 +361,24 @@ ClangExpressionParser::ClangExpressionParser(
     bool generate_debug_info, std::vector<std::string> include_directories,
     std::string filename)
     : ExpressionParser(exe_scope, expr, generate_debug_info), m_compiler(),
-      m_pp_callbacks(nullptr),
+      m_exe_scope(exe_scope), m_pp_callbacks(nullptr),
       m_include_directories(std::move(include_directories)),
       m_filename(std::move(filename)) {
-  Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
+}
+
+void ClangExpressionParser::SetupParser(DiagnosticManager &diagnostics) {
+  ExecutionContextScope *exe_scope = m_exe_scope;
 
   // We can't compile expressions without a target.  So if the exe_scope is
-  // null or doesn't have a target, then we just need to get out of here.  I'll
-  // lldbassert and not make any of the compiler objects since
-  // I can't return errors directly from the constructor.  Further calls will
-  // check if the compiler was made and
-  // bag out if it wasn't.
+  // null or doesn't have a target, then we just need to get out of here.
 
   if (!exe_scope) {
     lldbassert(exe_scope &&
                "Can't make an expression parser with a null scope.");
     return;
   }
+
+  Log *log(lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS));
 
   lldb::TargetSP target_sp;
   target_sp = exe_scope->CalculateTarget();
@@ -389,6 +390,23 @@ ClangExpressionParser::ClangExpressionParser(
 
   // 1. Create a new compiler instance.
   m_compiler = std::make_unique<CompilerInstance>();
+
+  // Create the diagnostics first so that the different Clang functions that
+  // are called from here are
+  m_compiler->createDiagnostics();
+  // Limit the number of error diagnostics we emit.
+  // A value of 0 means no limit for both LLDB and Clang.
+  m_compiler->getDiagnostics().setErrorLimit(target_sp->GetExprErrorLimit());
+
+  auto diag_mgr = new ClangDiagnosticManagerAdapter(
+      m_compiler->getDiagnostics().getDiagnosticOptions());
+  m_compiler->getDiagnostics().setClient(diag_mgr);
+
+  ClangDiagnosticManagerAdapter *adapter =
+      static_cast<ClangDiagnosticManagerAdapter *>(
+          m_compiler->getDiagnostics().getClient());
+
+  adapter->ResetManager(&diagnostics);
 
   // When capturing a reproducer, hook up the file collector with clang to
   // collector modules and headers.
@@ -406,7 +424,7 @@ ClangExpressionParser::ClangExpressionParser(
   m_compiler->createFileManager(FileSystem::Instance().GetVirtualFileSystem());
 
   lldb::LanguageType frame_lang =
-      expr.Language(); // defaults to lldb::eLanguageTypeUnknown
+      m_expr.Language(); // defaults to lldb::eLanguageTypeUnknown
   bool overridden_target_opts = false;
   lldb_private::LanguageRuntime *lang_rt = nullptr;
 
@@ -503,13 +521,14 @@ ClangExpressionParser::ClangExpressionParser(
     }
 
   // 4. Create and install the target on the compiler.
-  m_compiler->createDiagnostics();
-  // Limit the number of error diagnostics we emit.
-  // A value of 0 means no limit for both LLDB and Clang.
-  m_compiler->getDiagnostics().setErrorLimit(target_sp->GetExprErrorLimit());
 
+  llvm::errs() << "TRIPLE:" << m_compiler->getInvocation().TargetOpts->Triple << "\n";
   auto target_info = TargetInfo::CreateTargetInfo(
       m_compiler->getDiagnostics(), m_compiler->getInvocation().TargetOpts);
+  if (!target_info) {
+    assert(m_compiler->getDiagnostics().hasErrorOccurred());
+    return;
+  }
   if (log) {
     LLDB_LOGF(log, "Using SIMD alignment: %d",
               target_info->getSimdDefaultAlign());
@@ -524,7 +543,7 @@ ClangExpressionParser::ClangExpressionParser(
   assert(m_compiler->hasTarget());
 
   // 5. Set language options.
-  lldb::LanguageType language = expr.Language();
+  lldb::LanguageType language = m_expr.Language();
   LangOptions &lang_opts = m_compiler->getLangOpts();
 
   switch (language) {
@@ -580,7 +599,7 @@ ClangExpressionParser::ClangExpressionParser(
   lang_opts.Blocks = true;
   lang_opts.DebuggerSupport =
       true; // Features specifically for debugger clients
-  if (expr.DesiredResultType() == Expression::eResultTypeId)
+  if (m_expr.DesiredResultType() == Expression::eResultTypeId)
     lang_opts.DebuggerCastResultToId = true;
 
   lang_opts.CharIsSigned = ArchSpec(m_compiler->getTargetOpts().Triple.c_str())
@@ -646,7 +665,7 @@ ClangExpressionParser::ClangExpressionParser(
   m_compiler->getCodeGenOpts().InstrumentFunctions = false;
   m_compiler->getCodeGenOpts().setFramePointer(
                                     CodeGenOptions::FramePointerKind::All);
-  if (generate_debug_info)
+  if (m_generate_debug_info)
     m_compiler->getCodeGenOpts().setDebugInfo(codegenoptions::FullDebugInfo);
   else
     m_compiler->getCodeGenOpts().setDebugInfo(codegenoptions::NoDebugInfo);
@@ -661,13 +680,7 @@ ClangExpressionParser::ClangExpressionParser(
   m_compiler->getTarget().adjust(m_compiler->getDiagnostics(),
 		                 m_compiler->getLangOpts());
 
-  // 6. Set up the diagnostic buffer for reporting errors
-
-  auto diag_mgr = new ClangDiagnosticManagerAdapter(
-      m_compiler->getDiagnostics().getDiagnosticOptions());
-  m_compiler->getDiagnostics().setClient(diag_mgr);
-
-  // 7. Set up the source management objects inside the compiler
+  // 6. Set up the source management objects inside the compiler
   m_compiler->createFileManager();
   if (!m_compiler->hasSourceManager())
     m_compiler->createSourceManager(m_compiler->getFileManager());
@@ -702,7 +715,7 @@ ClangExpressionParser::ClangExpressionParser(
     }
   }
 
-  // 8. Most of this we get from the CompilerInstance, but we also want to give
+  // 7. Most of this we get from the CompilerInstance, but we also want to give
   // the context an ExternalASTSource.
 
   auto &PP = m_compiler->getPreprocessor();
@@ -1036,11 +1049,14 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
                                      CodeCompleteConsumer *completion_consumer,
                                      unsigned completion_line,
                                      unsigned completion_column) {
+
+  SetupParser(diagnostic_manager);
   ClangDiagnosticManagerAdapter *adapter =
       static_cast<ClangDiagnosticManagerAdapter *>(
           m_compiler->getDiagnostics().getClient());
 
-  adapter->ResetManager(&diagnostic_manager);
+  if (unsigned errs = adapter->getNumErrors())
+    return errs;
 
   const char *expr_text = m_expr.Text();
 

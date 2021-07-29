@@ -142,6 +142,8 @@ public:
   std::string GetClangTargetABI(const ArchSpec &target_arch);
 
 private:
+  void SetupParser(DiagnosticManager &diagnostics);
+
   /// Parses the expression.
   ///
   /// \param[in] diagnostic_manager
@@ -173,6 +175,7 @@ private:
       m_compiler; ///< The Clang compiler used to parse expressions into IR
   std::unique_ptr<clang::CodeGenerator>
       m_code_generator; ///< The Clang object that generates IR
+  ExecutionContextScope *m_exe_scope = nullptr;
 
   class LLDBPreprocessorCallbacks;
   LLDBPreprocessorCallbacks *m_pp_callbacks; ///< Called when the preprocessor
