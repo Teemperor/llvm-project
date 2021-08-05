@@ -173,10 +173,7 @@ public:
   // will want to call this function to create a new vector and copy _only_ the
   // exact size needed as part of the finalization of the string map.
   void SizeToFit() {
-    if (m_map.size() < m_map.capacity()) {
-      collection temp(m_map.begin(), m_map.end());
-      m_map.swap(temp);
-    }
+    m_map.shrink_to_fit();
   }
 
   iterator begin() { return m_map.begin(); }
