@@ -43,10 +43,16 @@ class TextTreeStructure {
   /// Indicates if we're handling the first child after entering a new depth.
   bool FirstChild = true;
 
+  /// Indicates if we can deserialize declarations from the ExternalASTSource.
+  bool Deserialize = true;
+
   /// Prefix for currently-being-dumped entity.
   std::string Prefix;
 
 public:
+  void setDeserialize(bool D) { Deserialize = D; }
+  bool getDeserialize() const { return Deserialize; }
+
   /// Add a child of the current node.  Calls DoAddChild without arguments
   template <typename Fn> void AddChild(Fn DoAddChild) {
     return AddChild("", DoAddChild);

@@ -79,7 +79,10 @@ class ASTNodeTraverser
   Derived &getDerived() { return *static_cast<Derived *>(this); }
 
 public:
-  void setDeserialize(bool D) { Deserialize = D; }
+  void setDeserialize(bool D) {
+    Deserialize = D;
+    getNodeDelegate().setDeserialize(Deserialize);
+  }
   bool getDeserialize() const { return Deserialize; }
 
   void SetTraversalKind(TraversalKind TK) { Traversal = TK; }
