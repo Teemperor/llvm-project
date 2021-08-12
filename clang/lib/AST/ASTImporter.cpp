@@ -5795,7 +5795,7 @@ ExpectedDecl ASTNodeImporter::VisitClassTemplateSpecializationDecl(
   D2->setTemplateSpecializationKind(D->getTemplateSpecializationKind());
 
   if (D->isCompleteDefinition())
-    if (Error Err = ImportDefinition(D, D2))
+    if (Error Err = ImportDefinition(D, D2, IDK_Everything))
       return std::move(Err);
 
   return D2;
