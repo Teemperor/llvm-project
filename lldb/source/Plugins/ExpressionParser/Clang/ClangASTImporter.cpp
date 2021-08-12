@@ -558,7 +558,8 @@ bool ClangASTImporter::CompleteTagDecl(const TagDecl *decl) {
   llvm::Expected<Decl *> result = delegate_sp->Import(origin_decl);
   if (result)
     return true;
-  llvm::handleAllErrors(result.takeError(), [](clang::ImportError &e){
+  llvm::handleAllErrors(result.takeError(), [](clang::ImportError &e) {
+      // FIXME: Needs error handling.
       abort();
   });
 
