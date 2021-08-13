@@ -2043,21 +2043,6 @@ bool DWARFASTParserClang::CompleteRecordType(const DWARFDIE &die,
   return (bool)clang_type;
 }
 
-bool DWARFASTParserClang::CompleteEnumType(const DWARFDIE &die,
-                                           lldb_private::Type *type,
-                                           CompilerType &clang_type) {
-  if (TypeSystemClang::StartTagDeclarationDefinition(clang_type)) {
-    if (die.HasChildren()) {
-      bool is_signed = false;
-      clang_type.IsIntegerType(is_signed);
-      ParseChildEnumerators(clang_type, is_signed,
-                            type->GetByteSize(nullptr).getValueOr(0), die);
-    }
-    TypeSystemClang::CompleteTagDeclarationDefinition(clang_type);
-  }
-  return (bool)clang_type;
-}
-
 bool DWARFASTParserClang::CompleteTypeFromDWARF(const DWARFDIE &die,
                                                 lldb_private::Type *type,
                                                 CompilerType &clang_type) {
@@ -2088,8 +2073,6 @@ bool DWARFASTParserClang::CompleteTypeFromDWARF(const DWARFDIE &die,
   case DW_TAG_union_type:
   case DW_TAG_class_type:
     return CompleteRecordType(die, type, clang_type);
-  case DW_TAG_enumeration_type:
-    return CompleteEnumType(die, type, clang_type);
   default:
     assert(false && "not a forward clang type decl!");
     break;
