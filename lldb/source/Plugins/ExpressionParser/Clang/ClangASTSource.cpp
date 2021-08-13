@@ -342,7 +342,7 @@ void ClangASTSource::CompleteType(clang::ObjCInterfaceDecl *interface_decl) {
 }
 
 void ClangASTSource::CompleteRedeclChain(const Decl *d) {
-  if (const clang::RecordDecl *td = llvm::dyn_cast<RecordDecl>(d)) {
+  if (const clang::TagDecl *td = llvm::dyn_cast<TagDecl>(d)) {
     if (td->isBeingDefined())
       return;
     m_ast_importer_sp->CompleteTagDecl(td);
