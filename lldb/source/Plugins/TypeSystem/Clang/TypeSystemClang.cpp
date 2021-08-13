@@ -2672,19 +2672,8 @@ static QualType GetCompleteQualType(clang::ASTContext *ast,
     if (tag_type) {
       clang::TagDecl *tag_decl = tag_type->getDecl();
       if (tag_decl) {
-        if (tag_decl->getDefinition())
-          return QualType(tag_decl->getTypeForDecl(), 0);
-
-        if (tag_decl->hasExternalLexicalStorage()) {
-          if (ast) {
-            clang::ExternalASTSource *external_ast_source =
-                ast->getExternalSource();
-            if (external_ast_source) {
-              external_ast_source->CompleteType(tag_decl);
-              return QualType(tag_decl->getTypeForDecl(), 0);
-            }
-          }
-        }
+        if (clang::TagDecl *def = tag_decl->getDefinition())
+          return QualType(def->getTypeForDecl(), 0);
         return QualType(tag_decl->getTypeForDecl(), 0);
       }
     }
@@ -2700,7 +2689,7 @@ static QualType GetCompleteQualType(clang::ASTContext *ast,
       if (!class_interface_decl)
         return qual_type;
       if (clang::ObjCInterfaceDecl *def = class_interface_decl->getDefinition())
-       return QualType(class_interface_decl->getTypeForDecl(), 0);
+       return QualType(def->getTypeForDecl(), 0);
     }
   } break;
 
@@ -5487,6 +5476,9 @@ void TypeSystemClang::ForEachEnumerator(
   if (enum_type) {
     const clang::EnumDecl *enum_decl = enum_type->getDecl();
     if (enum_decl) {
+      enum_decl = enum_decl->getDefinition();
+      if (!enum_decl)
+        return;
       CompilerType integer_type = GetType(enum_decl->getIntegerType());
 
       clang::EnumDecl::enumerator_iterator enum_pos, enum_end_pos;
@@ -8546,6 +8538,7 @@ void TypeSystemClang::DumpValue(
       const clang::EnumType *enutype =
           llvm::cast<clang::EnumType>(qual_type.getTypePtr());
       const clang::EnumDecl *enum_decl = enutype->getDecl();
+      enum_decl = enum_decl->getDefinition();
       assert(enum_decl);
       clang::EnumDecl::enumerator_iterator enum_pos, enum_end_pos;
       lldb::offset_t offset = data_byte_offset;
@@ -8761,7 +8754,7 @@ static bool DumpEnumValue(const clang::QualType &qual_type, Stream *s,
                           uint32_t bitfield_bit_size) {
   const clang::EnumType *enutype =
       llvm::cast<clang::EnumType>(qual_type.getTypePtr());
-  const clang::EnumDecl *enum_decl = enutype->getDecl();
+  const clang::EnumDecl *enum_decl = enutype->getDecl()->getDefinition();
   assert(enum_decl);
   lldb::offset_t offset = byte_offset;
   const uint64_t enum_svalue = data.GetMaxS64Bitfield(

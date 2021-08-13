@@ -57,6 +57,23 @@
 
 using namespace lldb;
 using namespace lldb_private;
+
+namespace {
+struct GenerationBumper {
+  TypeSystemClang &m_ts;
+  bool engaged = true;
+  explicit GenerationBumper(TypeSystemClang &ts) : m_ts(ts) {
+  }
+  ~GenerationBumper() {
+    if (engaged)
+      m_ts.BumpGenerationCounter();
+  }
+  void engage() {
+    engaged = true;
+  }
+};
+}
+
 DWARFASTParserClang::DWARFASTParserClang(TypeSystemClang &ast)
     : m_ast(ast), m_die_to_decl_ctx(), m_decl_ctx_to_die() {}
 
@@ -829,6 +846,7 @@ TypeSP DWARFASTParserClang::ParseEnum(const SymbolContext &sc,
 
   CompilerType enumerator_clang_type;
   CompilerType clang_type;
+
   clang_type.SetCompilerType(
       &m_ast, dwarf->GetForwardDeclDieToClangType().lookup(die.GetDIE()));
   if (!clang_type) {
@@ -1529,20 +1547,6 @@ TypeSP DWARFASTParserClang::UpdateSymbolContextScopeForType(
   dwarf->GetDIEToType()[die.GetDIE()] = type_sp.get();
   return type_sp;
 }
-
-struct GenerationBumper {
-  TypeSystemClang &m_ts;
-  bool engaged = true;
-  explicit GenerationBumper(TypeSystemClang &ts) : m_ts(ts) {
-  }
-  ~GenerationBumper() {
-    if (engaged)
-      m_ts.BumpGenerationCounter();
-  }
-  void engage() {
-    engaged = true;
-  }
-};
 
 TypeSP
 DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
