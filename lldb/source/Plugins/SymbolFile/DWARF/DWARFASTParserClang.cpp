@@ -74,6 +74,10 @@ struct GenerationBumper {
 };
 }
 
+static bool DirectlyCompleteType(const ParsedDWARFTypeAttributes &attrs) {
+  return attrs.name.IsEmpty() && !attrs.is_forward_declaration;
+}
+
 DWARFASTParserClang::DWARFASTParserClang(TypeSystemClang &ast)
     : m_ast(ast), m_die_to_decl_ctx(), m_decl_ctx_to_die() {}
 
@@ -258,7 +262,12 @@ TypeSP DWARFASTParserClang::ParseTypeFromClangModule(const SymbolContext &sc,
   return type_sp;
 }
 
-static void ForcefullyCompleteType(TypeSystemClang &ts, clang::TagDecl *td) {
+static void ForcefullyCompleteType(CompilerType type) {
+  bool started = TypeSystemClang::StartTagDeclarationDefinition(type);
+  lldbassert(started && "Unable to start a class type definition.");
+  TypeSystemClang::CompleteTagDeclarationDefinition(type);
+  const clang::TagDecl *td = ClangUtil::GetAsTagDecl(type);
+  auto &ts = llvm::cast<TypeSystemClang>(*type.GetTypeSystem());
   ts.GetMetadata(td)->SetIsForcefullyCompleted();
 }
 
@@ -281,7 +290,7 @@ static void RequireCompleteType(CompilerType type) {
   // different module.
   // Since we provide layout assistance, layouts of types containing this class
   // will be correct even if we  are not able to find the definition elsewhere.
-  ForcefullyCompleteType(*llvm::cast<TypeSystemClang>(type.GetTypeSystem()), ClangUtil::GetAsTagDecl(type));
+  ForcefullyCompleteType(type);
 }
 
 /// This function serves a similar purpose as RequireCompleteType above, but it
@@ -319,7 +328,7 @@ static void PrepareContextToReceiveMembers(TypeSystemClang &ast,
 
   // We don't have a type definition and/or the import failed. We must
   // forcefully complete the type to avoid crashes.
-  ForcefullyCompleteType(ast, tag_decl_ctx);
+  ForcefullyCompleteType(ast.GetTypeForDecl(tag_decl_ctx));
 }
 
 ParsedDWARFTypeAttributes::ParsedDWARFTypeAttributes(const DWARFDIE &die) {
@@ -1791,7 +1800,9 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
           attrs.name.GetCString(), tag_decl_kind, attrs.class_language,
           &metadata, attrs.exports_symbols);
       RegisterDIE(die.GetDIE(), clang_type);
-      bumper.engage();
+      if (!DirectlyCompleteType(attrs)) {
+        bumper.engage();
+      }
     }
   }
 
@@ -1816,10 +1827,6 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
                                            *unique_ast_entry_up);
 
   if (!attrs.is_forward_declaration) {
-    // Always start the definition for a class type so that if the class
-    // has child classes or types that require the class to be created
-    // for use as their decl contexts the class will be ready to accept
-    // these child definitions.
     if (!die.HasChildren()) {
       // No children for this struct/union/class, lets finish it
       if (TypeSystemClang::StartTagDeclarationDefinition(clang_type)) {
@@ -1846,7 +1853,7 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
           GetClangASTImporter().SetRecordLayout(record_decl, layout);
         }
       }
-    } else if (clang_type_was_created) {
+    } else if (clang_type_was_created && !DirectlyCompleteType(attrs)) {
       // Leave this as a forward declaration until we need to know the
       // details of the type. lldb_private::Type will automatically call
       // the SymbolFile virtual function
@@ -1865,6 +1872,9 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
           ClangUtil::RemoveFastQualifiers(clang_type).GetOpaqueQualType(),
           *die.GetDIERef());
     }
+  }
+  if (DirectlyCompleteType(attrs)) {
+    CompleteRecordType(die, type_sp.get(), clang_type);
   }
 
   return type_sp;
@@ -2073,8 +2083,10 @@ bool DWARFASTParserClang::CompleteRecordType(const DWARFDIE &die,
   ParsedDWARFTypeAttributes attrs(die);
 
   if (die.HasChildren()) {
-    clang_type = m_ast.RedeclTagDecl(clang_type);
-    RegisterDIE(die.GetDIE(), clang_type);
+    if (!DirectlyCompleteType(attrs)) {
+      clang_type = m_ast.RedeclTagDecl(clang_type);
+      RegisterDIE(die.GetDIE(), clang_type);
+    }
     TypeSystemClang::StartTagDeclarationDefinition(clang_type);
 
     std::vector<std::unique_ptr<clang::CXXBaseSpecifier>> bases;
