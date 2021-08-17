@@ -345,6 +345,8 @@ void ClangASTSource::CompleteRedeclChain(const Decl *d) {
   if (const clang::TagDecl *td = llvm::dyn_cast<TagDecl>(d)) {
     if (td->isBeingDefined())
       return;
+    if (td->getDefinition())
+      return;
     m_ast_importer_sp->CompleteTagDecl(td);
     if (!td->getDefinition()) {
       if (TagDecl *alternate = FindCompleteType(td))
@@ -352,6 +354,8 @@ void ClangASTSource::CompleteRedeclChain(const Decl *d) {
     }
   }
   if (const auto *od = llvm::dyn_cast<ObjCInterfaceDecl>(d)) {
+    if (od->getDefinition())
+      return;
     if (ObjCInterfaceDecl *i = GetCompleteObjCInterface(od))
       m_ast_importer_sp->SetDeclOrigin(d, i);
     m_ast_importer_sp->CompleteObjCInterfaceDecl(od);
