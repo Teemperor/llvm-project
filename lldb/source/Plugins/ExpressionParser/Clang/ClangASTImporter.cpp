@@ -556,14 +556,22 @@ bool ClangASTImporter::CompleteTagDecl(const TagDecl *decl) {
   ASTImporterDelegate::CxxModuleScope std_scope(*delegate_sp,
                                                 &decl->getASTContext());
   llvm::Expected<Decl *> result = delegate_sp->Import(origin_decl);
-  if (result)
-    return true;
-  llvm::handleAllErrors(result.takeError(), [](clang::ImportError &e) {
-      // FIXME: Needs error handling.
-      abort();
-  });
+  if (!result) {
+    llvm::handleAllErrors(result.takeError(), [](clang::ImportError &e) {
+        // FIXME: Needs error handling.
+        abort();
+    });
+    return false;
+  }
 
-  return false;
+  TagDecl *result_decl = llvm::cast<TagDecl>(*result);
+  if (!decl->isThisDeclarationADefinition()) {
+    if (result_decl->getPreviousDecl() == nullptr) {
+      result_decl->setPreviousDecl(const_cast<TagDecl *>(decl));
+    }
+  }
+
+  return true;
 }
 
 bool ClangASTImporter::CompleteTagDeclWithOrigin(const clang::TagDecl *decl,
@@ -605,73 +613,7 @@ bool ClangASTImporter::CompleteObjCInterfaceDecl(const ObjCInterfaceDecl *interf
 }
 
 bool ClangASTImporter::CompleteAndFetchChildren(clang::QualType type) {
-  if (!RequireCompleteType(type))
-    return false;
-
-  Log *log = lldb_private::GetLogIfAllCategoriesSet(LIBLLDB_LOG_EXPRESSIONS);
-
-  if (const TagType *tag_type = type->getAs<TagType>()) {
-    TagDecl *tag_decl = tag_type->getDecl();
-
-    DeclOrigin decl_origin = GetDeclOrigin(tag_decl);
-
-    if (!decl_origin.Valid())
-      return false;
-
-    ImporterDelegateSP delegate_sp(
-        GetDelegate(&tag_decl->getASTContext(), decl_origin.ctx));
-
-    ASTImporterDelegate::CxxModuleScope std_scope(*delegate_sp,
-                                                  &tag_decl->getASTContext());
-
-    TagDecl *origin_tag_decl = llvm::dyn_cast<TagDecl>(decl_origin.decl);
-
-    for (Decl *origin_child_decl : origin_tag_decl->decls()) {
-      llvm::Expected<Decl *> imported_or_err =
-          delegate_sp->Import(origin_child_decl);
-      if (!imported_or_err) {
-        LLDB_LOG_ERROR(log, imported_or_err.takeError(),
-                       "Couldn't import decl: {0}");
-        return false;
-      }
-    }
-
-    if (RecordDecl *record_decl = dyn_cast<RecordDecl>(origin_tag_decl))
-      record_decl->setHasLoadedFieldsFromExternalStorage(true);
-
-    return true;
-  }
-
-  if (const ObjCObjectType *objc_object_type = type->getAs<ObjCObjectType>()) {
-    if (ObjCInterfaceDecl *objc_interface_decl =
-            objc_object_type->getInterface()) {
-      DeclOrigin decl_origin = GetDeclOrigin(objc_interface_decl);
-
-      if (!decl_origin.Valid())
-        return false;
-
-      ImporterDelegateSP delegate_sp(
-          GetDelegate(&objc_interface_decl->getASTContext(), decl_origin.ctx));
-
-      ObjCInterfaceDecl *origin_interface_decl =
-          llvm::dyn_cast<ObjCInterfaceDecl>(decl_origin.decl);
-
-      for (Decl *origin_child_decl : origin_interface_decl->decls()) {
-        llvm::Expected<Decl *> imported_or_err =
-            delegate_sp->Import(origin_child_decl);
-        if (!imported_or_err) {
-          LLDB_LOG_ERROR(log, imported_or_err.takeError(),
-                         "Couldn't import decl: {0}");
-          return false;
-        }
-      }
-
-      return true;
-    }
-    return false;
-  }
-
-  return true;
+  return RequireCompleteType(type);
 }
 
 bool ClangASTImporter::RequireCompleteType(clang::QualType type) {
