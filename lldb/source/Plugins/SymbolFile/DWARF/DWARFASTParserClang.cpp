@@ -573,7 +573,15 @@ TypeSP DWARFASTParserClang::ParseTypeFromDWARF(const SymbolContext &sc,
   // TODO: We should consider making the switch above exhaustive to simplify
   // control flow in ParseTypeFromDWARF. Then, we could simply replace this
   // return statement with a call to llvm_unreachable.
-  return UpdateSymbolContextScopeForType(sc, die, type_sp);
+  lldb::TypeSP t = UpdateSymbolContextScopeForType(sc, die, type_sp);
+
+  while (!m_to_complete.empty()) {
+    TypeToComplete &to_complete = m_to_complete.back();
+    CompleteRecordType(to_complete.die, to_complete.type.get(), to_complete.clang_type);
+    m_to_complete.pop_back();
+  }
+
+  return t;
 }
 
 lldb::TypeSP
@@ -1721,9 +1729,6 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
           ClangUtil::RemoveFastQualifiers(clang_type).GetOpaqueQualType(),
           *die.GetDIERef());
     }
-  }
-  if (DirectlyCompleteType(attrs)) {
-    CompleteRecordType(die, type_sp.get(), clang_type);
   }
 
   return type_sp;

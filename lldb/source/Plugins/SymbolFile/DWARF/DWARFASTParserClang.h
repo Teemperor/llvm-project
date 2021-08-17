@@ -95,6 +95,14 @@ protected:
   DIEToObjCInterfaceMap m_die_to_objc_interface_map;
   DIEToModuleMap m_die_to_module;
   std::unique_ptr<lldb_private::ClangASTImporter> m_clang_ast_importer_up;
+
+  struct TypeToComplete {
+    lldb_private::CompilerType clang_type;
+    DWARFDIE die;
+    lldb::TypeSP type;
+  };
+  std::vector<TypeToComplete> m_to_complete;
+
   /// @}
 
   void RegisterDIE(DWARFDebugInfoEntry *die, lldb_private::CompilerType type);
