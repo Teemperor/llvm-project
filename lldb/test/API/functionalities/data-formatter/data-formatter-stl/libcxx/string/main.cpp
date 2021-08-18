@@ -57,6 +57,11 @@ static struct {
   uint64_t data = 0xfffffffffffffffeULL;
 } garbage_string_long_mode4;
 
+size_t touch_string(std::string &in_str)
+{
+  return in_str.size(); // Break here to look at bad string
+}
+
 int main()
 {
     std::wstring wempty(L"");
@@ -91,6 +96,9 @@ int main()
 #else
 #error "Test potentially needs to be updated for a new std::string ABI."
 #endif
+
+    std::string *null_str = nullptr;
+std::string &null_str_ref = *null_str;
 
     S.assign(L"!!!!!"); // Set break point at this line.
     return 0;

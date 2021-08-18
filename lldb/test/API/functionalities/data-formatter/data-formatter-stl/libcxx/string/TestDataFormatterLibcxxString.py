@@ -19,7 +19,7 @@ class LibcxxStringDataFormatterTestCase(TestBase):
         # Call super's setUp().
         TestBase.setUp(self)
         # Find the line number to break at.
-        self.line = line_number('main.cpp', '// Set break point at this line.')
+        self.main_spec = lldb.SBFileSpec("main.cpp")
         self.namespace = 'std'
 
     @add_test_categories(["libc++"])
@@ -30,17 +30,11 @@ class LibcxxStringDataFormatterTestCase(TestBase):
     def test_with_run_command(self):
         """Test that that file and class static variables display correctly."""
         self.build()
-        self.runCmd("file " + self.getBuildArtifact("a.out"), CURRENT_EXECUTABLE_SET)
 
-        lldbutil.run_break_set_by_file_and_line(
-            self, "main.cpp", self.line, num_expected_locations=-1)
-
-        self.runCmd("run", RUN_SUCCEEDED)
-
-        # The stop reason of the thread should be breakpoint.
-        self.expect("thread list", STOPPED_DUE_TO_BREAKPOINT,
-                    substrs=['stopped',
-                             'stop reason = breakpoint'])
+        (target, process, thread, bkpt) = lldbutil.run_to_source_breakpoint(self,
+                                                                            "Set break point at this line.",
+                                                                            self.main_spec)
+        frame = thread.frames[0]
 
         # This is the function to remove the custom formats in order to have a
         # clean slate for the next test case.
@@ -83,9 +77,9 @@ class LibcxxStringDataFormatterTestCase(TestBase):
                 '(%s::string *) null_str = nullptr'%ns,
         ])
 
-        self.runCmd("n")
+        thread.StepOver()
 
-        TheVeryLongOne = self.frame().FindVariable("TheVeryLongOne")
+        TheVeryLongOne = frame.FindVariable("TheVeryLongOne")
         summaryOptions = lldb.SBTypeSummaryOptions()
         summaryOptions.SetCapping(lldb.eTypeSummaryUncapped)
         uncappedSummaryStream = lldb.SBStream()
@@ -129,3 +123,6 @@ class LibcxxStringDataFormatterTestCase(TestBase):
             self.expect("frame variable garbage3", substrs=[r'garbage3 = "\xf0\xf0"'])
             self.expect("frame variable garbage4", substrs=['garbage4 = Summary Unavailable'])
             self.expect("frame variable garbage5", substrs=['garbage5 = Summary Unavailable'])
+
+
+        self.expect_var_path("null_str_ref", summary='"Summary Unavailable"')
