@@ -1406,6 +1406,22 @@ TypeSP DWARFASTParserClang::UpdateSymbolContextScopeForType(
   return type_sp;
 }
 
+/// Returns true iff the DWARFDIE represents any kind of function, class or
+/// variable template instantiation.
+static bool IsTemplateDIE(const DWARFDIE &die) {
+  return llvm::any_of(die.children(), [](const DWARFDIE &child) {
+    switch(child.Tag()) {
+    case DW_TAG_template_type_parameter:
+    case DW_TAG_template_value_parameter:
+    case DW_TAG_GNU_template_template_param:
+    case DW_TAG_GNU_template_parameter_pack:
+      return true;
+    default:
+      return false;
+    }
+  });
+}
+
 TypeSP
 DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
                                            const DWARFDIE &die,
@@ -1607,7 +1623,7 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
     metadata.SetUserID(die.GetID());
     metadata.SetIsDynamicCXXType(dwarf->ClassOrStructIsVirtual(die));
 
-    if (attrs.name.GetStringRef().contains('<')) {
+    if (IsTemplateDIE(die)) {
       TypeSystemClang::TemplateParameterInfos template_param_infos;
       if (ParseTemplateParameterInfos(die, template_param_infos)) {
         clang::ClassTemplateDecl *class_template_decl =
