@@ -22,7 +22,7 @@ struct ptr {
 struct elem {
     _Atomic(struct ptr) link;
 };
-// CHECK-DAG: %struct.elem = type { %struct.ptr }
+// CHECK-DAG: %struct.elem = type opaque
 
 struct ptr object;
 // CHECK-DAG: @object ={{.*}} global %struct.ptr zeroinitializer

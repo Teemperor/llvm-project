@@ -2421,10 +2421,20 @@ CodeGenFunction::SanitizerScope::~SanitizerScope() {
   CGF->IsSanitizerScope = false;
 }
 
+static void RequireCompleteType(const CodeGenFunction &CGF, llvm::Type *T) {
+  CGF.RequireCompleteType(T);
+}
+
+static void EnsureRequiredTypesAreCompleted(const CodeGenFunction &CGF, llvm::Instruction *I) {
+  if (llvm::GetElementPtrInst *GEP = dyn_cast<llvm::GetElementPtrInst>(I))
+    RequireCompleteType(CGF, llvm::cast<llvm::PointerType>(GEP->getSourceElementType())->getElementType());
+}
+
 void CodeGenFunction::InsertHelper(llvm::Instruction *I,
                                    const llvm::Twine &Name,
                                    llvm::BasicBlock *BB,
                                    llvm::BasicBlock::iterator InsertPt) const {
+  EnsureRequiredTypesAreCompleted(*this, I);
   LoopStack.InsertHelper(I);
   if (IsSanitizerScope)
     CGM.getSanitizerMetadata()->disableSanitizerForInstruction(I);

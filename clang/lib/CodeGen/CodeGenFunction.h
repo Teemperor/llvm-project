@@ -2346,6 +2346,10 @@ public:
     return ConvertType(getContext().getTypeDeclType(T));
   }
 
+  void RequireCompleteType(llvm::Type *T) const {
+    CGM.getTypes().RequireCompleteType(T);
+  }
+
   /// LoadObjCSelf - Load the value of self. This function is only valid while
   /// generating code for an Objective-C method.
   llvm::Value *LoadObjCSelf();

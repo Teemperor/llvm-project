@@ -4593,6 +4593,7 @@ class TagType : public Type {
   friend class ASTReader;
   template <class T> friend class serialization::AbstractTypeReader;
 
+protected:
   /// Stores the TagDecl associated with this type. The decl may point to any
   /// TagDecl that declares the entity.
   TagDecl *decl;
@@ -4625,6 +4626,11 @@ protected:
 public:
   RecordDecl *getDecl() const {
     return reinterpret_cast<RecordDecl*>(TagType::getDecl());
+  }
+
+  /// Returns one of the RecordDecls that declare this RecordType.
+  RecordDecl *getAnyDecl() const {
+    return reinterpret_cast<RecordDecl*>(decl);
   }
 
   /// Recursively check all fields in the record for const-ness. If any field

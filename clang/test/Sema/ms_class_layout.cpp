@@ -147,16 +147,16 @@ int main() {
   // This avoid "Can't yet mangle constructors!" for MS ABI.
   C* c;
   c->foo();
-  DerivedStruct* v;
-  H* g;
-  BaseStruct* u;
-  I* i;
-  N* n;
-  O* o;
-  P* p;
-  R* r;
-  sd *h;
-  EV *j;
+  DerivedStruct v;
+  H g;
+  BaseStruct u;
+  I i;
+  N n;
+  O o;
+  P p;
+  R r;
+  sd h;
+  EV j;
   return 0;
 }
 

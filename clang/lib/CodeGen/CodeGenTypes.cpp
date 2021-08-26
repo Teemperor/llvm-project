@@ -87,7 +87,7 @@ void CodeGenTypes::addRecordTypeName(const RecordDecl *RD,
 /// ConvertType in that it is used to convert to the memory representation for
 /// a type.  For example, the scalar representation for _Bool is i1, but the
 /// memory representation is usually i8 or i32, depending on the target.
-llvm::Type *CodeGenTypes::ConvertTypeForMem(QualType T, bool ForBitField) {
+llvm::Type *CodeGenTypes::ConvertTypeForMem(QualType T, bool ForBitField, bool RequireSize) {
   if (T->isConstantMatrixType()) {
     const Type *Ty = Context.getCanonicalType(T).getTypePtr();
     const ConstantMatrixType *MT = cast<ConstantMatrixType>(Ty);
@@ -95,7 +95,7 @@ llvm::Type *CodeGenTypes::ConvertTypeForMem(QualType T, bool ForBitField) {
                                 MT->getNumRows() * MT->getNumColumns());
   }
 
-  llvm::Type *R = ConvertType(T);
+  llvm::Type *R = ConvertType(T, RequireSize);
 
   // If this is a bool type, or an ExtIntType in a bitfield representation,
   // map this integer to the target-specified size.
@@ -106,6 +106,15 @@ llvm::Type *CodeGenTypes::ConvertTypeForMem(QualType T, bool ForBitField) {
 
   // Else, don't map it.
   return R;
+}
+
+void CodeGenTypes::RequireCompleteType(llvm::Type *T) {
+  decltype(IncompleteRecordTypes)::const_iterator I = IncompleteRecordTypes.find(T);
+  if (I == IncompleteRecordTypes.end())
+    return;
+
+  const RecordDecl *RD = I->second;
+  ConvertTypeForMem(QualType(RD->getTypeForDecl(), 0), false, true);
 }
 
 /// isRecordLayoutComplete - Return true if the specified type is already
@@ -276,11 +285,6 @@ void CodeGenTypes::UpdateCompletedType(const TagDecl *TD) {
   const RecordDecl *RD = cast<RecordDecl>(TD);
   if (RD->isDependentType()) return;
 
-  // Only complete it if we converted it already.  If we haven't converted it
-  // yet, we'll just do it lazily.
-  if (RecordDeclTypes.count(Context.getTagDeclType(RD).getTypePtr()))
-    ConvertRecordDeclType(RD);
-
   // If necessary, provide the full definition of a type only used with a
   // declaration so far.
   if (CGDebugInfo *DI = CGM.getModuleDebugInfo())
@@ -392,7 +396,7 @@ llvm::Type *CodeGenTypes::ConvertFunctionTypeInternal(QualType QFT) {
 }
 
 /// ConvertType - Convert the specified type to its LLVM form.
-llvm::Type *CodeGenTypes::ConvertType(QualType T) {
+llvm::Type *CodeGenTypes::ConvertType(QualType T, bool RequireSize) {
   T = Context.getCanonicalType(T);
 
   const Type *Ty = T.getTypePtr();
@@ -413,7 +417,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
 
   // RecordTypes are cached and processed specially.
   if (const RecordType *RT = dyn_cast<RecordType>(Ty))
-    return ConvertRecordDeclType(RT->getDecl());
+    return ConvertRecordDeclType(RT->getAnyDecl(), RequireSize);
 
   // See if type is already cached.
   llvm::DenseMap<const Type *, llvm::Type *>::iterator TCI = TypeCache.find(Ty);
@@ -639,7 +643,7 @@ llvm::Type *CodeGenTypes::ConvertType(QualType T) {
   case Type::Pointer: {
     const PointerType *PTy = cast<PointerType>(Ty);
     QualType ETy = PTy->getPointeeType();
-    llvm::Type *PointeeType = ConvertTypeForMem(ETy);
+    llvm::Type *PointeeType = ConvertTypeForMem(ETy, false, false);
     if (PointeeType->isVoidTy())
       PointeeType = llvm::Type::getInt8Ty(getLLVMContext());
 
@@ -807,7 +811,7 @@ bool CodeGenModule::isPaddedAtomicType(const AtomicType *type) {
 }
 
 /// ConvertRecordDeclType - Lay out a tagged decl type like struct or union.
-llvm::StructType *CodeGenTypes::ConvertRecordDeclType(const RecordDecl *RD) {
+llvm::StructType *CodeGenTypes::ConvertRecordDeclType(const RecordDecl *RD, bool RequireSize) {
   // TagDecl's are not necessarily unique, instead use the (clang)
   // type connected to the decl.
   const Type *Key = Context.getTagDeclType(RD).getTypePtr();
@@ -821,9 +825,19 @@ llvm::StructType *CodeGenTypes::ConvertRecordDeclType(const RecordDecl *RD) {
   }
   llvm::StructType *Ty = Entry;
 
+  if (!Ty->isOpaque())
+    return Ty;
+
+  // If the size of the type isn't required, then nothing left to do.
+  if (!RequireSize) {
+    IncompleteRecordTypes[Ty] = RD;
+    return Ty;
+  }
+
+  RD = RD->getDefinition();
+
   // If this is still a forward declaration, or the LLVM type is already
   // complete, there's nothing more to do.
-  RD = RD->getDefinition();
   if (!RD || !RD->isCompleteDefinition() || !Ty->isOpaque())
     return Ty;
 

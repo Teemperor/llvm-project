@@ -80,6 +80,8 @@ class CodeGenTypes {
   /// Contains the LLVM IR type for any converted RecordDecl.
   llvm::DenseMap<const Type*, llvm::StructType *> RecordDeclTypes;
 
+  llvm::DenseMap<llvm::Type *, const RecordDecl *> IncompleteRecordTypes;
+
   /// Hold memoized CGFunctionInfo results.
   llvm::FoldingSet<CGFunctionInfo> FunctionInfos;
 
@@ -128,13 +130,15 @@ public:
   CanQualType DeriveThisType(const CXXRecordDecl *RD, const CXXMethodDecl *MD);
 
   /// ConvertType - Convert type T into a llvm::Type.
-  llvm::Type *ConvertType(QualType T);
+  llvm::Type *ConvertType(QualType T, bool RequireSize = true);
 
   /// ConvertTypeForMem - Convert type T into a llvm::Type.  This differs from
   /// ConvertType in that it is used to convert to the memory representation for
   /// a type.  For example, the scalar representation for _Bool is i1, but the
   /// memory representation is usually i8 or i32, depending on the target.
-  llvm::Type *ConvertTypeForMem(QualType T, bool ForBitField = false);
+  llvm::Type *ConvertTypeForMem(QualType T, bool ForBitField = false, bool RequireSize = true);
+
+  void RequireCompleteType(llvm::Type *T);
 
   /// GetFunctionType - Get the LLVM function type for \arg Info.
   llvm::FunctionType *GetFunctionType(const CGFunctionInfo &Info);
@@ -283,7 +287,7 @@ public:
 
 public:  // These are internal details of CGT that shouldn't be used externally.
   /// ConvertRecordDeclType - Lay out a tagged decl type like struct or union.
-  llvm::StructType *ConvertRecordDeclType(const RecordDecl *TD);
+  llvm::StructType *ConvertRecordDeclType(const RecordDecl *TD, bool RequireSize = true);
 
   /// getExpandedTypes - Expand the type \arg Ty into the LLVM
   /// argument types it would be passed as. See ABIArgInfo::Expand.
