@@ -565,7 +565,7 @@ bool ClangASTImporter::CompleteTagDecl(const TagDecl *decl) {
   }
 
   TagDecl *result_decl = llvm::cast<TagDecl>(*result);
-  if (!decl->isThisDeclarationADefinition()) {
+  if (!decl->isThisDeclarationADefinition() && result_decl != decl) {
     if (result_decl->getPreviousDecl() == nullptr) {
       result_decl->setPreviousDecl(const_cast<TagDecl *>(decl));
     }

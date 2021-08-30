@@ -102,6 +102,7 @@ protected:
     lldb::TypeSP type;
   };
   std::vector<TypeToComplete> m_to_complete;
+  llvm::DenseSet<const DWARFDebugInfoEntry *> m_currently_parsed_record_dies;
 
   /// @}
 
