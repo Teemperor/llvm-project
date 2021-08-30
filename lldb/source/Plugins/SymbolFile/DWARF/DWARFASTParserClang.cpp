@@ -576,9 +576,9 @@ TypeSP DWARFASTParserClang::ParseTypeFromDWARF(const SymbolContext &sc,
   lldb::TypeSP t = UpdateSymbolContextScopeForType(sc, die, type_sp);
 
   while (!m_to_complete.empty()) {
-    TypeToComplete &to_complete = m_to_complete.back();
-    CompleteRecordType(to_complete.die, to_complete.type.get(), to_complete.clang_type);
+    TypeToComplete to_complete = m_to_complete.back();
     m_to_complete.pop_back();
+    CompleteRecordType(to_complete.die, to_complete.type.get(), to_complete.clang_type);
   }
 
   return t;
@@ -1660,9 +1660,8 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
           attrs.name.GetCString(), tag_decl_kind, attrs.class_language,
           &metadata, attrs.exports_symbols);
       RegisterDIE(die.GetDIE(), clang_type);
-      if (!DirectlyCompleteType(attrs)) {
+      if (!DirectlyCompleteType(attrs))
         bumper.engage();
-      }
     }
   }
 
@@ -1698,17 +1697,6 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
             "start of this error message",
             die.GetOffset(), attrs.name.GetCString());
       }
-
-      if (tag == DW_TAG_structure_type) // this only applies in C
-      {
-        clang::RecordDecl *record_decl =
-            TypeSystemClang::GetAsRecordDecl(clang_type);
-
-        if (record_decl) {
-          GetClangASTImporter().SetRecordLayout(
-              record_decl, ClangASTImporter::LayoutInfo());
-        }
-      }
     } else if (clang_type_was_created && !DirectlyCompleteType(attrs)) {
       // Leave this as a forward declaration until we need to know the
       // details of the type. lldb_private::Type will automatically call
@@ -1729,6 +1717,9 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
           *die.GetDIERef());
     }
   }
+
+  if (die.HasChildren())
+    m_to_complete.push_back({clang_type, die, type_sp});
 
   return type_sp;
 }
@@ -1933,6 +1924,10 @@ bool DWARFASTParserClang::ParseTemplateParameterInfos(
 bool DWARFASTParserClang::CompleteRecordType(const DWARFDIE &die,
                                              lldb_private::Type *type,
                                              CompilerType clang_type) {
+  if (!m_currently_parsed_record_dies.insert(die.GetDIE()).second) {
+    return true;
+  }
+
   const dw_tag_t tag = die.Tag();
   SymbolFileDWARF *dwarf = die.GetDWARF();
 
@@ -1940,96 +1935,97 @@ bool DWARFASTParserClang::CompleteRecordType(const DWARFDIE &die,
 
   ParsedDWARFTypeAttributes attrs(die);
 
-  if (die.HasChildren()) {
-    if (!DirectlyCompleteType(attrs)) {
-      clang_type = m_ast.RedeclTagDecl(clang_type);
-      RegisterDIE(die.GetDIE(), clang_type);
+  if (attrs.is_forward_declaration)
+    return true;
+
+  if (!DirectlyCompleteType(attrs)) {
+    clang_type = m_ast.RedeclTagDecl(clang_type);
+    RegisterDIE(die.GetDIE(), clang_type);
+  }
+  TypeSystemClang::StartTagDeclarationDefinition(clang_type);
+  int tag_decl_kind = -1;
+  AccessType default_accessibility = eAccessNone;
+  if (tag == DW_TAG_structure_type) {
+    tag_decl_kind = clang::TTK_Struct;
+    default_accessibility = eAccessPublic;
+  } else if (tag == DW_TAG_union_type) {
+    tag_decl_kind = clang::TTK_Union;
+    default_accessibility = eAccessPublic;
+  } else if (tag == DW_TAG_class_type) {
+    tag_decl_kind = clang::TTK_Class;
+    default_accessibility = eAccessPrivate;
+  }
+
+  std::vector<std::unique_ptr<clang::CXXBaseSpecifier>> bases;
+  std::vector<int> member_accessibilities;
+  bool is_a_class = false;
+  // Parse members and base classes first
+  std::vector<DWARFDIE> member_function_dies;
+
+  DelayedPropertyList delayed_properties;
+  ParseChildMembers(die, clang_type, bases, member_accessibilities,
+                    member_function_dies, delayed_properties,
+                    default_accessibility, is_a_class, layout_info);
+
+  // Now parse any methods if there were any...
+  for (const DWARFDIE &die : member_function_dies)
+    dwarf->ResolveType(die);
+
+  const bool type_is_objc_object_or_interface =
+      TypeSystemClang::IsObjCObjectOrInterfaceType(clang_type);
+  if (type_is_objc_object_or_interface) {
+    ConstString class_name(clang_type.GetTypeName());
+    if (class_name) {
+      dwarf->GetObjCMethods(class_name, [&](DWARFDIE method_die) {
+        method_die.ResolveType();
+        return true;
+      });
+
+      for (DelayedPropertyList::iterator pi = delayed_properties.begin(),
+                                         pe = delayed_properties.end();
+           pi != pe; ++pi)
+        pi->Finalize();
     }
-    TypeSystemClang::StartTagDeclarationDefinition(clang_type);
-    int tag_decl_kind = -1;
-    AccessType default_accessibility = eAccessNone;
-    if (tag == DW_TAG_structure_type) {
-      tag_decl_kind = clang::TTK_Struct;
-      default_accessibility = eAccessPublic;
-    } else if (tag == DW_TAG_union_type) {
-      tag_decl_kind = clang::TTK_Union;
-      default_accessibility = eAccessPublic;
-    } else if (tag == DW_TAG_class_type) {
-      tag_decl_kind = clang::TTK_Class;
-      default_accessibility = eAccessPrivate;
+  }
+
+  // If we have a DW_TAG_structure_type instead of a DW_TAG_class_type we
+  // need to tell the clang type it is actually a class.
+  if (!type_is_objc_object_or_interface) {
+    if (is_a_class && tag_decl_kind != clang::TTK_Class)
+      m_ast.SetTagTypeKind(ClangUtil::GetQualType(clang_type),
+                           clang::TTK_Class);
+  }
+
+  // Since DW_TAG_structure_type gets used for both classes and
+  // structures, we may need to set any DW_TAG_member fields to have a
+  // "private" access if none was specified. When we parsed the child
+  // members we tracked that actual accessibility value for each
+  // DW_TAG_member in the "member_accessibilities" array. If the value
+  // for the member is zero, then it was set to the
+  // "default_accessibility" which for structs was "public". Below we
+  // correct this by setting any fields to "private" that weren't
+  // correctly set.
+  if (is_a_class && !member_accessibilities.empty()) {
+    // This is a class and all members that didn't have their access
+    // specified are private.
+    m_ast.SetDefaultAccessForRecordFields(
+        m_ast.GetAsRecordDecl(clang_type), eAccessPrivate,
+        &member_accessibilities.front(), member_accessibilities.size());
+  }
+
+  if (!bases.empty()) {
+    // Make sure all base classes refer to complete types and not forward
+    // declarations. If we don't do this, clang will crash with an
+    // assertion in the call to clang_type.TransferBaseClasses()
+    for (const auto &base_class : bases) {
+      clang::TypeSourceInfo *type_source_info =
+          base_class->getTypeSourceInfo();
+      if (type_source_info)
+        RequireCompleteType(m_ast.GetType(type_source_info->getType()));
     }
 
-    std::vector<std::unique_ptr<clang::CXXBaseSpecifier>> bases;
-    std::vector<int> member_accessibilities;
-    bool is_a_class = false;
-    // Parse members and base classes first
-    std::vector<DWARFDIE> member_function_dies;
-
-    DelayedPropertyList delayed_properties;
-    ParseChildMembers(die, clang_type, bases, member_accessibilities,
-                      member_function_dies, delayed_properties,
-                      default_accessibility, is_a_class, layout_info);
-
-    // Now parse any methods if there were any...
-    for (const DWARFDIE &die : member_function_dies)
-      dwarf->ResolveType(die);
-
-    const bool type_is_objc_object_or_interface =
-        TypeSystemClang::IsObjCObjectOrInterfaceType(clang_type);
-    if (type_is_objc_object_or_interface) {
-      ConstString class_name(clang_type.GetTypeName());
-      if (class_name) {
-        dwarf->GetObjCMethods(class_name, [&](DWARFDIE method_die) {
-          method_die.ResolveType();
-          return true;
-        });
-
-        for (DelayedPropertyList::iterator pi = delayed_properties.begin(),
-                                           pe = delayed_properties.end();
-             pi != pe; ++pi)
-          pi->Finalize();
-      }
-    }
-
-    // If we have a DW_TAG_structure_type instead of a DW_TAG_class_type we
-    // need to tell the clang type it is actually a class.
-    if (!type_is_objc_object_or_interface) {
-      if (is_a_class && tag_decl_kind != clang::TTK_Class)
-        m_ast.SetTagTypeKind(ClangUtil::GetQualType(clang_type),
-                             clang::TTK_Class);
-    }
-
-    // Since DW_TAG_structure_type gets used for both classes and
-    // structures, we may need to set any DW_TAG_member fields to have a
-    // "private" access if none was specified. When we parsed the child
-    // members we tracked that actual accessibility value for each
-    // DW_TAG_member in the "member_accessibilities" array. If the value
-    // for the member is zero, then it was set to the
-    // "default_accessibility" which for structs was "public". Below we
-    // correct this by setting any fields to "private" that weren't
-    // correctly set.
-    if (is_a_class && !member_accessibilities.empty()) {
-      // This is a class and all members that didn't have their access
-      // specified are private.
-      m_ast.SetDefaultAccessForRecordFields(
-          m_ast.GetAsRecordDecl(clang_type), eAccessPrivate,
-          &member_accessibilities.front(), member_accessibilities.size());
-    }
-
-    if (!bases.empty()) {
-      // Make sure all base classes refer to complete types and not forward
-      // declarations. If we don't do this, clang will crash with an
-      // assertion in the call to clang_type.TransferBaseClasses()
-      for (const auto &base_class : bases) {
-        clang::TypeSourceInfo *type_source_info =
-            base_class->getTypeSourceInfo();
-        if (type_source_info)
-          RequireCompleteType(m_ast.GetType(type_source_info->getType()));
-      }
-
-      m_ast.TransferBaseClasses(clang_type.GetOpaqueQualType(),
-                                std::move(bases));
-    }
+    m_ast.TransferBaseClasses(clang_type.GetOpaqueQualType(),
+                              std::move(bases));
   }
 
   // If we made a clang type, set the trivial abi if applicable: We only
@@ -2056,19 +2052,16 @@ bool DWARFASTParserClang::CompleteRecordType(const DWARFDIE &die,
   TypeSystemClang::BuildIndirectFields(clang_type);
   TypeSystemClang::CompleteTagDeclarationDefinition(clang_type);
 
-  if (!layout_info.field_offsets.empty() || !layout_info.base_offsets.empty() ||
-      !layout_info.vbase_offsets.empty()) {
-    if (type)
-      layout_info.bit_size = type->GetByteSize(nullptr).getValueOr(0) * 8;
-    if (layout_info.bit_size == 0)
-      layout_info.bit_size =
-          die.GetAttributeValueAsUnsigned(DW_AT_byte_size, 0) * 8;
+  if (type)
+    layout_info.bit_size = type->GetByteSize(nullptr).getValueOr(0) * 8;
+  if (layout_info.bit_size == 0)
+    layout_info.bit_size =
+        die.GetAttributeValueAsUnsigned(DW_AT_byte_size, 0) * 8;
 
-    clang::CXXRecordDecl *record_decl =
-        m_ast.GetAsCXXRecordDecl(clang_type.GetOpaqueQualType());
-    if (record_decl)
-      GetClangASTImporter().SetRecordLayout(record_decl, layout_info);
-  }
+  clang::CXXRecordDecl *record_decl =
+      m_ast.GetAsCXXRecordDecl(clang_type.GetOpaqueQualType());
+  if (record_decl)
+    GetClangASTImporter().SetRecordLayout(record_decl, layout_info);
   return (bool)clang_type;
 }
 
