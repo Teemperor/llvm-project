@@ -9227,15 +9227,19 @@ CompilerType TypeSystemClang::RedeclTagDecl(CompilerType ct) {
                             eLanguageTypeC_plus_plus, nullptr);
     clang::TagDecl *td = llvm::cast<TagDecl>(res);
     td->setPreviousDecl(d);
-    return GetTypeForDecl(td);
+    CompilerType actual_res = GetTypeForDecl(td);
+    assert(d->getTypeForDecl() == td->getTypeForDecl());
+    return actual_res;
   }
   if (clang::ObjCInterfaceDecl *d = ClangUtil::GetAsObjCDecl(ct)) {
-    CompilerType res = CreateRecordType(d->getDeclContext()->getRedeclContext(), OptionalClangModuleID(),
+    clang::NamedDecl *res = CreateRecordDecl(d->getDeclContext()->getRedeclContext(), OptionalClangModuleID(),
                             lldb::eAccessPublic, d->getName(), /*tag_kind=*/0,
                             eLanguageTypeObjC, nullptr);
-    clang::ObjCInterfaceDecl *td = ClangUtil::GetAsObjCDecl(res);
+    clang::ObjCInterfaceDecl *td = llvm::cast<ObjCInterfaceDecl>(res);
     td->setPreviousDecl(d);
-    return res;
+    CompilerType actual_res = GetTypeForDecl(td);
+    assert(d->getTypeForDecl() == td->getTypeForDecl());
+    return actual_res;
   }
   return ct;
 }
