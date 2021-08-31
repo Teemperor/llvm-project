@@ -1219,11 +1219,12 @@ CompilerType TypeSystemClang::GetTypeForDecl(clang::NamedDecl *decl) {
 }
 
 CompilerType TypeSystemClang::GetTypeForDecl(TagDecl *decl) {
-  return GetType(getASTContext().getTagDeclType(decl));
+  return GetType(getASTContext().getTypeDeclType(decl, decl->getPreviousDecl()));
 }
 
 CompilerType TypeSystemClang::GetTypeForDecl(const ObjCInterfaceDecl *decl) {
-  return GetType(getASTContext().getObjCInterfaceType(decl));
+  // FIXME: The Objective-C interface variant probably also doesn't need const.
+  return GetType(getASTContext().getObjCInterfaceType(decl, const_cast<ObjCInterfaceDecl *>(decl->getPreviousDecl())));
 }
 
 #pragma mark Structure, Unions, Classes
@@ -9220,13 +9221,13 @@ CompilerType TypeSystemClang::RedeclTagDecl(CompilerType ct) {
       ctd->setPreviousDecl(c);
       return CompilerType(this, clang::QualType(ctd->getTypeForDecl(), 0U).getAsOpaquePtr());
     }
-    CompilerType res = CreateRecordType(d->getDeclContext()->getRedeclContext(),
+    clang::NamedDecl *res = CreateRecordDecl(d->getDeclContext()->getRedeclContext(),
                                         OptionalClangModuleID(),
                             lldb::eAccessPublic, d->getName(), d->getTagKind(),
                             eLanguageTypeC_plus_plus, nullptr);
-    clang::TagDecl *td = ClangUtil::GetAsTagDecl(res);
+    clang::TagDecl *td = llvm::cast<TagDecl>(res);
     td->setPreviousDecl(d);
-    return res;
+    return GetTypeForDecl(td);
   }
   if (clang::ObjCInterfaceDecl *d = ClangUtil::GetAsObjCDecl(ct)) {
     CompilerType res = CreateRecordType(d->getDeclContext()->getRedeclContext(), OptionalClangModuleID(),

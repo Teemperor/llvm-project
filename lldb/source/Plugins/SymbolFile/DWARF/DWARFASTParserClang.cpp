@@ -1881,8 +1881,7 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
     }
   }
 
-  if (die.HasChildren())
-    m_to_complete.push_back({clang_type, die, type_sp});
+  m_to_complete.push_back({clang_type, die, type_sp});
 
   return type_sp;
 }
