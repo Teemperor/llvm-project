@@ -1384,6 +1384,29 @@ bool user_config_directory(SmallVectorImpl<char> &result) {
   return true;
 }
 
+bool user_data_directory(SmallVectorImpl<char> &result) {
+#ifdef __APPLE__
+  // Mac: ~/Library/
+  if (home_directory(result)) {
+    append(result, "Library");
+    return true;
+  }
+#else
+  // XDG_DATA_HOME as defined in the XDG Base Directory Specification:
+  // http://standards.freedesktop.org/basedir-spec/basedir-spec-latest.html
+  if (const char *RequestedDir = getenv("XDG_DATA_HOME")) {
+    result.clear();
+    result.append(RequestedDir, RequestedDir + strlen(RequestedDir));
+    return true;
+  }
+#endif
+  // Fallback: ~/.local/share
+  if (!home_directory(result))
+    return false;
+  append(result, ".local", "share");
+  return true;
+}
+
 bool cache_directory(SmallVectorImpl<char> &result) {
 #ifdef __APPLE__
   if (getDarwinConfDir(false/*tempDir*/, result)) {
