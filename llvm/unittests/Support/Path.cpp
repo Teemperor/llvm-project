@@ -485,6 +485,26 @@ TEST(Support, ConfigDirectoryNoEnv) {
   EXPECT_EQ(Fallback, CacheDir);
 }
 
+TEST(Support, DataDirectoryWithEnv) {
+  WithEnv Env("XDG_DATA_HOME", "/xdg/data");
+
+  SmallString<128> DataDir;
+  EXPECT_TRUE(path::user_data_directory(DataDir));
+  EXPECT_EQ("/xdg/data", DataDir);
+}
+
+TEST(Support, DataDirectoryNoEnv) {
+  WithEnv Env("XDG_DATA_HOME", nullptr);
+
+  SmallString<128> Fallback;
+  ASSERT_TRUE(path::home_directory(Fallback));
+  path::append(Fallback, ".local", "share");
+
+  SmallString<128> DataDir;
+  EXPECT_TRUE(path::user_data_directory(DataDir));
+  EXPECT_EQ(Fallback, DataDir);
+}
+
 TEST(Support, CacheDirectoryWithEnv) {
   WithEnv Env("XDG_CACHE_HOME", "/xdg/cache");
 
@@ -516,6 +536,16 @@ TEST(Support, ConfigDirectory) {
   EXPECT_TRUE(path::user_config_directory(ConfigDir));
   EXPECT_EQ(Fallback, ConfigDir);
 }
+
+TEST(Support, DataDirectory) {
+  SmallString<128> Fallback;
+  ASSERT_TRUE(path::home_directory(Fallback));
+  path::append(Fallback, "Library/");
+
+  SmallString<128> ConfigDir;
+  EXPECT_TRUE(path::user_data_directory(ConfigDir));
+  EXPECT_EQ(Fallback, ConfigDir);
+}
 #endif
 
 #ifdef _WIN32
@@ -526,6 +556,16 @@ TEST(Support, ConfigDirectory) {
     SmallString<128> CacheDir;
     EXPECT_TRUE(path::user_config_directory(CacheDir));
     EXPECT_EQ(Expected, CacheDir);
+  }
+}
+
+TEST(Support, DataDirectory) {
+  std::string Expected = getEnvWin(L"LOCALAPPDATA");
+  // Do not try to test it if we don't know what to expect.
+  if (!Expected.empty()) {
+    SmallString<128> DataDir;
+    EXPECT_TRUE(path::user_data_directory(DataDir));
+    EXPECT_EQ(Expected, DataDir);
   }
 }
 

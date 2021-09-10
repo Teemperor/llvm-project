@@ -378,6 +378,13 @@ bool home_directory(SmallVectorImpl<char> &result);
 /// @result True if the appropriate path was determined, it need not exist.
 bool user_config_directory(SmallVectorImpl<char> &result);
 
+/// Get the directory where packages should read user-specific data files.
+/// e.g. $XDG_DATA_HOME.
+///
+/// @param result Holds the resulting path name.
+/// @result True if the appropriate path was determined, it need not exist.
+bool user_data_directory(SmallVectorImpl<char> &result);
+
 /// Get the directory where installed packages should put their
 /// machine-local cache, e.g. $XDG_CACHE_HOME.
 ///
