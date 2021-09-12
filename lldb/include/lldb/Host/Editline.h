@@ -154,7 +154,7 @@ using namespace line_editor;
 class Editline {
 public:
   Editline(const char *editor_name, FILE *input_file, FILE *output_file,
-           FILE *error_file, bool color_prompts);
+           FILE *error_file, bool color_prompts, llvm::StringRef history_dir);
 
   ~Editline();
 

@@ -327,6 +327,8 @@ public:
 
   bool GetHighlightSource() const;
 
+  FileSpec GetHistoryDirectory() const;
+
   lldb::StopShowColumn GetStopShowColumn() const;
 
   llvm::StringRef GetStopShowColumnAnsiPrefix() const;

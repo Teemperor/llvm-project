@@ -67,6 +67,10 @@ let Definition = "debugger" in {
     Global,
     DefaultTrue,
     Desc<"If true, LLDB will highlight the displayed source code.">;
+  def HistoryDirectory: Property<"history-directory", "FileSpec">,
+    Global,
+    DefaultStringValue<"~/.lldb">,
+    Desc<"The path in which LLDB will create command history files.">;
   def StopShowColumn: Property<"stop-show-column", "Enum">,
     DefaultEnumValue<"eStopShowColumnAnsiOrCaret">,
     EnumValues<"OptionEnumValues(s_stop_show_column_values)">,

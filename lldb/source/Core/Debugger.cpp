@@ -379,6 +379,11 @@ bool Debugger::GetHighlightSource() const {
       nullptr, idx, g_debugger_properties[idx].default_uint_value);
 }
 
+FileSpec Debugger::GetHistoryDirectory() const {
+  const uint32_t idx = ePropertyHistoryDirectory;
+  return m_collection_sp->GetPropertyAtIndexAsFileSpec(nullptr, idx);
+}
+
 StopShowColumn Debugger::GetStopShowColumn() const {
   const uint32_t idx = ePropertyStopShowColumn;
   return (lldb::StopShowColumn)m_collection_sp->GetPropertyAtIndexAsEnumeration(

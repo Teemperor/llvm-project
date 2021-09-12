@@ -540,7 +540,7 @@ TEST(Support, ConfigDirectory) {
 TEST(Support, DataDirectory) {
   SmallString<128> Fallback;
   ASSERT_TRUE(path::home_directory(Fallback));
-  path::append(Fallback, "Library/");
+  path::append(Fallback, "Library");
 
   SmallString<128> ConfigDir;
   EXPECT_TRUE(path::user_data_directory(ConfigDir));

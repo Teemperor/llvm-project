@@ -22,6 +22,7 @@
 #include "lldb/Utility/Status.h"
 #include "lldb/Utility/StreamString.h"
 #include "lldb/Utility/StringList.h"
+#include "lldb/Utility/TildeExpressionResolver.h"
 #include "lldb/lldb-forward.h"
 
 #if LLDB_ENABLE_LIBEDIT
@@ -261,9 +262,14 @@ IOHandlerEditline::IOHandlerEditline(
                  m_input_sp && m_input_sp->GetIsRealTerminal();
 
   if (use_editline) {
-    m_editline_up = std::make_unique<Editline>(editline_name, GetInputFILE(),
-                                               GetOutputFILE(), GetErrorFILE(),
-                                               m_color_prompts);
+    lldb_private::StandardTildeExpressionResolver resolver;
+    llvm::SmallString<256> resolved_history_dir;
+    resolver.ResolveFullPath(debugger.GetHistoryDirectory().GetPath(),
+                             /*Output=*/resolved_history_dir);
+
+    m_editline_up = std::make_unique<Editline>(
+        editline_name, GetInputFILE(), GetOutputFILE(), GetErrorFILE(),
+        m_color_prompts, resolved_history_dir);
     m_editline_up->SetIsInputCompleteCallback(
         [this](Editline *editline, StringList &lines) {
           return this->IsInputCompleteCallback(editline, lines);

@@ -204,8 +204,9 @@ class EditlineHistory {
 private:
   // Use static GetHistory() function to get a EditlineHistorySP to one of
   // these objects
-  EditlineHistory(const std::string &prefix, uint32_t size, bool unique_entries)
-      : m_prefix(prefix) {
+  EditlineHistory(llvm::StringRef history_directory, const std::string &prefix,
+                  uint32_t size, bool unique_entries)
+      : m_history_directory(history_directory), m_prefix(prefix) {
     m_history = history_winit();
     history_w(m_history, &m_event, H_SETSIZE, size);
     if (unique_entries)
@@ -215,20 +216,19 @@ private:
   const char *GetHistoryFilePath() {
     // Compute the history path lazily.
     if (m_path.empty() && m_history && !m_prefix.empty()) {
-      llvm::SmallString<128> lldb_history_file;
-      FileSystem::Instance().GetHomeDirectory(lldb_history_file);
-      llvm::sys::path::append(lldb_history_file, ".lldb");
-
-      // LLDB stores its history in ~/.lldb/. If for some reason this directory
-      // isn't writable or cannot be created, history won't be available.
-      if (!llvm::sys::fs::create_directory(lldb_history_file)) {
+      // If the history directory is for some reason not writeable or cannot be
+      // created, history won't be available.
+      if (!llvm::sys::fs::create_directory(m_history_directory)) {
 #if LLDB_EDITLINE_USE_WCHAR
         std::string filename = m_prefix + "-widehistory";
 #else
         std::string filename = m_prefix + "-history";
 #endif
+        llvm::SmallString<128> lldb_history_file(m_history_directory);
         llvm::sys::path::append(lldb_history_file, filename);
         m_path = std::string(lldb_history_file.str());
+        llvm::errs() << "PATH:" << m_path << "\n";
+        abort();
       }
     }
 
@@ -248,7 +248,8 @@ public:
     }
   }
 
-  static EditlineHistorySP GetHistory(const std::string &prefix) {
+  static EditlineHistorySP GetHistory(llvm::StringRef history_dir,
+                                      const std::string &prefix) {
     typedef std::map<std::string, EditlineHistoryWP> WeakHistoryMap;
     static std::recursive_mutex g_mutex;
     static WeakHistoryMap g_weak_map;
@@ -261,7 +262,7 @@ public:
         return history_sp;
       g_weak_map.erase(pos);
     }
-    history_sp.reset(new EditlineHistory(prefix, 800, true));
+    history_sp.reset(new EditlineHistory(history_dir, prefix, 800, true));
     g_weak_map[prefix] = history_sp;
     return history_sp;
   }
@@ -298,6 +299,8 @@ public:
   }
 
 protected:
+  /// The directory in which history files should be created.
+  std::string m_history_directory;
   /// The history object.
   HistoryW *m_history = nullptr;
   /// The history event needed to contain all history events.
@@ -1371,13 +1374,14 @@ Editline *Editline::InstanceFor(EditLine *editline) {
 }
 
 Editline::Editline(const char *editline_name, FILE *input_file,
-                   FILE *output_file, FILE *error_file, bool color_prompts)
+                   FILE *output_file, FILE *error_file, bool color_prompts,
+                   llvm::StringRef history_dir)
     : m_editor_status(EditorStatus::Complete), m_color_prompts(color_prompts),
       m_input_file(input_file), m_output_file(output_file),
       m_error_file(error_file), m_input_connection(fileno(input_file), false) {
   // Get a shared history instance
   m_editor_name = (editline_name == nullptr) ? "lldb-tmp" : editline_name;
-  m_history_sp = EditlineHistory::GetHistory(m_editor_name);
+  m_history_sp = EditlineHistory::GetHistory(history_dir, m_editor_name);
 
 #ifdef USE_SETUPTERM_WORKAROUND
   if (m_output_file) {
