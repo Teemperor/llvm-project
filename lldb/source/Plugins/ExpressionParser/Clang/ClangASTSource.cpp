@@ -348,7 +348,7 @@ void ClangASTSource::CompleteRedeclChain(const Decl *d) {
     if (td->getDefinition())
       return;
     m_ast_importer_sp->CompleteTagDecl(td);
-    if (!td->getDefinition()) {
+    if (!td->getDefinition() && m_ast_importer_sp->GetDeclOrigin(td).Valid()) {
       if (TagDecl *alternate = FindCompleteType(td))
         m_ast_importer_sp->CompleteTagDeclWithOrigin(td, alternate);
     }
