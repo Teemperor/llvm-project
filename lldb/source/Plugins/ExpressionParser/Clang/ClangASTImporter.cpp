@@ -1032,6 +1032,12 @@ void ClangASTImporter::ASTImporterDelegate::Imported(clang::Decl *from,
 
   if (clang::CXXMethodDecl *to_method = dyn_cast<CXXMethodDecl>(to))
     MaybeCompleteReturnType(m_master, to_method);
+
+  if (clang::ObjCInterfaceDecl *td = dyn_cast<ObjCInterfaceDecl>(to)) {
+    if (clang::ExternalASTSource *s = getToContext().getExternalSource())
+      if (td->isThisDeclarationADefinition())
+        s->CompleteRedeclChain(td);
+  }
 }
 
 clang::Decl *
