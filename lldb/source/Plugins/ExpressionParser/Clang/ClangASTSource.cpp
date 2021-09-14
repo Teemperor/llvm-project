@@ -354,10 +354,18 @@ void ClangASTSource::CompleteRedeclChain(const Decl *d) {
     }
   }
   if (const auto *od = llvm::dyn_cast<ObjCInterfaceDecl>(d)) {
+    ClangASTImporter::DeclOrigin original = m_ast_importer_sp->GetDeclOrigin(od);
+    if (ObjCInterfaceDecl *orig = dyn_cast_or_null<ObjCInterfaceDecl>(original.decl)) {
+      if (ObjCInterfaceDecl *i = GetCompleteObjCInterface(orig)) {
+        if (i != orig) {
+          m_ast_importer_sp->SetDeclOrigin(d, i);
+          m_ast_importer_sp->CompleteObjCInterfaceDecl(od);
+          return;
+        }
+      }
+    }
     if (od->getDefinition())
       return;
-    if (ObjCInterfaceDecl *i = GetCompleteObjCInterface(od))
-      m_ast_importer_sp->SetDeclOrigin(d, i);
     m_ast_importer_sp->CompleteObjCInterfaceDecl(od);
   }
 }

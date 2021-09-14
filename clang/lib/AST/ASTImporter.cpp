@@ -4828,9 +4828,8 @@ Error ASTNodeImporter::ImportDefinition(
                           diag::note_odr_objc_missing_superclass);
     }
 
-    if (shouldForceImportDeclContext(Kind))
-      if (Error Err = ImportDeclContext(From))
-        return Err;
+    if (Error Err = ImportDeclContext(From))
+      return Err;
     return Error::success();
   }
 
