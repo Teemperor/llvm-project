@@ -36,9 +36,11 @@ class HiddenIvarsTestCase(TestBase):
         else:
             self.build()
             self.expr(True)
+            self.assertTrue(False)
 
     @skipIfReproducer # FIXME: Unexpected packet during (passive) replay
-    def test_expr(self):
+    @no_debug_info_test
+    def atest_expr(self):
         if self.getArchitecture() == 'i386':
             self.skipTest("requires modern objc runtime")
         else:
@@ -48,14 +50,14 @@ class HiddenIvarsTestCase(TestBase):
     @skipIf(
         debug_info=no_match("dsym"),
         bugnumber="This test requires a stripped binary and a dSYM")
-    def test_frame_variable_stripped(self):
+    def atest_frame_variable_stripped(self):
         if self.getArchitecture() == 'i386':
             self.skipTest("requires modern objc runtime")
         else:
             self.build()
             self.frame_var(True)
 
-    def test_frame_variable(self):
+    def atest_frame_variable(self):
         if self.getArchitecture() == 'i386':
             self.skipTest("requires modern objc runtime")
         else:
@@ -63,7 +65,7 @@ class HiddenIvarsTestCase(TestBase):
             self.frame_var(False)
 
     @expectedFailure("rdar://18683637")
-    def test_frame_variable_across_modules(self):
+    def atest_frame_variable_across_modules(self):
         if self.getArchitecture() == 'i386':
             self.skipTest("requires modern objc runtime")
         else:

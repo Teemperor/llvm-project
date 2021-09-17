@@ -489,6 +489,8 @@ bool AppleObjCDeclVendor::FinishDecl(clang::ObjCInterfaceDecl *interface_decl) {
     if (ivar_type.IsValid()) {
       clang::TypeSourceInfo *const type_source_info = nullptr;
       const bool is_synthesized = false;
+      if (llvm::StringRef(name) == "bar")
+        abort();
       clang::ObjCIvarDecl *ivar_decl = clang::ObjCIvarDecl::Create(
           m_ast_ctx.getASTContext(), interface_decl, clang::SourceLocation(),
           clang::SourceLocation(), &m_ast_ctx.getASTContext().Idents.get(name),

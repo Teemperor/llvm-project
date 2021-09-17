@@ -7297,6 +7297,8 @@ clang::FieldDecl *TypeSystemClang::AddFieldToRecordType(
 
       auto *ivar = clang::ObjCIvarDecl::CreateDeserialized(clang_ast, 0);
       ivar->setDeclContext(class_interface_decl);
+      if (name == "bar")
+        abort();
       ivar->setDeclName(ident);
       ivar->setType(ClangUtil::GetQualType(field_clang_type));
       ivar->setAccessControl(ConvertAccessTypeToObjCIvarAccessControl(access));

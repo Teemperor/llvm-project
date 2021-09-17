@@ -130,6 +130,9 @@ ObjCLanguageRuntime::LookupInCompleteClassCache(ConstString &name) {
       if (TypeSystemClang::IsObjCObjectOrInterfaceType(
               type_sp->GetForwardCompilerType())) {
         if (TypePayloadClang(type_sp->GetPayload()).IsCompleteObjCClass()) {
+          llvm::errs() << "C:" << name << "\n";
+          if (name.GetStringRef() == "InternalDefiner")
+            abort();
           m_complete_class_cache[name] = type_sp;
           return type_sp;
         }

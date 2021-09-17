@@ -2626,6 +2626,7 @@ Symbol *SymbolFileDWARF::GetObjCClassSymbol(ConstString objc_class_name) {
       objc_class_symbol = symtab->FindFirstSymbolWithNameAndType(
           objc_class_name, eSymbolTypeObjCClass, Symtab::eDebugNo,
           Symtab::eVisibilityAny);
+      llvm::errs() << "P:" << objc_class_name << " " << symtab->GetObjectFile()->GetFileSpec().GetPath() << " " << objc_class_symbol << "\n";
     }
   }
   return objc_class_symbol;
