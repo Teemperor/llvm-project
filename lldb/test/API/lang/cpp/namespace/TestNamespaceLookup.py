@@ -96,12 +96,13 @@ class NamespaceLookupTestCase(TestBase):
 
         # Continue to BP_ns_scope at ns scope
         self.runToBkpt("continue")
-        # Evaluate func(10) - should call A::func(int)
-        self.expect("expr -- func(10)", startstr="(int) $5 = 13")
-        # Evaluate B::func() - should call B::func()
-        self.expect("expr -- B::func()", startstr="(int) $6 = 4")
-        # Evaluate func() - should call A::func()
-        self.expect("expr -- func()", startstr="(int) $7 = 3")
+        # Evaluate func(10) - should call ::func(int)
+        self.expect("expr -- func(10)", startstr="(int) $5 = 11")
+        # Evaluate B::func() - should *not* call A::B::func()
+        self.expect("expr -- B::func()", error=True,
+                    substrs=["use of undeclared identifier 'B'"])
+        # Evaluate func() - should call ::func() (in ns.cpp)
+        self.expect("expr -- func()", startstr="(int) $6 = 1")
 
         # Continue to BP_nested_ns_scope at nested ns scope
         self.runToBkpt("continue")
