@@ -371,6 +371,8 @@ public:
       assert(&decl->getASTContext() != origin.ctx &&
              "Trying to set decl origin to its own ASTContext?");
       assert(decl != origin.decl && "Trying to set decl origin to itself?");
+      if (clang::Decl *other_first = ClangUtil::GetFirstDecl(origin.decl))
+        origin.decl = other_first;
       m_origins[GetDeclForOriginMap(decl)] = origin;
     }
 
