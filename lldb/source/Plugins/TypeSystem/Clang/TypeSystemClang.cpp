@@ -8135,6 +8135,7 @@ bool TypeSystemClang::StartTagDeclarationDefinition(const CompilerType &type) {
     if (tag_type) {
       clang::TagDecl *tag_decl = tag_type->getDecl();
       if (tag_decl) {
+        tag_decl = tag_decl->getMostRecentDecl();
         tag_decl->startDefinition();
         return true;
       }
@@ -8145,6 +8146,7 @@ bool TypeSystemClang::StartTagDeclarationDefinition(const CompilerType &type) {
     if (object_type) {
       clang::ObjCInterfaceDecl *interface_decl = object_type->getInterface();
       if (interface_decl) {
+        interface_decl = interface_decl->getMostRecentDecl();
         interface_decl->startDefinition();
         return true;
       }
