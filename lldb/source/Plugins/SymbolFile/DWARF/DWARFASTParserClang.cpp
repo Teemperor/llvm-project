@@ -74,7 +74,10 @@ struct GenerationBumper {
 };
 }
 
-static bool DirectlyCompleteType(const ParsedDWARFTypeAttributes &attrs) {
+static bool DirectlyCompleteType(clang::DeclContext *decl_ctx, const ParsedDWARFTypeAttributes &attrs) {
+  assert(decl_ctx);
+  if (decl_ctx->isFunctionOrMethod())
+    return true;
   return attrs.name.IsEmpty() && !attrs.is_forward_declaration;
 }
 
@@ -1432,7 +1435,11 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
                                           DWARF_LOG_LOOKUPS);
 
   GenerationBumper bumper(m_ast);
-  const bool should_directly_complete = DirectlyCompleteType(attrs);
+
+  clang::DeclContext *decl_ctx =
+      GetClangDeclContextContainingDIE(die, nullptr);
+
+  const bool should_directly_complete = DirectlyCompleteType(decl_ctx, attrs);
   // UniqueDWARFASTType is large, so don't create a local variables on the
   // stack, put it on the heap. This function is often called recursively and
   // clang isn't good at sharing the stack space for variables in different
@@ -1603,9 +1610,6 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
   clang_type.SetCompilerType(
       &m_ast, dwarf->GetForwardDeclDieToClangType().lookup(die.GetDIE()));
   if (!clang_type) {
-    clang::DeclContext *decl_ctx =
-        GetClangDeclContextContainingDIE(die, nullptr);
-
     PrepareContextToReceiveMembers(m_ast, GetClangASTImporter(), decl_ctx, die,
                                    attrs.name.GetCString());
 
@@ -1940,7 +1944,10 @@ bool DWARFASTParserClang::CompleteRecordType(const DWARFDIE &die,
   if (attrs.is_forward_declaration)
     return true;
 
-  if (!DirectlyCompleteType(attrs)) {
+  clang::DeclContext *decl_ctx =
+      GetClangDeclContextContainingDIE(die, nullptr);
+
+  if (!DirectlyCompleteType(decl_ctx, attrs)) {
     clang_type = m_ast.RedeclTagDecl(clang_type);
     RegisterDIE(die.GetDIE(), clang_type);
   }
