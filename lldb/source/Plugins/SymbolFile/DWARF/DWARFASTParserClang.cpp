@@ -296,6 +296,7 @@ static void RequireCompleteType(CompilerType type) {
 /// This function serves a similar purpose as RequireCompleteType above, but it
 /// avoids completing the type if it is not immediately necessary. It only
 /// ensures we _can_ complete the type later.
+/// FIXME: Not true anymore, will now pull in definition.
 static void PrepareContextToReceiveMembers(TypeSystemClang &ast,
                                            ClangASTImporter &ast_importer,
                                            clang::DeclContext *decl_ctx,
@@ -307,7 +308,7 @@ static void PrepareContextToReceiveMembers(TypeSystemClang &ast,
 
   // We have already completed the type, or we have found its definition and are
   // ready to complete it later (cf. ParseStructureLikeDIE).
-  if (tag_decl_ctx->isCompleteDefinition() || tag_decl_ctx->isBeingDefined())
+  if (tag_decl_ctx->getDefinition() || tag_decl_ctx->isBeingDefined())
     return;
 
   // We reach this point of the tag was present in the debug info as a
@@ -1431,6 +1432,7 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
                                           DWARF_LOG_LOOKUPS);
 
   GenerationBumper bumper(m_ast);
+  const bool should_directly_complete = DirectlyCompleteType(attrs);
   // UniqueDWARFASTType is large, so don't create a local variables on the
   // stack, put it on the heap. This function is often called recursively and
   // clang isn't good at sharing the stack space for variables in different
@@ -1660,7 +1662,7 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
           attrs.name.GetCString(), tag_decl_kind, attrs.class_language,
           &metadata, attrs.exports_symbols);
       RegisterDIE(die.GetDIE(), clang_type);
-      if (!DirectlyCompleteType(attrs))
+      if (!should_directly_complete)
         bumper.engage();
     }
   }
@@ -1697,7 +1699,7 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
             "start of this error message",
             die.GetOffset(), attrs.name.GetCString());
       }
-    } else if (clang_type_was_created && !DirectlyCompleteType(attrs)) {
+    } else if (clang_type_was_created && !should_directly_complete) {
       // Leave this as a forward declaration until we need to know the
       // details of the type. lldb_private::Type will automatically call
       // the SymbolFile virtual function
@@ -1718,7 +1720,7 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
     }
   }
 
-  if (DirectlyCompleteType(attrs))
+  if (should_directly_complete)
     m_to_complete.push_back({clang_type, die, type_sp});
 
   return type_sp;

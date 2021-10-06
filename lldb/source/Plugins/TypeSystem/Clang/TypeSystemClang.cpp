@@ -2708,10 +2708,10 @@ static QualType GetCompleteQualType(clang::ASTContext *ast,
   } break;
   case clang::Type::Record: {
     clang::CXXRecordDecl *cxx_record_decl = qual_type->getAsCXXRecordDecl();
-    cxx_record_decl = cxx_record_decl->getDefinition();
-    if (!cxx_record_decl)
+    clang::CXXRecordDecl *def = cxx_record_decl->getDefinition();
+    if (!def)
       return QualType();
-    return QualType(cxx_record_decl->getTypeForDecl(), 0);
+    return QualType(def->getTypeForDecl(), 0);
   } break;
 
   case clang::Type::Enum: {
@@ -8181,8 +8181,8 @@ bool TypeSystemClang::StartTagDeclarationDefinition(const CompilerType &type) {
     if (tag_type) {
       clang::TagDecl *tag_decl = tag_type->getDecl();
       if (tag_decl) {
-        tag_decl = tag_decl->getMostRecentDecl();
-        tag_decl->startDefinition();
+        clang::TagDecl *def = tag_decl->getMostRecentDecl();
+        def->startDefinition();
         return true;
       }
     }
@@ -8192,8 +8192,8 @@ bool TypeSystemClang::StartTagDeclarationDefinition(const CompilerType &type) {
     if (object_type) {
       clang::ObjCInterfaceDecl *interface_decl = object_type->getInterface();
       if (interface_decl) {
-        interface_decl = interface_decl->getMostRecentDecl();
-        interface_decl->startDefinition();
+        clang::ObjCInterfaceDecl *def = interface_decl->getMostRecentDecl();
+        def->startDefinition();
         return true;
       }
     }
