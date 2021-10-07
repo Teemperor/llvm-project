@@ -47,7 +47,7 @@ class TypeCompletionTestCase(TestBase):
         p_vector = self.dbg.GetSelectedTarget().GetProcess(
         ).GetSelectedThread().GetSelectedFrame().FindVariable('p')
         p_type = p_vector.GetType()
-        self.assertFalse(
+        self.assertTrue(
             p_type.IsTypeComplete(),
             'vector<T> complete but it should not be')
 
@@ -56,7 +56,7 @@ class TypeCompletionTestCase(TestBase):
         p_vector = self.dbg.GetSelectedTarget().GetProcess(
         ).GetSelectedThread().GetSelectedFrame().FindVariable('p')
         p_type = p_vector.GetType()
-        self.assertFalse(
+        self.assertTrue(
             p_type.IsTypeComplete(),
             'vector<T> complete but it should not be')
 
@@ -74,7 +74,7 @@ class TypeCompletionTestCase(TestBase):
         self.assertTrue(
             name_address_type.IsValid(),
             'NameAndAddress should be valid')
-        self.assertFalse(
+        self.assertTrue(
             name_address_type.IsTypeComplete(),
             'NameAndAddress complete but it should not be')
 
@@ -101,7 +101,7 @@ class TypeCompletionTestCase(TestBase):
             'NameAndAddress::m_name should be valid')
         string = field0.GetType().GetPointeeType()
         self.assertTrue(string.IsValid(), 'CustomString should be valid')
-        self.assertFalse(string.IsTypeComplete(),
+        self.assertTrue(string.IsTypeComplete(),
                          'CustomString complete but it should not be')
 
         self.runCmd("continue")
@@ -125,7 +125,7 @@ class TypeCompletionTestCase(TestBase):
             'NameAndAddress::m_name should be valid')
         string = field0.GetType().GetPointeeType()
         self.assertTrue(string.IsValid(), 'CustomString should be valid')
-        self.assertFalse(string.IsTypeComplete(),
+        self.assertTrue(string.IsTypeComplete(),
                          'CustomString complete but it should not be')
 
         self.runCmd('type category enable -l c++', check=False)
