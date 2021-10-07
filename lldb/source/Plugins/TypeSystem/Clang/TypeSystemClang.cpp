@@ -4534,6 +4534,7 @@ CompilerType TypeSystemClang::CreateTypedef(
         TypeSystemClang::DeclContextGetAsDeclContext(compiler_decl_ctx);
     if (!decl_ctx)
       decl_ctx = getASTContext().getTranslationUnitDecl();
+    decl_ctx = decl_ctx->getPrimaryContext();
 
     clang::TypedefDecl *decl =
         clang::TypedefDecl::CreateDeserialized(clang_ast, 0);
