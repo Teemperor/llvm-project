@@ -37,8 +37,8 @@ class TestCppTypedef(TestBase):
 # CHECK:      {{^}}|-TypedefDecl {{.*}} SF 'S<float>'
 # CHECK:      {{^}}|-NamespaceDecl {{.*}} ns
 # CHECK-NEXT: {{^}}| `-TypedefDecl {{.*}} SF 'S<float>'
-# CHECK:      {{^}}|-CXXRecordDecl {{.*}} struct ST definition
-# CHECK:      {{^}}| `-TypedefDecl {{.*}} SF 'S<float>'
+# CHECK:      {{^}}`-CXXRecordDecl {{.*}} struct ST definition
+# CHECK:      {{^}}  `-TypedefDecl {{.*}} SF 'S<float>'
 
         typedef_type = expr_result.GetType();
         self.assertTrue(typedef_type.IsValid(), "Can't get `SF` type of evaluated expression")
