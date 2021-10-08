@@ -121,6 +121,8 @@ public:
   /// \param layout The layout for the record.
   void SetRecordLayout(const clang::RecordDecl *decl, const LayoutInfo &layout);
 
+  bool HasRecordLayout(const clang::RecordDecl *decl);
+
   bool LayoutRecordType(
       const clang::RecordDecl *record_decl, uint64_t &bit_size,
       uint64_t &alignment,

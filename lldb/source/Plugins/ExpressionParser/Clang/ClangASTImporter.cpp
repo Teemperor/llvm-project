@@ -518,6 +518,11 @@ void ClangASTImporter::SetRecordLayout(const clang::RecordDecl *decl,
   m_record_decl_to_layout_map.insert(std::make_pair(decl, layout));
 }
 
+bool ClangASTImporter::HasRecordLayout(const RecordDecl *decl) {
+  decl = static_cast<const RecordDecl*>(decl->getFirstDecl());
+  return m_record_decl_to_layout_map.count(decl);
+}
+
 bool ClangASTImporter::CompleteTagDecl(const TagDecl *decl) {
   DeclOrigin decl_origin = GetDeclOrigin(decl);
 
