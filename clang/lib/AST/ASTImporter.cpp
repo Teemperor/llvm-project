@@ -251,8 +251,7 @@ namespace clang {
 
     void InitializeImportedDecl(Decl *FromD, Decl *ToD) {
       ToD->IdentifierNamespace = FromD->IdentifierNamespace;
-      return;
-      if (FromD->isUsed())
+      if (false && FromD->isUsed())
         ToD->setIsUsed();
       if (FromD->isImplicit())
         ToD->setImplicit();
