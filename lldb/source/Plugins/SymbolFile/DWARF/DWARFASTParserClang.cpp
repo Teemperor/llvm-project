@@ -2121,7 +2121,6 @@ bool DWARFASTParserClang::CompleteRecordType(const DWARFDIE &die,
 
   std::vector<std::unique_ptr<clang::CXXBaseSpecifier>> bases;
   std::vector<int> member_accessibilities;
-  bool is_a_class = false;
   // Parse members and base classes first
   std::vector<DWARFDIE> member_function_dies;
 
@@ -2187,16 +2186,16 @@ bool DWARFASTParserClang::CompleteRecordType(const DWARFDIE &die,
   TypeSystemClang::BuildIndirectFields(clang_type);
   TypeSystemClang::CompleteTagDeclarationDefinition(clang_type);
 
-  if (type)
-    layout_info.bit_size = type->GetByteSize(nullptr).getValueOr(0) * 8;
-  if (layout_info.bit_size == 0)
-    layout_info.bit_size =
-        die.GetAttributeValueAsUnsigned(DW_AT_byte_size, 0) * 8;
+  clang::CXXRecordDecl *record_decl = m_ast.GetAsCXXRecordDecl(clang_type.GetOpaqueQualType());
+  if (record_decl && !GetClangASTImporter().HasRecordLayout(record_decl)) {
+    if (type)
+      layout_info.bit_size = type->GetByteSize(nullptr).getValueOr(0) * 8;
+    if (layout_info.bit_size == 0)
+      layout_info.bit_size =
+          die.GetAttributeValueAsUnsigned(DW_AT_byte_size, 0) * 8;
 
-  clang::CXXRecordDecl *record_decl =
-      m_ast.GetAsCXXRecordDecl(clang_type.GetOpaqueQualType());
-  if (record_decl)
     GetClangASTImporter().SetRecordLayout(record_decl, layout_info);
+  }
   return (bool)clang_type;
 }
 
