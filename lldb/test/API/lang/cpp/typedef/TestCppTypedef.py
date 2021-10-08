@@ -85,5 +85,5 @@ class TestCppTypedef(TestBase):
 # CHECK:      {{^}}|-TypedefDecl {{.*}} GlobalTypedef 'S<float>'
 # CHECK:      {{^}}|-NamespaceDecl {{.*}} ns
 # CHECK-NEXT: {{^}}| `-TypedefDecl {{.*}} NamespaceTypedef 'S<float>'
-# CHECK:      {{^}}`-CXXRecordDecl {{.*}} struct ST definition
-# CHECK:      {{^}}  `-TypedefDecl {{.*}} StructTypedef 'S<float>'
+# CHECK:      {{^}}|-CXXRecordDecl {{.*}} struct ST definition
+# CHECK:      {{^}}| `-TypedefDecl {{.*}} StructTypedef 'S<float>'
