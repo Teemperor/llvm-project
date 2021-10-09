@@ -64,7 +64,7 @@ struct SourceASTWithRecord {
     record_type = createRecordWithField(
         *ast, "Source", ast->GetBasicType(lldb::BasicType::eBasicTypeChar),
         "a_field");
-    record_decl = llvm::cast<clang::RecordDecl>(ClangUtil::GetAsTagDecl(record_type));
+    record_decl = llvm::cast<clang::RecordDecl>(ClangUtil::GetAsTagDecl(record_type)->getDefinition());
     fwd_decl = record_decl->getPreviousDecl();
     field_decl = *record_decl->fields().begin();
     assert(field_decl);
