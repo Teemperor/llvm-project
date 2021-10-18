@@ -235,7 +235,7 @@ def state_type_to_str(enum):
     elif enum == lldb.eStateSuspended:
         return "suspended"
     else:
-        raise Exception("Unknown StateType enum")
+        raise Exception("Unknown StateType enum: " + str(enum))
 
 
 def stop_reason_to_str(enum):
@@ -860,10 +860,27 @@ def run_to_breakpoint_make_target(test, exe_name = "a.out", in_cwd = True):
 def run_to_breakpoint_do_run(test, target, bkpt, launch_info = None,
                              only_one_thread = True, extra_images = None):
 
+    # The (local) file path that the process will dump its stderr output in.
+    recorded_stderr_path = None
+
     # Launch the process, and do not stop at the entry point.
     if not launch_info:
         launch_info = target.GetLaunchInfo()
         launch_info.SetWorkingDirectory(test.get_process_working_directory())
+
+        # If we're not in remote mode, record the stderr of the process.
+        # Getting this to work in remote requires also transferring the file
+        # back afterwards. Windows also doesn't support redirecting stderr.
+        #
+        # Don't do this if the test specified its own launch_info as we don't
+        # know if this unintentionally overwrite an action of the test.
+        if not lldb.remote_platform and test.getPlatform() != "windows":
+           stderr_fd = 2
+           recorded_stderr_path = test.getBuildArtifact("recorded_stderr.txt")
+           readMode = False
+           writeMode = True
+           launch_info.AddOpenFileAction(stderr_fd, recorded_stderr_path,
+                                         readMode, writeMode)
 
     if extra_images:
         environ = test.registerSharedLibrariesWithTarget(target, extra_images)
@@ -889,7 +906,25 @@ def run_to_breakpoint_do_run(test, target, bkpt, launch_info = None,
     test.assertFalse(error.Fail(),
                      "Process launch failed: %s" % (error.GetCString()))
 
-    test.assertEqual(process.GetState(), lldb.eStateStopped)
+    # If we asked the process to dump its stderr output, then read it now so
+    # the output can be appended to the errors below.
+    recorded_stderr = None
+    if recorded_stderr_path:
+        with open(recorded_stderr_path, 'r') as f:
+            recorded_stderr = f.read()
+
+    def processStateInfo(process):
+        # If 'exited', print exit code and extracted description.
+        if process.state == lldb.eStateExited:
+            return ("Exit code/status: " + str(process.GetExitStatus()) + ". " +
+                "Exit description: " + str(process.exit_description))
+        return ""
+
+    if process.state != lldb.eStateStopped:
+        test.fail("Test process is not stopped at breakpoint, but instead in" +
+                  " state '" + state_type_to_str(process.state) + "'. " +
+                  processStateInfo(process) + ".\nstderr of inferior:\n" +
+                  str(recorded_stderr))
 
     # Frame #0 should be at our breakpoint.
     threads = get_threads_stopped_at_breakpoint(
