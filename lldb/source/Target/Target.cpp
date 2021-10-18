@@ -2247,9 +2247,16 @@ std::vector<TypeSystem *> Target::GetScratchTypeSystems(bool create_on_demand) {
                      "system available",
                      Language::GetNameForLanguageType(language));
     else
-      scratch_type_systems.emplace_back(&type_system_or_err.get());
+      scratch_type_systems.push_back(&type_system_or_err.get());
   }
 
+  // Some TypeSystem instances are associated with several LanguageTypes so
+  // they will show up multiple times in the loop above. Filter out the
+  // duplicates as they serve no useful purpose for the caller.
+  llvm::sort(scratch_type_systems);
+  auto remove_from =
+      std::unique(scratch_type_systems.begin(), scratch_type_systems.end());
+  scratch_type_systems.erase(remove_from, scratch_type_systems.end());
   return scratch_type_systems;
 }
 
