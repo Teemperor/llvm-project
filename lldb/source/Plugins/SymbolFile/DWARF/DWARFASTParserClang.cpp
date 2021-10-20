@@ -497,12 +497,8 @@ TypeSP DWARFASTParserClang::ParseTypeFromDWARF(const SymbolContext &sc,
   }
 
   Type *type_ptr = dwarf->GetDIEToType().lookup(die.GetDIE());
-  if (type_ptr == DIE_IS_BEING_PARSED)
-    return nullptr;
   if (type_ptr)
     return type_ptr->shared_from_this();
-  // Set a bit that lets us know that we are currently parsing this
-  dwarf->GetDIEToType()[die.GetDIE()] = DIE_IS_BEING_PARSED;
 
   ParsedDWARFTypeAttributes attrs(die);
 
@@ -997,6 +993,9 @@ TypeSP DWARFASTParserClang::ParseSubroutine(const DWARFDIE &die,
       GetClangDeclContextContainingDIE(die, &decl_ctx_die);
   const clang::Decl::Kind containing_decl_kind =
       containing_decl_ctx->getDeclKind();
+
+  PrepareContextToReceiveMembers(m_ast, GetClangASTImporter(), containing_decl_ctx, die,
+                                 attrs.name.GetCString());
 
   bool is_cxx_method = DeclKindIsCXXClass(containing_decl_kind);
   // Start off static. This will be set to false in
