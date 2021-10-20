@@ -309,6 +309,7 @@ protected:
   SetNoExternalVisibleDeclsForName(const DeclContext *DC,
                                    DeclarationName Name);
 
+public:
   /// Increment the current generation.
   uint32_t incrementGeneration(ASTContext &C);
 };
