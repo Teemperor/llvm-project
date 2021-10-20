@@ -542,9 +542,8 @@ bool ClangASTImporter::CompleteTagDecl(const TagDecl *decl) {
                                                 &decl->getASTContext());
   llvm::Expected<Decl *> result = delegate_sp->Import(origin_decl);
   if (!result) {
-    llvm::handleAllErrors(result.takeError(), [](clang::ImportError &e) {
-        // FIXME: Needs error handling.
-        abort();
+    llvm::handleAllErrors(result.takeError(), [](const clang::ImportError &e) {
+        llvm::errs() << "ERR: " << e.toString() << "\n";
     });
     return false;
   }
@@ -765,21 +764,13 @@ ClangASTImporter::ASTImporterDelegate::ImportImpl(Decl *From) {
     return origin.decl;
   }
 
-  // This declaration came originally from another ASTContext. Instead of
-  // copying our potentially incomplete 'From' Decl we instead go to the
-  // original ASTContext and copy the original to the target. This is not
-  // only faster than first completing our current decl and then copying it
-  // to the target, but it also prevents that indirectly copying the same
-  // declaration to the same target requires the ASTImporter to merge all
-  // the different decls that appear to come from different ASTContexts (even
-  // though all these different source ASTContexts just got a copy from
-  // one source AST).
-  if (origin.Valid() && false) {
-    auto R = m_master.CopyDecl(&getToContext(), origin.decl);
-    if (R) {
-      RegisterImportedDecl(From, R);
-      return R;
+  while(origin.Valid()) {
+    ImporterDelegateSP delegate = m_master.GetDelegate(&this->getToContext(), origin.ctx);
+    if (clang::Decl *imported = delegate->GetAlreadyImportedOrNull(origin.decl)) {
+      RegisterImportedDecl(From, imported);
+      return imported;
     }
+    origin = m_master.GetDeclOrigin(origin.decl);
   }
 
   if (clang::TagDecl *td = dyn_cast<TagDecl>(From))
@@ -812,11 +803,14 @@ ClangASTImporter::ASTImporterDelegate::ImportImpl(Decl *From) {
     DeclContext *dc = *dc_or_err;
     DeclContext::lookup_result lr = dc->lookup(*dn_or_err);
     for (clang::Decl *candidate : lr) {
-      if (candidate->getKind() == From->getKind()) {
-        RegisterImportedDecl(From, candidate);
-        m_decls_to_ignore.insert(candidate);
-        return candidate;
-      }
+      clang::TagDecl *to_td = dyn_cast<TagDecl>(candidate);
+      if (!to_td)
+        continue;
+      if (!to_td->getDefinition())
+        continue;
+      RegisterImportedDecl(From, candidate);
+      m_decls_to_ignore.insert(candidate);
+      return candidate;
     }
     LLDB_LOG(log, "[ClangASTImporter] Complete definition not found");
   }
@@ -1019,6 +1013,7 @@ void ClangASTImporter::ASTImporterDelegate::Imported(clang::Decl *from,
     if (clang::ExternalASTSource *s = getToContext().getExternalSource())
       if (td->isThisDeclarationADefinition())
         s->CompleteRedeclChain(td);
+    td->setHasExternalVisibleStorage();
   }
 }
 

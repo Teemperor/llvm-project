@@ -7498,6 +7498,8 @@ clang::CXXMethodDecl *TypeSystemClang::AddMethodToCXXRecordType(
 
   clang::CXXRecordDecl *cxx_record_decl =
       record_qual_type->getAsCXXRecordDecl();
+  if (cxx_record_decl)
+    cxx_record_decl = cxx_record_decl->getDefinition();
 
   if (cxx_record_decl == nullptr)
     return nullptr;

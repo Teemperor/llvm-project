@@ -1019,8 +1019,8 @@ bool ASTNodeImporter::hasSameVisibilityContextAndLinkage(T *Found, T *From) {
 template <>
 bool ASTNodeImporter::hasSameVisibilityContextAndLinkage(TypedefNameDecl *Found,
                                                TypedefNameDecl *From) {
-  if (Found->getLinkageInternal() != From->getLinkageInternal())
-    return false;
+  //if (Found->getLinkageInternal() != From->getLinkageInternal())
+  //  return false;
 
   if (From->isInAnonymousNamespace() && Found->isInAnonymousNamespace())
     return Importer.GetFromTU(Found) == From->getTranslationUnitDecl();
@@ -2510,6 +2510,8 @@ ASTNodeImporter::VisitTypedefNameDecl(TypedefNameDecl *D, bool IsAlias) {
         QualType FromUT = D->getUnderlyingType();
         QualType FoundUT = FoundTypedef->getUnderlyingType();
         if (Importer.IsStructurallyEquivalent(FromUT, FoundUT)) {
+          if (Importer.isMinimalImport())
+            return Importer.MapImported(D, FoundTypedef);
           // If the "From" context has a complete underlying type but we
           // already have a complete underlying type then return with that.
           if (!FromUT->isIncompleteType() && !FoundUT->isIncompleteType())
