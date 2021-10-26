@@ -2586,6 +2586,7 @@ RemoveWrappingTypes(QualType type, ArrayRef<clang::Type::TypeClass> mask = {}) {
       type = cast<clang::AtomicType>(type)->getValueType();
       break;
     case clang::Type::Auto:
+    case clang::Type::Decayed:
     case clang::Type::Decltype:
     case clang::Type::Elaborated:
     case clang::Type::Paren:

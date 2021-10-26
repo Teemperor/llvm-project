@@ -282,6 +282,12 @@ bool ASTResultSynthesizer::SynthesizeBodyResult(CompoundStmt *Body,
   //
   //   - During dematerialization, $0 is ignored.
 
+  if (last_expr->getType()->isIncompleteArrayType()) {
+    last_expr = m_sema->ImpCastExprToType(last_expr,
+                                          Ctx.getDecayedType(last_expr->getType()),
+                                          CK_ArrayToPointerDecay).get();
+  }
+
   bool is_lvalue = last_expr->getValueKind() == VK_LValue &&
                    last_expr->getObjectKind() == OK_Ordinary;
 
