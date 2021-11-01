@@ -5440,8 +5440,8 @@ QualType ASTContext::getObjCInterfaceType(const ObjCInterfaceDecl *Decl,
   }
 
   // Prefer the definition, if there is one.
-  if (const ObjCInterfaceDecl *Def = Decl->getDefinition())
-    Decl = Def;
+  //if (const ObjCInterfaceDecl *Def = Decl->getDefinition())
+  //  Decl = Def;
 
   void *Mem = Allocate(sizeof(ObjCInterfaceType), TypeAlignment);
   auto *T = new (Mem) ObjCInterfaceType(Decl);
