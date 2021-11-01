@@ -134,7 +134,7 @@ namespace clang {
   void updateFlags(const Decl *From, Decl *To) {
     // Check if some flags or attrs are new in 'From' and copy into 'To'.
     // FIXME: Other flags or attrs?
-    if (From->isUsed(false) && !To->isUsed(false))
+    //if (From->isUsed(false) && !To->isUsed(false))
       To->setIsUsed();
   }
 
@@ -251,7 +251,7 @@ namespace clang {
 
     void InitializeImportedDecl(Decl *FromD, Decl *ToD) {
       ToD->IdentifierNamespace = FromD->IdentifierNamespace;
-      if (FromD->isUsed())
+      if (false && FromD->isUsed())
         ToD->setIsUsed();
       if (FromD->isImplicit())
         ToD->setImplicit();
