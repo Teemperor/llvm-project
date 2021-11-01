@@ -268,7 +268,7 @@ namespace clang {
     }
 
     void addDeclToContexts(Decl *FromD, Decl *ToD) {
-      if (Importer.isMinimalImport()) {
+      if (Importer.isMinimalImport() || Importer.getToContext().getLangOpts().DebuggerSupport || Importer.getFromContext().getLangOpts().DebuggerSupport) {
         // In minimal import case the decl must be added even if it is not
         // contained in original context, for LLDB compatibility.
         // FIXME: Check if a better solution is possible.
@@ -1005,8 +1005,8 @@ bool ASTNodeImporter::hasSameVisibilityContextAndLinkage(T *Found, T *From) {
 template <>
 bool ASTNodeImporter::hasSameVisibilityContextAndLinkage(TypedefNameDecl *Found,
                                                TypedefNameDecl *From) {
-  if (Found->getLinkageInternal() != From->getLinkageInternal())
-    return false;
+  //if (Found->getLinkageInternal() != From->getLinkageInternal())
+  //  return false;
 
   if (From->isInAnonymousNamespace() && Found->isInAnonymousNamespace())
     return Importer.GetFromTU(Found) == From->getTranslationUnitDecl();
@@ -1428,7 +1428,7 @@ ExpectedType ASTNodeImporter::VisitInjectedClassNameType(
 }
 
 ExpectedType ASTNodeImporter::VisitRecordType(const RecordType *T) {
-  Expected<RecordDecl *> ToDeclOrErr = import(T->getDecl());
+  Expected<RecordDecl *> ToDeclOrErr = import(T->getCanonicalDecl());
   if (!ToDeclOrErr)
     return ToDeclOrErr.takeError();
 
@@ -1718,9 +1718,8 @@ Error ASTNodeImporter::ImportDefinitionIfNeeded(Decl *FromD, Decl *ToD) {
 
   if (RecordDecl *FromRecord = dyn_cast<RecordDecl>(FromD)) {
     if (RecordDecl *ToRecord = cast<RecordDecl>(ToD)) {
-      if (FromRecord->getDefinition() && FromRecord->isCompleteDefinition() &&
-          !ToRecord->getDefinition()) {
-        if (Error Err = ImportDefinition(FromRecord, ToRecord))
+      if (FromRecord->getDefinition() && !ToRecord->getDefinition()) {
+        if (Error Err = ImportDefinition(FromRecord->getDefinition(), ToRecord))
           return Err;
       }
     }
@@ -1783,7 +1782,7 @@ ASTNodeImporter::ImportDeclarationNameLoc(
 
 Error
 ASTNodeImporter::ImportDeclContext(DeclContext *FromDC, bool ForceImport) {
-  if (Importer.isMinimalImport() && !ForceImport) {
+  if (Importer.isMinimalImport() && !ForceImport && isa<NamespaceDecl>(FromDC)) {
     auto ToDCOrErr = Importer.ImportContext(FromDC);
     return ToDCOrErr.takeError();
   }
@@ -1923,7 +1922,7 @@ Error ASTNodeImporter::ImportDefinition(
     To->completeDefinition();
   };
 
-  if (To->getDefinition() || To->isBeingDefined()) {
+  if (To->isThisDeclarationADefinition() || To->isBeingDefined()) {
     if (Kind == IDK_Everything ||
         // In case of lambdas, the class already has a definition ptr set, but
         // the contained decls are not imported yet. Also, isBeingDefined was
@@ -2417,6 +2416,8 @@ ASTNodeImporter::VisitTypedefNameDecl(TypedefNameDecl *D, bool IsAlias) {
         QualType FromUT = D->getUnderlyingType();
         QualType FoundUT = FoundTypedef->getUnderlyingType();
         if (Importer.IsStructurallyEquivalent(FromUT, FoundUT)) {
+          if (Importer.isMinimalImport())
+            return Importer.MapImported(D, FoundTypedef);
           // If the "From" context has a complete underlying type but we
           // already have a complete underlying type then return with that.
           if (!FromUT->isIncompleteType() && !FoundUT->isIncompleteType())
@@ -2683,7 +2684,7 @@ ExpectedDecl ASTNodeImporter::VisitEnumDecl(EnumDecl *D) {
 
   // Import the definition
   if (D->isCompleteDefinition())
-    if (Error Err = ImportDefinition(D, D2))
+    if (Error Err = ImportDefinition(D, D2, IDK_Everything))
       return std::move(Err);
 
   return D2;
@@ -2760,8 +2761,8 @@ ExpectedDecl ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
           continue;
 
         if (IsStructuralMatch(D, FoundRecord)) {
-          RecordDecl *FoundDef = FoundRecord->getDefinition();
-          if (D->isThisDeclarationADefinition() && FoundDef) {
+          RecordDecl *FoundDef = nullptr; //FoundRecord->getDefinition();
+          if (false && D->isThisDeclarationADefinition() && FoundDef) {
             // FIXME: Structural equivalence check should check for same
             // user-defined methods.
             Importer.MapImported(D, FoundDef);
@@ -2922,7 +2923,7 @@ ExpectedDecl ASTNodeImporter::VisitRecordDecl(RecordDecl *D) {
     D2->setAnonymousStructOrUnion(true);
 
   if (D->isCompleteDefinition())
-    if (Error Err = ImportDefinition(D, D2, IDK_Default))
+    if (Error Err = ImportDefinition(D, D2, IDK_Everything))
       return std::move(Err);
 
   return D2;
@@ -4847,9 +4848,8 @@ Error ASTNodeImporter::ImportDefinition(
                           diag::note_odr_objc_missing_superclass);
     }
 
-    if (shouldForceImportDeclContext(Kind))
-      if (Error Err = ImportDeclContext(From))
-        return Err;
+    if (Error Err = ImportDeclContext(From))
+      return Err;
     return Error::success();
   }
 
@@ -5710,7 +5710,7 @@ ExpectedDecl ASTNodeImporter::VisitClassTemplateSpecializationDecl(
   D2->setTemplateSpecializationKind(D->getTemplateSpecializationKind());
 
   if (D->isCompleteDefinition())
-    if (Error Err = ImportDefinition(D, D2))
+    if (Error Err = ImportDefinition(D, D2, IDK_Everything))
       return std::move(Err);
 
   return D2;
@@ -9645,6 +9645,11 @@ void ASTImporter::CompleteDecl (Decl *D) {
 
 Decl *ASTImporter::MapImported(Decl *From, Decl *To) {
   llvm::DenseMap<Decl *, Decl *>::iterator Pos = ImportedDecls.find(From);
+  if (!(Pos == ImportedDecls.end() || Pos->second == To)) {
+    From->dumpColor();
+    To->dumpColor();
+    Pos->second->dumpColor();
+  }
   assert((Pos == ImportedDecls.end() || Pos->second == To) &&
       "Try to import an already imported Decl");
   if (Pos != ImportedDecls.end())

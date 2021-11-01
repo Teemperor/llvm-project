@@ -25,13 +25,13 @@ int main(int argc, char **argv) {
 }
 
 // CHECK: TranslationUnitDecl
-// CHECK: |-CXXRecordDecl {{.*}} struct Struct definition
-// CHECK: | |-CXXMethodDecl {{.*}} simple_method 'void (){{.*}}'
-// CHECK: | |-CXXMethodDecl {{.*}} virtual_method 'void (){{.*}}' virtual
-// CHECK: | |-CXXMethodDecl {{.*}} static_method 'void ()' static
-// CHECK: | |-CXXMethodDecl {{.*}} overloaded_method 'int (){{.*}}'
-// CHECK: | |-CXXMethodDecl {{.*}} overloaded_method 'int (char){{.*}}'
-// CHECK: | | `-ParmVarDecl {{.*}} 'char'
-// CHECK: | `-CXXMethodDecl {{.*}} overloaded_method 'int (char, int, ...)'
-// CHECK: |   |-ParmVarDecl {{.*}} 'char'
-// CHECK: |   `-ParmVarDecl {{.*}} 'int'
+// CHECK: `-CXXRecordDecl {{.*}} struct Struct definition
+// CHECK:   |-CXXMethodDecl {{.*}} simple_method 'void (){{.*}}'
+// CHECK:   |-CXXMethodDecl {{.*}} virtual_method 'void (){{.*}}' virtual
+// CHECK:   |-CXXMethodDecl {{.*}} static_method 'void ()' static
+// CHECK:   |-CXXMethodDecl {{.*}} overloaded_method 'int (){{.*}}'
+// CHECK:   |-CXXMethodDecl {{.*}} overloaded_method 'int (char){{.*}}'
+// CHECK:   | `-ParmVarDecl {{.*}} 'char'
+// CHECK:   `-CXXMethodDecl {{.*}} overloaded_method 'int (char, int, ...)'
+// CHECK:     |-ParmVarDecl {{.*}} 'char'
+// CHECK:     `-ParmVarDecl {{.*}} 'int'
