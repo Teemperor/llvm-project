@@ -2213,7 +2213,11 @@ public:
   /// Determine whether this particular declaration is also the
   /// definition.
   bool isThisDeclarationADefinition() const {
-    return getDefinition() == this;
+    // If there is no known definition in the current ASTContext then this
+    // can't be definition.
+    if (!Data.getPointer())
+      return false;
+    return Data.getPointer()->Definition == this;
   }
 
   /// Starts the definition of this Objective-C protocol.
