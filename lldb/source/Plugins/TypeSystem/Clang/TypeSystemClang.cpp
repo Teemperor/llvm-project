@@ -1545,6 +1545,9 @@ ClassTemplateDecl *TypeSystemClang::CreateClassTemplateDecl(
     DeclContext *decl_ctx, OptionalClangModuleID owning_module,
     lldb::AccessType access_type, llvm::StringRef class_name, int kind,
     const TemplateParameterInfos &template_param_infos) {
+  assert(template_param_infos.IsValid() &&
+         "Passed invalid template parameters?");
+
   ASTContext &ast = getASTContext();
 
   ClassTemplateDecl *class_template_decl = nullptr;
@@ -9201,21 +9204,6 @@ void TypeSystemClang::DumpTypeName(const CompilerType &type) {
       break;
     }
   }
-}
-
-clang::ClassTemplateDecl *TypeSystemClang::ParseClassTemplateDecl(
-    clang::DeclContext *decl_ctx, OptionalClangModuleID owning_module,
-    lldb::AccessType access_type, const char *parent_name, int tag_decl_kind,
-    const TypeSystemClang::TemplateParameterInfos &template_param_infos) {
-  if (template_param_infos.IsValid()) {
-    std::string template_basename(parent_name);
-    template_basename.erase(template_basename.find('<'));
-
-    return CreateClassTemplateDecl(decl_ctx, owning_module, access_type,
-                                   template_basename.c_str(), tag_decl_kind,
-                                   template_param_infos);
-  }
-  return nullptr;
 }
 
 void TypeSystemClang::CompleteTagDecl(clang::TagDecl *decl) {

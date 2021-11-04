@@ -987,11 +987,6 @@ public:
   static clang::ObjCInterfaceDecl *
   GetAsObjCInterfaceDecl(const CompilerType &type);
 
-  clang::ClassTemplateDecl *ParseClassTemplateDecl(
-      clang::DeclContext *decl_ctx, OptionalClangModuleID owning_module,
-      lldb::AccessType access_type, const char *parent_name, int tag_decl_kind,
-      const TypeSystemClang::TemplateParameterInfos &template_param_infos);
-
   clang::BlockDecl *CreateBlockDeclaration(clang::DeclContext *ctx,
                                            OptionalClangModuleID owning_module);
 

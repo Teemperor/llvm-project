@@ -1759,24 +1759,19 @@ DWARFASTParserClang::ParseStructureLikeDIE(const SymbolContext &sc,
     metadata.SetUserID(die.GetID());
     metadata.SetIsDynamicCXXType(dwarf->ClassOrStructIsVirtual(die));
 
-    if (attrs.name.GetStringRef().contains('<')) {
+    const llvm::StringRef name = attrs.name.GetStringRef();
+    if (name.contains('<')) {
       TypeSystemClang::TemplateParameterInfos template_param_infos;
       if (ParseTemplateParameterInfos(die, template_param_infos)) {
+        // Only use the part 'template_name' part of 'template_name<parameters>'
+        // for the actual template.
+        llvm::StringRef template_name = name.substr(0, name.find('<'));
         clang::ClassTemplateDecl *class_template_decl =
-            m_ast.ParseClassTemplateDecl(
-                decl_ctx, GetOwningClangModule(die), attrs.accessibility,
-                attrs.name.GetCString(), tag_decl_kind, template_param_infos);
-        if (!class_template_decl) {
-          if (log) {
-            dwarf->GetObjectFile()->GetModule()->LogMessage(
-                log,
-                "SymbolFileDWARF(%p) - 0x%8.8x: %s type \"%s\" "
-                "clang::ClassTemplateDecl failed to return a decl.",
-                static_cast<void *>(this), die.GetOffset(),
-                DW_TAG_value_to_name(tag), attrs.name.GetCString());
-          }
-          return TypeSP();
-        }
+            m_ast.CreateClassTemplateDecl(decl_ctx, GetOwningClangModule(die),
+                                          attrs.accessibility, template_name,
+                                          tag_decl_kind, template_param_infos);
+        assert(class_template_decl &&
+               "CreateClassTemplateDecl unexpectedly failed");
 
         clang::ClassTemplateSpecializationDecl *class_specialization_decl =
             m_ast.CreateClassTemplateSpecializationDecl(
@@ -2096,7 +2091,7 @@ bool DWARFASTParserClang::ParseTemplateParameterInfos(
       break;
     }
   }
-  return template_param_infos.args.size() == template_param_infos.names.size();
+  return template_param_infos.IsValid();
 }
 
 bool DWARFASTParserClang::CompleteRecordType(const DWARFDIE &die,
