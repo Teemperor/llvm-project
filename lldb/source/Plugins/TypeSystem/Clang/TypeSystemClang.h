@@ -346,7 +346,7 @@ public:
   clang::ClassTemplateDecl *
   CreateClassTemplateDecl(clang::DeclContext *decl_ctx,
                           OptionalClangModuleID owning_module,
-                          lldb::AccessType access_type, const char *class_name,
+                          lldb::AccessType access_type, llvm::StringRef class_name,
                           int kind, const TemplateParameterInfos &infos);
 
   clang::TemplateTemplateParmDecl *
