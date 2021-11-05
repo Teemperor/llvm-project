@@ -1206,7 +1206,10 @@ void ClangASTImporter::ASTImporterDelegate::Imported(clang::Decl *from,
     MaybeCompleteReturnType(m_master, to_method);
 }
 
-clang::Decl *
-ClangASTImporter::ASTImporterDelegate::GetOriginalDecl(clang::Decl *To) {
-  return m_master.GetDeclOrigin(To).decl;
+bool ClangASTImporter::ASTImporterDelegate::IsStructuralMatch(clang::Decl *From, clang::Decl *To, bool Complain) {
+  ClangASTMetadata *from_metadata = m_master.GetDeclMetadata(From);
+  ClangASTMetadata *to_metadata = m_master.GetDeclMetadata(To);
+  if (from_metadata || to_metadata)
+    return from_metadata == to_metadata;
+  return ASTImporter::IsStructuralMatch(From, To, Complain);
 }

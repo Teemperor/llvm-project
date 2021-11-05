@@ -2167,18 +2167,7 @@ getStructuralEquivalenceKind(const ASTImporter &Importer) {
 }
 
 bool ASTNodeImporter::IsStructuralMatch(Decl *From, Decl *To, bool Complain) {
-  // Eliminate a potential failure point where we attempt to re-import
-  // something we're trying to import while completing ToRecord.
-  Decl *ToOrigin = Importer.GetOriginalDecl(To);
-  if (ToOrigin) {
-    To = ToOrigin;
-  }
-
-  StructuralEquivalenceContext Ctx(
-      Importer.getFromContext(), Importer.getToContext(),
-      Importer.getNonEquivalentDecls(), getStructuralEquivalenceKind(Importer),
-      false, Complain);
-  return Ctx.IsEquivalent(From, To);
+  return Importer.IsStructuralMatch(From, To, Complain);
 }
 
 ExpectedDecl ASTNodeImporter::VisitDecl(Decl *D) {
@@ -9704,6 +9693,14 @@ Decl *ASTImporter::MapImported(Decl *From, Decl *To) {
   if (To->getDeclContext())
     AddToLookupTable(To);
   return To;
+}
+
+bool ASTImporter::IsStructuralMatch(Decl *From, Decl *To, bool Complain) {
+  StructuralEquivalenceContext Ctx(
+        getFromContext(), getToContext(),
+        getNonEquivalentDecls(), getStructuralEquivalenceKind(*this),
+        false, Complain);
+  return Ctx.IsEquivalent(From, To);
 }
 
 llvm::Optional<ImportError>

@@ -184,15 +184,6 @@ public:
     return D;
   }
 
-  /// Implements the ASTImporter interface for tracking back a declaration
-  /// to its original declaration it came from.
-  Decl *GetOriginalDecl(Decl *To) override {
-    auto It = ToOrigin.find(To);
-    if (It != ToOrigin.end())
-      return It->second;
-    return nullptr;
-  }
-
   /// Whenever a DeclContext is imported, ensure that ExternalASTSource's origin
   /// map is kept up to date.  Also set the appropriate flags.
   void Imported(Decl *From, Decl *To) override {
@@ -402,10 +393,6 @@ ExternalASTMerger::ExternalASTMerger(const ImporterTarget &Target,
 }
 
 Decl *ExternalASTMerger::FindOriginalDecl(Decl *D) {
-  assert(&D->getASTContext() == &Target.AST);
-  for (const auto &I : Importers)
-    if (auto Result = I->GetOriginalDecl(D))
-      return Result;
   return nullptr;
 }
 
