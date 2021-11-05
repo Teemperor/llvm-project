@@ -722,7 +722,13 @@ ClangASTImporter::DeclOrigin
 ClangASTImporter::GetDeclOrigin(const clang::Decl *decl) {
   ASTContextMetadataSP context_md = GetContextMetadata(&decl->getASTContext());
 
-  return context_md->getOrigin(decl);
+  DeclOrigin origin = context_md->getOrigin(decl);
+  if (!origin.Valid())
+    return DeclOrigin();
+  DeclOrigin next_origin = GetDeclOrigin(origin.decl);
+  if (next_origin.Valid())
+    return next_origin;
+  return origin;
 }
 
 void ClangASTImporter::SetDeclOrigin(const clang::Decl *decl,
