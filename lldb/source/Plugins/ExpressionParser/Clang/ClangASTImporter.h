@@ -312,7 +312,7 @@ public:
 
     void Imported(clang::Decl *from, clang::Decl *to) override;
 
-    clang::Decl *GetOriginalDecl(clang::Decl *To) override;
+    bool IsStructuralMatch(clang::Decl *From, clang::Decl *To, bool Complain) override;
 
     void SetImportListener(NewDeclListener *listener) {
       assert(m_new_decl_listener == nullptr && "Already attached a listener?");

@@ -581,13 +581,7 @@ class TypeSourceInfo;
     /// the same decl in the 'to' context.
     Decl *MapImported(Decl *From, Decl *To);
 
-    /// Called by StructuralEquivalenceContext.  If a RecordDecl is
-    /// being compared to another RecordDecl as part of import, completing the
-    /// other RecordDecl may trigger importation of the first RecordDecl. This
-    /// happens especially for anonymous structs.  If the original of the second
-    /// RecordDecl can be found, we can complete it without the need for
-    /// importation, eliminating this loop.
-    virtual Decl *GetOriginalDecl(Decl *To) { return nullptr; }
+    virtual bool IsStructuralMatch(Decl *From, Decl *To, bool Complain);
 
     /// Return if import of the given declaration has failed and if yes
     /// the kind of the problem. This gives the first error encountered with
