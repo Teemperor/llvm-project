@@ -885,6 +885,7 @@ TEST_F(TestTypeSystemClang, AddMethodToObjCObjectType) {
                                           /*IsForwardDecl*/ false,
                                           /*IsInternal*/ false);
   ObjCInterfaceDecl *interface = m_ast->GetAsObjCInterfaceDecl(c);
+  m_ast->StartTagDeclarationDefinition(c);
   m_ast->SetHasExternalStorage(c.GetOpaqueQualType(), true);
   EXPECT_TRUE(interface->hasExternalLexicalStorage());
 
@@ -961,3 +962,96 @@ TEST_F(TestTypeSystemClang, GetExeModuleWhenMissingSymbolFile) {
   EXPECT_EQ(module.get(), nullptr);
 }
 
+TEST_F(TestTypeSystemClang, RedeclareCppClass) {
+  CompilerType c = m_ast->CreateRecordType(
+      m_ast->GetTranslationUnitDecl(), OptionalClangModuleID(),
+      lldb::eAccessPublic, "A", TTK_Class, lldb::eLanguageTypeC_plus_plus);
+  auto *record = llvm::cast<CXXRecordDecl>(ClangUtil::GetAsTagDecl(c));
+
+  m_ast->RedeclTagDecl(c);
+  m_ast->StartTagDeclarationDefinition(c);
+  ASSERT_FALSE(record->isThisDeclarationADefinition());
+  CXXRecordDecl *def = record->getDefinition();
+  ASSERT_TRUE(def);
+  ASSERT_TRUE(def->isBeingDefined());
+  ASSERT_NE(def, record);
+  EXPECT_EQ(def->getPreviousDecl(), record);
+
+  // Add a method.
+  std::vector<CompilerType> args;
+  CompilerType func_type =
+      m_ast->CreateFunctionType(m_ast->GetBasicType(lldb::eBasicTypeInt),
+                                args.data(), args.size(), /*is_variadic=*/false,
+                                /*type_quals=*/0, clang::CallingConv::CC_C);
+  const bool is_virtual = false;
+  const bool is_static = false;
+  const bool is_inline = false;
+  const bool is_explicit = false;
+  const bool is_attr_used = false;
+  const bool is_artificial = false;
+  clang::CXXMethodDecl *method = m_ast->AddMethodToCXXRecordType(
+      c.GetOpaqueQualType(), "A", nullptr, func_type, lldb::eAccessPublic,
+      is_virtual, is_static, is_inline, is_explicit, is_attr_used,
+      is_artificial);
+  // Check that the method was created and is in the definition.
+  ASSERT_NE(method, nullptr);
+  EXPECT_EQ(method->getParent(), def);
+
+  // Add an ivar and check that it was added to the definition.
+  FieldDecl *member_var = m_ast->AddFieldToRecordType(
+      c, "f", m_ast->GetBasicType(lldb::eBasicTypeInt), lldb::eAccessPublic,
+      /*bitfield_bit_size=*/0);
+  ASSERT_TRUE(member_var);
+  EXPECT_EQ(member_var->getParent(), def);
+
+  m_ast->CompleteTagDeclarationDefinition(c);
+  ASSERT_FALSE(record->isThisDeclarationADefinition());
+  ASSERT_TRUE(def->isThisDeclarationADefinition());
+
+  // Make sure forward decl and definition have the same type.
+  ASSERT_EQ(def->getTypeForDecl(), record->getTypeForDecl());
+}
+
+TEST_F(TestTypeSystemClang, RedeclareObjCClass) {
+  CompilerType c = m_ast->CreateObjCClass("A", m_ast->GetTranslationUnitDecl(),
+                                          OptionalClangModuleID(),
+                                          /*isForwardDecl=*/false,
+                                          /*isInternal=*/false);
+  ObjCInterfaceDecl *interface = m_ast->GetAsObjCInterfaceDecl(c);
+  m_ast->RedeclTagDecl(c);
+  m_ast->StartTagDeclarationDefinition(c);
+  ObjCInterfaceDecl *def = interface->getDefinition();
+  ASSERT_TRUE(def);
+  ASSERT_NE(def, interface);
+  EXPECT_EQ(def->getPreviousDecl(), interface);
+
+  // Add a method.
+  std::vector<CompilerType> args;
+  CompilerType func_type =
+      m_ast->CreateFunctionType(m_ast->GetBasicType(lldb::eBasicTypeInt),
+                                args.data(), args.size(), /*is_variadic=*/false,
+                                /*type_quals=*/0, clang::CallingConv::CC_C);
+  const bool variadic = false;
+  const bool artificial = false;
+  const bool objc_direct = false;
+  clang::ObjCMethodDecl *method = TypeSystemClang::AddMethodToObjCObjectType(
+      c, "-[A foo]", func_type, lldb::eAccessPublic, artificial, variadic,
+      objc_direct);
+  // Check that the method was created and is in the definition.
+  ASSERT_NE(method, nullptr);
+  EXPECT_EQ(*def->meth_begin(), method);
+
+  // Add an ivar and check that it was added to the definition.
+  FieldDecl *ivar = m_ast->AddFieldToRecordType(
+      c, "f", m_ast->GetBasicType(lldb::eBasicTypeInt), lldb::eAccessPublic,
+      /*bitfield_bit_size=*/0);
+  ASSERT_TRUE(ivar);
+  EXPECT_EQ(*def->ivar_begin(), ivar);
+
+  m_ast->CompleteTagDeclarationDefinition(c);
+  ASSERT_FALSE(interface->isThisDeclarationADefinition());
+  ASSERT_TRUE(def->isThisDeclarationADefinition());
+
+  // Make sure forward decl and definition have the same type.
+  EXPECT_EQ(def->getTypeForDecl(), interface->getTypeForDecl());
+}
