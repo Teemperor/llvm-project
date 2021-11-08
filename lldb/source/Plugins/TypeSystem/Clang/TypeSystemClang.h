@@ -243,7 +243,7 @@ public:
 
   CompilerType GetTypeForDecl(clang::TagDecl *decl);
 
-  CompilerType GetTypeForDecl(clang::ObjCInterfaceDecl *objc_decl);
+  CompilerType GetTypeForDecl(const clang::ObjCInterfaceDecl *objc_decl);
 
   template <typename RecordDeclType>
   CompilerType
@@ -313,10 +313,34 @@ public:
                                 llvm::StringRef name, int kind,
                                 lldb::LanguageType language,
                                 ClangASTMetadata *metadata = nullptr,
-                                bool exports_symbols = false);
+                                bool exports_symbols = false) {
+    clang::NamedDecl *d =
+        CreateRecordDecl(decl_ctx, owning_module, access_type, name, kind,
+                         language, metadata, exports_symbols);
+    return GetTypeForDecl(d);
+  }
+
+  clang::NamedDecl *CreateRecordDecl(clang::DeclContext *decl_ctx,
+                                     OptionalClangModuleID owning_module,
+                                     lldb::AccessType access_type,
+                                     llvm::StringRef name, int kind,
+                                     lldb::LanguageType language,
+                                     ClangASTMetadata *metadata = nullptr,
+                                     bool exports_symbols = false);
 
   class TemplateParameterInfos {
   public:
+    TemplateParameterInfos() = default;
+    TemplateParameterInfos(const TemplateParameterInfos &o) { *this = o; }
+    TemplateParameterInfos &operator=(const TemplateParameterInfos &o) {
+      names = o.names;
+      args = o.args;
+      pack_name = o.pack_name;
+      if (o.packed_args)
+        packed_args = std::make_unique<TemplateParameterInfos>(*o.packed_args);
+      return *this;
+    }
+
     bool IsValid() const {
       // Having a pack name but no packed args doesn't make sense, so mark
       // these template parameters as invalid.
@@ -330,8 +354,8 @@ public:
 
     llvm::SmallVector<const char *, 2> names;
     llvm::SmallVector<clang::TemplateArgument, 2> args;
-    
-    const char * pack_name = nullptr;
+
+    llvm::Optional<std::string> pack_name;
     std::unique_ptr<TemplateParameterInfos> packed_args;
   };
 
@@ -375,7 +399,16 @@ public:
                                clang::DeclContext *decl_ctx,
                                OptionalClangModuleID owning_module,
                                bool isForwardDecl, bool isInternal,
-                               ClangASTMetadata *metadata = nullptr);
+                               ClangASTMetadata *metadata = nullptr) {
+    clang::ObjCInterfaceDecl *d = CreateObjCDecl(
+        name, decl_ctx, owning_module, isForwardDecl, isInternal, metadata);
+    return GetTypeForDecl(d);
+  }
+
+  clang::ObjCInterfaceDecl *
+  CreateObjCDecl(llvm::StringRef name, clang::DeclContext *decl_ctx,
+                 OptionalClangModuleID owning_module, bool isForwardDecl,
+                 bool isInternal, ClangASTMetadata *metadata = nullptr);
 
   // Returns a mask containing bits from the TypeSystemClang::eTypeXXX
   // enumerations
@@ -416,12 +449,23 @@ public:
                                size_t element_count, bool is_vector);
 
   // Enumeration Types
+  clang::EnumDecl *CreateEnumerationDecl(llvm::StringRef name,
+                                         clang::DeclContext *decl_ctx,
+                                         OptionalClangModuleID owning_module,
+                                         const Declaration &decl,
+                                         const CompilerType &integer_qual_type,
+                                         bool is_scoped);
+
   CompilerType CreateEnumerationType(llvm::StringRef name,
                                      clang::DeclContext *decl_ctx,
                                      OptionalClangModuleID owning_module,
                                      const Declaration &decl,
                                      const CompilerType &integer_qual_type,
-                                     bool is_scoped);
+                                     bool is_scoped) {
+    clang::EnumDecl *enum_decl = CreateEnumerationDecl(
+        name, decl_ctx, owning_module, decl, integer_qual_type, is_scoped);
+    return GetType(getASTContext().getTagDeclType(enum_decl));
+  }
 
   // Integer type functions
 
@@ -442,6 +486,15 @@ public:
   void CompleteTagDecl(clang::TagDecl *);
 
   void CompleteObjCInterfaceDecl(clang::ObjCInterfaceDecl *);
+
+  /// Creates a redeclaration for the declaration specified by the given type.
+  /// The redeclaration will be at the end of the redeclaration chain. The
+  /// passed declaration has to be created via a TypeSystemClang interface.
+  ///
+  /// \param type The type which declaration should be redeclared. Has to be
+  /// an Objective-C interface type (or Objective-C type), RecordType or
+  /// EnumType.
+  void CreateRedeclaration(CompilerType ct);
 
   bool LayoutRecordType(
       const clang::RecordDecl *record_decl, uint64_t &size, uint64_t &alignment,
@@ -1079,6 +1132,18 @@ private:
   typedef llvm::DenseMap<const clang::Type *, ClangASTMetadata> TypeMetadataMap;
   /// Maps Types to their associated ClangASTMetadata.
   TypeMetadataMap m_type_metadata;
+
+  /// The information we need to redeclare a class template but that we can't
+  /// gather from the forward declaration.
+  struct ClassTemplateRedeclInfo {
+    TemplateParameterInfos m_template_args;
+  };
+  typedef llvm::DenseMap<const clang::Decl *, ClassTemplateRedeclInfo>
+      ClassTemplateRedeclInfoMap;
+  // FIXME: This is in theory redundant. Instead we should change the way we
+  // create ClassTemplateSpecializationDecls in TypeSystemClang so that we can
+  // just pass the data from the forward declaration.
+  ClassTemplateRedeclInfoMap m_class_template_redecl_infos;
 
   /// The sema associated that is currently used to build this ASTContext.
   /// May be null if we are already done parsing this ASTContext or the
