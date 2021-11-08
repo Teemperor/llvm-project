@@ -1608,6 +1608,9 @@ ClassTemplateDecl *TypeSystemClang::CreateClassTemplateDecl(
   class_template_decl->init(template_cxx_decl, template_param_list);
   template_cxx_decl->setDescribedClassTemplate(class_template_decl);
   SetOwningModule(class_template_decl, owning_module);
+  ast.getInjectedClassNameType(
+      template_cxx_decl,
+      class_template_decl->getInjectedClassNameSpecialization());
 
   if (access_type != eAccessNone)
     class_template_decl->setAccess(
@@ -1841,6 +1844,14 @@ TypeSystemClang::GetNumBaseClasses(const CXXRecordDecl *cxx_record_decl,
       num_bases = cxx_record_decl->getNumBases();
   }
   return num_bases;
+}
+
+void TypeSystemClang::BumpGenerationCounter() {
+  auto *source = getASTContext().getExternalSource();
+  assert(source && "No ExternalASTSource for TypeSystemClang AST?");
+  auto *importer_source = llvm::cast<ImporterBackedASTSource>(source);
+  assert(source && "Bumping source that is not a ImporterBackedASTSource?");
+  importer_source->BumpGenerationCounter(getASTContext());
 }
 
 #pragma mark Namespace Declarations
@@ -8006,6 +8017,7 @@ clang::ObjCMethodDecl *TypeSystemClang::AddMethodToObjCObjectType(
 
   if (class_interface_decl == nullptr)
     return nullptr;
+
   TypeSystemClang *lldb_ast =
       llvm::dyn_cast<TypeSystemClang>(type.GetTypeSystem());
   if (lldb_ast == nullptr)

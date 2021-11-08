@@ -49,6 +49,7 @@ class ModuleMap;
 
 namespace lldb_private {
 
+class ClangExternalASTSourceCallbacks;
 class ClangASTMetadata;
 class ClangASTSource;
 class Declaration;
@@ -233,9 +234,6 @@ public:
   CompilerType GetType(clang::QualType qt) {
     if (qt.getTypePtrOrNull() == nullptr)
       return CompilerType();
-    // Check that the type actually belongs to this TypeSystemClang.
-    assert(qt->getAsTagDecl() == nullptr ||
-           &qt->getAsTagDecl()->getASTContext() == &getASTContext());
     return CompilerType(this, qt.getAsOpaquePtr());
   }
 
@@ -300,6 +298,8 @@ public:
 
   static uint32_t GetNumBaseClasses(const clang::CXXRecordDecl *cxx_record_decl,
                                     bool omit_empty_base_classes);
+
+  void BumpGenerationCounter();
 
   /// Synthesize a clang::Module and return its ID or a default-constructed ID.
   OptionalClangModuleID GetOrCreateClangModule(llvm::StringRef name,
