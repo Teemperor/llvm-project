@@ -146,6 +146,7 @@ struct Configuration {
   std::vector<llvm::StringRef> undefined;
   std::vector<SymbolVersion> dynamicList;
   std::vector<uint8_t> buildIdVector;
+  std::vector<llvm::StringRef> passPlugins;
   llvm::MapVector<std::pair<const InputSectionBase *, const InputSectionBase *>,
                   uint64_t>
       callGraphProfile;
