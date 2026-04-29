@@ -13,10 +13,7 @@ class STLTestCase(TestBase):
     @expectedFailureAll(bugnumber="llvm.org/PR36713")
     def test(self):
         """Test some expressions involving STL data types."""
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// Set break point at this line", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
 
         # Now try some expressions....
 

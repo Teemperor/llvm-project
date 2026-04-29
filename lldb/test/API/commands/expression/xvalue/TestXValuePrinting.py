@@ -7,8 +7,5 @@ from lldbsuite.test import lldbutil
 class ExprXValuePrintingTestCase(TestBase):
     def test(self):
         """Printing an xvalue should work."""
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// Break here", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
         self.expect_expr("foo().data", result_value="1234")

@@ -10,10 +10,7 @@ class TestCase(TestBase):
         Test debugging a binary that has two templates with the same name
         but different template parameters.
         """
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
 
         # Try using both templates in the same expression. This shouldn't crash.
         self.expect_expr("Template1.x + Template2.x", result_type="int")

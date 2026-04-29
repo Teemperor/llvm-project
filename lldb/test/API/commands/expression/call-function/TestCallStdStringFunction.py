@@ -15,10 +15,7 @@ class ExprCommandCallFunctionTestCase(TestBase):
     @skipIf(compiler="clang", compiler_version=["<", "9.0"])
     def test_with(self):
         """Test calling std::String member function."""
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
 
         self.expect("expression str", substrs=["Hello world"])
 

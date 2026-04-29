@@ -8,10 +8,7 @@ class TestSBValueSynthetic(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
     def test_str(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "break here", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
         self.runCmd("command script import formatter.py")
         self.runCmd(
             "type synthetic add --python-class formatter.FooSyntheticProvider Foo"
@@ -23,10 +20,7 @@ class TestSBValueSynthetic(TestBase):
         self.expect(str(has_formatted), exe=False, substrs=["synth_child"])
 
     def test_synth_arr(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "break here", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
         point_arr = self.frame().FindVariable("point_arr")
         point_ptr = self.frame().FindVariable("point_ptr")
         for v in [point_arr, point_ptr]:

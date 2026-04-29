@@ -10,10 +10,7 @@ class TestCase(TestBase):
     @skipUnlessDarwin
     @no_debug_info_test
     def test(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.m")
-        )
+        self.build_and_run()
 
         # A class that is only forward declared is not complete.
         incomplete = self.expect_expr("incomplete", result_type="IncompleteClass *")

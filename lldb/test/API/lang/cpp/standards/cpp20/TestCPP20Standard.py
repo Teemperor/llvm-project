@@ -11,8 +11,7 @@ class TestCPP20Standard(TestBase):
         """
         Tests that we can evaluate an expression in C++20 mode
         """
-        self.build()
-        lldbutil.run_to_source_breakpoint(self, "Foo{}", lldb.SBFileSpec("main.cpp"))
+        self.build_and_run()
 
         self.expect(
             "expr -l c++11 -- Foo{} <=> Foo{}",

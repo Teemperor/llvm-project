@@ -41,10 +41,7 @@ class TestBitfieldIvars(TestBase):
     # issue, so it must be skipped for now.
     @skip
     def testExprWholeObject(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.m")
-        )
+        self.build_and_run()
 
         ## FIXME expression with individual bit-fields obtains correct values but not with the whole object
         self.expect(

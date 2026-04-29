@@ -9,10 +9,7 @@ from lldbsuite.test import lldbutil
 
 class TemplateSpecializationTypeTestCase(TestBase):
     def test_template_specialization_cast_children(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.cpp", False)
-        )
+        self.build_and_run()
 
         v = self.frame().EvaluateExpression("t")
         self.assertEqual(2, v.GetNumChildren())

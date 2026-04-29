@@ -9,10 +9,7 @@ class TestCase(TestBase):
     @skipIfWindows
     @no_debug_info_test
     def test(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.c")
-        )
+        self.build_and_run()
 
         # Test several variables with C++ keyword names and make sure they
         # work as intended in the expression parser.

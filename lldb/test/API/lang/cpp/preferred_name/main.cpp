@@ -22,5 +22,5 @@ int main() {
   Foo<short> varShort;
   Foo<char> varChar;
   Foo<Foo<int>> varFooInt;
-  return 0;
+  return 0; // break here
 }

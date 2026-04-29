@@ -12,10 +12,7 @@ class ObjCModulesAutoImportTestCase(TestBase):
     @skipIf(macos_version=["<", "10.12"])
     @skipIf(compiler="clang", compiler_version=["<", "19.0"])
     def test_expr(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.m", False)
-        )
+        self.build_and_run()
 
         self.runCmd("settings set target.auto-import-clang-modules true")
         self.expect_expr("getpid()", result_type="pid_t")

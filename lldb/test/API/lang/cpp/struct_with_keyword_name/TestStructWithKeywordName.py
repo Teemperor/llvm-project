@@ -7,10 +7,7 @@ from lldbsuite.test import lldbutil
 class TestCase(TestBase):
     @no_debug_info_test
     def test(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.c")
-        )
+        self.build_and_run()
 
         # First run this in C which should work.
         self.expect_expr("constexpr.class", result_type="int", result_value="3")

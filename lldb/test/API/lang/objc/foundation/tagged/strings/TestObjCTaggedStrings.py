@@ -7,6 +7,5 @@ from lldbsuite.test import lldbutil
 class TestCase(TestBase):
     def test(self):
         """Verify summary formatter for tagged strings."""
-        self.build()
-        lldbutil.run_to_source_breakpoint(self, "break here", lldb.SBFileSpec("main.m"))
+        self.build_and_run()
         self.expect("v str1 str2", patterns=['@"nineDigit"', '@"tenDigitXX"'])

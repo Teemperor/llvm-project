@@ -31,5 +31,5 @@ int main() {
   b2.d = 2;
   b3.c = 5;
   b3.d = 6;
-  return 0;
+  return 0; // break here
 }

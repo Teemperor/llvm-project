@@ -16,13 +16,11 @@ class TestIvarInFrameworkBase(TestBase):
     """
 
     def test_frame_var(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(self, "break here", lldb.SBFileSpec("main.m"))
+        self.build_and_run()
         self.expect("frame variable *bar", substrs=["_fooProp = 10", "_barProp = 15"])
 
     def test_expr(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(self, "break here", lldb.SBFileSpec("main.m"))
+        self.build_and_run()
         self.expect_expr(
             "*bar",
             result_type="Bar",

@@ -6,5 +6,5 @@ int main(int argc, const char *argv[]) {
   data.section.size.col = 4;
   data.stride = 5;
 
-  return data.section.size.row;
+  return data.section.size.row; // break here
 }

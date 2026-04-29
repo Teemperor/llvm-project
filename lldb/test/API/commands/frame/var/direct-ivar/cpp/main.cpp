@@ -1,7 +1,7 @@
 struct Structure {
   int m_field;
   void fun() {
-    // check this
+    // break here
   }
 };
 

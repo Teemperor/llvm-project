@@ -12,8 +12,7 @@ from lldbsuite.test.decorators import *
 class TestPreferredName(TestBase):
     @skipIf(compiler="clang", compiler_version=["<", "16.0"])
     def test_frame_var(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(self, "return", lldb.SBFileSpec("main.cpp"))
+        self.build_and_run()
 
         self.expect("frame variable barInt", substrs=["BarInt"])
         self.expect("frame variable barDouble", substrs=["BarDouble"])
@@ -28,8 +27,7 @@ class TestPreferredName(TestBase):
 
     @skipIf(compiler="clang", compiler_version=["<", "16.0"])
     def test_expr(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(self, "return", lldb.SBFileSpec("main.cpp"))
+        self.build_and_run()
 
         self.expect_expr("barInt", result_type="BarInt")
         self.expect_expr("barDouble", result_type="BarDouble")

@@ -12,10 +12,7 @@ import lldbsuite.test.lldbutil as lldbutil
 class UnsignedTypesTestCase(TestBase):
     def test(self):
         """Test that variables with unsigned types display correctly."""
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// Set break point at this line", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
 
         # Test that unsigned types display correctly.
         self.expect(

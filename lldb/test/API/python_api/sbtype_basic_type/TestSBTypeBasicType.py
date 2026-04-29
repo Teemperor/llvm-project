@@ -7,8 +7,7 @@ from lldbsuite.test import lldbutil
 class TestCase(TestBase):
     def test(self):
         """Test that SBType.GetBasicType unwraps typedefs."""
-        self.build()
-        lldbutil.run_to_source_breakpoint(self, "return", lldb.SBFileSpec("main.cpp"))
+        self.build_and_run()
 
         a = self.frame().FindVariable("a")
         self.assertTrue(a)

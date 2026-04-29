@@ -11,8 +11,7 @@ from lldbsuite.test import lldbutil
 class TestCase(TestBase):
     def setUp(self):
         TestBase.setUp(self)
-        self.build()
-        lldbutil.run_to_source_breakpoint(self, "break here", lldb.SBFileSpec("main.m"))
+        self.build_and_run()
 
     @skipUnlessDarwin
     def test_po_does_not_print_persistent_result(self):

@@ -39,5 +39,5 @@ int main()
     B myB;
     C myC;
 
-    printf("%d\n", CallStaticA() + CallStaticB()); // breakpoint
+    printf("%d\n", CallStaticA() + CallStaticB()); // break here
 }

@@ -16,11 +16,6 @@ from lldbsuite.test import lldbutil
 
 
 class TestCase(TestBase):
-    def common_setup(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.cpp")
-        )
 
     def do_pass(self, kind, var, expected_type, expected_children):
         if kind == "expression":
@@ -87,7 +82,7 @@ class TestCase(TestBase):
         First variable paths pull in a declaration directly. Then the expression
         evaluator pulls the declaration in indirectly.
         """
-        self.common_setup()
+        self.build_and_run()()
         self.first_pass = "path"
         self.second_pass = "expression"
         self.do_tests()
@@ -98,7 +93,7 @@ class TestCase(TestBase):
         The expression evaluator pulls in the declaration indirectly and then
         repeat that process.
         """
-        self.common_setup()
+        self.build_and_run()
         self.first_pass = "expression"
         self.second_pass = "expression"
         self.do_tests()
@@ -109,7 +104,7 @@ class TestCase(TestBase):
         The expression evaluator pulls in the declaration indirectly and then
         variable paths pull it in directly.
         """
-        self.common_setup()
+        self.build_and_run()
         self.first_pass = "expression"
         self.second_pass = "path"
         self.do_tests()
@@ -120,7 +115,7 @@ class TestCase(TestBase):
         Variable paths pulls in the declaration indirectly and then repeat that
         process.
         """
-        self.common_setup()
+        self.build_and_run()
         self.first_pass = "path"
         self.second_pass = "path"
         self.do_tests()

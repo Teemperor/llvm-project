@@ -15,10 +15,7 @@ class TestCaseCharStarDynType(TestBase):
 
     def test_charstar_dyntype(self):
         """Test that we do not attempt to make a dynamic type for a 'const char*'"""
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// Set breakpoint here.", lldb.SBFileSpec("main.m")
-        )
+        self.build_and_run()
 
         # check that we correctly see the const char*, even with dynamic types
         # on

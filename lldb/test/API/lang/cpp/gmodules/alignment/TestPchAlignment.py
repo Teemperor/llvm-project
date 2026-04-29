@@ -17,10 +17,7 @@ class TestPchAlignment(TestBase):
 
     @add_test_categories(["gmodules"])
     def test_expr(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "return data", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
 
         self.expect(
             "frame variable data",
@@ -29,10 +26,7 @@ class TestPchAlignment(TestBase):
 
     @add_test_categories(["gmodules"])
     def test_frame_var(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "return data", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
 
         self.expect_expr(
             "data",

@@ -11,10 +11,7 @@ class TemplateFunctionsTestCase(TestBase):
     SHARED_BUILD_TESTCASE = False
 
     def do_test_template_function(self, add_cast):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.cpp", False)
-        )
+        self.build_and_run()
 
         if add_cast:
             self.expect_expr("(int) foo(42)", result_type="int", result_value="42")

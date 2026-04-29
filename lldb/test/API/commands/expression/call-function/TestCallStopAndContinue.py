@@ -15,10 +15,7 @@ class ExprCommandCallStopContinueTestCase(TestBase):
 
     def test(self):
         """Test gathering result from interrupted function call."""
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
 
         lldbutil.run_break_set_by_file_and_line(
             self,

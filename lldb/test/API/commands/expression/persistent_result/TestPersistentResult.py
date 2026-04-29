@@ -11,8 +11,7 @@ from lldbsuite.test import lldbutil
 class TestCase(TestBase):
     def setUp(self):
         TestBase.setUp(self)
-        self.build()
-        lldbutil.run_to_source_breakpoint(self, "break here", lldb.SBFileSpec("main.c"))
+        self.build_and_run()
 
     def test_enable_persistent_result(self):
         """Test explicitly enabling result variables persistence."""

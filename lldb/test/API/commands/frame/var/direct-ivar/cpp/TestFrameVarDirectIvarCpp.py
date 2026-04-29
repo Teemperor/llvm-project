@@ -6,8 +6,5 @@ from lldbsuite.test import lldbutil
 
 class TestCase(TestBase):
     def test_cpp_this(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// check this", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
         self.expect("frame variable m_field", startstr="(int) m_field = 30")

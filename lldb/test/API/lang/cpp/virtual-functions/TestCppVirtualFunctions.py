@@ -5,19 +5,14 @@ from lldbsuite.test import lldbutil
 
 
 class TestCase(TestBase):
-    def common_setup(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.cpp")
-        )
 
     def test_call_on_base(self):
-        self.common_setup()
+        self.build_and_run()
         self.expect_expr("base_with_dtor.foo()", result_type="int", result_value="1")
         self.expect_expr("base_without_dtor.foo()", result_type="int", result_value="2")
 
     def test_call_on_derived(self):
-        self.common_setup()
+        self.build_and_run()
         self.expect_expr("derived_with_dtor.foo()", result_type="int", result_value="3")
         self.expect_expr(
             "derived_without_dtor.foo()", result_type="int", result_value="4"
@@ -32,7 +27,7 @@ class TestCase(TestBase):
         )
 
     def test_call_on_derived_as_base(self):
-        self.common_setup()
+        self.build_and_run()
         self.expect_expr(
             "derived_with_dtor_as_base.foo()", result_type="int", result_value="3"
         )
@@ -49,7 +44,7 @@ class TestCase(TestBase):
         )
 
     def test_call_overloaded(self):
-        self.common_setup()
+        self.build_and_run()
         self.expect(
             "expr derived_with_overload.foo()",
             error=True,

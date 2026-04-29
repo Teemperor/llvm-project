@@ -11,10 +11,7 @@ from lldbsuite.test import lldbutil
 
 class NoUniqueAddressTestCase(TestBase):
     def test(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "return 0", lldb.SBFileSpec("main.cpp", False)
-        )
+        self.build_and_run()
 
         # Qualified/unqualified lookup to templates in namespace
         self.expect_expr(

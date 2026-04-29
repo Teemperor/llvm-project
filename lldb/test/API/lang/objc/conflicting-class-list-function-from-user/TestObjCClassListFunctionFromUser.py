@@ -15,10 +15,7 @@ class TestCase(TestBase):
         objc_copyRealizedClassList_nolock function.
         """
 
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.m")
-        )
+        self.build_and_run()
 
         # Get the (dynamic) type of our 'id' variable so that our Objective-C
         # runtime information is updated.

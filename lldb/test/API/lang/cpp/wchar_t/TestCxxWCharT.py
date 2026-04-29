@@ -12,10 +12,7 @@ import lldbsuite.test.lldbutil as lldbutil
 class CxxWCharTTestCase(TestBase):
     def test(self):
         """Test that C++ supports wchar_t correctly."""
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
 
         # Check that we correctly report templates on wchar_t
         self.expect_var_path("foo_y", type="Foo<wchar_t>")

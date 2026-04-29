@@ -6,10 +6,7 @@ from lldbsuite.test import lldbutil
 
 class TestCase(TestBase):
     def test(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
 
         # Member access
         self.expect_expr("C.Base1::m_base", result_type="int", result_value="11")

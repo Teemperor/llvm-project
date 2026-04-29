@@ -10,11 +10,7 @@ from lldbsuite.test.lldbtest import *
 class PersistentVariablesTestCase(TestBase):
     def test_persistent_variables(self):
         """Test that lldb persistent variables works correctly."""
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.c")
-        )
-
+        self.build_and_run()
         self.runCmd("expr int $i = i")
         self.expect_expr("$i == i", result_type="bool", result_value="true")
         self.expect_expr("$i + 1", result_type="int", result_value="6")

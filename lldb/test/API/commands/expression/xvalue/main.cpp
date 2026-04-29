@@ -8,5 +8,5 @@ Tmp foo() { return Tmp(); }
 int main(int argc, char const *argv[])
 {
   int something = foo().data;
-  return 0; // Break here
+  return 0; // break here
 }

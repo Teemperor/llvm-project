@@ -16,10 +16,7 @@ from lldbsuite.test import lldbutil
 class ExprCommandCallUserDefinedFunction(TestBase):
     def test(self):
         """Test return values of user defined function calls."""
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
 
         # Test recursive function call.
         self.expect_expr("fib(5)", result_type="unsigned int", result_value="5")

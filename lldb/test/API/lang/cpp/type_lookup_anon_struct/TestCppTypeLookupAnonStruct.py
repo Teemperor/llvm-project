@@ -10,10 +10,7 @@ from lldbsuite.test import decorators
 
 class TestTypeLookupAnonStruct(TestBase):
     def test_lookup_anon_struct(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// Set breakpoint here", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
 
         self.expect_var_path("unnamed_derived.y", value="2")
         self.expect_var_path("unnamed_derived.z", value="13")

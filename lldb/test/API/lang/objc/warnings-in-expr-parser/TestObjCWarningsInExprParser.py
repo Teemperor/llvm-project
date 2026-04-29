@@ -12,10 +12,7 @@ class TestCase(TestBase):
     @skipUnlessDarwin
     @no_debug_info_test
     def test(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.m")
-        )
+        self.build_and_run()
 
         # Don't warn about not using the result of getters. This is perfectly
         # fine in the expression parser and LLDB shouldn't warn the user about that.

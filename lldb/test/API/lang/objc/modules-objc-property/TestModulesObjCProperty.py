@@ -9,10 +9,7 @@ class TestCase(TestBase):
     @skipIf(compiler="clang", compiler_version=["<", "19.0"])
     def test_conflicting_properties(self):
         """Tests receiving two properties with the same name from modules."""
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// Set breakpoint here.", lldb.SBFileSpec("main.m")
-        )
+        self.build_and_run()
 
         self.runCmd(
             'settings set target.clang-module-search-paths "'

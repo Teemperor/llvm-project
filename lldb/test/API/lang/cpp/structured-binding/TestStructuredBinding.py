@@ -8,10 +8,7 @@ class TestStructuredBinding(TestBase):
     @skipIf(oslist=["linux"], archs=["arm$"])
     @skipIf(compiler="clang", compiler_version=["<", "14.0"])
     def test(self):
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
 
         self.expect_expr(
             "a1",

@@ -11,10 +11,7 @@ from lldbsuite.test.lldbtest import *
 class UniqueTypesTestCase(TestBase):
     def test(self):
         """Test for unique types of std::vector<long> and std::vector<short>."""
-        self.build()
-        lldbutil.run_to_source_breakpoint(
-            self, "// Set breakpoint here", lldb.SBFileSpec("main.cpp")
-        )
+        self.build_and_run()
 
         # Do a "frame variable --show-types longs" and verify "long" is in each
         # line of output.
