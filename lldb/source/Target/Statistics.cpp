@@ -38,6 +38,13 @@ json::Value StatsSuccessFail::ToJSON() const {
   return json::Object{{"successes", successes}, {"failures", failures}};
 }
 
+json::Value ValueInspectionStats::ToJSON() const {
+  return json::Object{
+                      {"successes", success_fails.successes},
+                      {"failures", success_fails.failures}
+  };
+}
+
 static double elapsed(const StatsTimepoint &start, const StatsTimepoint &end) {
   StatsDuration::Duration elapsed =
       end.time_since_epoch() - start.time_since_epoch();

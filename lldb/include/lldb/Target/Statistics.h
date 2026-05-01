@@ -120,6 +120,52 @@ struct StatsSuccessFail {
   uint32_t failures = 0;
 };
 
+struct ValueInspectionKind {
+  enum class Kind : uint8_t {
+    Expression,
+    DWIMPrint,
+    ExpressionPath,
+  };
+
+  ValueInspectionKind(Kind kind, lldb::LanguageType language, bool use_object_description = false)
+      : language(language), kind(kind), use_object_description(use_object_description){
+  }
+
+  lldb::LanguageType language = lldb::eLanguageTypeUnknown;
+  Kind kind = Kind::Expression;
+  bool use_object_description = false;
+
+  bool operator<(const ValueInspectionKind &rhs) const {
+    return std::tie(language, kind, use_object_description) <
+           std::tie(rhs.language, rhs.kind, rhs.use_object_description);
+  }
+};
+
+/// A class to count statistics about functionality that is used
+/// to inspect program values such as expression evaluation,
+/// frame var and dwim-print.
+struct ValueInspectionStats {
+  explicit ValueInspectionStats(const ValueInspectionKind &kind) : kind(kind) {}
+
+  void NotifySuccess() { success_fails.NotifySuccess(); }
+  void NotifyFailure() { success_fails.NotifyFailure(); }
+
+  llvm::json::Value ToJSON() const;
+
+  ValueInspectionKind kind;
+
+  StatsSuccessFail success_fails;
+  /// Total time spent running expressions.
+  StatsDuration total_duration;
+  /// Time spent running expressions excluding execution time of the
+  /// code execution.
+  StatsDuration non_exec_duration;
+
+  bool operator<(const ValueInspectionStats &rhs) const {
+    return kind < rhs.kind;
+  }
+};
+
 /// Holds statistics about DWO (Debug With Object) files.
 struct DWOStats {
   uint32_t loaded_dwo_file_count = 0;
@@ -320,7 +366,15 @@ public:
 
   StatsDuration &GetCreateTime() { return m_create_time; }
   StatsDuration &GetLoadCoreTime() { return m_load_core_time; }
-  StatsSuccessFail &GetExpressionStats() { return m_expr_eval; }
+  ValueInspectionStats &GetValueInspectionStats(const ValueInspectionKind &kind
+                                       ) {
+    auto iter = llvm::find(m_value_inspection_stats, kind);
+    if (iter == m_value_inspection_stats.end()) {
+      m_value_inspection_stats.emplace_back(kind);
+      llvm::sort(m_value_inspection_stats);
+    }
+    return *llvm::find(m_value_inspection_stats, kind);
+  }
   StatsSuccessFail &GetFrameVariableStats() { return m_frame_var; }
   void Reset(Target &target);
 
@@ -330,6 +384,7 @@ protected:
   std::optional<StatsTimepoint> m_launch_or_attach_time;
   std::optional<StatsTimepoint> m_first_private_stop_time;
   std::optional<StatsTimepoint> m_first_public_stop_time;
+  std::vector<ValueInspectionStats> m_value_inspection_stats;
   StatsSuccessFail m_expr_eval;
   StatsSuccessFail m_frame_var;
   std::vector<intptr_t> m_module_identifiers;
