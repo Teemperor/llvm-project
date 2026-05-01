@@ -512,7 +512,16 @@ class DebugCommunication(object):
             env_dict = os.environ | arguments.get("env", {})
             env = [f"{k}={v}" for k, v in env_dict.items()]
             self.reverse_process = self.spawn_helper(
-                exe, args, env, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                exe, args, env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                # This works around a bug in the macOS job control code where
+                # a supurious SIGHUP is sent to the the process group of our
+                # spawned subprocess when it is shutting down.
+                # While this SIGHUP doesn't cause any issues for our subprocess,
+                # it does reach the LIT process and stops the test suite run
+                # early.
+                # This parameter forces the spawned process into a new process
+                # group which prevents the supurious SIGHUP from reaching LIT.
+                start_new_session=True
             )
             body = {"processId": self.reverse_process.pid}
             self.send_packet(
