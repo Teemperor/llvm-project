@@ -134,6 +134,10 @@ public:
 
   std::chrono::seconds GetPacketTimeout() const { return m_packet_timeout; }
 
+  void SetPacketTestDelay(std::chrono::milliseconds delay) {
+    m_packet_test_delay = delay;
+  }
+
   // Start a debugserver instance on the current host using the
   // supplied connection URL.
   static Status
@@ -148,6 +152,7 @@ public:
 
 protected:
   std::chrono::seconds m_packet_timeout;
+  std::chrono::milliseconds m_packet_test_delay{0};
   uint32_t m_echo_number;
   LazyBool m_supports_qEcho;
   GDBRemoteCommunicationHistory m_history;

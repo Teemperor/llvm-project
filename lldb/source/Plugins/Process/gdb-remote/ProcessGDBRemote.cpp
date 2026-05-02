@@ -177,6 +177,12 @@ public:
     const uint32_t idx = ePropertyUseGPacketForReading;
     return GetPropertyAtIndexAs<bool>(idx, true);
   }
+
+  uint64_t GetPacketTestDelay() const {
+    const uint32_t idx = ePropertyPacketTestDelay;
+    return GetPropertyAtIndexAs<uint64_t>(
+        idx, g_processgdbremote_properties[idx].default_uint_value);
+  }
 };
 
 std::chrono::seconds ResumeTimeout() { return std::chrono::seconds(5); }
@@ -463,7 +469,7 @@ void ProcessGDBRemote::BuildDynamicRegisterInfo(bool force) {
     assert(packet_len < (int)sizeof(packet));
     UNUSED_IF_ASSERT_DISABLED(packet_len);
     StringExtractorGDBRemote response;
-    if (m_gdb_comm.SendPacketAndWaitForResponse(packet, response) ==
+    if (SendPacketAndWaitForResponse(packet, response) ==
         GDBRemoteCommunication::PacketResult::Success) {
       response_type = response.GetResponseType();
       if (response_type == StringExtractorGDBRemote::eResponse) {
@@ -930,8 +936,7 @@ Status ProcessGDBRemote::ConnectToDebugserver(llvm::StringRef connect_url) {
   auto handle_cmds = [&] (const Args &args) ->  void {
     for (const Args::ArgEntry &entry : args) {
       StringExtractorGDBRemote response;
-      m_gdb_comm.SendPacketAndWaitForResponse(
-          entry.c_str(), response);
+      SendPacketAndWaitForResponse(entry.c_str(), response);
     }
   };
 
@@ -2804,8 +2809,7 @@ size_t ProcessGDBRemote::DoReadMemory(addr_t addr, void *buf, size_t size,
   assert(packet_len + 1 < (int)sizeof(packet));
   UNUSED_IF_ASSERT_DISABLED(packet_len);
   StringExtractorGDBRemote response;
-  if (m_gdb_comm.SendPacketAndWaitForResponse(packet, response,
-                                              GetInterruptTimeout()) ==
+  if (SendPacketAndWaitForResponse(packet, response, GetInterruptTimeout()) ==
       GDBRemoteCommunication::PacketResult::Success) {
     if (response.IsNormalResponse()) {
       error.Clear();
@@ -2927,8 +2931,8 @@ ProcessGDBRemote::SendMultiMemReadPacket(
 
   StringExtractorGDBRemote response;
   GDBRemoteCommunication::PacketResult packet_result =
-      m_gdb_comm.SendPacketAndWaitForResponse(packet_str.data(), response,
-                                              GetInterruptTimeout());
+      SendPacketAndWaitForResponse(packet_str.data(), response,
+                                   GetInterruptTimeout());
   if (packet_result != GDBRemoteCommunication::PacketResult::Success)
     return llvm::createStringErrorV("MultiMemRead failed to send packet: '{0}'",
                                     packet_str);
@@ -2980,6 +2984,17 @@ llvm::Error ProcessGDBRemote::ParseMultiMemReadPacket(
   }
 
   return llvm::Error::success();
+}
+
+GDBRemoteCommunication::PacketResult
+ProcessGDBRemote::SendPacketAndWaitForResponse(
+    llvm::StringRef payload, StringExtractorGDBRemote &response,
+    std::chrono::seconds interrupt_timeout, bool sync_on_timeout) {
+
+  m_gdb_comm.SetPacketTestDelay(std::chrono::milliseconds(
+      GetGlobalPluginProperties().GetPacketTestDelay()));
+  return m_gdb_comm.SendPacketAndWaitForResponse(
+      payload, response, interrupt_timeout, sync_on_timeout);
 }
 
 bool ProcessGDBRemote::SupportsMemoryTagging() {
@@ -3103,8 +3118,8 @@ Status ProcessGDBRemote::FlashErase(lldb::addr_t addr, size_t size) {
                 (uint64_t)range.GetByteSize());
 
   StringExtractorGDBRemote response;
-  if (m_gdb_comm.SendPacketAndWaitForResponse(packet.GetString(), response,
-                                              GetInterruptTimeout()) ==
+  if (SendPacketAndWaitForResponse(packet.GetString(), response,
+                                   GetInterruptTimeout()) ==
       GDBRemoteCommunication::PacketResult::Success) {
     if (response.IsOKResponse()) {
       m_erased_flash_ranges.Insert(range, true);
@@ -3134,8 +3149,8 @@ Status ProcessGDBRemote::FlashDone() {
   if (m_erased_flash_ranges.IsEmpty())
     return status;
   StringExtractorGDBRemote response;
-  if (m_gdb_comm.SendPacketAndWaitForResponse("vFlashDone", response,
-                                              GetInterruptTimeout()) ==
+  if (SendPacketAndWaitForResponse("vFlashDone", response,
+                                   GetInterruptTimeout()) ==
       GDBRemoteCommunication::PacketResult::Success) {
     if (response.IsOKResponse()) {
       m_erased_flash_ranges.Clear();
@@ -3196,8 +3211,8 @@ size_t ProcessGDBRemote::DoWriteMemory(addr_t addr, const void *buf,
                              endian::InlHostByteOrder());
   }
   StringExtractorGDBRemote response;
-  if (m_gdb_comm.SendPacketAndWaitForResponse(packet.GetString(), response,
-                                              GetInterruptTimeout()) ==
+  if (SendPacketAndWaitForResponse(packet.GetString(), response,
+                                   GetInterruptTimeout()) ==
       GDBRemoteCommunication::PacketResult::Success) {
     if (response.IsOKResponse()) {
       error.Clear();
@@ -4240,7 +4255,7 @@ ProcessGDBRemote::GetExtendedInfoForThread(lldb::tid_t tid) {
 
     StringExtractorGDBRemote response;
     response.SetResponseValidatorToJSON();
-    if (m_gdb_comm.SendPacketAndWaitForResponse(packet.GetString(), response) ==
+    if (SendPacketAndWaitForResponse(packet.GetString(), response) ==
         GDBRemoteCommunication::PacketResult::Success) {
       StringExtractorGDBRemote::ResponseType response_type =
           response.GetResponseType();
@@ -4337,7 +4352,7 @@ ProcessGDBRemote::GetLoadedDynamicLibrariesInfos_sender(
 
     StringExtractorGDBRemote response;
     response.SetResponseValidatorToJSON();
-    if (m_gdb_comm.SendPacketAndWaitForResponse(packet.GetString(), response) ==
+    if (SendPacketAndWaitForResponse(packet.GetString(), response) ==
         GDBRemoteCommunication::PacketResult::Success) {
       StringExtractorGDBRemote::ResponseType response_type =
           response.GetResponseType();
@@ -4358,8 +4373,7 @@ StructuredData::ObjectSP ProcessGDBRemote::GetDynamicLoaderProcessState() {
   if (m_gdb_comm.GetDynamicLoaderProcessStateSupported()) {
     StringExtractorGDBRemote response;
     response.SetResponseValidatorToJSON();
-    if (m_gdb_comm.SendPacketAndWaitForResponse("jGetDyldProcessState",
-                                                response) ==
+    if (SendPacketAndWaitForResponse("jGetDyldProcessState", response) ==
         GDBRemoteCommunication::PacketResult::Success) {
       StringExtractorGDBRemote::ResponseType response_type =
           response.GetResponseType();
@@ -4386,7 +4400,7 @@ StructuredData::ObjectSP ProcessGDBRemote::GetSharedCacheInfo() {
 
   StringExtractorGDBRemote response;
   response.SetResponseValidatorToJSON();
-  if (m_gdb_comm.SendPacketAndWaitForResponse(packet.GetString(), response) ==
+  if (SendPacketAndWaitForResponse(packet.GetString(), response) ==
       GDBRemoteCommunication::PacketResult::Success) {
     StringExtractorGDBRemote::ResponseType response_type =
         response.GetResponseType();
@@ -5565,7 +5579,7 @@ Status ProcessGDBRemote::GetFileLoadAddress(const FileSpec &file,
   packet.PutStringAsRawHex8(file_path);
 
   StringExtractorGDBRemote response;
-  if (m_gdb_comm.SendPacketAndWaitForResponse(packet.GetString(), response) !=
+  if (SendPacketAndWaitForResponse(packet.GetString(), response) !=
       GDBRemoteCommunication::PacketResult::Success)
     return Status::FromErrorString("Sending qFileLoadAddress packet failed");
 
@@ -5729,7 +5743,7 @@ llvm::Expected<bool> ProcessGDBRemote::SaveCore(llvm::StringRef outfile) {
   packet.PutStringAsRawHex8(outfile);
 
   StringExtractorGDBRemote response;
-  if (m_gdb_comm.SendPacketAndWaitForResponse(packet.GetString(), response) ==
+  if (SendPacketAndWaitForResponse(packet.GetString(), response) ==
       GDBRemoteCommunication::PacketResult::Success) {
     // TODO: grab error message from the packet?  StringExtractor seems to
     // be missing a method for that

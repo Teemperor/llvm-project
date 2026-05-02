@@ -152,6 +152,11 @@ private:
       unsigned expected_num_ranges,
       llvm::SmallVectorImpl<llvm::MutableArrayRef<uint8_t>> &memory_regions);
 
+  GDBRemoteClientBase::PacketResult SendPacketAndWaitForResponse(
+      llvm::StringRef payload, StringExtractorGDBRemote &response,
+      std::chrono::seconds interrupt_timeout = std::chrono::seconds(0),
+      bool sync_on_timeout = true);
+
 public:
   Status
   WriteObjectFile(std::vector<ObjectFile::LoadableData> entries) override;
