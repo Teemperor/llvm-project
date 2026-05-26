@@ -319,16 +319,37 @@ ClassDescriptorV2::ReadMethods(llvm::ArrayRef<lldb::addr_t> addresses,
     DataExtractor extractor(memory.data(), size, process->GetByteOrder(),
                             process->GetAddressByteSize());
     methods.push_back(method_t());
-    methods.back().Read(extractor, process, addr, relative_string_base_addr,
+    methods.back().Read(extractor, addr, relative_string_base_addr,
                         is_small, has_direct_sel, has_relative_types);
+  }
+
+  // For small methods without direct selectors, m_name_ptr currently points to
+  // a SELRef that must be dereferenced to get the actual selector string
+  // address.
+  if (is_small && !has_direct_sel) {
+    // Read all SELRef values in one batch.
+    llvm::SmallVector<lldb::addr_t> selref_locs;
+    selref_locs.reserve(methods.size());
+    for (const auto &method : methods)
+      selref_locs.push_back(method.m_name_ptr);
+
+    llvm::SmallVector<std::optional<lldb::addr_t>> deref_results =
+        process->ReadPointersFromMemory(selref_locs);
+
+    // Update the names of all methods.
+    for (auto [deref_ptr, method] : llvm::zip(deref_results, methods)) {
+      // TODO: Can this happen in practice? If not, this should be an error.
+      if (deref_ptr)
+        method.m_name_ptr = *deref_ptr;
+    }
   }
 
   method_t::ReadNames(methods, *process);
   return methods;
 }
 
-bool ClassDescriptorV2::method_t::Read(DataExtractor &extractor,
-                                       Process *process, lldb::addr_t addr,
+void ClassDescriptorV2::method_t::Read(DataExtractor &extractor,
+                                       lldb::addr_t addr,
                                        lldb::addr_t relative_string_base_addr,
                                        bool is_small, bool has_direct_sel,
                                        bool has_relative_types) {
@@ -341,12 +362,9 @@ bool ClassDescriptorV2::method_t::Read(DataExtractor &extractor,
 
     m_name_ptr = addr + nameref_offset;
 
-    Status error;
     if (!has_direct_sel) {
-      // The SEL offset points to a SELRef. We need to dereference twice.
-      m_name_ptr = process->ReadPointerFromMemory(m_name_ptr, error);
-      if (error.Fail())
-        return false;
+      // m_name_ptr currently points to a SELRef. Our caller
+      // (ReadMethods) will batch-dereference it via ReadPointersFromMemory.
     } else if (relative_string_base_addr != LLDB_INVALID_ADDRESS) {
       m_name_ptr = relative_string_base_addr + nameref_offset;
     }
@@ -360,8 +378,6 @@ bool ClassDescriptorV2::method_t::Read(DataExtractor &extractor,
     m_types_ptr = extractor.GetAddress_unchecked(&cursor);
     m_imp_ptr = extractor.GetAddress_unchecked(&cursor);
   }
-
-  return true;
 }
 
 bool ClassDescriptorV2::ivar_list_t::Read(Process *process, lldb::addr_t addr) {

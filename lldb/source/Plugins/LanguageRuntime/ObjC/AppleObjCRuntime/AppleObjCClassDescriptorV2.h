@@ -151,9 +151,9 @@ private:
   GetMethodList(Process *process, lldb::addr_t method_list_ptr) const;
 
   struct method_t {
-    lldb::addr_t m_name_ptr;
-    lldb::addr_t m_types_ptr;
-    lldb::addr_t m_imp_ptr;
+    lldb::addr_t m_name_ptr = 0;
+    lldb::addr_t m_types_ptr = 0;
+    lldb::addr_t m_imp_ptr = 0;
 
     std::string m_name;
     std::string m_types;
@@ -170,7 +170,7 @@ private:
              + field_size; // IMP imp;
     }
 
-    bool Read(DataExtractor &extractor, Process *process, lldb::addr_t addr,
+    void Read(DataExtractor &extractor, lldb::addr_t addr,
               lldb::addr_t relative_string_base_addr, bool is_small,
               bool has_direct_sel, bool has_relative_types);
 
