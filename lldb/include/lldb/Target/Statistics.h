@@ -123,7 +123,6 @@ struct StatsSuccessFail {
 struct ValueInspectionKind {
   enum class Kind : uint8_t {
     Expression,
-    DWIMPrint,
     ExpressionPath,
   };
 
@@ -145,14 +144,10 @@ struct ValueInspectionKind {
 /// to inspect program values such as expression evaluation,
 /// frame var and dwim-print.
 struct ValueInspectionStats {
-  explicit ValueInspectionStats(const ValueInspectionKind &kind) : kind(kind) {}
-
   void NotifySuccess() { success_fails.NotifySuccess(); }
   void NotifyFailure() { success_fails.NotifyFailure(); }
 
   llvm::json::Value ToJSON() const;
-
-  ValueInspectionKind kind;
 
   StatsSuccessFail success_fails;
   /// Total time spent running expressions.
@@ -160,10 +155,6 @@ struct ValueInspectionStats {
   /// Time spent running expressions excluding execution time of the
   /// code execution.
   StatsDuration non_exec_duration;
-
-  bool operator<(const ValueInspectionStats &rhs) const {
-    return kind < rhs.kind;
-  }
 };
 
 /// Holds statistics about DWO (Debug With Object) files.
@@ -368,14 +359,8 @@ public:
   StatsDuration &GetLoadCoreTime() { return m_load_core_time; }
   ValueInspectionStats &GetValueInspectionStats(const ValueInspectionKind &kind
                                        ) {
-    auto iter = llvm::find(m_value_inspection_stats, kind);
-    if (iter == m_value_inspection_stats.end()) {
-      m_value_inspection_stats.emplace_back(kind);
-      llvm::sort(m_value_inspection_stats);
-    }
-    return *llvm::find(m_value_inspection_stats, kind);
+    return m_value_inspection_stats[kind];
   }
-  StatsSuccessFail &GetFrameVariableStats() { return m_frame_var; }
   void Reset(Target &target);
 
 protected:
@@ -384,9 +369,7 @@ protected:
   std::optional<StatsTimepoint> m_launch_or_attach_time;
   std::optional<StatsTimepoint> m_first_private_stop_time;
   std::optional<StatsTimepoint> m_first_public_stop_time;
-  std::vector<ValueInspectionStats> m_value_inspection_stats;
-  StatsSuccessFail m_expr_eval;
-  StatsSuccessFail m_frame_var;
+  std::map<ValueInspectionKind, ValueInspectionStats> m_value_inspection_stats;
   std::vector<intptr_t> m_module_identifiers;
   uint32_t m_source_map_deduce_count = 0;
   uint32_t m_source_realpath_attempt_count = 0;
