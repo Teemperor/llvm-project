@@ -18,9 +18,14 @@
 #include "clang/AST/ExternalASTSource.h"
 #include "clang/Basic/IdentifierTable.h"
 
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallSet.h"
+#include "clang/AST/Type.h"
 
 namespace lldb_private {
+
+class LLDBTypeNode;
 
 /// \class ClangASTSource ClangASTSource.h "lldb/Expression/ClangASTSource.h"
 /// Provider for named objects defined in the debug info for Clang
@@ -393,6 +398,13 @@ protected:
   std::shared_ptr<ClangASTImporter> m_ast_importer_sp;
   std::set<const clang::Decl *> m_active_lexical_decls;
   std::set<const char *> m_active_lookups;
+  /// Persistent cache mapping TypeSystemCpp nodes to scratch-AST Clang types.
+  /// Shared across all GuardedCopyType calls to ensure the same LLDBTypeNode
+  /// always maps to the same CXXRecordDecl (no duplicate type declarations).
+  llvm::DenseMap<LLDBTypeNode *, clang::QualType> m_cpp_type_cache;
+  /// Nodes currently being translated by any CppASTTranslator instance.
+  /// Shared so that re-entrant GuardedCopyType calls don't generate duplicates.
+  llvm::DenseSet<LLDBTypeNode *> m_cpp_in_progress;
 };
 
 } // namespace lldb_private

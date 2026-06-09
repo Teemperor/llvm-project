@@ -25,6 +25,7 @@
 #include "CppModuleConfiguration.h"
 
 #include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
+#include "Plugins/TypeSystem/Clang/TypeSystemCpp.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Expression/DiagnosticManager.h"
@@ -128,7 +129,13 @@ void ClangUserExpression::ScanContext(DiagnosticManager &diagnostic_manager,
 
   CompilerDeclContext decl_context = function_block->GetDeclContext();
 
-  if (!decl_context) {
+  // For TypeSystemCpp, member-function decl contexts have a null opaque
+  // pointer (TU-level), so IsValid() is false.  Instead of returning early,
+  // fall through: the TypeSystemCpp branch below will detect C++ methods by
+  // looking for a `this` variable.
+  bool is_cpp_ts = decl_context.GetTypeSystem() &&
+                   llvm::isa<TypeSystemCpp>(decl_context.GetTypeSystem());
+  if (!decl_context && !is_cpp_ts) {
     LLDB_LOGF(log, "  [CUE::SC] Null decl context");
     return;
   }
@@ -312,6 +319,31 @@ void ClangUserExpression::ScanContext(DiagnosticManager &diagnostic_manager,
           }
         } else {
           m_in_objectivec_method = true;
+          m_needs_object_ptr = true;
+        }
+      }
+    }
+  }
+
+  // TypeSystemCpp doesn't expose method decl contexts, so detect C++ methods
+  // by checking for a `this` variable in scope. Only consider it a C++ method
+  // if the `this` variable has a pointer type (ruling out C variables that
+  // happen to be named `this`).
+  if (!m_in_cplusplus_method && !m_in_objectivec_method && m_allow_cxx &&
+      llvm::isa_and_nonnull<TypeSystemCpp>(decl_context.GetTypeSystem())) {
+    lldb::VariableListSP variable_list_sp(
+        function_block->GetBlockVariableList(true));
+    if (variable_list_sp) {
+      lldb::VariableSP this_var_sp(
+          variable_list_sp->FindVariable(ConstString("this")));
+      if (this_var_sp && this_var_sp->IsInScope(frame) &&
+          this_var_sp->LocationIsValidForFrame(frame)) {
+        // Only treat `this` as a C++ object pointer if it has a pointer type.
+        // A plain C variable named `this` (e.g. `int this = 1;`) is not a
+        // C++ object pointer.
+        Type *this_type = this_var_sp->GetType();
+        if (this_type && this_type->GetForwardCompilerType().IsPointerType()) {
+          m_in_cplusplus_method = true;
           m_needs_object_ptr = true;
         }
       }

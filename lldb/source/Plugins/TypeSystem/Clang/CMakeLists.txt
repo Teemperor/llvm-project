@@ -1,5 +1,7 @@
 add_lldb_library(lldbPluginTypeSystemClang PLUGIN
+  LLDBTypeRegistry.cpp
   TypeSystemClang.cpp
+  TypeSystemCpp.cpp
 
   LINK_COMPONENTS
     Support

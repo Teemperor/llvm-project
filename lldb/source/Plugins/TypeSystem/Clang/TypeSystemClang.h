@@ -104,6 +104,10 @@ public:
   /// \}
 };
 
+/// Common base class for TypeSystemClang and TypeSystemCpp.
+/// Has no Clang-specific types in its API.
+class TypeSystemCBase : public TypeSystem {};
+
 /// A TypeSystem implementation based on Clang.
 ///
 /// This class uses a single clang::ASTContext as the backend for storing
@@ -114,7 +118,7 @@ public:
 /// itself or it can adopt an existing clang::ASTContext (for example, when
 /// it is necessary to provide a TypeSystem interface for an existing
 /// clang::ASTContext that was created by clang::CompilerInstance).
-class TypeSystemClang : public TypeSystem {
+class TypeSystemClang : public TypeSystemCBase {
   // LLVM RTTI support
   static char ID;
 
@@ -164,6 +168,13 @@ public:
   static void Terminate();
 
   static TypeSystemClang *GetASTContext(clang::ASTContext *ast_ctx);
+
+  /// When this TypeSystemClang is embedded inside a TypeSystemCpp, set the
+  /// owner so that GetType() returns CompilerTypes pointing to the owner
+  /// rather than to this object.
+  void SetTypeSystemOwner(std::weak_ptr<TypeSystem> owner) {
+    m_owner = std::move(owner);
+  }
 
   /// Returns the display name of this TypeSystemClang that indicates what
   /// purpose it serves in LLDB. Used for example in logs.
@@ -242,14 +253,7 @@ public:
   /// \return The CompilerType representing the given QualType. If the
   ///         QualType's type pointer is a nullptr then the function returns an
   ///         invalid CompilerType.
-  CompilerType GetType(clang::QualType qt) {
-    if (qt.getTypePtrOrNull() == nullptr)
-      return CompilerType();
-    // Check that the type actually belongs to this TypeSystemClang.
-    assert(qt->getAsTagDecl() == nullptr ||
-           &qt->getAsTagDecl()->getASTContext() == &getASTContext());
-    return CompilerType(weak_from_this(), qt.getAsOpaquePtr());
-  }
+  CompilerType GetType(clang::QualType qt);
 
   CompilerType GetTypeForDecl(clang::NamedDecl *decl);
 
@@ -281,8 +285,7 @@ public:
     clang::NamedDecl *named_decl = *result.begin();
     if (const auto *type_decl = llvm::dyn_cast<clang::TypeDecl>(named_decl);
         llvm::isa_and_nonnull<RecordDeclType>(type_decl))
-      compiler_type = CompilerType(
-          weak_from_this(), Ctx.getTypeDeclType(type_decl).getAsOpaquePtr());
+      compiler_type = GetType(Ctx.getTypeDeclType(type_decl));
 
     return compiler_type;
   }
@@ -1202,6 +1205,16 @@ private:
   llvm::Expected<uint64_t> GetObjCBitSize(clang::QualType qual_type,
                                           ExecutionContextScope *exe_scope);
 
+  /// Returns weak_ptr to the owning TypeSystem (either m_owner if set, or
+  /// weak_from_this()). Used when creating CompilerTypes so that they point
+  /// to the outermost TypeSystem (e.g. TypeSystemCpp rather than the inner
+  /// TypeSystemClang when running in cpp mode).
+  std::weak_ptr<TypeSystem> GetWeakTypeSystem() {
+    if (!m_owner.expired())
+      return m_owner;
+    return weak_from_this();
+  }
+
   // Classes that inherit from TypeSystemClang can see and modify these
   std::string m_target_triple;
   std::unique_ptr<clang::ASTContext> m_ast_up;
@@ -1249,6 +1262,10 @@ private:
   /// Creates the internal ASTContext.
   void CreateASTContext();
   void SetTargetTriple(llvm::StringRef target_triple);
+
+  /// When embedded inside a TypeSystemCpp this is set to the TypeSystemCpp
+  /// so that GetType() returns CompilerTypes that point to the TypeSystemCpp.
+  std::weak_ptr<TypeSystem> m_owner;
 };
 
 /// The TypeSystemClang instance used for the scratch ASTContext in a
@@ -1379,5 +1396,138 @@ private:
 };
 
 } // namespace lldb_private
+
+// CastInfo specializations to support dyn_cast<TypeSystemClang>(ts) when ts
+// points to a TypeSystemCpp (which composes a TypeSystemClang rather than
+// inheriting from it). The helpers are implemented in TypeSystemCpp.cpp.
+namespace lldb_private {
+class TypeSystemCpp;
+class ScratchTypeSystemCpp;
+
+/// If \p ts is a TypeSystemCpp, returns its inner TypeSystemClang. Otherwise
+/// returns nullptr.
+TypeSystemClang *GetClangASTFromCpp(TypeSystem *ts);
+
+/// If \p ts is a ScratchTypeSystemCpp, returns its inner ScratchTypeSystemClang.
+/// Otherwise returns nullptr.
+ScratchTypeSystemClang *GetScratchClangASTFromCpp(TypeSystem *ts);
+
+/// If \p ts_sp wraps a ScratchTypeSystemCpp, returns the inner
+/// ScratchTypeSystemClang as a TypeSystemClangSP.
+lldb::TypeSystemClangSP GetScratchClangSPFromCpp(const lldb::TypeSystemSP &ts_sp);
+} // namespace lldb_private
+
+namespace llvm {
+
+template <>
+struct CastInfo<lldb_private::TypeSystemClang, lldb_private::TypeSystem *> {
+  using CastResultType = lldb_private::TypeSystemClang *;
+  static bool isPossible(lldb_private::TypeSystem *ts) {
+    if (!ts)
+      return false;
+    return lldb_private::TypeSystemClang::classof(ts) ||
+           lldb_private::GetClangASTFromCpp(ts) != nullptr;
+  }
+  static CastResultType doCast(lldb_private::TypeSystem *ts) {
+    if (auto *p = lldb_private::GetClangASTFromCpp(ts))
+      return p;
+    return static_cast<lldb_private::TypeSystemClang *>(ts);
+  }
+  static CastResultType castFailed() { return nullptr; }
+  static CastResultType doCastIfPossible(lldb_private::TypeSystem *ts) {
+    if (!isPossible(ts))
+      return castFailed();
+    return doCast(ts);
+  }
+};
+
+// When calling isa<TypeSystemClang>(ts) where ts is TypeSystem*, the template
+// deduces From=TypeSystem*, so const From = TypeSystem*const (const pointer).
+// Use ConstStrippingForwardingCast to forward these to the TypeSystem* overloads.
+template <>
+struct CastInfo<lldb_private::TypeSystemClang,
+                lldb_private::TypeSystem *const>
+    : ConstStrippingForwardingCast<
+          lldb_private::TypeSystemClang, lldb_private::TypeSystem *const,
+          CastInfo<lldb_private::TypeSystemClang,
+                   lldb_private::TypeSystem *>> {};
+
+template <>
+struct CastInfo<lldb_private::ScratchTypeSystemClang,
+                lldb_private::TypeSystem *const>
+    : ConstStrippingForwardingCast<
+          lldb_private::ScratchTypeSystemClang, lldb_private::TypeSystem *const,
+          CastInfo<lldb_private::ScratchTypeSystemClang,
+                   lldb_private::TypeSystem *>> {};
+
+// Also handle pointer-to-const variants (dyn_cast(const TypeSystem *ptr)).
+template <>
+struct CastInfo<lldb_private::TypeSystemClang,
+                const lldb_private::TypeSystem *> {
+  using CastResultType = lldb_private::TypeSystemClang *;
+  static bool isPossible(const lldb_private::TypeSystem *ts) {
+    return CastInfo<lldb_private::TypeSystemClang,
+                    lldb_private::TypeSystem *>::isPossible(
+        const_cast<lldb_private::TypeSystem *>(ts));
+  }
+  static CastResultType doCast(const lldb_private::TypeSystem *ts) {
+    return CastInfo<lldb_private::TypeSystemClang,
+                    lldb_private::TypeSystem *>::doCast(
+        const_cast<lldb_private::TypeSystem *>(ts));
+  }
+  static CastResultType castFailed() { return nullptr; }
+  static CastResultType doCastIfPossible(const lldb_private::TypeSystem *ts) {
+    if (!isPossible(ts))
+      return castFailed();
+    return doCast(ts);
+  }
+};
+
+template <>
+struct CastInfo<lldb_private::ScratchTypeSystemClang,
+                lldb_private::TypeSystem *> {
+  using CastResultType = lldb_private::ScratchTypeSystemClang *;
+  static bool isPossible(lldb_private::TypeSystem *ts) {
+    if (!ts)
+      return false;
+    return lldb_private::ScratchTypeSystemClang::classof(ts) ||
+           lldb_private::GetScratchClangASTFromCpp(ts) != nullptr;
+  }
+  static CastResultType doCast(lldb_private::TypeSystem *ts) {
+    if (auto *p = lldb_private::GetScratchClangASTFromCpp(ts))
+      return p;
+    return static_cast<lldb_private::ScratchTypeSystemClang *>(ts);
+  }
+  static CastResultType castFailed() { return nullptr; }
+  static CastResultType doCastIfPossible(lldb_private::TypeSystem *ts) {
+    if (!isPossible(ts))
+      return castFailed();
+    return doCast(ts);
+  }
+};
+
+template <>
+struct CastInfo<lldb_private::ScratchTypeSystemClang,
+                const lldb_private::TypeSystem *> {
+  using CastResultType = lldb_private::ScratchTypeSystemClang *;
+  static bool isPossible(const lldb_private::TypeSystem *ts) {
+    return CastInfo<lldb_private::ScratchTypeSystemClang,
+                    lldb_private::TypeSystem *>::isPossible(
+        const_cast<lldb_private::TypeSystem *>(ts));
+  }
+  static CastResultType doCast(const lldb_private::TypeSystem *ts) {
+    return CastInfo<lldb_private::ScratchTypeSystemClang,
+                    lldb_private::TypeSystem *>::doCast(
+        const_cast<lldb_private::TypeSystem *>(ts));
+  }
+  static CastResultType castFailed() { return nullptr; }
+  static CastResultType doCastIfPossible(const lldb_private::TypeSystem *ts) {
+    if (!isPossible(ts))
+      return castFailed();
+    return doCast(ts);
+  }
+};
+
+} // namespace llvm
 
 #endif // LLDB_SOURCE_PLUGINS_TYPESYSTEM_CLANG_TYPESYSTEMCLANG_H

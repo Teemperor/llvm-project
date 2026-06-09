@@ -20,11 +20,15 @@
 #include "lldb/Utility/LLDBLog.h"
 #include "lldb/Utility/Log.h"
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/Decl.h"
 #include "clang/Basic/SourceManager.h"
 
 #include "Plugins/ExpressionParser/Clang/ClangUtil.h"
 #include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
 #include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
+#include "Plugins/TypeSystem/Clang/TypeSystemCpp.h"
+#include "Plugins/TypeSystem/Clang/LLDBTypeIR.h"
+#include "CppASTTranslator.h"
 
 #include <memory>
 #include <vector>
@@ -623,9 +627,7 @@ void ClangASTSource::FindExternalVisibleDecls(
     if (!copied_clang_type) {
       LLDB_LOG(log, "  CAS::FEVD - Couldn't export a type");
     } else {
-
       context.AddTypeDecl(copied_clang_type);
-
       context.m_found_type = true;
     }
   }
@@ -1439,6 +1441,42 @@ NamespaceDecl *ClangASTSource::AddNamespace(NameSearchContext &context) {
   const CompilerDeclContext &namespace_decl =
       context.m_namespace_map->begin()->second;
 
+  // TypeSystemCpp path: create a clang::NamespaceDecl from LLDBNamespaceNode.
+  if (namespace_decl.GetTypeSystem() &&
+      TypeSystemCpp::classof(namespace_decl.GetTypeSystem())) {
+    auto *ns_node =
+        static_cast<LLDBNamespaceNode *>(namespace_decl.GetOpaqueDeclContext());
+    if (!ns_node)
+      return nullptr;
+
+    clang::ASTContext &ast_ctx = m_clang_ast_context->getASTContext();
+    clang::TranslationUnitDecl *tu = ast_ctx.getTranslationUnitDecl();
+
+    // Build the namespace chain from outermost to innermost.
+    llvm::SmallVector<LLDBNamespaceNode *, 4> chain;
+    for (LLDBNamespaceNode *n = ns_node; n; n = n->parent)
+      chain.push_back(n);
+
+    clang::DeclContext *parent_ctx = tu;
+    clang::NamespaceDecl *result = nullptr;
+    for (int i = (int)chain.size() - 1; i >= 0; --i) {
+      LLDBNamespaceNode *n = chain[i];
+      const char *name_cstr = n->name.empty() ? nullptr : n->name.c_str();
+      clang::NamespaceDecl *ns = m_clang_ast_context->GetUniqueNamespaceDeclaration(
+          name_cstr, parent_ctx, OptionalClangModuleID(), n->is_inline);
+      parent_ctx = ns;
+      result = ns;
+    }
+
+    if (!result)
+      return nullptr;
+
+    context.m_decls.push_back(result);
+    m_ast_importer_sp->RegisterNamespaceMap(result, context.m_namespace_map);
+    return result;
+  }
+
+  // TypeSystemClang path: copy an existing clang::NamespaceDecl via importer.
   clang::ASTContext *src_ast =
       TypeSystemClang::DeclContextGetTypeSystemClang(namespace_decl);
   if (!src_ast)
@@ -1476,8 +1514,17 @@ ClangASTImporter::DeclOrigin ClangASTSource::GetDeclOrigin(const clang::Decl *de
 }
 
 CompilerType ClangASTSource::GuardedCopyType(const CompilerType &src_type) {
-  auto src_ast = src_type.GetTypeSystem<TypeSystemClang>();
-  if (!src_ast)
+  // Handle TypeSystemCpp types via CppASTTranslator.
+  if (src_type.GetTypeSystem<TypeSystemCpp>()) {
+    auto cpp_ts = src_type.GetTypeSystem<TypeSystemCpp>();
+    CppASTTranslator translator(*m_clang_ast_context, cpp_ts.get(),
+                                m_cpp_type_cache, m_active_lookups,
+                                m_cpp_in_progress, m_target.get());
+    return translator.Translate(src_type);
+  }
+
+  // For all other cases, use the ASTImporter (requires TypeSystemClang source).
+  if (!src_type.GetTypeSystem<TypeSystemClang>())
     return {};
 
   QualType copied_qual_type = ClangUtil::GetQualType(

@@ -1940,11 +1940,10 @@ TypeSP DWARFASTParserClang::ParseStructureLikeDIE(
   // the SymbolFile virtual function
   // "SymbolFileDWARF::CompleteType(Type *)" When the definition
   // needs to be defined.
+  auto nq_opaque = ClangUtil::RemoveFastQualifiers(clang_type).GetOpaqueQualType();
   bool inserted =
       dwarf->GetForwardDeclCompilerTypeToDIE()
-          .try_emplace(
-              ClangUtil::RemoveFastQualifiers(clang_type).GetOpaqueQualType(),
-              *die.GetDIERef())
+          .try_emplace(nq_opaque, *die.GetDIERef())
           .second;
   assert(inserted && "Type already in the forward declaration map!");
   (void)inserted;

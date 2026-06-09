@@ -104,14 +104,14 @@ bool ValueObjectChild::UpdateValue() {
   SetValueIsValid(false);
   ValueObject *parent = m_parent;
   if (parent) {
-    if (parent->UpdateValueIfNeeded(false)) {
+    bool parent_updated = parent->UpdateValueIfNeeded(false);
+    if (parent_updated) {
       m_value.SetCompilerType(GetCompilerType());
 
       CompilerType parent_type(parent->GetCompilerType());
       // Copy the parent scalar value and the scalar value type
       m_value.GetScalar() = parent->GetValue().GetScalar();
       m_value.SetValueType(parent->GetValue().GetValueType());
-
       Flags parent_type_flags(parent_type.GetTypeInfo());
       const bool is_instance_ptr_base =
           ((m_is_base_class) &&

@@ -49,6 +49,7 @@
 #include "Plugins/SymbolFile/DWARF/DWARFDebugInfoEntry.h"
 #include "Plugins/SymbolFile/DWARF/SymbolFileWasm.h"
 #include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
+#include "Plugins/TypeSystem/Clang/TypeSystemCpp.h"
 #include "lldb/Symbol/Block.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/CompilerDecl.h"
@@ -1606,16 +1607,23 @@ bool SymbolFileDWARF::CompleteType(CompilerType &compiler_type) {
   if (!dwarf_ast)
     return false;
   Type *type = GetDIEToType().lookup(decl_die.GetDIE());
-  assert(type);
+  // type may be null for TypeSystemCpp types registered via GetOrParseType
+  // rather than ParseTypeFromDWARF; DWARFASTParserCpp::CompleteTypeFromDWARF
+  // doesn't use the type pointer.
+  assert(type || !clang_type_system);
 
   if (decl_die != def_die) {
-    GetDIEToType()[def_die.GetDIE()] = type;
-    auto *ast_parser = llvm::cast<DWARFASTParserClang>(dwarf_ast);
-    ast_parser->MapDeclDIEToDefDIE(decl_die, def_die);
+    if (type)
+      GetDIEToType()[def_die.GetDIE()] = type;
+    // MapDeclDIEToDefDIE is only available on DWARFASTParserClang.
+    if (clang_type_system) {
+      auto *ast_parser = llvm::cast<DWARFASTParserClang>(dwarf_ast);
+      ast_parser->MapDeclDIEToDefDIE(decl_die, def_die);
+    }
   }
 
   Log *log = GetLog(DWARFLog::DebugInfo | DWARFLog::TypeCompletion);
-  if (log)
+  if (log && type)
     GetObjectFile()->GetModule()->LogMessageVerboseBacktrace(
         log, "{0:x8}: {1} ({2}) '{3}' resolving forward declaration...",
         def_die.GetID(), DW_TAG_value_to_name(def_die.Tag()), def_die.Tag(),
@@ -2380,8 +2388,9 @@ void SymbolFileDWARF::FindGlobalVariables(
       if (name_is_mangled ||
           var_sp->GetName().GetStringRef().contains(name.GetStringRef()))
         ++pruned_idx;
-      else
+      else {
         variables.RemoveVariableAtIndex(pruned_idx);
+      }
     }
 
     if (variables.GetSize() - original_size < max_matches)
@@ -4332,10 +4341,14 @@ void SymbolFileDWARF::DumpClangAST(Stream &s, llvm::StringRef filter,
   if (!ts_or_err)
     return;
   auto ts = *ts_or_err;
-  TypeSystemClang *clang = llvm::dyn_cast_or_null<TypeSystemClang>(ts.get());
-  if (!clang)
+  if (TypeSystemClang *clang = llvm::dyn_cast_or_null<TypeSystemClang>(ts.get())) {
+    clang->Dump(s.AsRawOstream(), filter, show_color);
     return;
-  clang->Dump(s.AsRawOstream(), filter, show_color);
+  }
+  if (TypeSystemCpp *cpp = llvm::dyn_cast_or_null<TypeSystemCpp>(ts.get())) {
+    cpp->Dump(s.AsRawOstream(), filter, show_color);
+    return;
+  }
 }
 
 bool SymbolFileDWARF::GetSeparateDebugInfo(StructuredData::Dictionary &d,

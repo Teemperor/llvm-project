@@ -17,6 +17,7 @@
 
 #include "NameSearchContext.h"
 #include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
+#include "Plugins/TypeSystem/Clang/TypeSystemCpp.h"
 #include "lldb/Core/Address.h"
 #include "lldb/Core/Mangled.h"
 #include "lldb/Core/Module.h"
@@ -639,6 +640,36 @@ lldb::VariableSP ClangExpressionDeclMap::FindGlobalVariable(
 
   if (vars.GetSize() == 0)
     return VariableSP();
+
+  // When searching the global namespace (no specific namespace_decl), prefer
+  // non-static-member variables. Static members indexed under their unqualified
+  // name should not be returned for a global-scope lookup (e.g., ::a should
+  // find the global `a`, not `A::a`). Also prefer variables in the global
+  // (anonymous) namespace over namespace-qualified ones so that bare `a` finds
+  // `::a` not `NN::a` when there is no active `using namespace NN`.
+  if (!namespace_decl) {
+    // First pass: prefer globals in the anonymous/global namespace.
+    // These are stored either as bare "a" or "::a", not "NN::a".
+    for (size_t i = 0, n = vars.GetSize(); i < n; ++i) {
+      VariableSP var = vars.GetVariableAtIndex(i);
+      if (!var || var->IsStaticMember())
+        continue;
+      llvm::StringRef vname = var->GetName().GetStringRef();
+      // "a" (bare) or "::a" (explicit global) → global namespace.
+      // "NN::a" → named namespace, skip in first pass.
+      bool in_global_ns =
+          !vname.contains("::") || vname.starts_with("::");
+      if (in_global_ns)
+        return var;
+    }
+    // Second pass: accept any non-static-member (includes namespace vars).
+    for (size_t i = 0, n = vars.GetSize(); i < n; ++i) {
+      VariableSP var = vars.GetVariableAtIndex(i);
+      if (var && !var->IsStaticMember())
+        return var;
+    }
+  }
+
   return vars.GetVariableAtIndex(0);
 }
 
@@ -813,8 +844,12 @@ void ClangExpressionDeclMap::LookUpLldbClass(NameSearchContext &context) {
 
   CompilerDeclContext function_decl_ctx = function_block->GetDeclContext();
 
-  if (!function_decl_ctx)
-    return;
+  // For TypeSystemCpp, member-function decl contexts have a null opaque ptr
+  // (they map to the TU-level context), so IsValid() returns false even when
+  // we are inside a class method.  Fall through to the `this`-variable
+  // fallback path which works for both TypeSystemClang and TypeSystemCpp.
+  // Only skip if both the Clang path and the fallback will clearly fail
+  // (i.e., there is no `this` variable to find).
 
   clang::CXXMethodDecl *method_decl =
       TypeSystemClang::DeclContextGetAsCXXMethodDecl(function_decl_ctx);
@@ -886,6 +921,17 @@ void ClangExpressionDeclMap::LookUpLldbClass(NameSearchContext &context) {
 
   if (this_var && this_var->IsInScope(frame) &&
       this_var->LocationIsValidForFrame(frame)) {
+    // When TypeSystemCpp is active, we may be inside a lambda that captures
+    // 'this'.  In that case, use the outer class type (not the lambda closure
+    // type) so that $__lldb_class resolves to the correct class.  This mirrors
+    // the lambda-aware logic in the method_decl branch above.
+    if (auto capturedThis = GetCapturedThisValueObject(frame)) {
+      TypeFromUser outer_type = capturedThis->GetCompilerType().GetPointeeType();
+      LLDB_LOG(log, "  FEVD Adding captured type for $__lldb_class");
+      AddContextClassType(context, outer_type);
+      return;
+    }
+
     Type *this_type = this_var->GetType();
 
     if (!this_type)
@@ -1012,12 +1058,13 @@ void ClangExpressionDeclMap::LookupLocalVarNamespace(
     return;
 
   CompilerDeclContext frame_decl_context = sym_ctx.block->GetDeclContext();
-  if (!frame_decl_context)
-    return;
 
-  TypeSystemClang *frame_ast = llvm::dyn_cast_or_null<TypeSystemClang>(
-      frame_decl_context.GetTypeSystem());
-  if (!frame_ast)
+  // Accept both TypeSystemClang and TypeSystemCpp frame contexts.
+  // Note: frame_decl_context may have a null opaque (TU-level context in
+  // TypeSystemCpp), but we only need the TypeSystem to be valid.
+  TypeSystem *frame_ts = frame_decl_context.GetTypeSystem();
+  if (!llvm::isa_and_nonnull<TypeSystemClang>(frame_ts) &&
+      !llvm::isa_and_nonnull<TypeSystemCpp>(frame_ts))
     return;
 
   clang::NamespaceDecl *namespace_decl =
@@ -1084,6 +1131,54 @@ bool ClangExpressionDeclMap::LookupLocalVariable(
     return false;
 
   CompilerDeclContext decl_context = sym_ctx.block->GetDeclContext();
+
+  // For TypeSystemCpp, the TU-level context has a null opaque, so IsValid()
+  // returns false.  We still want to search local variables by name.
+  if (llvm::isa_and_nonnull<TypeSystemCpp>(decl_context.GetTypeSystem())) {
+    StackFrame *frame = m_parser_vars->m_exe_ctx.GetFramePtr();
+    if (!frame)
+      return false;
+    VariableListSP vars = frame->GetInScopeVariableList(true);
+    // Mirror the TypeSystemClang path that calls GetDecl() for all variables:
+    // eagerly translate every local variable's type so that member typedefs get
+    // registered in their parent RecordDecl before expression compilation
+    // resolves qualified names like ST::StructTypedef.
+    for (size_t vi = 0, ve = vars->GetSize(); vi != ve; ++vi) {
+      VariableSP v = vars->GetVariableAtIndex(vi);
+      if (v && v->GetType()) {
+        CompilerType vt = v->GetType()->GetFullCompilerType();
+        if (vt.GetTypeSystem<TypeSystemCpp>())
+          GuardedCopyType(vt);
+      }
+    }
+    bool variable_found = false;
+    for (size_t vi = 0, ve = vars->GetSize(); vi != ve; ++vi) {
+      VariableSP candidate_var = vars->GetVariableAtIndex(vi);
+      if (candidate_var->GetName() != name)
+        continue;
+      ValueObjectSP valobj = ValueObjectVariable::Create(frame, candidate_var);
+      AddOneVariable(context, candidate_var, valobj);
+      context.m_found_variable = true;
+      variable_found = true;
+      break;
+    }
+    if (!variable_found) {
+      auto find_capture = [](ConstString varname,
+                             StackFrame *f) -> ValueObjectSP {
+        if (auto lambda = ClangExpressionUtil::GetLambdaValueObject(f))
+          if (auto capture = lambda->GetChildMemberWithName(varname))
+            return capture;
+        return nullptr;
+      };
+      if (auto capture = find_capture(name, frame)) {
+        AddOneVariable(context, capture, std::move(find_capture));
+        context.m_found_variable = true;
+        variable_found = true;
+      }
+    }
+    return variable_found;
+  }
+
   if (!decl_context)
     return false;
 
@@ -1126,12 +1221,9 @@ bool ClangExpressionDeclMap::LookupLocalVariable(
   if (!variable_found) {
     auto find_capture = [](ConstString varname,
                            StackFrame *frame) -> ValueObjectSP {
-      if (auto lambda = ClangExpressionUtil::GetLambdaValueObject(frame)) {
-        if (auto capture = lambda->GetChildMemberWithName(varname)) {
+      if (auto lambda = ClangExpressionUtil::GetLambdaValueObject(frame))
+        if (auto capture = lambda->GetChildMemberWithName(varname))
           return capture;
-        }
-      }
-
       return nullptr;
     };
 
@@ -1184,11 +1276,20 @@ SymbolContextList ClangExpressionDeclMap::SearchFunctionsInSymbolContexts(
     // Filter out functions without declaration contexts, as well as
     // class/instance methods, since they'll be skipped in the code that
     // follows anyway.
+    // For TypeSystemCpp, nullptr opaque = TU-level context (still valid).
     CompilerDeclContext func_decl_context = function->GetDeclContext();
-    if (!func_decl_context || func_decl_context.IsClassMethod())
+    if (!func_decl_context &&
+        !llvm::isa_and_nonnull<TypeSystemCpp>(func_decl_context.GetTypeSystem()))
+      continue;
+    if (func_decl_context.IsClassMethod())
       continue;
     // We can only prune functions for which we can copy the type.
-    CompilerType func_clang_type = function->GetType()->GetFullCompilerType();
+    Type *func_type = function->GetType();
+    if (!func_type) {
+      sc_sym_list.Append(sym_ctx);
+      continue;
+    }
+    CompilerType func_clang_type = func_type->GetFullCompilerType();
     CompilerType copied_func_type = GuardedCopyType(func_clang_type);
     if (!copied_func_type) {
       sc_sym_list.Append(sym_ctx);
@@ -1313,7 +1414,10 @@ bool ClangExpressionDeclMap::LookupFunction(
       if (sym_ctx.function) {
         CompilerDeclContext decl_ctx = sym_ctx.function->GetDeclContext();
 
-        if (!decl_ctx)
+        // For TypeSystemCpp, nullptr opaque = TU-level context (still valid).
+        // Only skip if the type system itself is null (truly no context).
+        if (!decl_ctx &&
+            !llvm::isa_and_nonnull<TypeSystemCpp>(decl_ctx.GetTypeSystem()))
           continue;
 
         // Filter out class/instance methods.
@@ -1510,12 +1614,15 @@ bool ClangExpressionDeclMap::GetVariableValue(VariableSP &var,
     return false;
   }
 
-  auto clang_ast =
-      var_type->GetForwardCompilerType().GetTypeSystem<TypeSystemClang>();
-
-  if (!clang_ast) {
-    LLDB_LOG(log, "Skipped a definition because it has no Clang AST");
-    return false;
+  // Accept both TypeSystemClang and TypeSystemCpp types; GuardedCopyType
+  // handles the TypeSystemCpp → clang translation.
+  {
+    auto fwd = var_type->GetForwardCompilerType();
+    if (!fwd.GetTypeSystem<TypeSystemClang>() &&
+        !fwd.GetTypeSystem<TypeSystemCpp>()) {
+      LLDB_LOG(log, "Skipped a definition because it has no Clang/Cpp AST");
+      return false;
+    }
   }
 
   DWARFExpressionList &var_location_list = var->LocationExpressionList();
@@ -1585,8 +1692,17 @@ ClangExpressionDeclMap::AddExpressionVariable(NameSearchContext &context,
     return nullptr;
 
   if (const clang::Type *parser_type = parser_opaque_type.getTypePtr()) {
-    if (const TagType *tag_type = dyn_cast<TagType>(parser_type))
-      CompleteType(tag_type->getDecl()->getDefinitionOrSelf());
+    if (const TagType *tag_type = dyn_cast<TagType>(parser_type)) {
+      // Skip CompleteType if the type is already fully defined (e.g. translated
+      // by CppASTTranslator, which completes the type including IndirectFields).
+      // Calling CompleteType on an already-complete type would trigger
+      // FindCompleteType → CompleteTagDeclWithOrigin → ImportDefinitionTo, which
+      // reimports from TypeSystemClang and wipes out CppASTTranslator-injected
+      // IndirectFieldDecls.
+      TagDecl *td = tag_type->getDecl()->getDefinitionOrSelf();
+      if (!td->isCompleteDefinition())
+        CompleteType(td);
+    }
     if (const ObjCObjectPointerType *objc_object_ptr_type =
             dyn_cast<ObjCObjectPointerType>(parser_type))
       CompleteType(objc_object_ptr_type->getInterfaceDecl());
@@ -1630,9 +1746,10 @@ void ClangExpressionDeclMap::AddOneVariable(
 
   TypeFromUser user_type = valobj->GetCompilerType();
 
-  auto clang_ast = user_type.GetTypeSystem<TypeSystemClang>();
-
-  if (!clang_ast) {
+  // Accept both TypeSystemClang and TypeSystemCpp types. GuardedCopyType
+  // handles the translation of TypeSystemCpp types via CppASTTranslator.
+  if (!user_type.GetTypeSystem<TypeSystemClang>() &&
+      !user_type.GetTypeSystem<TypeSystemCpp>()) {
     LLDB_LOG(log, "Skipped a definition because it has no Clang AST");
     return;
   }
