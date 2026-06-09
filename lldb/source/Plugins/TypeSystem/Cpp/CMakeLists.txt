@@ -1,4 +1,6 @@
 add_lldb_library(lldbPluginTypeSystemCpp PLUGIN
+  Context.cpp
+  Decls.cpp
   TypeSystemCpp.cpp
 
   LINK_COMPONENTS

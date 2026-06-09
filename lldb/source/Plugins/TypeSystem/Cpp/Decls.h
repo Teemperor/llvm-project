@@ -1,4 +1,4 @@
-//===-- CppNodes.h ----------------------------------------------*- C++ -*-===//
+//===-- Nodes.h -------------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -9,31 +9,21 @@
 #ifndef LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_DECLS_H
 #define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_DECLS_H
 
-#include "lldb/Symbol/CompilerType.h"
-#include "lldb/Symbol/TypeSystem.h"
-
-#include "llvm/ADT/SmallVector.h"
-
 #include <vector>
 
 namespace lldb_private {
 namespace cpp_typesystem {
 
 class CppContext;
-
-class Identifier {
-
-};
-
 class TypeRef {
-    CppContext *context = nullptr;
+  CppContext *context = nullptr;
 };
 
 class Namespace {
-
 };
 
 class RecordField {
+  TypeRef type;
 };
 
 class Record {
