@@ -107,6 +107,12 @@ bool ModuleListProperties::SetEnableExternalLookup(bool new_value) {
   return SetPropertyAtIndex(ePropertyEnableExternalLookup, new_value);
 }
 
+bool ModuleListProperties::GetEnableTypeSystemCpp() const {
+  const uint32_t idx = ePropertyEnableTypeSystemCpp;
+  return GetPropertyAtIndexAs<bool>(
+      idx, g_modulelist_properties[idx].default_uint_value != 0);
+}
+
 SymbolDownload ModuleListProperties::GetSymbolAutoDownload() const {
   // Backward compatibility alias.
   if (GetPropertyAtIndexAs<bool>(ePropertyEnableBackgroundLookup, false))

@@ -84,6 +84,8 @@
 #include "Plugins/SymbolFile/DWARF/DWARFASTParserClang.h"
 #include "Plugins/SymbolFile/NativePDB/PdbAstBuilderClang.h"
 #include "Plugins/SymbolFile/PDB/PDBASTParser.h"
+#include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
+#include "lldb/Core/ModuleList.h"
 
 #include <cstdio>
 
@@ -541,9 +543,14 @@ lldb::TypeSystemSP TypeSystemClang::CreateInstance(lldb::LanguageType language,
   if (module) {
     std::string ast_name =
         "ASTContext for '" + module->GetFileSpec().GetPath() + "'";
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp())
+      return TypeSystemCpp::Create(ast_name, triple);
     return std::make_shared<TypeSystemClang>(ast_name, triple);
-  } else if (target && target->IsValid())
+  } else if (target && target->IsValid()) {
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp())
+      return std::make_shared<ScratchTypeSystemCpp>(*target, triple);
     return std::make_shared<ScratchTypeSystemClang>(*target, triple);
+  }
   return lldb::TypeSystemSP();
 }
 

@@ -9,11 +9,23 @@
 #include "TypeSystemCpp.h"
 
 #include "lldb/Core/PluginManager.h"
+#include "lldb/Target/Target.h"
 
 using namespace lldb_private;
 using namespace lldb;
 
 LLDB_PLUGIN_DEFINE(TypeSystemCpp)
+
+char TypeSystemCpp::ID;
+char ScratchTypeSystemCpp::ID;
+
+TypeSystemCpp::TypeSystemCpp(llvm::StringRef name, llvm::Triple triple)
+    : m_display_name(name.str()), m_triple(std::move(triple)) {}
+
+lldb::TypeSystemSP TypeSystemCpp::Create(llvm::StringRef name,
+                                         llvm::Triple triple) {
+  return std::make_shared<TypeSystemCpp>(name, std::move(triple));
+}
 
 TypeSystemSP TypeSystemCpp::CreateInstance(LanguageType language,
                                            Module *module, Target *target) {
@@ -39,7 +51,10 @@ void TypeSystemCpp::Terminate() {
   PluginManager::UnregisterPlugin(CreateInstance);
 }
 
-bool TypeSystemCpp::isA(const void *ClassID) const { return false; }
+ScratchTypeSystemCpp::ScratchTypeSystemCpp(Target &target, llvm::Triple triple)
+    : TypeSystemCpp("scratch TypeSystemCpp for " +
+                        target.GetArchitecture().GetArchitectureName(),
+                    std::move(triple)) {}
 
 ConstString TypeSystemCpp::DeclGetName(void *opaque_decl) {
   return ConstString();

@@ -104,6 +104,7 @@ public:
   bool SetClangModulesCachePath(const FileSpec &path);
   bool GetEnableExternalLookup() const;
   bool SetEnableExternalLookup(bool new_value);
+  bool GetEnableTypeSystemCpp() const;
   lldb::SymbolSharedCacheUse GetSharedCacheBinaryLoading() const;
   bool GetEnableLLDBIndexCache() const;
   bool SetEnableLLDBIndexCache(bool new_value);
