@@ -11,11 +11,20 @@
 
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
+#include "llvm/ADT/Triple.h"
+#include "llvm/TargetParser/Triple.h"
 
 namespace lldb_private {
 
 class TypeSystemCpp : public TypeSystem {
+  // LLVM RTTI support
+  static char ID;
+
 public:
+  TypeSystemCpp(llvm::StringRef name, llvm::Triple triple);
+
+  static lldb::TypeSystemSP Create(llvm::StringRef name, llvm::Triple triple);
+
   // Plugin lifecycle
   static void Initialize();
   static void Terminate();
@@ -32,7 +41,10 @@ public:
   llvm::StringRef GetPluginName() override { return GetPluginNameStatic(); }
 
   // LLVM RTTI support
-  bool isA(const void *ClassID) const override;
+  bool isA(const void *ClassID) const override {
+    return ClassID == &ID || TypeSystem::isA(ClassID);
+  }
+  static bool classof(const TypeSystem *ts) { return ts->isA(&ID); }
 
   // CompilerDecl functions
   ConstString DeclGetName(void *opaque_decl) override;
@@ -213,6 +225,22 @@ public:
   CompilerType GetNonReferenceType(lldb::opaque_compiler_type_t type) override;
   bool IsReferenceType(lldb::opaque_compiler_type_t type,
                        CompilerType *pointee_type, bool *is_rvalue) override;
+
+private:
+  std::string m_display_name;
+  llvm::Triple m_triple;
+};
+
+class ScratchTypeSystemCpp : public TypeSystemCpp {
+  static char ID;
+
+public:
+  ScratchTypeSystemCpp(Target &target, llvm::Triple triple);
+
+  bool isA(const void *ClassID) const override {
+    return ClassID == &ID || TypeSystemCpp::isA(ClassID);
+  }
+  static bool classof(const TypeSystem *ts) { return ts->isA(&ID); }
 };
 
 } // namespace lldb_private
