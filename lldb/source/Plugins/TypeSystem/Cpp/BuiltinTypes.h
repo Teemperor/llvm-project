@@ -1,4 +1,4 @@
-//===-- CppNodes.h ----------------------------------------------*- C++ -*-===//
+//===-- BuiltinTypes.h ------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,29 +6,20 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_CPPNODES_H
-#define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_CPPNODES_H
+#ifndef LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_BUILTIN_TYPES_H
+#define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_BUILTIN_TYPES_H
 
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
 
-#include "llvm/ADT/SmallVector.h"
-
-#include <vector>
-
 namespace lldb_private {
+namespace cpp_typesystem {
 
-class CppContext;
+class BuiltinTypes {
 
-namespace CppNodes {
-
-class Function {
-public:
-private:
 };
 
 }
-
 } // namespace lldb_private
 
-#endif // LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_CPPNODES_H
+#endif // LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_BUILTIN_TYPES_H

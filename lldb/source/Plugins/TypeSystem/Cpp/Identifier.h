@@ -21,12 +21,25 @@ namespace cpp_typesystem {
 
 /// Turns strings into unique IDs.
 class IdentifierMap {
-
+public:
+    Identifier get(StringRef name) {
+        // TODO: Internalize this into a StringMap.
+    }
+private:
 };
 
 ///
 class Identifier {
+public:
+private:
+    // This is stored in a IdentifierMap.
+    StringRef m_name;
+};
 
+class QualifiedName {
+public:
+private:
+    std::vector<Identifier> m_identifiers;
 };
 
 }
