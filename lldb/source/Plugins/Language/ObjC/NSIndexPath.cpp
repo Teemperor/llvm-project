@@ -55,8 +55,17 @@ public:
     if (!type_system)
       return lldb::ChildCacheState::eRefetch;
 
-    auto ast = ScratchTypeSystemClang::GetForTarget(
-        *m_backend.GetExecutionContextRef().GetTargetSP());
+    TypeSystemSP ts_sp;
+    if (auto ts_or_err =
+            m_backend.GetExecutionContextRef()
+                .GetTargetSP()
+                ->GetScratchTypeSystemForLanguage(eLanguageTypeC))
+      ts_sp = *ts_or_err;
+    else {
+      llvm::consumeError(ts_or_err.takeError());
+      return lldb::ChildCacheState::eRefetch;
+    }
+    auto *ast = llvm::dyn_cast_or_null<TypeSystemClang>(ts_sp.get());
     if (!ast)
       return lldb::ChildCacheState::eRefetch;
 

@@ -419,8 +419,13 @@ void SystemRuntimeMacOSX::ReadLibdispatchTSDIndexes() {
         }
 #endif
 
-    TypeSystemClangSP scratch_ts_sp =
-        ScratchTypeSystemClang::GetForTarget(m_process->GetTarget());
+    TypeSystemSP ts_sp;
+    if (auto ts_or_err = m_process->GetTarget().GetScratchTypeSystemForLanguage(
+            eLanguageTypeC))
+      ts_sp = *ts_or_err;
+    else
+      llvm::consumeError(ts_or_err.takeError());
+    auto *scratch_ts_sp = llvm::dyn_cast_or_null<TypeSystemClang>(ts_sp.get());
     if (m_dispatch_tsd_indexes_addr != LLDB_INVALID_ADDRESS) {
       CompilerType uint16 =
           scratch_ts_sp->GetBuiltinTypeForEncodingAndBitSize(eEncodingUint, 16);

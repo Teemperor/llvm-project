@@ -9,7 +9,6 @@
 #include "AppleObjCTrampolineHandler.h"
 #include "AppleThreadPlanStepThroughObjCTrampoline.h"
 
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 #include "lldb/Breakpoint/StoppointCallbackContext.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Module.h"
@@ -406,15 +405,19 @@ bool AppleObjCTrampolineHandler::AppleObjCVTables::RefreshTrampolines(
     Process *process = exe_ctx.GetProcessPtr();
     const ABI *abi = process->GetABI().get();
 
-    TypeSystemClangSP scratch_ts_sp =
-        ScratchTypeSystemClang::GetForTarget(process->GetTarget());
-    if (!scratch_ts_sp)
+    TypeSystemSP scratch_ts_sp;
+    if (auto ts_or_err =
+            process->GetTarget().GetScratchTypeSystemForLanguage(eLanguageTypeC))
+      scratch_ts_sp = *ts_or_err;
+    else {
+      llvm::consumeError(ts_or_err.takeError());
       return false;
+    }
 
     ValueList argument_values;
     Value input_value;
     CompilerType clang_void_ptr_type =
-        scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+        scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
 
     input_value.SetValueType(Value::ValueType::Scalar);
     // input_value.SetContext (Value::eContextTypeClangType,
@@ -700,13 +703,18 @@ AppleObjCTrampolineHandler::SetupDispatchFunction(Thread &thread,
       }
 
       // Next make the runner function for our implementation utility function.
-      TypeSystemClangSP scratch_ts_sp = ScratchTypeSystemClang::GetForTarget(
-          thread.GetProcess()->GetTarget());
-      if (!scratch_ts_sp)
+      TypeSystemSP scratch_ts_sp;
+      if (auto ts_or_err = thread.GetProcess()
+                               ->GetTarget()
+                               .GetScratchTypeSystemForLanguage(eLanguageTypeC))
+        scratch_ts_sp = *ts_or_err;
+      else {
+        llvm::consumeError(ts_or_err.takeError());
         return LLDB_INVALID_ADDRESS;
+      }
 
       CompilerType clang_void_ptr_type =
-          scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+          scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
       Status error;
 
       impl_function_caller = m_impl_code->MakeFunctionCaller(
@@ -838,15 +846,19 @@ AppleObjCTrampolineHandler::GetStepThroughDispatchPlan(Thread &thread,
 
     TargetSP target_sp(thread.CalculateTarget());
 
-    TypeSystemClangSP scratch_ts_sp =
-        ScratchTypeSystemClang::GetForTarget(*target_sp);
-    if (!scratch_ts_sp)
+    TypeSystemSP scratch_ts_sp;
+    if (auto ts_or_err =
+            target_sp->GetScratchTypeSystemForLanguage(eLanguageTypeC))
+      scratch_ts_sp = *ts_or_err;
+    else {
+      llvm::consumeError(ts_or_err.takeError());
       return ret_plan_sp;
+    }
 
     ValueList argument_values;
     Value void_ptr_value;
     CompilerType clang_void_ptr_type =
-        scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+        scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
     void_ptr_value.SetValueType(Value::ValueType::Scalar);
     // void_ptr_value.SetContext (Value::eContextTypeClangType,
     // clang_void_ptr_type);

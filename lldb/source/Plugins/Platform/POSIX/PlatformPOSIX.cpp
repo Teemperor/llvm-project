@@ -9,7 +9,6 @@
 #include "PlatformPOSIX.h"
 
 #include "Plugins/Platform/gdb-server/PlatformRemoteGDBServer.h"
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Expression/DiagnosticManager.h"
@@ -639,15 +638,19 @@ PlatformPOSIX::MakeLoadImageUtilityFunction(ExecutionContext &exe_ctx,
   FunctionCaller *do_dlopen_function = nullptr;
 
   // Fetch the clang types we will need:
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(process->GetTarget());
-  if (!scratch_ts_sp)
+  TypeSystemSP scratch_ts_sp;
+  if (auto ts_or_err =
+          process->GetTarget().GetScratchTypeSystemForLanguage(eLanguageTypeC))
+    scratch_ts_sp = *ts_or_err;
+  else {
+    llvm::consumeError(ts_or_err.takeError());
     return nullptr;
+  }
 
   CompilerType clang_void_pointer_type =
-      scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
   CompilerType clang_char_pointer_type =
-      scratch_ts_sp->GetBasicType(eBasicTypeChar).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeChar).GetPointerType();
 
   // We are passing four arguments, the basename, the list of places to look,
   // a buffer big enough for all the path + name combos, and
@@ -889,16 +892,19 @@ uint32_t PlatformPOSIX::DoLoadImage(lldb_private::Process *process,
 
   Value return_value;
   // Fetch the clang types we will need:
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(process->GetTarget());
-  if (!scratch_ts_sp) {
+  TypeSystemSP scratch_ts_sp;
+  if (auto ts_or_err =
+          process->GetTarget().GetScratchTypeSystemForLanguage(eLanguageTypeC))
+    scratch_ts_sp = *ts_or_err;
+  else {
+    llvm::consumeError(ts_or_err.takeError());
     error =
         Status::FromErrorString("dlopen error: Unable to get TypeSystemClang");
     return LLDB_INVALID_IMAGE_TOKEN;
   }
 
   CompilerType clang_void_pointer_type =
-      scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
 
   return_value.SetCompilerType(clang_void_pointer_type);
   

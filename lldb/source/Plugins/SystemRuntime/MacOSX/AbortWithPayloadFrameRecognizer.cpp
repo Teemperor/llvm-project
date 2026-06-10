@@ -19,8 +19,6 @@
 #include "lldb/Utility/StructuredData.h"
 #include "lldb/ValueObject/ValueObjectConstResult.h"
 
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
-
 using namespace lldb;
 using namespace lldb_private;
 
@@ -73,9 +71,12 @@ AbortWithPayloadFrameRecognizer::RecognizeFrame(lldb::StackFrameSP frame_sp) {
     LLDB_LOG(log, "abort_with_payload recognizer: invalid process.");
   }
 
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(process->GetTarget());
-  if (!scratch_ts_sp) {
+  TypeSystemSP scratch_ts_sp;
+  if (auto ts_or_err =
+          process->GetTarget().GetScratchTypeSystemForLanguage(eLanguageTypeC))
+    scratch_ts_sp = *ts_or_err;
+  else {
+    llvm::consumeError(ts_or_err.takeError());
     LLDB_LOG(log, "abort_with_payload recognizer: invalid scratch typesystem.");
     return {};
   }
@@ -92,9 +93,9 @@ AbortWithPayloadFrameRecognizer::RecognizeFrame(lldb::StackFrameSP frame_sp) {
   Value input_value_char_ptr;
 
   CompilerType clang_void_ptr_type =
-      scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
   CompilerType clang_char_ptr_type =
-      scratch_ts_sp->GetBasicType(eBasicTypeChar).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeChar).GetPointerType();
   CompilerType clang_uint64_type =
       scratch_ts_sp->GetBuiltinTypeForEncodingAndBitSize(lldb::eEncodingUint,
                                                          64);

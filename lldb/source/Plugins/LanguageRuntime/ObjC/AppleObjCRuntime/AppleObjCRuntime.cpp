@@ -126,15 +126,18 @@ AppleObjCRuntime::GetObjectDescription(Stream &strm, Value &value,
           "Value doesn't point to an ObjC object.\n");
   } else {
     // If it is not a pointer, see if we can make it into a pointer.
-    TypeSystemClangSP scratch_ts_sp =
-        ScratchTypeSystemClang::GetForTarget(*target);
-    if (!scratch_ts_sp)
+    TypeSystemSP ts_sp;
+    if (auto ts_or_err =
+            target->GetScratchTypeSystemForLanguage(eLanguageTypeC))
+      ts_sp = *ts_or_err;
+    else {
+      llvm::consumeError(ts_or_err.takeError());
       return llvm::createStringError("no scratch type system");
-
-    CompilerType opaque_type = scratch_ts_sp->GetBasicType(eBasicTypeObjCID);
+    }
+    CompilerType opaque_type = ts_sp->GetBasicTypeFromAST(eBasicTypeObjCID);
     if (!opaque_type)
       opaque_type =
-          scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+          ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
     // value.SetContext(Value::eContextTypeClangType, opaque_type_ptr);
     value.SetCompilerType(opaque_type);
   }
@@ -143,12 +146,18 @@ AppleObjCRuntime::GetObjectDescription(Stream &strm, Value &value,
   arg_value_list.PushValue(value);
 
   // This is the return value:
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(*target);
-  if (!scratch_ts_sp)
+  TypeSystemSP ts_sp;
+  if (auto ts_or_err = target->GetScratchTypeSystemForLanguage(eLanguageTypeC))
+    ts_sp = *ts_or_err;
+  else {
+    llvm::consumeError(ts_or_err.takeError());
+    return llvm::createStringError("no scratch type system");
+  }
+  auto *scratch_ts_clang = llvm::dyn_cast_or_null<TypeSystemClang>(ts_sp.get());
+  if (!scratch_ts_clang)
     return llvm::createStringError("no scratch type system");
 
-  CompilerType return_compiler_type = scratch_ts_sp->GetCStringType(true);
+  CompilerType return_compiler_type = scratch_ts_clang->GetCStringType(true);
   Value ret;
   //    ret.SetContext(Value::eContextTypeClangType, return_compiler_type);
   ret.SetCompilerType(return_compiler_type);
@@ -528,11 +537,16 @@ ThreadSP AppleObjCRuntime::GetBacktraceThreadFromException(
   if (!reserved_dict)
     return FailExceptionParsing("Failed to get synthetic value.");
 
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(*exception_sp->GetTargetSP());
-  if (!scratch_ts_sp)
+  TypeSystemSP ts_sp;
+  if (auto ts_or_err =
+          exception_sp->GetTargetSP()->GetScratchTypeSystemForLanguage(
+              eLanguageTypeC))
+    ts_sp = *ts_or_err;
+  else {
+    llvm::consumeError(ts_or_err.takeError());
     return FailExceptionParsing("Failed to get scratch AST.");
-  CompilerType objc_id = scratch_ts_sp->GetBasicType(lldb::eBasicTypeObjCID);
+  }
+  CompilerType objc_id = ts_sp->GetBasicTypeFromAST(lldb::eBasicTypeObjCID);
   ValueObjectSP return_addresses;
 
   auto objc_object_from_address = [&exception_sp, &objc_id](uint64_t addr,

@@ -8,7 +8,6 @@
 
 #include "AppleGetQueuesHandler.h"
 
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/Value.h"
 #include "lldb/Expression/DiagnosticManager.h"
@@ -180,10 +179,17 @@ AppleGetQueuesHandler::SetupGetQueuesFunction(Thread &thread,
     }
 
     // Next make the runner function for our implementation utility function.
-    TypeSystemClangSP scratch_ts_sp =
-        ScratchTypeSystemClang::GetForTarget(thread.GetProcess()->GetTarget());
+    TypeSystemSP scratch_ts_sp;
+    if (auto ts_or_err = thread.GetProcess()
+                             ->GetTarget()
+                             .GetScratchTypeSystemForLanguage(eLanguageTypeC))
+      scratch_ts_sp = *ts_or_err;
+    else {
+      llvm::consumeError(ts_or_err.takeError());
+      return LLDB_INVALID_ADDRESS;
+    }
     CompilerType get_queues_return_type =
-        scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+        scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
     Status error;
     get_queues_caller = m_get_queues_impl_code_up->MakeFunctionCaller(
         get_queues_return_type, get_queues_arglist, thread_sp, error);
@@ -221,8 +227,12 @@ AppleGetQueuesHandler::GetCurrentQueues(Thread &thread, addr_t page_to_free,
   lldb::StackFrameSP thread_cur_frame = thread.GetStackFrameAtIndex(0);
   ProcessSP process_sp(thread.CalculateProcess());
   TargetSP target_sp(thread.CalculateTarget());
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(*target_sp);
+  TypeSystemSP scratch_ts_sp;
+  if (auto ts_or_err =
+          target_sp->GetScratchTypeSystemForLanguage(eLanguageTypeC))
+    scratch_ts_sp = *ts_or_err;
+  else
+    llvm::consumeError(ts_or_err.takeError());
   Log *log = GetLog(LLDBLog::SystemRuntime);
 
   GetQueuesReturnInfo return_value;
@@ -264,12 +274,12 @@ AppleGetQueuesHandler::GetCurrentQueues(Thread &thread, addr_t page_to_free,
   // already allocated by lldb in the inferior process.
 
   CompilerType clang_void_ptr_type =
-      scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
   Value return_buffer_ptr_value;
   return_buffer_ptr_value.SetValueType(Value::ValueType::Scalar);
   return_buffer_ptr_value.SetCompilerType(clang_void_ptr_type);
 
-  CompilerType clang_int_type = scratch_ts_sp->GetBasicType(eBasicTypeInt);
+  CompilerType clang_int_type = scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeInt);
   Value debug_value;
   debug_value.SetValueType(Value::ValueType::Scalar);
   debug_value.SetCompilerType(clang_int_type);
@@ -279,7 +289,7 @@ AppleGetQueuesHandler::GetCurrentQueues(Thread &thread, addr_t page_to_free,
   page_to_free_value.SetCompilerType(clang_void_ptr_type);
 
   CompilerType clang_uint64_type =
-      scratch_ts_sp->GetBasicType(eBasicTypeUnsignedLongLong);
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeUnsignedLongLong);
   Value page_to_free_size_value;
   page_to_free_size_value.SetValueType(Value::ValueType::Scalar);
   page_to_free_size_value.SetCompilerType(clang_uint64_type);

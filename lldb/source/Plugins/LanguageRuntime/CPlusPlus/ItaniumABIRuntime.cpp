@@ -366,13 +366,17 @@ ItaniumABIRuntime::GetExceptionObjectForThread(ThreadSP thread_sp) {
   if (!thread_sp->SafeToCallFunctions())
     return {};
 
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(m_process->GetTarget());
-  if (!scratch_ts_sp)
+  TypeSystemSP scratch_ts_sp;
+  if (auto ts_or_err = m_process->GetTarget().GetScratchTypeSystemForLanguage(
+          eLanguageTypeC))
+    scratch_ts_sp = *ts_or_err;
+  else {
+    llvm::consumeError(ts_or_err.takeError());
     return {};
+  }
 
   CompilerType voidstar =
-      scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
 
   DiagnosticManager diagnostics;
   ExecutionContext exe_ctx;

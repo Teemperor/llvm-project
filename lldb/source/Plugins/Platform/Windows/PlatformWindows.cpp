@@ -16,7 +16,6 @@
 #endif
 
 #include "Plugins/Platform/gdb-server/PlatformRemoteGDBServer.h"
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 #include "lldb/Breakpoint/BreakpointLocation.h"
 #include "lldb/Breakpoint/BreakpointSite.h"
 #include "lldb/Core/Debugger.h"
@@ -30,6 +29,7 @@
 #include "lldb/Target/DynamicLoader.h"
 #include "lldb/Target/Process.h"
 #include "lldb/Utility/Status.h"
+#include "lldb/ValueObject/ValueObject.h"
 
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/ConvertUTF.h"
@@ -341,9 +341,12 @@ uint32_t PlatformWindows::DoLoadImage(Process *process,
         invocation->DeallocateFunctionResults(context, injected_parameters);
       });
 
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(process->GetTarget());
-  if (!scratch_ts_sp) {
+  TypeSystemSP scratch_ts_sp;
+  if (auto ts_or_err =
+          process->GetTarget().GetScratchTypeSystemForLanguage(eLanguageTypeC))
+    scratch_ts_sp = *ts_or_err;
+  else {
+    llvm::consumeError(ts_or_err.takeError());
     error = Status::FromErrorString(
         "LoadLibrary error: unable to get (clang) type system");
     return LLDB_INVALID_IMAGE_TOKEN;
@@ -351,7 +354,7 @@ uint32_t PlatformWindows::DoLoadImage(Process *process,
 
   /* Setup Return Type */
   CompilerType VoidPtrTy =
-      scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
 
   Value value;
   value.SetCompilerType(VoidPtrTy);
@@ -733,15 +736,19 @@ void * __lldb_LoadLibraryHelper(const wchar_t *name, const wchar_t *paths,
     return nullptr;
   }
 
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(target);
-  if (!scratch_ts_sp)
+  TypeSystemSP scratch_ts_sp;
+  if (auto ts_or_err =
+          target.GetScratchTypeSystemForLanguage(eLanguageTypeC))
+    scratch_ts_sp = *ts_or_err;
+  else {
+    llvm::consumeError(ts_or_err.takeError());
     return nullptr;
+  }
 
   CompilerType VoidPtrTy =
-      scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
   CompilerType WCharPtrTy =
-      scratch_ts_sp->GetBasicType(eBasicTypeWChar).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeWChar).GetPointerType();
 
   ValueList parameters;
 

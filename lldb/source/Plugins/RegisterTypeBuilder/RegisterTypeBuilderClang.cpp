@@ -38,8 +38,9 @@ RegisterTypeBuilderClang::RegisterTypeBuilderClang(Target &target)
 CompilerType RegisterTypeBuilderClang::GetRegisterType(
     const std::string &name, const lldb_private::RegisterFlags &flags,
     uint32_t byte_size) {
-  lldb::TypeSystemClangSP type_system =
-      ScratchTypeSystemClang::GetForTarget(m_target);
+  lldb::TypeSystemSP ts_sp =
+      llvm::cantFail(m_target.GetScratchTypeSystemForLanguage(lldb::eLanguageTypeC));
+  auto *type_system = llvm::dyn_cast_or_null<TypeSystemClang>(ts_sp.get());
   assert(type_system);
 
   std::string register_type_name = "__lldb_register_fields_" + name;

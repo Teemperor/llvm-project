@@ -23,7 +23,6 @@
 
 #include "Plugins/Language/ObjC/NSString.h"
 #include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -70,13 +69,17 @@ static bool ExtractFields(ValueObject &valobj, ValueObjectSP *name_sp,
   InferiorSizedWord userinfo_isw(userinfo, *process_sp);
   InferiorSizedWord reserved_isw(reserved, *process_sp);
 
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(process_sp->GetTarget());
-  if (!scratch_ts_sp)
+  TypeSystemSP scratch_ts_sp;
+  if (auto ts_or_err = process_sp->GetTarget().GetScratchTypeSystemForLanguage(
+          eLanguageTypeC))
+    scratch_ts_sp = *ts_or_err;
+  else {
+    llvm::consumeError(ts_or_err.takeError());
     return false;
+  }
 
   CompilerType voidstar =
-      scratch_ts_sp->GetBasicType(lldb::eBasicTypeVoid).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(lldb::eBasicTypeVoid).GetPointerType();
   ExecutionContextRef exe_ref = valobj.GetExecutionContextRef();
   ByteOrder byte_order = process_sp->GetByteOrder();
 

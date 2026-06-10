@@ -67,9 +67,16 @@ NSDictionary_Additionals::GetAdditionalSynthetics() {
 
 static CompilerType GetLLDBNSPairType(TargetSP target_sp) {
   CompilerType compiler_type;
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(*target_sp);
+  TypeSystemSP ts_sp;
+  if (auto ts_or_err =
+          target_sp->GetScratchTypeSystemForLanguage(eLanguageTypeC))
+    ts_sp = *ts_or_err;
+  else {
+    llvm::consumeError(ts_or_err.takeError());
+    return compiler_type;
+  }
 
+  auto *scratch_ts_sp = llvm::dyn_cast_or_null<TypeSystemClang>(ts_sp.get());
   if (!scratch_ts_sp)
     return compiler_type;
 
@@ -86,7 +93,7 @@ static CompilerType GetLLDBNSPairType(TargetSP target_sp) {
     if (compiler_type) {
       TypeSystemClang::StartTagDeclarationDefinition(compiler_type);
       CompilerType id_compiler_type =
-          scratch_ts_sp->GetBasicType(eBasicTypeObjCID);
+          scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeObjCID);
       TypeSystemClang::AddFieldToRecordType(compiler_type, "key",
                                             id_compiler_type, 0);
       TypeSystemClang::AddFieldToRecordType(compiler_type, "value",

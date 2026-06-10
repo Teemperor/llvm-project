@@ -8,7 +8,6 @@
 
 #include "AppleGetItemInfoHandler.h"
 
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/Value.h"
 #include "lldb/Expression/DiagnosticManager.h"
@@ -221,8 +220,12 @@ AppleGetItemInfoHandler::GetItemInfo(Thread &thread, uint64_t item,
   lldb::StackFrameSP thread_cur_frame = thread.GetStackFrameAtIndex(0);
   ProcessSP process_sp(thread.CalculateProcess());
   TargetSP target_sp(thread.CalculateTarget());
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(*target_sp);
+  TypeSystemSP scratch_ts_sp;
+  if (auto ts_or_err =
+          target_sp->GetScratchTypeSystemForLanguage(eLanguageTypeC))
+    scratch_ts_sp = *ts_or_err;
+  else
+    llvm::consumeError(ts_or_err.takeError());
   Log *log = GetLog(LLDBLog::SystemRuntime);
 
   GetItemInfoReturnInfo return_value;
@@ -262,18 +265,18 @@ AppleGetItemInfoHandler::GetItemInfo(Thread &thread, uint64_t item,
   // already allocated by lldb in the inferior process.
 
   CompilerType clang_void_ptr_type =
-      scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
   Value return_buffer_ptr_value;
   return_buffer_ptr_value.SetValueType(Value::ValueType::Scalar);
   return_buffer_ptr_value.SetCompilerType(clang_void_ptr_type);
 
-  CompilerType clang_int_type = scratch_ts_sp->GetBasicType(eBasicTypeInt);
+  CompilerType clang_int_type = scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeInt);
   Value debug_value;
   debug_value.SetValueType(Value::ValueType::Scalar);
   debug_value.SetCompilerType(clang_int_type);
 
   CompilerType clang_uint64_type =
-      scratch_ts_sp->GetBasicType(eBasicTypeUnsignedLongLong);
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeUnsignedLongLong);
   Value item_value;
   item_value.SetValueType(Value::ValueType::Scalar);
   item_value.SetCompilerType(clang_uint64_type);

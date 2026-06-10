@@ -136,8 +136,11 @@ bool ClangExpressionDeclMap::WillParse(ExecutionContext &exe_ctx,
     m_parser_vars->m_persistent_vars = llvm::cast<ClangPersistentVariables>(
         target->GetPersistentExpressionStateForLanguage(eLanguageTypeC));
 
-    if (!ScratchTypeSystemClang::GetForTarget(*target))
+    auto ts_or_err = target->GetScratchTypeSystemForLanguage(eLanguageTypeC);
+    if (!ts_or_err) {
+      llvm::consumeError(ts_or_err.takeError());
       return false;
+    }
   }
 
   m_parser_vars->m_target_info = GetTargetInfo();
@@ -745,7 +748,9 @@ clang::NamedDecl *ClangExpressionDeclMap::GetPersistentDecl(ConstString name) {
   if (!target)
     return nullptr;
 
-  ScratchTypeSystemClang::GetForTarget(*target);
+  auto ts_or_err = target->GetScratchTypeSystemForLanguage(eLanguageTypeC);
+  if (!ts_or_err)
+    llvm::consumeError(ts_or_err.takeError());
 
   if (!m_parser_vars->m_persistent_vars)
     return nullptr;
