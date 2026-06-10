@@ -15,22 +15,33 @@ namespace lldb_private {
 namespace cpp_typesystem {
 
 class CppContext;
-class TypeRef {
-  CppContext *context = nullptr;
-};
-
-class Namespace {
-};
 
 class RecordField {
+public:
+private:
   TypeRef type;
 };
 
+// Represents a struct or a class in C/C++.
 class Record {
+public:
+private:
     std::vector<RecordField> members;
 };
 
+/// Represents an Objective-C class.
 class ObjCClass {
+public:
+private:
+};
+
+// Represents a C++ namespace.
+class Namespace {
+public:
+private:
+  std::vector<Namespace> m_nested;
+  std::vector<Record> m_classes;
+  std::vector<ObjCClass> m_classes;
 };
 
 }

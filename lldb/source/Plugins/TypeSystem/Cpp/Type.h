@@ -12,6 +12,20 @@
 namespace lldb_private {
 namespace cpp_typesystem {
 
+/// Represents a type.
+class Type {
+public:
+private:
+};
+
+/// References a 
+class TypeRef {
+public:
+private:
+  CppContext *context = nullptr;
+};
+
+
 }
 } // namespace lldb_private
 

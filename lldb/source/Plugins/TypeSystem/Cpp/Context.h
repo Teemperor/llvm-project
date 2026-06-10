@@ -17,7 +17,10 @@ namespace cpp_typesystem {
 
 /// Holds declaration and function nodes.
 class Context {
-    
+
+private:
+    Namespace m_global_namespace;
+    BuiltinTypes m_builtin;
 };
 
 }
