@@ -308,7 +308,8 @@ llvm::Error SendThreadStoppedEvent(DAP &dap, bool on_entry) {
     if (!dap.thread_ids.contains(tid))
       SendThreadExitedEvent(dap, tid);
 
-  dap.RunStopCommands();
+  if (llvm::Error err = dap.RunStopCommands())
+    return err;
 
   return Error::success();
 }
@@ -441,9 +442,15 @@ static void HandleProcessEvent(const lldb::SBEvent &event, bool &process_exited,
       } else {
         // Run any exit LLDB commands the user specified in the
         // launch.json
-        dap->RunExitCommands();
+        if (llvm::Error err = dap->RunExitCommands())
+          DAP_LOG_ERROR(dap->log, std::move(err),
+                        "({1}) running exit commands: {0}",
+                        dap->GetClientName());
         SendProcessExitedEvent(*dap, process);
-        dap->SendTerminatedEvent();
+        if (llvm::Error err = dap->SendTerminatedEvent())
+          DAP_LOG_ERROR(dap->log, std::move(err),
+                        "({1}) sending terminated event: {0}",
+                        dap->GetClientName());
         process_exited = true;
       }
       break;

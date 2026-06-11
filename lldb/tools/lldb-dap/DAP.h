@@ -222,7 +222,7 @@ struct DAP final : public DAPTransport::MessageHandler {
   void SetConfiguration(const protocol::Configuration &confing, bool is_attach);
 
   /// Configure source maps based on the current `DAPConfiguration`.
-  void ConfigureSourceMaps();
+  llvm::Error ConfigureSourceMaps();
 
   /// Serialize the JSON value into a string and send the JSON packet to the
   /// "out" stream.
@@ -302,11 +302,22 @@ struct DAP final : public DAPTransport::MessageHandler {
   std::optional<protocol::Source>
   ResolveAssemblySource(lldb::SBAddress address);
 
+  /// Run a list of LLDB commands.
+  ///
+  /// \param[in] prefix
+  ///   Header printed to the Debug Console before running the commands.
+  /// \param[in] commands
+  ///   The commands to run.
+  /// \param[in] category
+  ///   Used in the returned error message (e.g. "launch", "stopCommands").
+  ///
   /// \return
-  ///   \b false if a fatal error was found while executing these commands,
-  ///   according to the rules of \a LLDBUtils::RunLLDBCommands.
-  bool RunLLDBCommands(llvm::StringRef prefix,
-                       llvm::ArrayRef<protocol::String> commands);
+  ///   \b llvm::Error::success() if no fatal error was found while executing
+  ///   these commands, according to the rules of \a
+  ///   LLDBUtils::RunLLDBCommands. Otherwise an error referencing \a category.
+  llvm::Error RunLLDBCommands(llvm::StringRef prefix,
+                              llvm::ArrayRef<protocol::String> commands,
+                              llvm::StringRef category);
 
   llvm::Error
   RunAttachCommands(llvm::ArrayRef<protocol::String> attach_commands);
@@ -315,10 +326,10 @@ struct DAP final : public DAPTransport::MessageHandler {
   llvm::Error RunPreInitCommands();
   llvm::Error RunInitCommands();
   llvm::Error RunPreRunCommands();
-  void RunPostRunCommands();
-  void RunStopCommands();
-  void RunExitCommands();
-  void RunTerminateCommands();
+  llvm::Error RunPostRunCommands();
+  llvm::Error RunStopCommands();
+  llvm::Error RunExitCommands();
+  llvm::Error RunTerminateCommands();
 
   /// Create a new SBTarget object from the given request arguments.
   ///
@@ -343,7 +354,7 @@ struct DAP final : public DAPTransport::MessageHandler {
   llvm::Error Disconnect(bool terminateDebuggee);
 
   /// Send a "terminated" event to indicate the process is done being debugged.
-  void SendTerminatedEvent();
+  llvm::Error SendTerminatedEvent();
 
   llvm::Error Loop();
 

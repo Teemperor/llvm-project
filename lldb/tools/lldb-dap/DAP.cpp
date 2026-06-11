@@ -699,71 +699,67 @@ DAP::ResolveAssemblySource(lldb::SBAddress address) {
   return source;
 }
 
-bool DAP::RunLLDBCommands(llvm::StringRef prefix,
-                          llvm::ArrayRef<String> commands) {
+llvm::Error DAP::RunLLDBCommands(llvm::StringRef prefix,
+                                 llvm::ArrayRef<String> commands,
+                                 llvm::StringRef category) {
   bool required_command_failed = false;
   std::string output = ::RunLLDBCommands(
       debugger, GetAPIMutex(), prefix, commands, required_command_failed,
       /*parse_command_directives*/ true, /*echo_commands*/ true);
   SendOutput(OutputType::Console, output);
-  return !required_command_failed;
-}
-
-static llvm::Error createRunLLDBCommandsErrorMessage(llvm::StringRef category) {
-  return llvm::createStringError(
-      llvm::inconvertibleErrorCode(),
-      llvm::formatv(
-          "Failed to run {0} commands. See the Debug Console for more details.",
-          category)
-          .str()
-          .c_str());
+  if (required_command_failed)
+    return llvm::createStringError(
+        llvm::inconvertibleErrorCode(),
+        llvm::formatv(
+            "Failed to run {0} commands. See the Debug Console for more "
+            "details.",
+            category)
+            .str()
+            .c_str());
+  return llvm::Error::success();
 }
 
 llvm::Error DAP::RunAttachCommands(llvm::ArrayRef<String> attach_commands) {
-  if (!RunLLDBCommands("Running attachCommands:", attach_commands))
-    return createRunLLDBCommandsErrorMessage("attach");
-  return llvm::Error::success();
+  return RunLLDBCommands("Running attachCommands:", attach_commands, "attach");
 }
 
 llvm::Error DAP::RunLaunchCommands(llvm::ArrayRef<String> launch_commands) {
-  if (!RunLLDBCommands("Running launchCommands:", launch_commands))
-    return createRunLLDBCommandsErrorMessage("launch");
-  return llvm::Error::success();
+  return RunLLDBCommands("Running launchCommands:", launch_commands, "launch");
 }
 
 llvm::Error DAP::RunInitCommands() {
-  if (!RunLLDBCommands("Running initCommands:", configuration.initCommands))
-    return createRunLLDBCommandsErrorMessage("initCommands");
-  return llvm::Error::success();
+  return RunLLDBCommands("Running initCommands:", configuration.initCommands,
+                         "initCommands");
 }
 
 llvm::Error DAP::RunPreInitCommands() {
-  if (!RunLLDBCommands("Running preInitCommands:",
-                       configuration.preInitCommands))
-    return createRunLLDBCommandsErrorMessage("preInitCommands");
-  return llvm::Error::success();
+  return RunLLDBCommands("Running preInitCommands:",
+                         configuration.preInitCommands, "preInitCommands");
 }
 
 llvm::Error DAP::RunPreRunCommands() {
-  if (!RunLLDBCommands("Running preRunCommands:", configuration.preRunCommands))
-    return createRunLLDBCommandsErrorMessage("preRunCommands");
-  return llvm::Error::success();
+  return RunLLDBCommands("Running preRunCommands:",
+                         configuration.preRunCommands, "preRunCommands");
 }
 
-void DAP::RunPostRunCommands() {
-  RunLLDBCommands("Running postRunCommands:", configuration.postRunCommands);
-}
-void DAP::RunStopCommands() {
-  RunLLDBCommands("Running stopCommands:", configuration.stopCommands);
+llvm::Error DAP::RunPostRunCommands() {
+  return RunLLDBCommands("Running postRunCommands:",
+                         configuration.postRunCommands, "postRunCommands");
 }
 
-void DAP::RunExitCommands() {
-  RunLLDBCommands("Running exitCommands:", configuration.exitCommands);
+llvm::Error DAP::RunStopCommands() {
+  return RunLLDBCommands("Running stopCommands:", configuration.stopCommands,
+                         "stopCommands");
 }
 
-void DAP::RunTerminateCommands() {
-  RunLLDBCommands("Running terminateCommands:",
-                  configuration.terminateCommands);
+llvm::Error DAP::RunExitCommands() {
+  return RunLLDBCommands("Running exitCommands:", configuration.exitCommands,
+                         "exitCommands");
+}
+
+llvm::Error DAP::RunTerminateCommands() {
+  return RunLLDBCommands("Running terminateCommands:",
+                         configuration.terminateCommands, "terminateCommands");
 }
 
 lldb::SBTarget DAP::CreateTarget(lldb::SBError &error) {
@@ -888,14 +884,18 @@ bool DAP::HandleObject(const Message &M) {
   return false;
 }
 
-void DAP::SendTerminatedEvent() {
+llvm::Error DAP::SendTerminatedEvent() {
+  std::optional<llvm::Error> error;
   // Prevent races if the process exits while we're being asked to disconnect.
   llvm::call_once(terminated_event_flag, [&] {
-    RunTerminateCommands();
+    error = RunTerminateCommands();
     // Send a "terminated" event
     llvm::json::Object event(CreateTerminatedEventObject(target));
     SendJSON(llvm::json::Value(std::move(event)));
   });
+  if (error)
+    return std::move(*error);
+  return llvm::Error::success();
 }
 
 llvm::Error DAP::Disconnect() { return Disconnect(!is_attach); }
@@ -924,9 +924,9 @@ llvm::Error DAP::Disconnect(bool terminateDebuggee) {
   }
   }
 
-  SendTerminatedEvent();
+  llvm::Error term_error = SendTerminatedEvent();
   TerminateLoop();
-  return ToError(error);
+  return llvm::joinErrors(ToError(error), std::move(term_error));
 }
 
 bool DAP::IsCancelled(const protocol::Request &req) {
@@ -1131,9 +1131,9 @@ lldb::SBError DAP::WaitForProcessToStop(std::chrono::seconds seconds) {
   return error;
 }
 
-void DAP::ConfigureSourceMaps() {
+llvm::Error DAP::ConfigureSourceMaps() {
   if (configuration.sourceMap.empty() && configuration.sourcePath.empty())
-    return;
+    return llvm::Error::success();
 
   std::string sourceMapCommand;
   llvm::raw_string_ostream strm(sourceMapCommand);
@@ -1147,7 +1147,8 @@ void DAP::ConfigureSourceMaps() {
     strm << "\".\" \"" << configuration.sourcePath << "\"";
   }
 
-  RunLLDBCommands("Setting source map:", {sourceMapCommand});
+  return RunLLDBCommands("Setting source map:", {sourceMapCommand},
+                         "source map");
 }
 
 void DAP::SetConfiguration(const protocol::Configuration &config,

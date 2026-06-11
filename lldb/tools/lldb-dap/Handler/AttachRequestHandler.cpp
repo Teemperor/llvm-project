@@ -56,7 +56,8 @@ Error AttachRequestHandler::Run(const AttachRequestArguments &args) const {
   if (Error err = dap.RunInitCommands())
     return err;
 
-  dap.ConfigureSourceMaps();
+  if (Error err = dap.ConfigureSourceMaps())
+    return err;
 
   lldb::SBError error;
   lldb::SBTarget target;
@@ -148,7 +149,8 @@ Error AttachRequestHandler::Run(const AttachRequestArguments &args) const {
   if (args.coreFile.empty() && !dap.target.GetProcess().IsValid())
     return make_error<DAPError>("failed to attach to process");
 
-  dap.RunPostRunCommands();
+  if (llvm::Error err = dap.RunPostRunCommands())
+    return err;
 
   return Error::success();
 }

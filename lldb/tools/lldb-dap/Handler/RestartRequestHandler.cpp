@@ -38,7 +38,8 @@ RestartRequestHandler::Run(const std::optional<RestartArguments> &args) const {
       // Update DAP configuration based on the latest copy of the launch
       // arguments.
       dap.SetConfiguration(arguments->configuration, false);
-      dap.ConfigureSourceMaps();
+      if (llvm::Error err = dap.ConfigureSourceMaps())
+        return err;
     }
   }
 

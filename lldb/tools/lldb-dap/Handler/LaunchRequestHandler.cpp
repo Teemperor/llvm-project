@@ -43,7 +43,8 @@ Error LaunchRequestHandler::Run(const LaunchRequestArguments &arguments) const {
   if (Error err = dap.RunInitCommands())
     return err;
 
-  dap.ConfigureSourceMaps();
+  if (Error err = dap.ConfigureSourceMaps())
+    return err;
 
   lldb::SBError error;
   lldb::SBTarget target = dap.CreateTarget(error);
@@ -59,7 +60,8 @@ Error LaunchRequestHandler::Run(const LaunchRequestArguments &arguments) const {
   if (Error err = LaunchProcess(arguments))
     return err;
 
-  dap.RunPostRunCommands();
+  if (Error err = dap.RunPostRunCommands())
+    return err;
 
   return Error::success();
 }
