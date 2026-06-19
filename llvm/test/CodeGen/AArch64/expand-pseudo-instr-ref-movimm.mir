@@ -1,0 +1,43 @@
+# RUN: llc -mtriple=aarch64-unknown-linux-gnu -o - %s \
+# RUN:     -run-pass=aarch64-expand-pseudo | FileCheck %s
+#
+# Test that the MOVi32imm / MOVi64imm pseudo expansion preserves the
+# debug-instr-number of the original pseudo by attaching it to the last
+# instruction in the resulting MOVZ/MOVN/MOVK chain.
+#
+# Patch under test: AArch64ExpandPseudoInsts.cpp expandMOVImm() —
+# after constructing the multi-instruction sequence in MIBS, copy any
+# debug-instr-number from the original pseudo onto MIBS.back() so that
+# DBG_INSTR_REFs referring to operand 0 of the pseudo continue to
+# resolve to the final value-producing instruction under InstrRef LDV.
+
+--- |
+  define i64 @movi64_keeps_instrnum() {
+    ret i64 1311768467463790320
+  }
+  define i32 @movi32_keeps_instrnum() {
+    ret i32 -559038737
+  }
+...
+---
+# CHECK-LABEL: name: movi64_keeps_instrnum
+# CHECK: $x0 = MOVZXi
+# CHECK: $x0 = MOVKXi $x0, {{[0-9]+}}, 48, debug-instr-number 7
+name: movi64_keeps_instrnum
+tracksRegLiveness: true
+body:             |
+  bb.0:
+    $x0 = MOVi64imm 1311768467463790320, debug-instr-number 7
+    RET_ReallyLR implicit $x0
+...
+---
+# CHECK-LABEL: name: movi32_keeps_instrnum
+# CHECK: $w0 = MOVZWi
+# CHECK: $w0 = MOVKWi $w0, {{[0-9]+}}, 16, debug-instr-number 9
+name: movi32_keeps_instrnum
+tracksRegLiveness: true
+body:             |
+  bb.0:
+    $w0 = MOVi32imm -559038737, debug-instr-number 9
+    RET_ReallyLR implicit $w0
+...

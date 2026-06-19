@@ -230,6 +230,14 @@ bool AArch64ExpandPseudoImpl::expandMOVImm(MachineBasicBlock &MBB,
     }
   }
   transferImpOps(MI, MIBS.front(), MIBS.back());
+  // Preserve any debug-instr-number on the last instruction in the sequence,
+  // since that's the one that produces the final value of DstReg (and hence
+  // the value any DBG_INSTR_REF would refer to).
+  if (auto DebugNumber = MI.peekDebugInstrNum()) {
+    MachineInstrBuilder &Last = MIBS.back();
+    if (Last.getInstr())
+      Last->setDebugInstrNum(DebugNumber);
+  }
   MI.eraseFromParent();
   return true;
 }
