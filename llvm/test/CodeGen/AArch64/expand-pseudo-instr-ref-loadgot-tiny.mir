@@ -1,0 +1,28 @@
+# RUN: llc -mtriple=aarch64-unknown-linux-gnu --code-model=tiny -o - %s \
+# RUN:     -run-pass=aarch64-expand-pseudo | FileCheck %s
+#
+# Test that the LOADgot pseudo expansion (tiny code-model variant)
+# preserves the debug-instr-number of the original pseudo.
+#
+# Patch under test: AArch64ExpandPseudoInsts.cpp LOADgot tiny-codemodel
+# branch — propagate the original LOADgot's debug-instr-number onto the
+# single LDRXl replacement instruction so DBG_INSTR_REFs referring to
+# operand 0 of the LOADgot continue to resolve under InstrRef LDV.
+#
+# (The "small" code model expansion path already propagated this and was
+# untouched by the patch.)
+
+--- |
+  @g = external global i32
+  define ptr @loadgot_tiny_keeps_instrnum() { ret ptr @g }
+...
+---
+# CHECK-LABEL: name: loadgot_tiny_keeps_instrnum
+# CHECK: $x0 = LDRXl @g, debug-instr-number 5
+name: loadgot_tiny_keeps_instrnum
+tracksRegLiveness: true
+body:             |
+  bb.0:
+    $x0 = LOADgot @g, debug-instr-number 5
+    RET_ReallyLR implicit $x0
+...

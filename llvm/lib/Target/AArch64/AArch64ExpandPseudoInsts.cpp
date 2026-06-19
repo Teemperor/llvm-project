@@ -1496,6 +1496,9 @@ bool AArch64ExpandPseudoImpl::expandMI(MachineBasicBlock &MBB,
                "Only expect globals, externalsymbols, or constant pools");
         MIB.addConstantPoolIndex(MO1.getIndex(), MO1.getOffset(), Flags);
       }
+      // Preserve any debug-instr-number on the (single) replacement insn.
+      if (auto DebugNumber = MI.peekDebugInstrNum())
+        MIB->setDebugInstrNum(DebugNumber);
     } else {
       // Small codemodel expand into ADRP + LDR.
       MachineFunction &MF = *MI.getParent()->getParent();
