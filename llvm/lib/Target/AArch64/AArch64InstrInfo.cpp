@@ -2776,6 +2776,34 @@ static bool isFrameLoadOpcode(int Opcode) {
   case AArch64::LDRDui:
   case AArch64::LDRQui:
   case AArch64::LDR_PXI:
+  // Unscaled-immediate forms (frame loads after frame elimination commonly
+  // appear as LDURXi/LDURWi/etc when the frame offset cannot be encoded as
+  // a scaled-imm in LDRXui/etc). Including them lets InstrRefBasedLDV
+  // recognise these as spill reloads via hasLoadFromStackSlot in the
+  // PostFE path.
+  case AArch64::LDURWi:
+  case AArch64::LDURXi:
+  case AArch64::LDURBi:
+  case AArch64::LDURBBi:
+  case AArch64::LDURHi:
+  case AArch64::LDURHHi:
+  case AArch64::LDURSi:
+  case AArch64::LDURDi:
+  case AArch64::LDURQi:
+  // Single-register SVE/predicate spill reloads.
+  case AArch64::LDR_PPXI:
+  case AArch64::LDR_ZXI:
+  // Paired loads — these are very common spill reloads of two consecutive
+  // callee-saved registers.  Note that the InstrRefBasedLDV consumer only
+  // gets the *first* (operand 0) register from the standard target hook;
+  // the second is recovered via isPairedLdSt() in the consumer, so see
+  // transferSpillOrRestoreInst() in InstrRefBasedImpl.cpp for the full
+  // story.
+  case AArch64::LDPWi:
+  case AArch64::LDPXi:
+  case AArch64::LDPSi:
+  case AArch64::LDPDi:
+  case AArch64::LDPQi:
     return true;
   }
 }
@@ -2788,6 +2816,13 @@ Register AArch64InstrInfo::isLoadFromStackSlot(const MachineInstr &MI,
   if (MI.getOperand(0).getSubReg() == 0 && MI.getOperand(1).isFI() &&
       MI.getOperand(2).isImm() && MI.getOperand(2).getImm() == 0) {
     FrameIndex = MI.getOperand(1).getIndex();
+    return MI.getOperand(0).getReg();
+  }
+  // Paired loads: operand layout is Rt, Rt2, Rn|FI, imm.
+  if (isPairedLdSt(MI) && MI.getOperand(0).getSubReg() == 0 &&
+      MI.getOperand(2).isFI() && MI.getOperand(3).isImm() &&
+      MI.getOperand(3).getImm() == 0) {
+    FrameIndex = MI.getOperand(2).getIndex();
     return MI.getOperand(0).getReg();
   }
   return Register();
@@ -2805,6 +2840,27 @@ static bool isFrameStoreOpcode(int Opcode) {
   case AArch64::STRDui:
   case AArch64::STRQui:
   case AArch64::STR_PXI:
+  // Unscaled-immediate counterparts of the scaled forms above. See the
+  // matching note on isFrameLoadOpcode.
+  case AArch64::STURWi:
+  case AArch64::STURXi:
+  case AArch64::STURBi:
+  case AArch64::STURBBi:
+  case AArch64::STURHi:
+  case AArch64::STURHHi:
+  case AArch64::STURSi:
+  case AArch64::STURDi:
+  case AArch64::STURQi:
+  // Single-register SVE/predicate spill stores.
+  case AArch64::STR_PPXI:
+  case AArch64::STR_ZXI:
+  // Paired stores — common spill stores of two consecutive callee-saved
+  // registers.  See note on the matching loads above.
+  case AArch64::STPWi:
+  case AArch64::STPXi:
+  case AArch64::STPSi:
+  case AArch64::STPDi:
+  case AArch64::STPQi:
     return true;
   }
 }
@@ -2819,6 +2875,13 @@ Register AArch64InstrInfo::isStoreToStackSlot(const MachineInstr &MI,
     FrameIndex = MI.getOperand(1).getIndex();
     return MI.getOperand(0).getReg();
   }
+  // Paired stores: operand layout is Rt, Rt2, Rn|FI, imm.
+  if (isPairedLdSt(MI) && MI.getOperand(0).getSubReg() == 0 &&
+      MI.getOperand(2).isFI() && MI.getOperand(3).isImm() &&
+      MI.getOperand(3).getImm() == 0) {
+    FrameIndex = MI.getOperand(2).getIndex();
+    return MI.getOperand(0).getReg();
+  }
   return Register();
 }
 
@@ -2830,9 +2893,16 @@ Register AArch64InstrInfo::isStoreToStackSlotPostFE(const MachineInstr &MI,
   if (Register Reg = isStoreToStackSlot(MI, FrameIndex))
     return Reg;
 
-  SmallVector<const MachineMemOperand *, 1> Accesses;
+  SmallVector<const MachineMemOperand *, 2> Accesses;
   if (hasStoreToStackSlot(MI, Accesses)) {
-    if (Accesses.size() > 1)
+    // For paired stores (STPXi/etc) we accept up to two FixedStack accesses
+    // and report the *first* destination register / first frame index. The
+    // second register's location update happens in the consumer
+    // (InstrRefBasedLDV::transferSpillOrRestoreInst), which uses
+    // isPairedLdSt() to recover the missing operand.
+    if (Accesses.size() > 1 && !isPairedLdSt(MI))
+      return Register();
+    if (Accesses.size() > 2)
       return Register();
 
     FrameIndex =
@@ -2851,9 +2921,12 @@ Register AArch64InstrInfo::isLoadFromStackSlotPostFE(const MachineInstr &MI,
   if (Register Reg = isLoadFromStackSlot(MI, FrameIndex))
     return Reg;
 
-  SmallVector<const MachineMemOperand *, 1> Accesses;
+  SmallVector<const MachineMemOperand *, 2> Accesses;
   if (hasLoadFromStackSlot(MI, Accesses)) {
-    if (Accesses.size() > 1)
+    // See note on isStoreToStackSlotPostFE for the paired-load case.
+    if (Accesses.size() > 1 && !isPairedLdSt(MI))
+      return Register();
+    if (Accesses.size() > 2)
       return Register();
 
     FrameIndex =

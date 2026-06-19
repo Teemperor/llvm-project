@@ -1,0 +1,116 @@
+# RUN: llc -o - %s -start-before=livedebugvalues -stop-after=livedebugvalues \
+# RUN:     -mtriple=aarch64-apple-darwin | FileCheck %s
+#
+# Test that the InstrRef LiveDebugValues consumer correctly tracks values
+# spilled with a paired store (STPXi) and reloaded with a paired load
+# (LDPXi) on AArch64.
+#
+# Patches under test:
+#   * AArch64InstrInfo isFrameLoadOpcode / isFrameStoreOpcode include
+#     LDPXi / STPXi.
+#   * AArch64InstrInfo isLoadFromStackSlot / isStoreToStackSlot and their
+#     PostFE variants recognise the paired operand layout (Rt, Rt2, Rn|FI,
+#     imm) and accept up to two FixedStack memory operands.
+#   * InstrRefBasedImpl extractSpillBaseRegAndOffset / isSpillInstruction /
+#     isRestoreInstruction accept up to two FixedStack memops.
+#   * InstrRefBasedImpl transferSpillOrRestoreInst.getSecondHalf() emits a
+#     transfer for the second-half register of paired ops so LDV knows
+#     both halves survive the spill/reload pair.
+#
+# Without these patches, the STPXi at the start of bb.1 has > 1 memory
+# operand and AArch64InstrInfo::isStoreToStackSlotPostFE bails, so LDV
+# treats the STPXi as a black-box clobber.  After the BL @clobber the
+# value of $x0 is therefore considered dead and the DBG_INSTR_REF in
+# bb.2 cannot be resolved -- no DBG_VALUE_LIST is emitted (or one with
+# $noreg).  With the patches in place, LDV recognises the STPXi as a
+# spill of $x0 to %stack.1, follows the value through the spill slot
+# across the BL, and emits a DBG_VALUE_LIST whose location is a
+# stack-relative expression (or a register if the value is reloaded
+# before the DBG_INSTR_REF).
+#
+# CHECK-LABEL: name: paired_spill_ldv
+# CHECK-LABEL: bb.2:
+# CHECK: DBG_VALUE_LIST !{{[0-9]+}}, !DIExpression(DW_OP_LLVM_arg, 0{{.*}}), {{\$sp|\$x[0-9]+}}
+
+--- |
+  declare void @clobber()
+  define i64 @paired_spill_ldv(i64 %a, i64 %b) !dbg !4 {
+  entry:
+    call void @clobber()
+    ret i64 %a
+  }
+
+  !llvm.module.flags = !{!0}
+  !llvm.dbg.cu = !{!1}
+  !0 = !{i32 2, !"Debug Info Version", i32 3}
+  !1 = distinct !DICompileUnit(language: DW_LANG_C99, file: !2, isOptimized: true, runtimeVersion: 0, emissionKind: FullDebug)
+  !2 = !DIFile(filename: "p.c", directory: "/")
+  !3 = !{}
+  !4 = distinct !DISubprogram(name: "paired_spill_ldv", scope: !2, file: !2, line: 1, type: !5, scopeLine: 1, spFlags: DISPFlagDefinition | DISPFlagOptimized, unit: !1, retainedNodes: !6)
+  !5 = !DISubroutineType(types: !3)
+  !6 = !{!7}
+  !7 = !DILocalVariable(name: "a", arg: 1, scope: !4, file: !2, line: 1, type: !8)
+  !8 = !DIBasicType(name: "long", size: 64, encoding: DW_ATE_signed)
+  !9 = !DILocation(line: 1, scope: !4)
+...
+---
+name:            paired_spill_ldv
+alignment:       4
+tracksRegLiveness: true
+noPhis:          true
+isSSA:           false
+noVRegs:         true
+hasFakeUses:     false
+debugInstrRef:   true
+tracksDebugUserValues: true
+liveins:
+  - { reg: '$x0' }
+  - { reg: '$x1' }
+frameInfo:
+  stackSize:       32
+  maxAlignment:    8
+  adjustsStack:    true
+  hasCalls:        true
+  maxCallFrameSize: 0
+  isCalleeSavedInfoValid: true
+stack:
+  - { id: 0, type: spill-slot, offset: -8,  size: 8, alignment: 8 }
+  - { id: 1, type: spill-slot, offset: -16, size: 8, alignment: 8 }
+  - { id: 2, type: spill-slot, offset: -24, size: 8, alignment: 8, callee-saved-register: '$lr' }
+  - { id: 3, type: spill-slot, offset: -32, size: 8, alignment: 8, callee-saved-register: '$fp' }
+machineFunctionInfo:
+  hasRedZone:      false
+  stackSizeZPR:    0
+  stackSizePPR:    0
+  hasStackFrame:   true
+body:             |
+  bb.0:
+    successors: %bb.1(0x80000000)
+    liveins: $x0, $x1, $lr
+
+    $sp = frame-setup SUBXri $sp, 32, 0
+    frame-setup STPXi $fp, killed $lr, $sp, 2 :: (store (s64) into %stack.3), (store (s64) into %stack.2)
+    DBG_PHI $x0, 1
+    ; Spill the two incoming arguments to the two user stack slots in a
+    ; single paired STPXi.  After this point $x0 and $x1 may be clobbered
+    ; by the call; the live location of the variable lives only in the
+    ; paired stack slot until the LDPXi reload below.
+    STPXi killed $x0, killed $x1, $sp, 0 :: (store (s64) into %stack.1), (store (s64) into %stack.0)
+
+  bb.1:
+    successors: %bb.2(0x80000000)
+
+    BL @clobber, csr_darwin_aarch64_aapcs, implicit-def dead $lr, implicit $sp, implicit-def $sp
+
+  bb.2:
+    ; Reload both spilled values with a paired LDPXi.  LDV must have
+    ; tracked the STPXi above as a spill of $x0 to %stack.1 and the
+    ; LDPXi below as a reload of $x8 from %stack.1, so the DBG_INSTR_REF
+    ; resolves to the reloaded physical register.
+    $x8, $x9 = LDPXi $sp, 0, debug-location !9 :: (load (s64) from %stack.1), (load (s64) from %stack.0)
+    DBG_INSTR_REF !7, !DIExpression(DW_OP_LLVM_arg, 0), dbg-instr-ref(1, 0), debug-location !9
+    $fp, $lr = frame-destroy LDPXi $sp, 2, debug-location !9 :: (load (s64) from %stack.3), (load (s64) from %stack.2)
+    $sp = frame-destroy ADDXri $sp, 32, 0, debug-location !9
+    $x0 = ORRXrs $xzr, $x8, 0, debug-location !9
+    RET undef $lr, implicit $x0, debug-location !9
+...

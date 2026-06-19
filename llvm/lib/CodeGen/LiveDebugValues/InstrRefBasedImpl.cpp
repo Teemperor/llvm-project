@@ -1394,8 +1394,14 @@ bool InstrRefBasedLDV::isCalleeSavedReg(Register R) const {
 
 std::optional<SpillLocationNo>
 InstrRefBasedLDV::extractSpillBaseRegAndOffset(const MachineInstr &MI) {
-  assert(MI.hasOneMemOperand() &&
-         "Spill instruction does not have exactly one memory operand?");
+  // We accept either a single FixedStack memory operand (the common case),
+  // or up to two FixedStack memory operands (paired spill/reload such as
+  // AArch64 STP/LDP).  Both forms here use the *first* memory operand to
+  // derive the spill base/offset; the caller is responsible for emitting
+  // any additional transfer for the second-register half of a paired op
+  // (see transferSpillOrRestoreInst).
+  assert(!MI.memoperands_empty() &&
+         "Spill instruction must have at least one memory operand");
   auto MMOI = MI.memoperands_begin();
   const PseudoSourceValue *PVal = (*MMOI)->getPseudoValue();
   assert(PVal->kind() == PseudoSourceValue::FixedStack &&
@@ -2020,15 +2026,22 @@ void InstrRefBasedLDV::performCopy(Register SrcRegNum, Register DstRegNum) {
 std::optional<SpillLocationNo>
 InstrRefBasedLDV::isSpillInstruction(const MachineInstr &MI,
                                      MachineFunction *MF) {
-  // TODO: Handle multiple stores folded into one.
-  if (!MI.hasOneMemOperand())
+  // Accept single-memop spills (the common case) and two-memop paired-spill
+  // forms such as AArch64 STPXi where each half is a FixedStack reference.
+  // Anything else (folded/aliased/larger groupings) is rejected.
+  if (MI.memoperands_empty())
+    return std::nullopt;
+  if (MI.getNumMemOperands() > 2)
     return std::nullopt;
 
-  // Reject any memory operand that's aliased -- we can't guarantee its value.
-  auto MMOI = MI.memoperands_begin();
-  const PseudoSourceValue *PVal = (*MMOI)->getPseudoValue();
-  if (PVal->isAliased(MFI))
-    return std::nullopt;
+  // Reject if any memory operand is aliased -- we can't guarantee its value.
+  for (const auto *MMO : MI.memoperands()) {
+    const PseudoSourceValue *PVal = MMO->getPseudoValue();
+    if (!PVal || PVal->kind() != PseudoSourceValue::FixedStack)
+      return std::nullopt;
+    if (PVal->isAliased(MFI))
+      return std::nullopt;
+  }
 
   if (!MI.getSpillSize(TII) && !MI.getFoldedSpillSize(TII))
     return std::nullopt; // This is not a spill instruction, since no valid size
@@ -2050,11 +2063,17 @@ bool InstrRefBasedLDV::isLocationSpill(const MachineInstr &MI,
 std::optional<SpillLocationNo>
 InstrRefBasedLDV::isRestoreInstruction(const MachineInstr &MI,
                                        MachineFunction *MF, unsigned &Reg) {
-  if (!MI.hasOneMemOperand())
+  // See note on isSpillInstruction for the multi-memop case.
+  if (MI.memoperands_empty())
     return std::nullopt;
+  if (MI.getNumMemOperands() > 2)
+    return std::nullopt;
+  for (const auto *MMO : MI.memoperands()) {
+    const PseudoSourceValue *PVal = MMO->getPseudoValue();
+    if (!PVal || PVal->kind() != PseudoSourceValue::FixedStack)
+      return std::nullopt;
+  }
 
-  // FIXME: Handle folded restore instructions with more than one memory
-  // operand.
   if (MI.getRestoreSize(TII)) {
     Reg = MI.getOperand(0).getReg();
     return extractSpillBaseRegAndOffset(MI);
@@ -2088,26 +2107,77 @@ bool InstrRefBasedLDV::transferSpillOrRestoreInst(MachineInstr &MI) {
       !TII->isLoadFromStackSlotPostFE(MI, FIDummy))
     return false;
 
+  // For paired spill/reload (e.g. AArch64 STP/LDP) the target hook only
+  // reports the first (operand-0) register / first frame index.  Detect
+  // the paired case here so we can also transfer the second-half register.
+  // Heuristic: exactly two FixedStack memory operands AND operands 0 and 1
+  // are both register operands of compatible kinds (def/def for loads,
+  // use/use for stores).
+  auto getSecondHalf = [&](bool IsLoad)
+      -> std::optional<std::pair<Register, int>> {
+    if (MI.getNumMemOperands() != 2)
+      return std::nullopt;
+    if (MI.getNumOperands() < 2)
+      return std::nullopt;
+    const MachineOperand &Op0 = MI.getOperand(0);
+    const MachineOperand &Op1 = MI.getOperand(1);
+    if (!Op0.isReg() || !Op1.isReg())
+      return std::nullopt;
+    if (!Op0.getReg().isPhysical() || !Op1.getReg().isPhysical())
+      return std::nullopt;
+    if (IsLoad) {
+      if (!Op0.isDef() || !Op1.isDef())
+        return std::nullopt;
+    } else {
+      if (Op0.isDef() || Op1.isDef())
+        return std::nullopt;
+    }
+    if (Op1.getSubReg() != 0)
+      return std::nullopt;
+    auto MMOI = MI.memoperands_begin();
+    ++MMOI;
+    const PseudoSourceValue *PVal = (*MMOI)->getPseudoValue();
+    if (!PVal || PVal->kind() != PseudoSourceValue::FixedStack)
+      return std::nullopt;
+    int FI = cast<FixedStackPseudoSourceValue>(PVal)->getFrameIndex();
+    return std::make_pair(Op1.getReg(), FI);
+  };
+
+  auto getSpillLocForFI = [&](int FI) -> std::optional<SpillLocationNo> {
+    const MachineBasicBlock *MBB = MI.getParent();
+    Register BaseReg;
+    StackOffset Offset =
+        TFI->getFrameIndexReference(*MBB->getParent(), FI, BaseReg);
+    return MTracker->getOrTrackSpillLoc({BaseReg, Offset});
+  };
+
   // First, if there are any DBG_VALUEs pointing at a spill slot that is
   // written to, terminate that variable location. The value in memory
   // will have changed. DbgEntityHistoryCalculator doesn't try to detect this.
   if (std::optional<SpillLocationNo> Loc = isSpillInstruction(MI, MF)) {
-    // Un-set this location and clobber, so that earlier locations don't
-    // continue past this store.
-    for (unsigned SlotIdx = 0; SlotIdx < MTracker->NumSlotIdxes; ++SlotIdx) {
-      unsigned SpillID = MTracker->getSpillIDWithIdx(*Loc, SlotIdx);
-      std::optional<LocIdx> MLoc = MTracker->getSpillMLoc(SpillID);
-      if (!MLoc)
-        continue;
+    auto ClobberSlot = [&](SpillLocationNo SLoc) {
+      for (unsigned SlotIdx = 0; SlotIdx < MTracker->NumSlotIdxes; ++SlotIdx) {
+        unsigned SpillID = MTracker->getSpillIDWithIdx(SLoc, SlotIdx);
+        std::optional<LocIdx> MLoc = MTracker->getSpillMLoc(SpillID);
+        if (!MLoc)
+          continue;
 
-      // We need to over-write the stack slot with something (here, a def at
-      // this instruction) to ensure no values are preserved in this stack slot
-      // after the spill. It also prevents TTracker from trying to recover the
-      // location and re-installing it in the same place.
-      ValueIDNum Def(CurBB, CurInst, *MLoc);
-      MTracker->setMLoc(*MLoc, Def);
-      if (TTracker)
-        TTracker->clobberMloc(*MLoc, MI.getIterator());
+        // We need to over-write the stack slot with something (here, a def at
+        // this instruction) to ensure no values are preserved in this stack
+        // slot after the spill. It also prevents TTracker from trying to
+        // recover the location and re-installing it in the same place.
+        ValueIDNum Def(CurBB, CurInst, *MLoc);
+        MTracker->setMLoc(*MLoc, Def);
+        if (TTracker)
+          TTracker->clobberMloc(*MLoc, MI.getIterator());
+      }
+    };
+    ClobberSlot(*Loc);
+
+    // For paired stores, also clobber the second slot.
+    if (auto Second = getSecondHalf(/*IsLoad=*/false)) {
+      if (auto SLoc2 = getSpillLocForFI(Second->second))
+        ClobberSlot(*SLoc2);
     }
   }
 
@@ -2128,19 +2198,29 @@ bool InstrRefBasedLDV::transferSpillOrRestoreInst(MachineInstr &MI) {
       }
     };
 
-    // Then, transfer subreg bits.
-    for (MCPhysReg SR : TRI->subregs(Reg)) {
-      // Ensure this reg is tracked,
-      (void)MTracker->lookupOrTrackRegister(MTracker->getLocID(SR));
-      unsigned SubregIdx = TRI->getSubRegIndex(Reg, SR);
-      unsigned SpillID = MTracker->getLocID(Loc, SubregIdx);
-      DoTransfer(SR, SpillID);
-    }
+    auto TransferOneReg = [&](Register R, SpillLocationNo SLoc) {
+      // Then, transfer subreg bits.
+      for (MCPhysReg SR : TRI->subregs(R)) {
+        // Ensure this reg is tracked,
+        (void)MTracker->lookupOrTrackRegister(MTracker->getLocID(SR));
+        unsigned SubregIdx = TRI->getSubRegIndex(R, SR);
+        unsigned SpillID = MTracker->getLocID(SLoc, SubregIdx);
+        DoTransfer(SR, SpillID);
+      }
 
-    // Directly lookup size of main source reg, and transfer.
-    unsigned Size = TRI->getRegSizeInBits(Reg, *MRI);
-    unsigned SpillID = MTracker->getLocID(Loc, {Size, 0});
-    DoTransfer(Reg, SpillID);
+      // Directly lookup size of main source reg, and transfer.
+      unsigned Size = TRI->getRegSizeInBits(R, *MRI);
+      unsigned SpillID = MTracker->getLocID(SLoc, {Size, 0});
+      DoTransfer(R, SpillID);
+    };
+
+    TransferOneReg(Reg, Loc);
+
+    // Paired-store: also transfer the second register to its own slot.
+    if (auto Second = getSecondHalf(/*IsLoad=*/false)) {
+      if (auto SLoc2 = getSpillLocForFI(Second->second))
+        TransferOneReg(Second->first, *SLoc2);
+    }
   } else {
     std::optional<SpillLocationNo> Loc = isRestoreInstruction(MI, MF, Reg);
     if (!Loc)
@@ -2152,28 +2232,38 @@ bool InstrRefBasedLDV::transferSpillOrRestoreInst(MachineInstr &MI) {
     // subregisters in the destination register line up with positions in the
     // stack slot.
 
-    // Def all registers that alias the destination.
-    for (MCRegAliasIterator RAI(Reg, TRI, true); RAI.isValid(); ++RAI)
-      MTracker->defReg(*RAI, CurBB, CurInst);
-
-    // Now find subregisters within the destination register, and load values
-    // from stack slot positions.
     auto DoTransfer = [&](Register DestReg, unsigned SpillID) {
       LocIdx SrcIdx = MTracker->getSpillMLoc(SpillID);
       auto ReadValue = MTracker->readMLoc(SrcIdx);
       MTracker->setReg(DestReg, ReadValue);
     };
 
-    for (MCPhysReg SR : TRI->subregs(Reg)) {
-      unsigned Subreg = TRI->getSubRegIndex(Reg, SR);
-      unsigned SpillID = MTracker->getLocID(*Loc, Subreg);
-      DoTransfer(SR, SpillID);
-    }
+    auto TransferOneReg = [&](Register R, SpillLocationNo SLoc) {
+      // Def all registers that alias the destination.
+      for (MCRegAliasIterator RAI(R, TRI, true); RAI.isValid(); ++RAI)
+        MTracker->defReg(*RAI, CurBB, CurInst);
 
-    // Directly look up this registers slot idx by size, and transfer.
-    unsigned Size = TRI->getRegSizeInBits(Reg, *MRI);
-    unsigned SpillID = MTracker->getLocID(*Loc, {Size, 0});
-    DoTransfer(Reg, SpillID);
+      // Now find subregisters within the destination register, and load
+      // values from stack slot positions.
+      for (MCPhysReg SR : TRI->subregs(R)) {
+        unsigned Subreg = TRI->getSubRegIndex(R, SR);
+        unsigned SpillID = MTracker->getLocID(SLoc, Subreg);
+        DoTransfer(SR, SpillID);
+      }
+
+      // Directly look up this registers slot idx by size, and transfer.
+      unsigned Size = TRI->getRegSizeInBits(R, *MRI);
+      unsigned SpillID = MTracker->getLocID(SLoc, {Size, 0});
+      DoTransfer(R, SpillID);
+    };
+
+    TransferOneReg(Reg, *Loc);
+
+    // Paired-load: also transfer the second register from its own slot.
+    if (auto Second = getSecondHalf(/*IsLoad=*/true)) {
+      if (auto SLoc2 = getSpillLocForFI(Second->second))
+        TransferOneReg(Second->first, *SLoc2);
+    }
   }
   return true;
 }
