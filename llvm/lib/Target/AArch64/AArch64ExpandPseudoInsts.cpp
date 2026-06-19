@@ -1341,6 +1341,9 @@ bool AArch64ExpandPseudoImpl::expandMI(MachineBasicBlock &MBB,
   case AArch64::BSPv8i8:
   case AArch64::BSPv16i8: {
     Register DstReg = MI.getOperand(0).getReg();
+    // Track the last MIB whose def is DstReg so we can propagate any
+    // debug-instr-number of the original BSP onto it.
+    MachineInstrBuilder LastDef;
     if (DstReg == MI.getOperand(3).getReg()) {
       // Expand to BIT
       auto I = BuildMI(MBB, MBBI, MI.getDebugLoc(),
@@ -1351,6 +1354,7 @@ bool AArch64ExpandPseudoImpl::expandMI(MachineBasicBlock &MBB,
                    .add(MI.getOperand(2))
                    .add(MI.getOperand(1));
       transferImpOps(MI, I, I);
+      LastDef = I;
     } else if (DstReg == MI.getOperand(2).getReg()) {
       // Expand to BIF
       auto I = BuildMI(MBB, MBBI, MI.getDebugLoc(),
@@ -1361,6 +1365,7 @@ bool AArch64ExpandPseudoImpl::expandMI(MachineBasicBlock &MBB,
                    .add(MI.getOperand(3))
                    .add(MI.getOperand(1));
       transferImpOps(MI, I, I);
+      LastDef = I;
     } else {
       // Expand to BSL, use additional move if required
       if (DstReg == MI.getOperand(1).getReg()) {
@@ -1373,6 +1378,7 @@ bool AArch64ExpandPseudoImpl::expandMI(MachineBasicBlock &MBB,
                 .add(MI.getOperand(2))
                 .add(MI.getOperand(3));
         transferImpOps(MI, I, I);
+        LastDef = I;
       } else {
         RegState RegState =
             getRenamableRegState(MI.getOperand(1).isRenamable()) |
@@ -1399,8 +1405,12 @@ bool AArch64ExpandPseudoImpl::expandMI(MachineBasicBlock &MBB,
                 .add(MI.getOperand(2))
                 .add(MI.getOperand(3));
         transferImpOps(MI, I2, I2);
+        LastDef = I2;
       }
     }
+    if (auto DebugNumber = MI.peekDebugInstrNum())
+      if (LastDef.getInstr())
+        LastDef->setDebugInstrNum(DebugNumber);
     MI.eraseFromParent();
     return true;
   }

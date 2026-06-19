@@ -1,0 +1,39 @@
+# RUN: llc -mtriple=aarch64-unknown-linux-gnu -o - %s \
+# RUN:     -run-pass=aarch64-expand-pseudo | FileCheck %s
+#
+# Test that the AArch64 BSPv8i8 / BSPv16i8 pseudo expansion preserves the
+# debug-instr-number of the original pseudo by attaching it to the *last*
+# value-producing instruction in the resulting BIT/BIF/BSL or ORR+BSL
+# sequence.
+#
+# Patch under test: AArch64ExpandPseudoInsts.cpp BSP expansion — track
+# the LastDef MachineInstrBuilder across the four code paths (DstReg==
+# operand3 -> BIT; ==operand2 -> BIF; ==operand1 -> BSL; otherwise
+# ORR+BSL) and propagate any debug-instr-number to LastDef.
+
+--- |
+  define <8 x i8>  @bsp_v8i8_keeps_instrnum (<8 x i8>  %a, <8 x i8>  %b, <8 x i8>  %c) { ret <8 x i8>  zeroinitializer }
+  define <16 x i8> @bsp_v16i8_keeps_instrnum(<16 x i8> %a, <16 x i8> %b, <16 x i8> %c) { ret <16 x i8> zeroinitializer }
+...
+---
+# CHECK-LABEL: name: bsp_v8i8_keeps_instrnum
+# CHECK: $d3 = BSLv8i8 killed $d3, $d1, $d2, debug-instr-number 17
+name: bsp_v8i8_keeps_instrnum
+tracksRegLiveness: true
+body:             |
+  bb.0:
+    liveins: $d0, $d1, $d2
+    $d3 = BSPv8i8 $d0, $d1, $d2, debug-instr-number 17
+    RET_ReallyLR implicit $d3
+...
+---
+# CHECK-LABEL: name: bsp_v16i8_keeps_instrnum
+# CHECK: $q3 = BSLv16i8 killed $q3, $q1, $q2, debug-instr-number 19
+name: bsp_v16i8_keeps_instrnum
+tracksRegLiveness: true
+body:             |
+  bb.0:
+    liveins: $q0, $q1, $q2
+    $q3 = BSPv16i8 $q0, $q1, $q2, debug-instr-number 19
+    RET_ReallyLR implicit $q3
+...
