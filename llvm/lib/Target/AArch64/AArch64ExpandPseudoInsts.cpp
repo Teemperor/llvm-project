@@ -790,6 +790,11 @@ bool AArch64ExpandPseudoImpl::expandSVEBitwisePseudo(
     transferImpOps(MI, DOP, DOP);
   }
 
+  // DOP produces the final value, so inherit any debug-instr-number.
+  if (auto DebugNumber = MI.peekDebugInstrNum())
+    if (DOP.getInstr())
+      DOP->setDebugInstrNum(DebugNumber);
+
   MI.eraseFromParent();
   return true;
 }
