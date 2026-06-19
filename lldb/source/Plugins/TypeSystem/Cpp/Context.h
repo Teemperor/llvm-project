@@ -12,6 +12,8 @@
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
 
+#include "BuiltinTypes.h"
+
 namespace lldb_private {
 namespace cpp_typesystem {
 

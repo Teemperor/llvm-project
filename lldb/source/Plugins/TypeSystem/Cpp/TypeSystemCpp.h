@@ -11,8 +11,9 @@
 
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
-#include "llvm/ADT/Triple.h"
 #include "llvm/TargetParser/Triple.h"
+
+#include "Context.h"
 
 namespace lldb_private {
 
@@ -229,6 +230,7 @@ public:
 private:
   std::string m_display_name;
   llvm::Triple m_triple;
+  Context m_context;
 };
 
 class ScratchTypeSystemCpp : public TypeSystemCpp {
