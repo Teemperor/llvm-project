@@ -1631,6 +1631,18 @@ bool AArch64ExpandPseudoImpl::expandMI(MachineBasicBlock &MBB,
       LastMIB = MIB;
     }
 
+    // The MOVaddr family expands to a sequence ending in ADDXri (or MOVKXi
+    // for the tagged-PC variant) that defines the original DstReg.  When
+    // the original pseudo carries a debug-instr-number, propagate it to the
+    // last instruction in the sequence so that DBG_INSTR_REFs referring to
+    // operand 0 of the pseudo continue to resolve under InstrRef LDV.
+    if (auto DebugNumber = MI.peekDebugInstrNum()) {
+      MachineInstr *LastMI = LastMIB.getInstr();
+      if (LastMI && LastMI->getNumOperands() > 0 &&
+          LastMI->getOperand(0).isReg() && LastMI->getOperand(0).isDef() &&
+          LastMI->getOperand(0).getReg() == DstReg)
+        LastMI->setDebugInstrNum(DebugNumber);
+    }
     transferImpOps(MI, FirstMIB, LastMIB);
     MI.eraseFromParent();
     return true;

@@ -1,0 +1,29 @@
+# RUN: llc -mtriple=aarch64-unknown-linux-gnu -o - %s \
+# RUN:     -run-pass=aarch64-expand-pseudo | FileCheck %s
+#
+# Test that the MOVaddr pseudo expansion preserves debug-instr-number.
+#
+# MOVaddr expands into a sequence (typically ADRP + ADDXri) where the
+# *last* instruction in the sequence produces the value of operand 0.
+# Before the AArch64ExpandPseudoInsts.cpp MOVaddr-family patch, the
+# original pseudo's debug-instr-number was dropped, breaking InstrRef
+# LDV's ability to resolve DBG_INSTR_REFs pointing at the SSA def.
+#
+# CHECK-LABEL: name: movaddr_keeps_instrnum
+# CHECK: $x0 = ADRP target-flags(aarch64-page) @g
+# CHECK-NEXT: $x0 = ADDXri $x0, target-flags(aarch64-pageoff, aarch64-nc) @g, 0, debug-instr-number 1
+
+--- |
+  @g = external global i32
+  define ptr @movaddr_keeps_instrnum() {
+    ret ptr @g
+  }
+...
+---
+name: movaddr_keeps_instrnum
+tracksRegLiveness: true
+body:             |
+  bb.0:
+    $x0 = MOVaddr target-flags(aarch64-page) @g, target-flags(aarch64-pageoff, aarch64-nc) @g, debug-instr-number 1
+    RET_ReallyLR implicit $x0
+...
