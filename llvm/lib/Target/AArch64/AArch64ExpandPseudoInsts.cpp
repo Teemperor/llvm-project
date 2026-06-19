@@ -715,6 +715,13 @@ bool AArch64ExpandPseudoImpl::expand_DestructiveOp(
   } else
     transferImpOps(MI, DOP, DOP);
 
+  // The destructive op (DOP) produces the final value of the original
+  // pseudo's destination register, so propagate any debug-instr-number
+  // there to keep DBG_INSTR_REFs resolvable.
+  if (auto DebugNumber = MI.peekDebugInstrNum())
+    if (DOP.getInstr())
+      DOP->setDebugInstrNum(DebugNumber);
+
   MI.eraseFromParent();
   return true;
 }
