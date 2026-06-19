@@ -1647,15 +1647,18 @@ bool AArch64ExpandPseudoImpl::expandMI(MachineBasicBlock &MBB,
     MI.eraseFromParent();
     return true;
   }
-  case AArch64::ADDlowTLS:
+  case AArch64::ADDlowTLS: {
     // Produce a plain ADD
-    BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(AArch64::ADDXri))
+    auto MIB = BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(AArch64::ADDXri))
         .add(MI.getOperand(0))
         .add(MI.getOperand(1))
         .add(MI.getOperand(2))
         .addImm(0);
+    if (auto DebugNumber = MI.peekDebugInstrNum())
+      MIB->setDebugInstrNum(DebugNumber);
     MI.eraseFromParent();
     return true;
+  }
 
   case AArch64::MOVbaseTLS: {
     Register DstReg = MI.getOperand(0).getReg();
@@ -1669,8 +1672,10 @@ bool AArch64ExpandPseudoImpl::expandMI(MachineBasicBlock &MBB,
       SysReg = AArch64SysReg::TPIDR_EL1;
     else if (MF->getSubtarget<AArch64Subtarget>().useROEL0ForTP())
       SysReg = AArch64SysReg::TPIDRRO_EL0;
-    BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(AArch64::MRS), DstReg)
+    auto MIB = BuildMI(MBB, MBBI, MI.getDebugLoc(), TII->get(AArch64::MRS), DstReg)
         .addImm(SysReg);
+    if (auto DebugNumber = MI.peekDebugInstrNum())
+      MIB->setDebugInstrNum(DebugNumber);
     MI.eraseFromParent();
     return true;
   }
