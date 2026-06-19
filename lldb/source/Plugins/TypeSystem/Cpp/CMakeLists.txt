@@ -1,10 +1,15 @@
 add_lldb_library(lldbPluginTypeSystemCpp PLUGIN
+  BuiltinTypes.cpp
   Context.cpp
-  Decls.cpp
+  Identifier.cpp
+  Records.cpp
+  Function.cpp
+  Type.cpp
   TypeSystemCpp.cpp
 
   LINK_COMPONENTS
     Support
+    ADT
   LINK_LIBS
     lldbCore
     lldbSymbol
