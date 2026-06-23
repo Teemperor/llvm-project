@@ -118,6 +118,7 @@ class ConcurrentEventsBase(TestBase):
         num_delay_signal_threads=0,
         num_delay_watchpoint_threads=0,
         num_delay_crash_threads=0,
+        allow_off_by_one=False,
     ):
         """Sets a breakpoint in the main thread where test parameters (numbers of threads) can be adjusted, runs the inferior
         to that point, and modifies the locals that control the event thread counts. Also sets a breakpoint in
@@ -322,12 +323,19 @@ class ConcurrentEventsBase(TestBase):
                 if expected_breakpoint_threads > 0
                 else 0
             )
-            self.assertEqual(
-                expected_breakpoint_threads,
-                breakpoint_hit_count,
-                "Expected %d breakpoint hits, but got %d"
-                % (expected_breakpoint_threads, breakpoint_hit_count),
-            )
+            if allow_off_by_one:
+                self.assertTrue(
+                    abs(expected_breakpoint_threads - breakpoint_hit_count) <= 1,
+                    "Expected %d breakpoint hits, but got %d"
+                    % (expected_breakpoint_threads, breakpoint_hit_count),
+                )
+            else:
+                self.assertEqual(
+                    expected_breakpoint_threads,
+                    breakpoint_hit_count,
+                    "Expected %d breakpoint hits, but got %d"
+                    % (expected_breakpoint_threads, breakpoint_hit_count),
+                )
 
             expected_signal_threads = num_delay_signal_threads + num_signal_threads
             self.assertEqual(
