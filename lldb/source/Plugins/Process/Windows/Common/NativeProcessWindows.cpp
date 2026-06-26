@@ -576,6 +576,14 @@ NativeProcessWindows::HandleBreakpointException(const ExceptionRecord &record) {
     if (NativeThreadWindows *thread = GetThreadByID(thread_id))
       SetStopReasonForThread(*thread, StopReason::eStopReasonBreakpoint);
 
+    // DEBUG ONLY: widen the launch-startup race. ProcessDebugger::OnDebugException
+    // has already signaled m_initial_stop_event (unblocking the launch thread in
+    // WaitForDebuggerConnection), but we have not yet moved the process to
+    // eStateStopped below. Sleeping here lets the launch thread return and start
+    // serving GDB-remote packets while m_state is still eStateInvalid, so an
+    // early `$c` continue hits CanResume()==false and gets rejected with $E37.
+    ::Sleep(500);
+
     // Do not notify the native delegate (e.g. llgs) since at this moment
     // the program hasn't returned from Manager::Launch() and the delegate
     // might not have an valid native process to operate on.
