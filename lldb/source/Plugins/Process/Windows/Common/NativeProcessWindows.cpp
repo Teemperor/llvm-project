@@ -661,19 +661,36 @@ NativeProcessWindows::OnDebugException(bool first_chance,
                                        const ExceptionRecord &record) {
   llvm::sys::ScopedLock lock(m_mutex);
 
-  // Let the debugger establish the internal status.
-  ProcessDebugger::OnDebugException(first_chance, record);
-
+  // Handle the exception first so that all stop bookkeeping (stop reason and,
+  // for the initial loader breakpoint, the transition to eStateStopped) is
+  // committed before ProcessDebugger::OnDebugException signals
+  // m_initial_stop_event below.
+  //
+  // The launch thread blocks on that event in WaitForDebuggerConnection() and,
+  // once released, returns from Manager::Launch() and immediately starts
+  // serving GDB-remote packets. If the state were still eStateInvalid at that
+  // point, an early continue ($c) would race ahead of the state transition and
+  // be rejected by CanResume() with an $E37 error.
+  ExceptionResult result;
   switch (record.GetExceptionValue()) {
   case DWORD(STATUS_SINGLE_STEP):
   case STATUS_WX86_SINGLE_STEP:
-    return HandleSingleStepException(record);
+    result = HandleSingleStepException(record);
+    break;
   case DWORD(STATUS_BREAKPOINT):
   case STATUS_WX86_BREAKPOINT:
-    return HandleBreakpointException(record);
+    result = HandleBreakpointException(record);
+    break;
   default:
-    return HandleGenericException(first_chance, record);
+    result = HandleGenericException(first_chance, record);
+    break;
   }
+
+  // Let the debugger establish the internal status (and, on the initial stop,
+  // release the launch thread waiting in WaitForDebuggerConnection()).
+  ProcessDebugger::OnDebugException(first_chance, record);
+
+  return result;
 }
 
 void NativeProcessWindows::OnCreateThread(const HostThread &new_thread) {
