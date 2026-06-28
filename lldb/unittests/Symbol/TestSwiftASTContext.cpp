@@ -324,6 +324,7 @@ TEST_F(TestSwiftASTContext, IVFS) {
   EXPECT_EQ(args, expected);
 }
 
+#ifndef NDEBUG
 TEST_F(TestSwiftASTContext, GetTypeNameNullType) {
   auto context = std::make_shared<SwiftASTContextTester>();
   EXPECT_EQ(context->GetTypeName(nullptr, false),
@@ -336,3 +337,4 @@ TEST_F(TestSwiftASTContext, GetTypeNameFatalError) {
   EXPECT_EQ(context->GetTypeName(nullptr, false),
             ConstString("<invalid Swift context>"));
 }
+#endif

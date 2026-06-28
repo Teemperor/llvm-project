@@ -1389,6 +1389,30 @@ if( LLVM_INCLUDE_RUNTIMES )
   add_subdirectory(runtimes)
 endif()
 
+# The LLDB asan/tsan tests link test programs against the sanitizer dylib found
+# in build/lib/lldb/clang/lib/darwin/ (CLANG_RT_DIR in Makefile.rules).
+# That directory is populated by the copy-clang-resource-dir build step which
+# copies build/lib/swift/clang -> build/lib/lldb/clang/.  If the copy ran
+# before compiler-rt was built, it captured Xcode's asan (which exports
+# __asan_version_mismatch_check_apple_clang_NNNN) instead of the LLVM-built
+# one (which exports __asan_version_mismatch_check_v8).  Our LLVM-built
+# swiftc instruments v8, so the Xcode runtime causes a link failure.
+# This target re-syncs the sanitizer dylibs after runtimes are built so that
+# check-lldb always uses the correct LLVM-built dylibs.
+# NOTE: This block is here (after both tools and runtimes subdirectories) so
+# that TARGET runtimes is defined when this code runs.
+if(APPLE AND TARGET check-lldb AND TARGET runtimes)
+  add_custom_target(lldb-use-llvm-sanitizers
+    COMMAND "${CMAKE_COMMAND}" "-E" "copy_directory"
+            "${CMAKE_BINARY_DIR}/lib/swift/clang/lib/darwin"
+            "${CMAKE_BINARY_DIR}/lib/lldb/clang/lib/darwin"
+    DEPENDS runtimes
+    COMMENT "Syncing LLVM-built sanitizer dylibs into LLDB clang resource dir"
+    VERBATIM
+  )
+  add_dependencies(check-lldb lldb-use-llvm-sanitizers)
+endif()
+
 if( LLVM_INCLUDE_EXAMPLES )
   add_subdirectory(examples)
 endif()
