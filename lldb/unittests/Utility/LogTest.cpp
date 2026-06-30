@@ -361,7 +361,8 @@ TEST_F(LogChannelEnabledTest, JSONLOutput) {
                   LLDB_LOG_OPTION_PREPEND_PROC_AND_THREAD |
                   LLDB_LOG_OPTION_PREPEND_THREAD_NAME |
                   LLDB_LOG_OPTION_BACKTRACE |
-                  LLDB_LOG_OPTION_PREPEND_FILE_FUNCTION;
+                  LLDB_LOG_OPTION_PREPEND_FILE_FUNCTION |
+                  LLDB_LOG_OPTION_PREPEND_CHANNEL_CATEGORY;
   EXPECT_TRUE(EnableChannel(getLogHandler(), Opts, "chan", {}, Err));
   Msg = logAndTakeOutput("payload");
   Parsed = llvm::json::parse(Msg);
@@ -379,6 +380,28 @@ TEST_F(LogChannelEnabledTest, JSONLOutput) {
   EXPECT_TRUE(Obj->getString("backtrace").has_value());
   EXPECT_EQ(Obj->getString("file").value_or(""), "LogTest.cpp");
   EXPECT_EQ(Obj->getString("function").value_or(""), "logAndTakeOutput");
+  EXPECT_EQ(Obj->getString("channel").value_or(""), "chan");
+  llvm::json::Array *Categories = Obj->getArray("categories");
+  ASSERT_NE(Categories, nullptr);
+  ASSERT_EQ(Categories->size(), 1u);
+  EXPECT_EQ((*Categories)[0].getAsString().value_or(""), "foo");
+}
+
+TEST_F(LogChannelEnabledTest, ChannelCategory) {
+  std::string Err;
+
+  // With a single category enabled, the prefix is "[channel/category] ".
+  EXPECT_TRUE(EnableChannel(getLogHandler(),
+                            LLDB_LOG_OPTION_PREPEND_CHANNEL_CATEGORY, "chan", {},
+                            Err));
+  EXPECT_EQ("[chan/foo] Hello World\n", logAndTakeOutput("Hello World"));
+
+  // Enabling additional categories lists them all, comma-separated, in the
+  // order they were declared.
+  EXPECT_TRUE(EnableChannel(getLogHandler(),
+                            LLDB_LOG_OPTION_PREPEND_CHANNEL_CATEGORY, "chan",
+                            {"bar"}, Err));
+  EXPECT_EQ("[chan/foo,bar] Hello World\n", logAndTakeOutput("Hello World"));
 }
 
 TEST_F(LogChannelEnabledTest, LLDB_LOG_ERROR) {

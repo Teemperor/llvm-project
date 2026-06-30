@@ -132,6 +132,9 @@ public:
       case 'j':
         log_options |= LLDB_LOG_OPTION_JSON;
         break;
+      case 'c':
+        log_options |= LLDB_LOG_OPTION_PREPEND_CHANNEL_CATEGORY;
+        break;
       default:
         llvm_unreachable("Unimplemented option");
       }

@@ -103,7 +103,9 @@ class LogTestCase(TestBase):
         if os.path.exists(self.log_file):
             os.remove(self.log_file)
 
-        self.runCmd("log enable -j -s -T -p -F -f '%s' lldb commands" % self.log_file)
+        self.runCmd(
+            "log enable -j -s -T -p -F -c -f '%s' lldb commands" % self.log_file
+        )
         self.runCmd("help log")
         self.runCmd("log disable lldb")
 
@@ -124,3 +126,26 @@ class LogTestCase(TestBase):
             self.assertIn("tid", obj)
             self.assertIn("file", obj)
             self.assertIn("function", obj)
+            # -c surfaces the channel and category as JSON fields.
+            self.assertEqual(obj.get("channel"), "lldb")
+            self.assertEqual(obj.get("categories"), ["commands"])
+
+    # Check that -c prepends the channel and category to every log line.
+    def test_channel_category(self):
+        if os.path.exists(self.log_file):
+            os.remove(self.log_file)
+
+        self.runCmd("log enable -c -f '%s' lldb commands" % self.log_file)
+        self.runCmd("help log")
+        self.runCmd("log disable lldb")
+
+        self.assertTrue(os.path.isfile(self.log_file))
+        with open(self.log_file, "r") as f:
+            lines = f.readlines()
+
+        self.assertGreater(len(lines), 0, "log file should not be empty")
+        for line in lines:
+            self.assertTrue(
+                line.startswith("[lldb/commands] "),
+                "expected channel/category prefix, got: %s" % line,
+            )

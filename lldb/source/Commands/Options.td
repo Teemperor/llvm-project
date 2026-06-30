@@ -918,6 +918,10 @@ let Command = "log enable" in {
   def log_json : Option<"json", "j">,
                  Group<1>,
                  Desc<"Emit each log message as its own JSON object.">;
+  def log_channel_category
+      : Option<"channel-category", "c">,
+        Group<1>,
+        Desc<"Prepend the log channel and category to every log line.">;
 }
 
 let Command = "log dump" in {

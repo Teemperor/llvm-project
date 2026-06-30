@@ -27,6 +27,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 #include <type_traits>
 
 namespace llvm {
@@ -45,6 +46,7 @@ class Object;
 #define LLDB_LOG_OPTION_APPEND (1U << 8)
 #define LLDB_LOG_OPTION_PREPEND_FILE_FUNCTION (1U << 9)
 #define LLDB_LOG_OPTION_JSON (1U << 10)
+#define LLDB_LOG_OPTION_PREPEND_CHANNEL_CATEGORY (1U << 11)
 
 // Logging Functions
 namespace lldb_private {
@@ -280,6 +282,11 @@ public:
 private:
   Channel &m_channel;
 
+  // The name under which this channel was registered. Used to prepend the
+  // channel/category to log lines when LLDB_LOG_OPTION_PREPEND_CHANNEL_CATEGORY
+  // is set.
+  std::string m_channel_name;
+
   // The mutex makes sure enable/disable operations are thread-safe. The
   // options and mask variables are atomic to enable their reading in
   // Channel::GetLogIfAny without taking the mutex to speed up the fast path.
@@ -294,6 +301,9 @@ private:
                    llvm::StringRef function);
   void WriteJSONHeader(llvm::json::Object &obj, llvm::StringRef file,
                        llvm::StringRef function);
+  /// Returns the names of the categories that are currently enabled on this
+  /// channel, in the order they were declared.
+  std::vector<llvm::StringRef> GetEnabledCategories() const;
   void WriteMessage(llvm::StringRef message);
   void EmitJSONMessage(llvm::StringRef file, llvm::StringRef function,
                        llvm::StringRef message);

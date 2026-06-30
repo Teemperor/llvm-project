@@ -204,6 +204,9 @@ void Log::Verbose(const char *format, ...) {
 void Log::Register(llvm::StringRef name, Channel &channel) {
   auto iter = g_channel_map->try_emplace(name, channel);
   assert(iter.second == true);
+  // Remember the registered name so the channel/category can be prepended to
+  // log lines.
+  iter.first->second.m_channel_name = iter.first->first().str();
   UNUSED_IF_ASSERT_DISABLED(iter);
 }
 
@@ -310,9 +313,26 @@ bool Log::GetVerbose() const {
   return m_options.load(std::memory_order_relaxed) & LLDB_LOG_OPTION_VERBOSE;
 }
 
+std::vector<llvm::StringRef> Log::GetEnabledCategories() const {
+  std::vector<llvm::StringRef> categories;
+  MaskType mask = GetMask();
+  for (const Category &category : m_channel.categories)
+    if (mask & category.flag)
+      categories.push_back(category.name);
+  return categories;
+}
+
 void Log::WriteHeader(llvm::raw_ostream &OS, llvm::StringRef file,
                       llvm::StringRef function) {
   Flags options = GetOptions();
+
+  // Prepend the channel and enabled categories if requested.
+  if (options.Test(LLDB_LOG_OPTION_PREPEND_CHANNEL_CATEGORY)) {
+    OS << "[" << m_channel_name << "/";
+    llvm::interleave(GetEnabledCategories(), OS, ",");
+    OS << "] ";
+  }
+
   // Add a sequence ID if requested
   if (options.Test(LLDB_LOG_OPTION_PREPEND_SEQUENCE))
     OS << ++g_sequence_id << " ";
@@ -354,6 +374,14 @@ void Log::WriteHeader(llvm::raw_ostream &OS, llvm::StringRef file,
 void Log::WriteJSONHeader(llvm::json::Object &obj, llvm::StringRef file,
                           llvm::StringRef function) {
   Flags options = GetOptions();
+  if (options.Test(LLDB_LOG_OPTION_PREPEND_CHANNEL_CATEGORY)) {
+    obj["channel"] = m_channel_name;
+    llvm::json::Array categories;
+    for (llvm::StringRef category : GetEnabledCategories())
+      categories.push_back(category.str());
+    obj["categories"] = std::move(categories);
+  }
+
   if (options.Test(LLDB_LOG_OPTION_PREPEND_SEQUENCE))
     obj["sequence"] = ++g_sequence_id;
 
