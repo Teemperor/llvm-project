@@ -367,6 +367,11 @@ private:
   /// Apply autosuggestion part in gray as editline.
   unsigned char ApplyAutosuggestCommand(int ch);
 
+  /// Compute the autosuggestion for \a line. Combines the in-session command
+  /// history (via the suggestion callback) with the persistent history of
+  /// previous LLDB sessions.
+  std::optional<std::string> GetSuggestion(llvm::StringRef line);
+
   /// Command used when a character is typed.
   unsigned char TypedCharacter(int ch);
 

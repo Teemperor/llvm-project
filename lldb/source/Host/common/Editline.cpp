@@ -293,6 +293,39 @@ public:
     return false;
   }
 
+  /// Search the history for the most recent entry that starts with \a line and
+  /// return the remaining suffix that would complete it. Returns std::nullopt
+  /// if there is no such entry. Unlike the interpreter's in-session command
+  /// history, this also covers the persistent history loaded from previous
+  /// LLDB sessions.
+  std::optional<std::string> FindAutosuggestion(llvm::StringRef line) {
+    if (!m_history || line.empty())
+      return std::nullopt;
+
+    // H_FIRST yields the most recent entry, H_NEXT iterates towards older ones.
+    HistEventW event;
+    for (int rc = history_w(m_history, &event, H_FIRST); rc != -1;
+         rc = history_w(m_history, &event, H_NEXT)) {
+      std::string entry;
+#if LLDB_EDITLINE_USE_WCHAR
+      llvm::convertWideToUTF8(event.str, entry);
+#else
+      entry = event.str;
+#endif
+      // History entries are stored with a trailing newline that isn't part of
+      // the command itself.
+      llvm::StringRef suffix = llvm::StringRef(entry).rtrim('\n');
+      if (!suffix.consume_front(line))
+        continue;
+      // Don't suggest multi-line entries: the extra lines would corrupt the
+      // single-line display of the suggestion.
+      if (suffix.contains('\n'))
+        continue;
+      return suffix.str();
+    }
+    return std::nullopt;
+  }
+
 protected:
   /// The history object.
   HistoryW *m_history = nullptr;
@@ -1191,6 +1224,20 @@ unsigned char Editline::TabCommand(int ch) {
   return CC_REDISPLAY;
 }
 
+std::optional<std::string> Editline::GetSuggestion(llvm::StringRef line) {
+  // Prefer a suggestion from the current session's command history, provided
+  // by the IO handler through the suggestion callback.
+  if (m_suggestion_callback) {
+    if (std::optional<std::string> to_add = m_suggestion_callback(line))
+      return to_add;
+  }
+  // Fall back to the persistent history of previous sessions, which the IO
+  // handler's in-session command history doesn't include.
+  if (m_history_sp && m_history_sp->IsValid())
+    return m_history_sp->FindAutosuggestion(line);
+  return std::nullopt;
+}
+
 unsigned char Editline::ApplyAutosuggestCommand(int ch) {
   if (!m_suggestion_callback) {
     return CC_REDISPLAY;
@@ -1200,7 +1247,7 @@ unsigned char Editline::ApplyAutosuggestCommand(int ch) {
   llvm::StringRef line(line_info->buffer,
                        line_info->lastchar - line_info->buffer);
 
-  if (std::optional<std::string> to_add = m_suggestion_callback(line))
+  if (std::optional<std::string> to_add = GetSuggestion(line))
     el_insertstr(m_editline, to_add->c_str());
 
   return CC_REDISPLAY;
@@ -1218,7 +1265,7 @@ unsigned char Editline::TypedCharacter(int ch) {
   llvm::StringRef line(line_info->buffer,
                        line_info->lastchar - line_info->buffer);
 
-  if (std::optional<std::string> to_add = m_suggestion_callback(line)) {
+  if (std::optional<std::string> to_add = GetSuggestion(line)) {
     LockedStreamFile locked_stream = m_output_stream_sp->Lock();
     std::string to_add_color =
         m_suggestion_ansi_prefix + to_add.value() + m_suggestion_ansi_suffix;

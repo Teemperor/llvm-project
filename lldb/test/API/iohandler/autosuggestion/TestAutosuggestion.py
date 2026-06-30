@@ -154,3 +154,46 @@ class TestCase(PExpectTest):
         self.child.expect_exact(self.ANSI_RED + "ame variable" + self.ANSI_CYAN)
         self.child.send("\n")
 
+    @skipIfAsan
+    @skipIfEditlineSupportMissing
+    def test_autosuggestion_from_previous_session(self):
+        import pexpect
+
+        autosuggestion_args = [
+            "-o",
+            "settings set show-autosuggestion true",
+            "-o",
+            "settings set use-color true",
+        ]
+
+        watchpoint_output_needle = "Syntax: watchpoint <subcommand>"
+
+        # Run a command in a first session so that it gets persisted to the
+        # on-disk command history. PExpectTest points HOME at the build
+        # directory, so this history is shared with the next launch below.
+        self.launch(use_colors=True, extra_args=autosuggestion_args)
+        self.expect("help watchpoint", substrs=[watchpoint_output_needle])
+        # Quit so that the command history is saved to disk.
+        self.child.sendline("quit")
+        self.child.expect(pexpect.EOF)
+        self.quit()
+
+        # Start a fresh session. 'help watchpoint' is not in this session's
+        # command history, but it should still be autosuggested from the
+        # persistent history of the previous session.
+        self.launch(use_colors=True, extra_args=autosuggestion_args)
+        self.child.send("help wa")
+        self.child.expect_exact(
+            cursor_horizontal_abs("(lldb) help w")
+            + "a"
+            + self.ANSI_FAINT
+            + "tchpoint"
+            + self.ANSI_RESET
+        )
+
+        # Applying the autosuggestion and pressing enter should run the
+        # suggested 'help watchpoint' command.
+        ctrl_f = "\x06"
+        self.child.send(ctrl_f + "\n")
+        self.child.expect_exact(watchpoint_output_needle)
+
