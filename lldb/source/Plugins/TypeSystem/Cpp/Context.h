@@ -14,6 +14,7 @@
 #include <vector>
 
 #include "BuiltinTypes.h"
+#include "LanguageOpts.h"
 #include "Type.h"
 
 namespace lldb_private {
@@ -23,6 +24,9 @@ namespace cpp_typesystem {
 /// them. Types live as long as the Context (and therefore the TypeSystemCpp).
 class Context {
 public:
+  explicit Context(const LanguageOpts &opts) : builtin_types(opts) {
+  }
+
   BuiltinType *CreateBuiltinType(llvm::StringRef name,
                                  std::optional<uint64_t> byte_size,
                                  lldb::Encoding encoding);
@@ -45,6 +49,9 @@ private:
 
   std::vector<std::unique_ptr<Type>> m_types;
   IdentifierMap identifiers;
+  /// This contains builtin types of C/C++/Objective-C such as
+  /// int, long, etc.
+  KnownBuiltinTypes builtin_types;
 };
 
 }

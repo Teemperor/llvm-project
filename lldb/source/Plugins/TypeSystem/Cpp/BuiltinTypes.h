@@ -10,6 +10,7 @@
 #define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_BUILTIN_TYPES_H
 
 #include "Type.h"
+#include "LanguageOpts.h"
 
 namespace lldb_private {
 namespace cpp_typesystem {
@@ -57,6 +58,14 @@ public:
 
 private:
   lldb::Encoding m_encoding = lldb::eEncodingInvalid;
+};
+
+class KnownBuiltinTypes {
+  BuiltinType *int_type = nullptr;
+public:
+  KnownBuiltinTypes(const LanguageOpts &opts) {
+  }
+private:
 };
 
 }
