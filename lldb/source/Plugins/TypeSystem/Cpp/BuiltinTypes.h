@@ -15,8 +15,18 @@
 namespace lldb_private {
 namespace cpp_typesystem {
 
-class BuiltinTypes {
+#include "Type.h"
 
+/// This type represent builtin types like int/long/char/etc.
+class BuiltinType : public Type {
+
+};
+
+class BuiltinTypes {
+    // TODO: Add the other C types and set correct sizes.
+    BuiltinType m_char_type;
+    BuiltinType m_int_type;
+    BuiltinType m_unsigned_int_type;
 };
 
 }

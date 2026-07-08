@@ -6,42 +6,26 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_DECLS_H
-#define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_DECLS_H
+#ifndef LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_NAMESPACE_H
+#define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_NAMESPACE_H
 
-#include <vector>
+#include <deque>
 
 #include "Type.h"
-#include "Namespace.h"
 
 namespace lldb_private {
 namespace cpp_typesystem {
 
 class CppContext;
 
-class RecordField {
+// Represents a C++ namespace that holds various contents.
+class Namespace {
 public:
 private:
-  TypeRef m_type;
   Identifier m_name;
-};
-
-// Represents a struct or a class in C/C++.
-class Record {
-public:
-private:
-    /// True if we completed the 
-    bool m_completed : 1 = 0;
-    /// True if this is a forward declaration and we don't know the contents
-    /// of this class.
-    bool m_forward_decl : 1 = 0;
-    std::vector<RecordField> m_members;
-};
-
-/// Represents an Objective-C class.
-class ObjCClass {
-public:
-private:
+  std::deque<Namespace> m_nested;
+  std::deque<Record> m_classes;
+  std::deque<ObjCClass> m_classes;
 };
 
 }
