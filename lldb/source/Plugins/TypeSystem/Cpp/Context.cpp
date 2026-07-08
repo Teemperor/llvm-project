@@ -8,3 +8,23 @@
 
 #include "Context.h"
 
+using namespace lldb_private;
+using namespace lldb_private::cpp_typesystem;
+
+BuiltinType *Context::CreateBuiltinType(ConstString name,
+                                        std::optional<uint64_t> byte_size,
+                                        lldb::Encoding encoding) {
+  auto type = std::make_unique<BuiltinType>();
+  type->SetName(name);
+  type->SetByteSize(byte_size);
+  type->SetEncoding(encoding);
+  return Track(std::move(type));
+}
+
+RecordType *Context::CreateRecordType(ConstString name,
+                                      std::optional<uint64_t> byte_size) {
+  auto type = std::make_unique<RecordType>();
+  type->SetName(name);
+  type->SetByteSize(byte_size);
+  return Track(std::move(type));
+}

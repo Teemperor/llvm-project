@@ -1,4 +1,4 @@
-//===-- CppContext.h --------------------------------------------*- C++ -*-===//
+//===-- Context.h -----------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -9,22 +9,34 @@
 #ifndef LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_CONTEXT_H
 #define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_CONTEXT_H
 
-#include "llvm/TargetParser/Triple.h"
+#include <memory>
+#include <optional>
+#include <vector>
 
 #include "BuiltinTypes.h"
-#include "Namespace.h"
+#include "Type.h"
 
 namespace lldb_private {
 namespace cpp_typesystem {
 
-/// Holds declaration and function nodes.
-/// Also gives meaning to types.
+/// Owns all the Type nodes for a TypeSystemCpp and hands out stable pointers to
+/// them. Types live as long as the Context (and therefore the TypeSystemCpp).
 class Context {
+public:
+  BuiltinType *CreateBuiltinType(ConstString name,
+                                 std::optional<uint64_t> byte_size,
+                                 lldb::Encoding encoding);
+  RecordType *CreateRecordType(ConstString name,
+                               std::optional<uint64_t> byte_size);
 
 private:
-    Namespace m_global_namespace;
-    BuiltinTypes m_builtin;
-    llvm::Triple m_triple;
+  template <typename T> T *Track(std::unique_ptr<T> type) {
+    T *result = type.get();
+    m_types.push_back(std::move(type));
+    return result;
+  }
+
+  std::vector<std::unique_ptr<Type>> m_types;
 };
 
 }
