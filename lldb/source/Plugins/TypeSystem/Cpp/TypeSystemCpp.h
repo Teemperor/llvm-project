@@ -40,6 +40,11 @@ public:
                                  lldb::Encoding encoding);
   CompilerType CreateRecordType(ConstString name,
                                 std::optional<uint64_t> byte_size);
+  /// Intern a name into this type system's Context so it can be used for a
+  /// type or record member. All Identifiers must be created this way.
+  cpp_typesystem::Identifier GetIdentifier(llvm::StringRef name) {
+    return m_context.GetIdentifier(name);
+  }
   /// Wrap one of our own Type nodes into a CompilerType owned by this system.
   CompilerType GetCompilerType(cpp_typesystem::Type *type);
   /// Recover the Type node backing a CompilerType created by this system.

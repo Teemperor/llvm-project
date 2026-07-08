@@ -17,16 +17,23 @@
 namespace lldb_private {
 namespace cpp_typesystem {
 
+class IdentifierMap;
+
 /// Represents an unqualified name.
 // E.g. `string` or `std`, but *NOT* `std::string`.
 class Identifier {
 public:
   Identifier() = default;
-  explicit Identifier(llvm::StringRef name) : m_name(name) {}
 
   llvm::StringRef GetName() const { return m_name; }
 
 private:
+  // Only IdentifierMap may build a non-empty Identifier. This guarantees the
+  // backing storage is owned by (and outlives) that map, so an Identifier can
+  // never dangle.
+  friend class IdentifierMap;
+  explicit Identifier(llvm::StringRef name) : m_name(name) {}
+
   // This is stored in an IdentifierMap.
   llvm::StringRef m_name;
 };

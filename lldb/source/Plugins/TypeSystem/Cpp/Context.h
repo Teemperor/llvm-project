@@ -23,11 +23,18 @@ namespace cpp_typesystem {
 /// them. Types live as long as the Context (and therefore the TypeSystemCpp).
 class Context {
 public:
-  BuiltinType *CreateBuiltinType(Identifier name,
+  BuiltinType *CreateBuiltinType(llvm::StringRef name,
                                  std::optional<uint64_t> byte_size,
                                  lldb::Encoding encoding);
-  RecordType *CreateRecordType(Identifier name,
+  RecordType *CreateRecordType(llvm::StringRef name,
                                std::optional<uint64_t> byte_size);
+
+  /// Intern a name into this Context's IdentifierMap. All Identifiers used by
+  /// types owned by this Context must be created here so that their backing
+  /// storage lives exactly as long as the Context (and its types).
+  Identifier GetIdentifier(llvm::StringRef name) {
+    return identifiers.get(name);
+  }
 
 private:
   template <typename T> T *Track(std::unique_ptr<T> type) {
@@ -37,6 +44,7 @@ private:
   }
 
   std::vector<std::unique_ptr<Type>> m_types;
+  IdentifierMap identifiers;
 };
 
 }
