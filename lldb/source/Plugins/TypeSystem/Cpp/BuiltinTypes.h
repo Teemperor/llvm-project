@@ -9,13 +9,10 @@
 #ifndef LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_BUILTIN_TYPES_H
 #define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_BUILTIN_TYPES_H
 
-#include "lldb/Symbol/CompilerType.h"
-#include "lldb/Symbol/TypeSystem.h"
+#include "Type.h"
 
 namespace lldb_private {
 namespace cpp_typesystem {
-
-#include "Type.h"
 
 /// This type represent builtin types like int/long/char/etc.
 class BuiltinType : public Type {
