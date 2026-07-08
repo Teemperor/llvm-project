@@ -195,7 +195,9 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     if (child.Tag() != DW_TAG_member)
       continue;
 
-    ConstString member_name(child.GetName());
+    // Intern the member name through the type system's Context so its storage
+    // is owned alongside the types (rather than pointing into DWARF data).
+    llvm::StringRef member_name = child.GetName();
     uint64_t byte_offset =
         child.GetAttributeValueAsUnsigned(DW_AT_data_member_location, 0);
 
@@ -208,10 +210,8 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     CompilerType member_compiler_type = member_type->GetForwardCompilerType();
     auto *member_cpp_type =
         TypeSystemCpp::GetCppType(member_compiler_type.GetOpaqueQualType());
-    // member_name is a ConstString, so its backing storage is permanent and
-    // safe to reference from the Identifier stored in the field.
-    record->AddField(cpp_typesystem::Identifier(member_name.GetStringRef()),
-                     member_cpp_type, byte_offset);
+    record->AddField(m_ts.GetIdentifier(member_name), member_cpp_type,
+                     byte_offset);
   }
 
   return true;

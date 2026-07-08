@@ -47,14 +47,14 @@ CompilerType TypeSystemCpp::GetCompilerType(cpp_typesystem::Type *type) {
 CompilerType TypeSystemCpp::CreateBuiltinType(ConstString name,
                                               std::optional<uint64_t> byte_size,
                                               lldb::Encoding encoding) {
-  return GetCompilerType(m_context.CreateBuiltinType(
-      cpp_typesystem::Identifier(name.GetStringRef()), byte_size, encoding));
+  return GetCompilerType(
+      m_context.CreateBuiltinType(name.GetStringRef(), byte_size, encoding));
 }
 
 CompilerType TypeSystemCpp::CreateRecordType(ConstString name,
                                              std::optional<uint64_t> byte_size) {
-  return GetCompilerType(m_context.CreateRecordType(
-      cpp_typesystem::Identifier(name.GetStringRef()), byte_size));
+  return GetCompilerType(
+      m_context.CreateRecordType(name.GetStringRef(), byte_size));
 }
 
 lldb::TypeSystemSP TypeSystemCpp::Create(llvm::StringRef name,
