@@ -10,19 +10,9 @@ add_lldb_library(lldbPluginTypeSystemCpp PLUGIN
 
   LINK_COMPONENTS
     Support
-    ADT
   LINK_LIBS
     lldbCore
     lldbSymbol
     lldbTarget
     lldbUtility
-    lldbPluginExpressionParserClang
-    lldbPluginSymbolFileDWARF
-    lldbPluginSymbolFilePDB
-    lldbPluginObjCRuntime
-  CLANG_LIBS
-    clangAST
-    clangBasic
-    clangFrontend
-    clangSema
 )
