@@ -1,4 +1,4 @@
-//===-- Nodes.h -------------------------------------------------*- C++ -*-===//
+//===-- Namespace.h ---------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -10,25 +10,27 @@
 #define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_NAMESPACE_H
 
 #include <deque>
+#include <memory>
 
-#include "Type.h"
+#include "Identifier.h"
+#include "Records.h"
 
 namespace lldb_private {
 namespace cpp_typesystem {
-
-class CppContext;
 
 // Represents a C++ namespace that holds various contents.
 class Namespace {
 public:
 private:
   Identifier m_name;
-  std::deque<Namespace> m_nested;
-  std::deque<Record> m_classes;
-  std::deque<ObjCClass> m_classes;
+  // Nested namespaces are held via unique_ptr because Namespace is an
+  // incomplete type here and std::deque requires a complete element type.
+  std::deque<std::unique_ptr<Namespace>> m_nested;
+  std::deque<Record> m_records;
+  std::deque<ObjCClass> m_objc_classes;
 };
 
 }
 } // namespace lldb_private
 
-#endif // LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_CPPNODES_H
+#endif // LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_NAMESPACE_H

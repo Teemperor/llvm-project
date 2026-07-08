@@ -1,4 +1,4 @@
-//===-- Nodes.h -------------------------------------------------*- C++ -*-===//
+//===-- Records.h -----------------------------------------------*- C++ -*-===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -6,18 +6,16 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_DECLS_H
-#define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_DECLS_H
+#ifndef LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_RECORDS_H
+#define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_RECORDS_H
 
 #include <vector>
 
+#include "Identifier.h"
 #include "Type.h"
-#include "Namespace.h"
 
 namespace lldb_private {
 namespace cpp_typesystem {
-
-class CppContext;
 
 class RecordField {
 public:
@@ -30,12 +28,12 @@ private:
 class Record {
 public:
 private:
-    /// True if we completed the 
-    bool m_completed : 1 = 0;
-    /// True if this is a forward declaration and we don't know the contents
-    /// of this class.
-    bool m_forward_decl : 1 = 0;
-    std::vector<RecordField> m_members;
+  /// True if we completed the record.
+  bool m_completed : 1;
+  /// True if this is a forward declaration and we don't know the contents
+  /// of this class.
+  bool m_forward_decl : 1;
+  std::vector<RecordField> m_members;
 };
 
 /// Represents an Objective-C class.
@@ -47,4 +45,4 @@ private:
 }
 } // namespace lldb_private
 
-#endif // LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_CPPNODES_H
+#endif // LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_RECORDS_H

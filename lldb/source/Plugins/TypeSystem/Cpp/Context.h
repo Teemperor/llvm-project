@@ -9,10 +9,10 @@
 #ifndef LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_CONTEXT_H
 #define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_CONTEXT_H
 
-#include "lldb/Symbol/CompilerType.h"
-#include "lldb/Symbol/TypeSystem.h"
+#include "llvm/TargetParser/Triple.h"
 
 #include "BuiltinTypes.h"
+#include "Namespace.h"
 
 namespace lldb_private {
 namespace cpp_typesystem {

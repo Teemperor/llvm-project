@@ -230,7 +230,7 @@ public:
 private:
   std::string m_display_name;
   llvm::Triple m_triple;
-  Context m_context;
+  cpp_typesystem::Context m_context;
 };
 
 class ScratchTypeSystemCpp : public TypeSystemCpp {

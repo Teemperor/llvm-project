@@ -52,7 +52,7 @@ void TypeSystemCpp::Terminate() {
 }
 
 ScratchTypeSystemCpp::ScratchTypeSystemCpp(Target &target, llvm::Triple triple)
-    : TypeSystemCpp("scratch TypeSystemCpp for " +
+    : TypeSystemCpp(std::string("scratch TypeSystemCpp for ") +
                         target.GetArchitecture().GetArchitectureName(),
                     std::move(triple)) {}
 
