@@ -42,9 +42,7 @@ public:
   llvm::StringRef GetPluginName() override { return GetPluginNameStatic(); }
 
   // LLVM RTTI support
-  bool isA(const void *ClassID) const override {
-    return ClassID == &ID || TypeSystem::isA(ClassID);
-  }
+  bool isA(const void *ClassID) const override { return ClassID == &ID; }
   static bool classof(const TypeSystem *ts) { return ts->isA(&ID); }
 
   // CompilerDecl functions
