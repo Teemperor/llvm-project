@@ -13,8 +13,9 @@
 #include <optional>
 #include <vector>
 
-#include "lldb/Utility/ConstString.h"
 #include "lldb/lldb-enumerations.h"
+
+#include "Identifier.h"
 
 namespace lldb_private {
 namespace cpp_typesystem {
@@ -24,7 +25,7 @@ class Type;
 
 /// A single data member of a record type.
 struct Field {
-  ConstString name;
+  Identifier name;
   /// The type of this member. Owned by the same Context as the record.
   Type *type = nullptr;
   /// Offset of this member from the start of the record, in bytes.
@@ -51,8 +52,8 @@ class Type {
 public:
   virtual ~Type() = default;
 
-  ConstString GetName() const { return m_name; }
-  void SetName(ConstString name) { m_name = name; }
+  Identifier GetName() const { return m_name; }
+  void SetName(Identifier name) { m_name = name; }
 
   std::optional<uint64_t> GetByteSize() const { return m_byte_size; }
   void SetByteSize(std::optional<uint64_t> byte_size) { m_byte_size = byte_size; }
@@ -74,7 +75,7 @@ public:
   virtual const Field *GetFieldAtIndex(uint32_t idx) const { return nullptr; }
 
 private:
-  ConstString m_name;
+  Identifier m_name;
   std::optional<uint64_t> m_byte_size;
 };
 
@@ -92,7 +93,7 @@ public:
     return lldb::eTypeHasChildren | lldb::eTypeIsStructUnion;
   }
 
-  void AddField(ConstString name, Type *type, uint64_t byte_offset) {
+  void AddField(Identifier name, Type *type, uint64_t byte_offset) {
     m_fields.push_back(Field{name, type, byte_offset});
   }
   uint32_t GetNumFields() const override { return m_fields.size(); }

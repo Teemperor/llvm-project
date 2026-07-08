@@ -47,13 +47,14 @@ CompilerType TypeSystemCpp::GetCompilerType(cpp_typesystem::Type *type) {
 CompilerType TypeSystemCpp::CreateBuiltinType(ConstString name,
                                               std::optional<uint64_t> byte_size,
                                               lldb::Encoding encoding) {
-  return GetCompilerType(
-      m_context.CreateBuiltinType(name, byte_size, encoding));
+  return GetCompilerType(m_context.CreateBuiltinType(
+      cpp_typesystem::Identifier(name.GetStringRef()), byte_size, encoding));
 }
 
 CompilerType TypeSystemCpp::CreateRecordType(ConstString name,
                                              std::optional<uint64_t> byte_size) {
-  return GetCompilerType(m_context.CreateRecordType(name, byte_size));
+  return GetCompilerType(m_context.CreateRecordType(
+      cpp_typesystem::Identifier(name.GetStringRef()), byte_size));
 }
 
 lldb::TypeSystemSP TypeSystemCpp::Create(llvm::StringRef name,
@@ -258,7 +259,7 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
                                        bool BaseOnly) {
   if (!type)
     return ConstString();
-  return GetCppType(type)->GetName();
+  return ConstString(GetCppType(type)->GetName().GetName());
 }
 
 ConstString TypeSystemCpp::GetDisplayTypeName(opaque_compiler_type_t type) {
@@ -395,7 +396,7 @@ CompilerType TypeSystemCpp::GetFieldAtIndex(opaque_compiler_type_t type,
   const Field *field = GetCppType(type)->GetFieldAtIndex(idx);
   if (!field)
     return CompilerType();
-  name = field->name.GetStringRef().str();
+  name = field->name.GetName().str();
   if (bit_offset_ptr)
     *bit_offset_ptr = field->byte_offset * 8;
   if (bitfield_bit_size_ptr)
@@ -461,7 +462,7 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
   if (!field)
     return CompilerType();
 
-  child_name = field->name.GetStringRef().str();
+  child_name = field->name.GetName().str();
   child_byte_offset = field->byte_offset;
   if (std::optional<uint64_t> byte_size = field->type->GetByteSize())
     child_byte_size = *byte_size;
@@ -477,7 +478,7 @@ TypeSystemCpp::GetIndexOfChildWithName(opaque_compiler_type_t type,
   GetCompleteType(type);
   cpp_typesystem::Type *t = GetCppType(type);
   for (uint32_t i = 0, e = t->GetNumFields(); i < e; ++i) {
-    if (t->GetFieldAtIndex(i)->name.GetStringRef() == name)
+    if (t->GetFieldAtIndex(i)->name.GetName() == name)
       return i;
   }
   return llvm::createStringError(
@@ -492,7 +493,7 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
   GetCompleteType(type);
   cpp_typesystem::Type *t = GetCppType(type);
   for (uint32_t i = 0, e = t->GetNumFields(); i < e; ++i) {
-    if (t->GetFieldAtIndex(i)->name.GetStringRef() == name) {
+    if (t->GetFieldAtIndex(i)->name.GetName() == name) {
       child_indexes.push_back(i);
       return child_indexes.size();
     }
