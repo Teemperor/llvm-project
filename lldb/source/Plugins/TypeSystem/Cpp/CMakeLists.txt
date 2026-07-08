@@ -3,7 +3,6 @@ add_lldb_library(lldbPluginTypeSystemCpp PLUGIN
   Context.cpp
   Identifier.cpp
   Namespace.cpp
-  Records.cpp
   Function.cpp
   Type.cpp
   TypeSystemCpp.cpp
