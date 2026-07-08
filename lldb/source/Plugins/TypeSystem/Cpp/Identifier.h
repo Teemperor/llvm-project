@@ -47,6 +47,12 @@ public:
     return Identifier(m_names.insert(name).first->getKey());
   }
 
+  Identifier getWithStaticStorageStr(llvm::StringRef name) {
+    // We don't need to intern this.
+    // TODO: We might later add some sanity checks here.
+    return Identifier(name);
+  }
+
 private:
   llvm::StringSet<> m_names;
 };
