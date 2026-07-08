@@ -11,7 +11,7 @@
 using namespace lldb_private;
 using namespace lldb_private::cpp_typesystem;
 
-BuiltinType *Context::CreateBuiltinType(ConstString name,
+BuiltinType *Context::CreateBuiltinType(Identifier name,
                                         std::optional<uint64_t> byte_size,
                                         lldb::Encoding encoding) {
   auto type = std::make_unique<BuiltinType>();
@@ -21,7 +21,7 @@ BuiltinType *Context::CreateBuiltinType(ConstString name,
   return Track(std::move(type));
 }
 
-RecordType *Context::CreateRecordType(ConstString name,
+RecordType *Context::CreateRecordType(Identifier name,
                                       std::optional<uint64_t> byte_size) {
   auto type = std::make_unique<RecordType>();
   type->SetName(name);

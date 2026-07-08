@@ -23,10 +23,10 @@ namespace cpp_typesystem {
 /// them. Types live as long as the Context (and therefore the TypeSystemCpp).
 class Context {
 public:
-  BuiltinType *CreateBuiltinType(ConstString name,
+  BuiltinType *CreateBuiltinType(Identifier name,
                                  std::optional<uint64_t> byte_size,
                                  lldb::Encoding encoding);
-  RecordType *CreateRecordType(ConstString name,
+  RecordType *CreateRecordType(Identifier name,
                                std::optional<uint64_t> byte_size);
 
 private:

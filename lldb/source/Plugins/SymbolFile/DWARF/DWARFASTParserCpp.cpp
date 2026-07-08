@@ -208,7 +208,10 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     CompilerType member_compiler_type = member_type->GetForwardCompilerType();
     auto *member_cpp_type =
         TypeSystemCpp::GetCppType(member_compiler_type.GetOpaqueQualType());
-    record->AddField(member_name, member_cpp_type, byte_offset);
+    // member_name is a ConstString, so its backing storage is permanent and
+    // safe to reference from the Identifier stored in the field.
+    record->AddField(cpp_typesystem::Identifier(member_name.GetStringRef()),
+                     member_cpp_type, byte_offset);
   }
 
   return true;
