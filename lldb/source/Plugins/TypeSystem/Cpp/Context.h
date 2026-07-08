@@ -18,11 +18,13 @@ namespace lldb_private {
 namespace cpp_typesystem {
 
 /// Holds declaration and function nodes.
+/// Also gives meaning to types.
 class Context {
 
 private:
     Namespace m_global_namespace;
     BuiltinTypes m_builtin;
+    llvm::Triple m_triple;
 };
 
 }

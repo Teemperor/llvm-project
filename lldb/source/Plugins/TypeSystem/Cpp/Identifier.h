@@ -28,7 +28,8 @@ public:
 private:
 };
 
-///
+/// Represents an unqualified name.
+// E.g. `string` or `std`, but *NOT* `std::string`.
 class Identifier {
 public:
 private:
@@ -36,6 +37,7 @@ private:
     StringRef m_name;
 };
 
+/// Represents a fully qualified name such as `std::string`.
 class QualifiedName {
 public:
 private:

@@ -22,9 +22,20 @@ class CppContext;
 
 namespace CppNodes {
 
+class FunctionArgument {
+public:
+private:
+    TypeRef m_type;
+    Identifier m_name;
+};
+
+/// Represents a C/C++ function.
 class Function {
 public:
 private:
+  // TODO: Some attributes and things like calling convention are missing.
+  Identifier m_name;
+  std::vector<FunctionArg> m_args;
 };
 
 }
