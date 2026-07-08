@@ -15,6 +15,10 @@
 
 #include "Context.h"
 
+#include <memory>
+
+class DWARFASTParserCpp;
+
 namespace lldb_private {
 
 class TypeSystemCpp : public TypeSystem {
@@ -23,8 +27,25 @@ class TypeSystemCpp : public TypeSystem {
 
 public:
   TypeSystemCpp(llvm::StringRef name, llvm::Triple triple);
+  ~TypeSystemCpp() override;
 
   static lldb::TypeSystemSP Create(llvm::StringRef name, llvm::Triple triple);
+
+  // DWARF parsing
+  plugin::dwarf::DWARFASTParser *GetDWARFParser() override;
+
+  // Type creation, used by the DWARF parser to populate this type system.
+  CompilerType CreateBuiltinType(ConstString name,
+                                 std::optional<uint64_t> byte_size,
+                                 lldb::Encoding encoding);
+  CompilerType CreateRecordType(ConstString name,
+                                std::optional<uint64_t> byte_size);
+  /// Wrap one of our own Type nodes into a CompilerType owned by this system.
+  CompilerType GetCompilerType(cpp_typesystem::Type *type);
+  /// Recover the Type node backing a CompilerType created by this system.
+  static cpp_typesystem::Type *GetCppType(lldb::opaque_compiler_type_t type) {
+    return static_cast<cpp_typesystem::Type *>(type);
+  }
 
   // Plugin lifecycle
   static void Initialize();
@@ -229,6 +250,7 @@ private:
   std::string m_display_name;
   llvm::Triple m_triple;
   cpp_typesystem::Context m_context;
+  std::unique_ptr<DWARFASTParserCpp> m_dwarf_ast_parser_up;
 };
 
 class ScratchTypeSystemCpp : public TypeSystemCpp {

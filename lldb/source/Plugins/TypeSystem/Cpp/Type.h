@@ -9,14 +9,27 @@
 #ifndef LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_TYPE_H
 #define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_TYPE_H
 
-#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <vector>
+
+#include "lldb/Utility/ConstString.h"
+#include "lldb/lldb-enumerations.h"
 
 namespace lldb_private {
 namespace cpp_typesystem {
 
 class Context;
-class Record;
 class Type;
+
+/// A single data member of a record type.
+struct Field {
+  ConstString name;
+  /// The type of this member. Owned by the same Context as the record.
+  Type *type = nullptr;
+  /// Offset of this member from the start of the record, in bytes.
+  uint64_t byte_offset = 0;
+};
 
 /// References a type, potentially in another Context.
 class TypeRef {
@@ -30,25 +43,73 @@ static_assert(sizeof(TypeRef) <= sizeof(void *) * 2,
               "TypeRef is expected to be a small reference class!");
 
 /// Represents everything needed to understand a type.
+///
+/// A pointer to a Type is what TypeSystemCpp hands out as its
+/// lldb::opaque_compiler_type_t, so the virtual functions below are the queries
+/// that back the CompilerType API.
 class Type {
 public:
   virtual ~Type() = default;
-  // TODO: Virtual functions for the queries needed by TypeSystemCpp.
-  // E.g., GetSize().
+
+  ConstString GetName() const { return m_name; }
+  void SetName(ConstString name) { m_name = name; }
+
+  std::optional<uint64_t> GetByteSize() const { return m_byte_size; }
+  void SetByteSize(std::optional<uint64_t> byte_size) { m_byte_size = byte_size; }
+
+  /// True if this type has members (a struct/class/union).
+  virtual bool IsAggregate() const { return false; }
+
+  /// True if all the information about this type is available. Non-aggregate
+  /// types are always complete; records may start out as forward declarations.
+  virtual bool IsComplete() const { return true; }
+
+  virtual lldb::Encoding GetEncoding() const { return lldb::eEncodingInvalid; }
+  virtual lldb::Format GetFormat() const { return lldb::eFormatDefault; }
+  virtual lldb::TypeClass GetTypeClass() const { return lldb::eTypeClassOther; }
+  virtual uint32_t GetTypeInfo() const { return 0; }
+
+  /// Members of a record type. Empty for non-records.
+  virtual uint32_t GetNumFields() const { return 0; }
+  virtual const Field *GetFieldAtIndex(uint32_t idx) const { return nullptr; }
+
+private:
+  ConstString m_name;
+  std::optional<uint64_t> m_byte_size;
 };
 
+/// A record type (struct/class/union).
 class RecordType : public Type {
 public:
-  // Overwrite the Type functions and forward to queries on m_record;
+  bool IsAggregate() const override { return true; }
+  bool IsComplete() const override { return m_complete; }
+  void SetIsComplete(bool complete) { m_complete = complete; }
+
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassStruct;
+  }
+  uint32_t GetTypeInfo() const override {
+    return lldb::eTypeHasChildren | lldb::eTypeIsStructUnion;
+  }
+
+  void AddField(ConstString name, Type *type, uint64_t byte_offset) {
+    m_fields.push_back(Field{name, type, byte_offset});
+  }
+  uint32_t GetNumFields() const override { return m_fields.size(); }
+  const Field *GetFieldAtIndex(uint32_t idx) const override {
+    if (idx < m_fields.size())
+      return &m_fields[idx];
+    return nullptr;
+  }
+
 private:
-  // If this is a class type, then this goes here.
-  Record *m_record = nullptr;
+  bool m_complete = false;
+  std::vector<Field> m_fields;
 };
 
 /// A simple pointer type.
 class PointerType : public Type {
 public:
-  // Overwrite the Type functions and forward to queries on m_base_type;
 private:
   // The base type of this pointer.
   // E.g., for `int *` this is a ref to `int`.

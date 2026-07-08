@@ -15,4 +15,5 @@ add_lldb_library(lldbPluginTypeSystemCpp PLUGIN
     lldbSymbol
     lldbTarget
     lldbUtility
+    lldbPluginSymbolFileDWARF
 )

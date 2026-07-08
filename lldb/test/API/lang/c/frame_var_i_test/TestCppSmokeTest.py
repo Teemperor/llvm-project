@@ -6,6 +6,9 @@ from lldbsuite.test import lldbutil
 
 class TestCase(TestBase):
     def test(self):
+        # Exercise the TypeSystemCpp "frame variable" path directly instead of
+        # the DIL evaluator.
+        self.runCmd("settings set target.experimental.use-DIL false")
         self.build()
         lldbutil.run_to_source_breakpoint(
             self, "// break here", lldb.SBFileSpec("main.c")

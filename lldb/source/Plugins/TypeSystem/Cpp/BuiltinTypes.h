@@ -14,16 +14,49 @@
 namespace lldb_private {
 namespace cpp_typesystem {
 
-/// This type represent builtin types like int/long/char/etc.
+/// This type represents builtin types like int/long/char/etc.
 class BuiltinType : public Type {
+public:
+  void SetEncoding(lldb::Encoding encoding) { m_encoding = encoding; }
+  lldb::Encoding GetEncoding() const override { return m_encoding; }
 
-};
+  lldb::Format GetFormat() const override {
+    switch (m_encoding) {
+    case lldb::eEncodingSint:
+      return lldb::eFormatDecimal;
+    case lldb::eEncodingUint:
+      return lldb::eFormatUnsigned;
+    case lldb::eEncodingIEEE754:
+      return lldb::eFormatFloat;
+    default:
+      return lldb::eFormatDefault;
+    }
+  }
 
-class BuiltinTypes {
-    // TODO: Add the other C types and set correct sizes.
-    BuiltinType m_char_type;
-    BuiltinType m_int_type;
-    BuiltinType m_unsigned_int_type;
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassBuiltin;
+  }
+
+  uint32_t GetTypeInfo() const override {
+    uint32_t info = lldb::eTypeIsBuiltIn | lldb::eTypeHasValue;
+    switch (m_encoding) {
+    case lldb::eEncodingSint:
+      info |= lldb::eTypeIsScalar | lldb::eTypeIsInteger | lldb::eTypeIsSigned;
+      break;
+    case lldb::eEncodingUint:
+      info |= lldb::eTypeIsScalar | lldb::eTypeIsInteger;
+      break;
+    case lldb::eEncodingIEEE754:
+      info |= lldb::eTypeIsScalar | lldb::eTypeIsFloat | lldb::eTypeIsSigned;
+      break;
+    default:
+      break;
+    }
+    return info;
+  }
+
+private:
+  lldb::Encoding m_encoding = lldb::eEncodingInvalid;
 };
 
 }
