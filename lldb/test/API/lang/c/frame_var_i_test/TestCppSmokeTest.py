@@ -6,6 +6,9 @@ from lldbsuite.test import lldbutil
 
 class TestCase(TestBase):
     def test(self):
-        self.build_and_run()
+        self.build()
+        lldbutil.run_to_source_breakpoint(
+            self, "// break here", lldb.SBFileSpec("main.c")
+        )
 
-        self.expect_var_path("outer.m.i", result_value="4")
+        self.expect_var_path("outer.m.i", value="4")
