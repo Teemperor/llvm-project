@@ -30,7 +30,8 @@ char TypeSystemCpp::ID;
 char ScratchTypeSystemCpp::ID;
 
 TypeSystemCpp::TypeSystemCpp(llvm::StringRef name, llvm::Triple triple)
-    : m_display_name(name.str()), m_triple(std::move(triple)) {}
+    : m_display_name(name.str()), m_triple(std::move(triple)),
+      m_context(cpp_typesystem::LanguageOpts(m_triple)) {}
 
 TypeSystemCpp::~TypeSystemCpp() = default;
 
