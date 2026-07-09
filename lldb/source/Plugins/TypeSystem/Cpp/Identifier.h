@@ -21,7 +21,7 @@ namespace cpp_typesystem {
 class IdentifierMap;
 
 /// Represents an unqualified name.
-// E.g. `string` or `std`, but *NOT* `std::string`.
+/// E.g. `string` or `std`, but *NOT* `std::string`.
 class Identifier {
 public:
   Identifier() = default;
