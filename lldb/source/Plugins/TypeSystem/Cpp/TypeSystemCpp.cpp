@@ -17,6 +17,7 @@
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/DataExtractor.h"
 #include "lldb/Utility/Stream.h"
+#include "lldb/ValueObject/ValueObject.h"
 
 using namespace lldb_private;
 using namespace lldb;
@@ -65,6 +66,12 @@ TypeSystemCpp::Builder::CreateArrayType(CompilerType element_type,
   return m_ts.GetCompilerType(m_ts.m_context.CreateArrayType(
       TypeSystemCpp::GetCppType(element_type.GetOpaqueQualType()),
       num_elements));
+}
+
+CompilerType
+TypeSystemCpp::Builder::CreatePointerType(CompilerType pointee_type) {
+  return m_ts.GetCompilerType(m_ts.m_context.CreatePointerType(
+      TypeSystemCpp::GetCppType(pointee_type.GetOpaqueQualType())));
 }
 
 cpp_typesystem::Identifier
@@ -261,7 +268,15 @@ bool TypeSystemCpp::IsPossibleDynamicType(opaque_compiler_type_t type,
 
 bool TypeSystemCpp::IsPointerType(opaque_compiler_type_t type,
                                   CompilerType *pointee_type) {
-  return false;
+  if (pointee_type)
+    pointee_type->Clear();
+  auto *ptr = llvm::dyn_cast_or_null<cpp_typesystem::PointerType>(
+      type ? GetCppType(type) : nullptr);
+  if (!ptr)
+    return false;
+  if (pointee_type)
+    *pointee_type = GetCompilerType(ptr->GetPointeeType());
+  return true;
 }
 
 bool TypeSystemCpp::IsScalarType(opaque_compiler_type_t type) {
@@ -323,6 +338,13 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
       return ConstString(
           llvm::formatv("{0}[{1}]", element_name, *num_elements).str());
     return ConstString(llvm::formatv("{0}[]", element_name).str());
+  }
+  // Pointers have no name of their own either; build "<pointee> *".
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
+    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+    std::string pointee_name =
+        pointee ? GetTypeName(pointee, BaseOnly).GetStringRef().str() : "void";
+    return ConstString(llvm::formatv("{0} *", pointee_name).str());
   }
   return ConstString(t->GetName().GetName());
 }
@@ -396,11 +418,18 @@ TypeSystemCpp::GetMemberFunctionAtIndex(opaque_compiler_type_t type,
 }
 
 CompilerType TypeSystemCpp::GetPointeeType(opaque_compiler_type_t type) {
+  if (!type)
+    return CompilerType();
+  if (auto *ptr =
+          llvm::dyn_cast<cpp_typesystem::PointerType>(GetCppType(type)))
+    return GetCompilerType(ptr->GetPointeeType());
   return CompilerType();
 }
 
 CompilerType TypeSystemCpp::GetPointerType(opaque_compiler_type_t type) {
-  return CompilerType();
+  if (!type)
+    return CompilerType();
+  return Lock()->CreatePointerType(GetCompilerType(GetCppType(type)));
 }
 
 const llvm::fltSemantics &
@@ -440,6 +469,17 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
   // An array's children are its elements.
   if (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(t))
     return array->GetNumElements().value_or(0);
+  // A pointer's children are those of its pointee: expanding a pointer to an
+  // aggregate shows the aggregate's members directly, while a pointer to a
+  // scalar has a single child (the dereferenced value). `void *` has none.
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
+    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+    if (!pointee)
+      return 0;
+    if (pointee->IsAggregate())
+      return GetNumChildren(pointee, omit_empty_base_classes, exe_ctx);
+    return 1;
+  }
   if (!t->IsAggregate())
     return 0;
   GetCompleteType(type);
@@ -562,6 +602,38 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
     return GetCompilerType(element_type);
   }
 
+  // A pointer's children are those of its pointee. Expanding a pointer to an
+  // aggregate transparently shows the pointee's members; otherwise the single
+  // child is the dereferenced value.
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
+    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+    if (!pointee)
+      return CompilerType(); // Can't dereference `void *`.
+
+    if (transparent_pointers && pointee->IsAggregate()) {
+      bool tmp_child_is_deref_of_parent = false;
+      return GetCompilerType(pointee).GetChildCompilerTypeAtIndex(
+          exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
+          ignore_array_bounds, child_name, child_byte_size, child_byte_offset,
+          child_bitfield_bit_size, child_bitfield_bit_offset,
+          child_is_base_class, tmp_child_is_deref_of_parent, valobj,
+          language_flags);
+    }
+
+    child_is_deref_of_parent = true;
+    if (const char *parent_name =
+            valobj ? valobj->GetName().GetCString() : nullptr) {
+      child_name.assign(1, '*');
+      child_name += parent_name;
+    }
+    if (idx != 0)
+      return CompilerType();
+    if (std::optional<uint64_t> byte_size = pointee->GetByteSize())
+      child_byte_size = *byte_size;
+    child_byte_offset = 0;
+    return GetCompilerType(pointee);
+  }
+
   // Children are laid out as the direct base classes followed by the fields.
   uint32_t num_bases = t->GetNumBaseClasses();
   if (idx < num_bases) {
@@ -595,6 +667,15 @@ TypeSystemCpp::GetIndexOfChildWithName(opaque_compiler_type_t type,
     return llvm::createStringError("invalid type");
   GetCompleteType(type);
   cpp_typesystem::Type *t = GetCppType(type);
+  // A pointer forwards child lookup to its (aggregate) pointee.
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
+    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+    if (pointee && pointee->IsAggregate())
+      return GetCompilerType(pointee).GetIndexOfChildWithName(
+          name, omit_empty_base_classes);
+    return llvm::createStringError(
+        "TypeSystemCpp::GetIndexOfChildWithName: no such child");
+  }
   uint32_t num_bases = t->GetNumBaseClasses();
   // Base classes are the first children; match them by their type name.
   for (uint32_t i = 0; i < num_bases; ++i) {
@@ -618,6 +699,15 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
     return 0;
   GetCompleteType(type);
   cpp_typesystem::Type *t = GetCppType(type);
+  // A pointer forwards member lookup to its (aggregate) pointee, so that e.g.
+  // `ptr->member` resolves against the pointed-to record.
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
+    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+    if (pointee && pointee->IsAggregate())
+      return GetCompilerType(pointee).GetIndexOfChildMemberWithName(
+          name, omit_empty_base_classes, child_indexes);
+    return 0;
+  }
   uint32_t num_bases = t->GetNumBaseClasses();
 
   // A matching field is a direct child, laid out after the base classes. An
@@ -696,7 +786,8 @@ bool TypeSystemCpp::IsRuntimeGeneratedType(opaque_compiler_type_t type) {
 
 bool TypeSystemCpp::IsPointerOrReferenceType(opaque_compiler_type_t type,
                                              CompilerType *pointee_type) {
-  return false;
+  // TypeSystemCpp does not model reference types yet, so this is just pointers.
+  return IsPointerType(type, pointee_type);
 }
 
 unsigned TypeSystemCpp::GetTypeQualifiers(opaque_compiler_type_t type) {

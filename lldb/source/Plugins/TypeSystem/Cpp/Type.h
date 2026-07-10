@@ -210,10 +210,22 @@ class PointerType : public llvm::RTTIExtends<PointerType, Type> {
 public:
   static char ID;
 
+  /// The type this pointer points to. E.g., for `int *` this is `int`.
+  /// May be null for `void *`.
+  Type *GetPointeeType() const { return m_pointee_type; }
+  void SetPointeeType(Type *type) { m_pointee_type = type; }
+
+  lldb::Encoding GetEncoding() const override { return lldb::eEncodingUint; }
+  lldb::Format GetFormat() const override { return lldb::eFormatHex; }
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassPointer;
+  }
+  uint32_t GetTypeInfo() const override {
+    return lldb::eTypeHasChildren | lldb::eTypeIsPointer | lldb::eTypeHasValue;
+  }
+
 private:
-  // The base type of this pointer.
-  // E.g., for `int *` this is a ref to `int`.
-  TypeRef m_base_type;
+  Type *m_pointee_type = nullptr;
 };
 
 }

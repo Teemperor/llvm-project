@@ -54,3 +54,10 @@ ArrayType *Context::CreateArrayType(Type *element_type,
       type->SetByteSize(*elem_size * *num_elements);
   return Track(std::move(type));
 }
+
+PointerType *Context::CreatePointerType(Type *pointee_type) {
+  auto type = std::make_unique<PointerType>();
+  type->SetPointeeType(pointee_type);
+  type->SetByteSize(m_opts.GetBuiltinSizes().pointer_size);
+  return Track(std::move(type));
+}

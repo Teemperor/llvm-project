@@ -55,6 +55,10 @@ public:
   ArrayType *CreateArrayType(Type *element_type,
                              std::optional<uint64_t> num_elements);
 
+  /// Create a pointer type pointing to \p pointee_type (which may be null for
+  /// `void *`). Its byte size is the target's pointer size.
+  PointerType *CreatePointerType(Type *pointee_type);
+
   /// Structural mutation of already-created record types. These are the gated
   /// entry points for the mutations that happen during lazy completion; the
   /// corresponding Type methods are private and befriend this class.

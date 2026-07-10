@@ -225,6 +225,32 @@ TypeSP DWARFASTParserCpp::ParseArrayType(const DWARFDIE &die) {
                          Type::ResolveState::Full);
 }
 
+TypeSP DWARFASTParserCpp::ParsePointerType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  std::optional<uint64_t> byte_size =
+      die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size);
+
+  // Resolve the pointee type. A missing DW_AT_type means `void *`, in which
+  // case the pointee stays empty. A pointer may point to an incomplete type,
+  // so use the forward-declared CompilerType and don't force completion here.
+  DWARFDIE pointee_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  CompilerType pointee_type;
+  if (pointee_die) {
+    if (Type *pointee = die.ResolveTypeUID(pointee_die))
+      pointee_type = pointee->GetForwardCompilerType();
+  }
+
+  CompilerType pointer_type = m_ts.Lock()->CreatePointerType(pointee_type);
+
+  Declaration decl;
+  ConstString empty_name;
+  return dwarf->MakeType(die.GetID(), empty_name, byte_size,
+                         /*context=*/nullptr, pointee_die.GetID(),
+                         Type::eEncodingIsUID, decl, pointer_type,
+                         Type::ResolveState::Full);
+}
+
 TypeSP DWARFASTParserCpp::ParseTypeFromDWARF(const SymbolContext &sc,
                                              const DWARFDIE &die,
                                              bool *type_is_new_ptr) {
@@ -257,6 +283,9 @@ TypeSP DWARFASTParserCpp::ParseTypeFromDWARF(const SymbolContext &sc,
     break;
   case DW_TAG_array_type:
     type_sp = ParseArrayType(die);
+    break;
+  case DW_TAG_pointer_type:
+    type_sp = ParsePointerType(die);
     break;
   default:
     break;
