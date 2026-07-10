@@ -16,8 +16,10 @@ namespace lldb_private {
 namespace cpp_typesystem {
 
 /// This type represents builtin types like int/long/char/etc.
-class BuiltinType : public Type {
+class BuiltinType : public llvm::RTTIExtends<BuiltinType, Type> {
 public:
+  static char ID;
+
   void SetEncoding(lldb::Encoding encoding) { m_encoding = encoding; }
   lldb::Encoding GetEncoding() const override { return m_encoding; }
 

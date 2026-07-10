@@ -13,6 +13,8 @@
 #include <optional>
 #include <vector>
 
+#include "llvm/Support/ExtensibleRTTI.h"
+
 #include "lldb/lldb-enumerations.h"
 
 #include "Identifier.h"
@@ -48,8 +50,13 @@ static_assert(sizeof(TypeRef) <= sizeof(void *) * 2,
 /// A pointer to a Type is what TypeSystemCpp hands out as its
 /// lldb::opaque_compiler_type_t, so the virtual functions below are the queries
 /// that back the CompilerType API.
-class Type {
+class Type : public llvm::RTTIExtends<Type, llvm::RTTIRoot> {
 public:
+  /// LLVM-style RTTI support (isa<>/cast<>/dyn_cast<>). Because Type already
+  /// has a vtable, RTTIExtends implements this via a virtual dispatch keyed on
+  /// the per-class `ID` address, so no per-object discriminator is needed.
+  static char ID;
+
   virtual ~Type() = default;
 
   Identifier GetName() const { return m_name; }
@@ -80,8 +87,10 @@ private:
 };
 
 /// A C struct type.
-class StructType : public Type {
+class StructType : public llvm::RTTIExtends<StructType, Type> {
 public:
+  static char ID;
+
   bool IsAggregate() const override { return true; }
   bool IsComplete() const override { return m_complete; }
   void SetIsComplete(bool complete) { m_complete = complete; }
@@ -109,8 +118,10 @@ private:
 };
 
 /// A simple pointer type.
-class PointerType : public Type {
+class PointerType : public llvm::RTTIExtends<PointerType, Type> {
 public:
+  static char ID;
+
 private:
   // The base type of this pointer.
   // E.g., for `int *` this is a ref to `int`.
