@@ -15,6 +15,7 @@ int main() {
   struct Outer outer;
   outer.m.i = 4;
   outer.x = -22;
+  Outer *ptr = &outer;
 
   return 0; // break here
 }

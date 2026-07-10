@@ -85,6 +85,8 @@ private:
   ParseStructureType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParseArrayType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  lldb::TypeSP
+  ParsePointerType(const lldb_private::plugin::dwarf::DWARFDIE &die);
 
   /// Resolve a DWARF type reference to its TypeSystemCpp node. This is the unit
   /// of work spread across threads while completing a record: it may run on a

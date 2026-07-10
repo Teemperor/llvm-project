@@ -55,6 +55,9 @@ public:
     /// array of unknown bound when \p num_elements is std::nullopt).
     CompilerType CreateArrayType(CompilerType element_type,
                                  std::optional<uint64_t> num_elements);
+    /// Create a pointer to \p pointee_type (an empty CompilerType denotes a
+    /// `void *`).
+    CompilerType CreatePointerType(CompilerType pointee_type);
     /// Intern a name into the Context so it can be used for a type or record
     /// member. All Identifiers must be created this way.
     cpp_typesystem::Identifier GetIdentifier(llvm::StringRef name);
