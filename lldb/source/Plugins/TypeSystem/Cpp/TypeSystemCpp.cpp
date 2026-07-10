@@ -22,7 +22,7 @@ using namespace lldb_private;
 using namespace lldb;
 
 using cpp_typesystem::Field;
-using cpp_typesystem::RecordType;
+using cpp_typesystem::StructType;
 
 LLDB_PLUGIN_DEFINE(TypeSystemCpp)
 

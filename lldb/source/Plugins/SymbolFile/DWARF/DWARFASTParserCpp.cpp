@@ -178,12 +178,12 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   if (!die)
     return false;
 
-  // A DW_TAG_structure/class/union DIE is always backed by a RecordType.
+  // A DW_TAG_structure/class/union DIE is always backed by a StructType.
   cpp_typesystem::Type *cpp_type =
       TypeSystemCpp::GetCppType(compiler_type.GetOpaqueQualType());
   if (!cpp_type || !cpp_type->IsAggregate())
     return false;
-  auto *record = static_cast<cpp_typesystem::RecordType *>(cpp_type);
+  auto *record = static_cast<cpp_typesystem::StructType *>(cpp_type);
   if (record->IsComplete())
     return true;
 
