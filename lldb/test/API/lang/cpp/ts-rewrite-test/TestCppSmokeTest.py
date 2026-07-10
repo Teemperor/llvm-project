@@ -17,3 +17,5 @@ class TestCase(TestBase):
         self.expect_var_path("outer.m.i", value="4")
         self.expect_var_path("outer.x", value="-22")
         self.expect_var_path("ptr->x", value="-22")
+        self.expect_var_path("ptr", type="Outer *")
+        self.expect_var_path("*ptr", type="Outer")
