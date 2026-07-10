@@ -35,8 +35,12 @@ public:
                               std::optional<uint64_t> byte_size,
                               lldb::Encoding encoding, lldb::Format format);
 
-  StructType *CreateRecordType(llvm::StringRef name,
-                               std::optional<uint64_t> byte_size);
+  /// Create a record type. When \p is_cpp_class is true the record can carry
+  /// C++-only information (base classes) and a ClassType is created; otherwise
+  /// a plain StructType is used.
+  RecordType *CreateRecordType(llvm::StringRef name,
+                               std::optional<uint64_t> byte_size,
+                               bool is_cpp_class);
 
   /// Intern a name into this Context's IdentifierMap. All Identifiers used by
   /// types owned by this Context must be created here so that their backing

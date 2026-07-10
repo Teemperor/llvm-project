@@ -34,6 +34,15 @@ struct Field {
   uint64_t byte_offset = 0;
 };
 
+/// A direct base class of a C++ class type.
+struct BaseClass {
+  /// The base class type. Owned by the same Context as the derived record.
+  Type *type = nullptr;
+  /// Offset of the base class subobject from the start of the derived record,
+  /// in bytes.
+  uint64_t byte_offset = 0;
+};
+
 /// References a type, potentially in another Context.
 class TypeRef {
 public:
@@ -81,13 +90,23 @@ public:
   virtual uint32_t GetNumFields() const { return 0; }
   virtual const Field *GetFieldAtIndex(uint32_t idx) const { return nullptr; }
 
+  /// Direct base classes of a C++ class type. Empty for everything else
+  /// (including plain C structs, which never have base classes).
+  virtual uint32_t GetNumBaseClasses() const { return 0; }
+  virtual const BaseClass *GetBaseClassAtIndex(uint32_t idx) const {
+    return nullptr;
+  }
+
 private:
   Identifier m_name;
   std::optional<uint64_t> m_byte_size;
 };
 
-/// A C struct type.
-class StructType : public llvm::RTTIExtends<StructType, Type> {
+/// Common base for C/C++ record types (struct/class/union). Owns the data
+/// members and the forward-declaration/completion state that every record
+/// shares. C++-only information (such as base classes) lives on ClassType, so
+/// a plain StructType never reserves storage for it.
+class RecordType : public llvm::RTTIExtends<RecordType, Type> {
 public:
   static char ID;
 
@@ -95,9 +114,6 @@ public:
   bool IsComplete() const override { return m_complete; }
   void SetIsComplete(bool complete) { m_complete = complete; }
 
-  lldb::TypeClass GetTypeClass() const override {
-    return lldb::eTypeClassStruct;
-  }
   uint32_t GetTypeInfo() const override {
     return lldb::eTypeHasChildren | lldb::eTypeIsStructUnion;
   }
@@ -115,6 +131,41 @@ public:
 private:
   bool m_complete = false;
   std::vector<Field> m_fields;
+};
+
+/// A C struct/union type. Records parsed from a C++ translation unit are
+/// backed by ClassType instead, since only those can have base classes.
+class StructType : public llvm::RTTIExtends<StructType, RecordType> {
+public:
+  static char ID;
+
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassStruct;
+  }
+};
+
+/// A C++ class type. In addition to the data members every record has, it can
+/// carry direct base classes.
+class ClassType : public llvm::RTTIExtends<ClassType, RecordType> {
+public:
+  static char ID;
+
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassClass;
+  }
+
+  void AddBaseClass(Type *type, uint64_t byte_offset) {
+    m_bases.push_back(BaseClass{type, byte_offset});
+  }
+  uint32_t GetNumBaseClasses() const override { return m_bases.size(); }
+  const BaseClass *GetBaseClassAtIndex(uint32_t idx) const override {
+    if (idx < m_bases.size())
+      return &m_bases[idx];
+    return nullptr;
+  }
+
+private:
+  std::vector<BaseClass> m_bases;
 };
 
 /// A simple pointer type.

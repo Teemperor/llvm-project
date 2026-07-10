@@ -29,9 +29,14 @@ BuiltinType *Context::GetBuiltinType(llvm::StringRef name,
   return Track(std::move(type));
 }
 
-StructType *Context::CreateRecordType(llvm::StringRef name,
-                                      std::optional<uint64_t> byte_size) {
-  auto type = std::make_unique<StructType>();
+RecordType *Context::CreateRecordType(llvm::StringRef name,
+                                      std::optional<uint64_t> byte_size,
+                                      bool is_cpp_class) {
+  std::unique_ptr<RecordType> type;
+  if (is_cpp_class)
+    type = std::make_unique<ClassType>();
+  else
+    type = std::make_unique<StructType>();
   type->SetName(GetIdentifier(name));
   type->SetByteSize(byte_size);
   return Track(std::move(type));

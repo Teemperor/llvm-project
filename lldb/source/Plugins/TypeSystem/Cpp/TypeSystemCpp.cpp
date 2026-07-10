@@ -22,7 +22,6 @@ using namespace lldb_private;
 using namespace lldb;
 
 using cpp_typesystem::Field;
-using cpp_typesystem::StructType;
 
 LLDB_PLUGIN_DEFINE(TypeSystemCpp)
 
@@ -54,9 +53,10 @@ CompilerType TypeSystemCpp::GetBuiltinType(ConstString name,
 }
 
 CompilerType TypeSystemCpp::CreateRecordType(ConstString name,
-                                             std::optional<uint64_t> byte_size) {
+                                             std::optional<uint64_t> byte_size,
+                                             bool is_cpp_class) {
   return GetCompilerType(
-      m_context.CreateRecordType(name.GetStringRef(), byte_size));
+      m_context.CreateRecordType(name.GetStringRef(), byte_size, is_cpp_class));
 }
 
 lldb::TypeSystemSP TypeSystemCpp::Create(llvm::StringRef name,
@@ -372,7 +372,8 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
   if (!t->IsAggregate())
     return 0;
   GetCompleteType(type);
-  return t->GetNumFields();
+  // Children of a record are its direct base classes followed by its fields.
+  return t->GetNumBaseClasses() + t->GetNumFields();
 }
 
 BasicType
@@ -410,7 +411,10 @@ CompilerType TypeSystemCpp::GetFieldAtIndex(opaque_compiler_type_t type,
 
 uint32_t
 TypeSystemCpp::GetNumDirectBaseClasses(opaque_compiler_type_t type) {
-  return 0;
+  if (!type)
+    return 0;
+  GetCompleteType(type);
+  return GetCppType(type)->GetNumBaseClasses();
 }
 
 uint32_t
@@ -422,7 +426,16 @@ CompilerType
 TypeSystemCpp::GetDirectBaseClassAtIndex(opaque_compiler_type_t type,
                                          size_t idx,
                                          uint32_t *bit_offset_ptr) {
-  return CompilerType();
+  if (!type)
+    return CompilerType();
+  GetCompleteType(type);
+  const cpp_typesystem::BaseClass *base =
+      GetCppType(type)->GetBaseClassAtIndex(idx);
+  if (!base)
+    return CompilerType();
+  if (bit_offset_ptr)
+    *bit_offset_ptr = base->byte_offset * 8;
+  return GetCompilerType(base->type);
 }
 
 CompilerType
@@ -460,7 +473,23 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
   if (!type)
     return CompilerType();
   GetCompleteType(type);
-  const Field *field = GetCppType(type)->GetFieldAtIndex(idx);
+  cpp_typesystem::Type *t = GetCppType(type);
+
+  // Children are laid out as the direct base classes followed by the fields.
+  uint32_t num_bases = t->GetNumBaseClasses();
+  if (idx < num_bases) {
+    const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(idx);
+    if (!base)
+      return CompilerType();
+    child_name = base->type->GetName().GetName().str();
+    child_byte_offset = base->byte_offset;
+    if (std::optional<uint64_t> byte_size = base->type->GetByteSize())
+      child_byte_size = *byte_size;
+    child_is_base_class = true;
+    return GetCompilerType(base->type);
+  }
+
+  const Field *field = t->GetFieldAtIndex(idx - num_bases);
   if (!field)
     return CompilerType();
 
@@ -479,9 +508,17 @@ TypeSystemCpp::GetIndexOfChildWithName(opaque_compiler_type_t type,
     return llvm::createStringError("invalid type");
   GetCompleteType(type);
   cpp_typesystem::Type *t = GetCppType(type);
+  uint32_t num_bases = t->GetNumBaseClasses();
+  // Base classes are the first children; match them by their type name.
+  for (uint32_t i = 0; i < num_bases; ++i) {
+    const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
+    if (base->type->GetName().GetName() == name)
+      return i;
+  }
+  // Fields follow the base classes.
   for (uint32_t i = 0, e = t->GetNumFields(); i < e; ++i) {
     if (t->GetFieldAtIndex(i)->name.GetName() == name)
-      return i;
+      return num_bases + i;
   }
   return llvm::createStringError(
       "TypeSystemCpp::GetIndexOfChildWithName: no such child");
@@ -494,11 +531,27 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
     return 0;
   GetCompleteType(type);
   cpp_typesystem::Type *t = GetCppType(type);
+  uint32_t num_bases = t->GetNumBaseClasses();
+
+  // A matching field is a direct child, laid out after the base classes.
   for (uint32_t i = 0, e = t->GetNumFields(); i < e; ++i) {
     if (t->GetFieldAtIndex(i)->name.GetName() == name) {
-      child_indexes.push_back(i);
+      child_indexes.push_back(num_bases + i);
       return child_indexes.size();
     }
+  }
+
+  // Otherwise the member may be inherited from a base class. Base classes are
+  // the first children, so their child index is just their position.
+  for (uint32_t i = 0; i < num_bases; ++i) {
+    const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
+    std::vector<uint32_t> save_indices = child_indexes;
+    child_indexes.push_back(i);
+    if (GetCompilerType(base->type)
+            .GetIndexOfChildMemberWithName(name, omit_empty_base_classes,
+                                           child_indexes))
+      return child_indexes.size();
+    child_indexes = std::move(save_indices);
   }
   return 0;
 }

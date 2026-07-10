@@ -39,7 +39,8 @@ public:
                               std::optional<uint64_t> byte_size,
                               lldb::Encoding encoding, lldb::Format format);
   CompilerType CreateRecordType(ConstString name,
-                                std::optional<uint64_t> byte_size);
+                                std::optional<uint64_t> byte_size,
+                                bool is_cpp_class);
   /// Intern a name into this type system's Context so it can be used for a
   /// type or record member. All Identifiers must be created this way.
   cpp_typesystem::Identifier GetIdentifier(llvm::StringRef name) {

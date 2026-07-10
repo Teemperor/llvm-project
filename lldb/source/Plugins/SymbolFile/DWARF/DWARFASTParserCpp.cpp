@@ -23,6 +23,7 @@
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/Type.h"
+#include "lldb/Target/Language.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -141,7 +142,14 @@ TypeSP DWARFASTParserCpp::ParseStructureType(const DWARFDIE &die) {
   std::optional<uint64_t> byte_size =
       die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size);
 
-  CompilerType compiler_type = m_ts.CreateRecordType(name, byte_size);
+  // In a C++ translation unit even a `struct` may have base classes, so back
+  // records with a ClassType (which reserves storage for that C++-only
+  // information). Plain C records use the lighter StructType.
+  lldb::LanguageType language = SymbolFileDWARF::GetLanguage(*die.GetCU());
+  bool is_cpp_class = Language::LanguageIsCPlusPlus(language);
+
+  CompilerType compiler_type =
+      m_ts.CreateRecordType(name, byte_size, is_cpp_class);
 
   Declaration decl;
   TypeSP type_sp =
@@ -206,12 +214,12 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   if (!die)
     return false;
 
-  // A DW_TAG_structure/class/union DIE is always backed by a StructType.
+  // A DW_TAG_structure/class/union DIE is always backed by a RecordType.
   cpp_typesystem::Type *cpp_type =
       TypeSystemCpp::GetCppType(compiler_type.GetOpaqueQualType());
   if (!cpp_type || !cpp_type->IsAggregate())
     return false;
-  auto *record = static_cast<cpp_typesystem::StructType *>(cpp_type);
+  auto *record = static_cast<cpp_typesystem::RecordType *>(cpp_type);
   if (record->IsComplete())
     return true;
 
@@ -219,7 +227,28 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   // to this record doesn't recurse forever.
   record->SetIsComplete(true);
 
+  // C++-only information (base classes) is only stored on ClassType.
+  auto *cpp_class = llvm::dyn_cast<cpp_typesystem::ClassType>(record);
+
   for (DWARFDIE child : die.children()) {
+    if (child.Tag() == DW_TAG_inheritance) {
+      // Base classes only exist on C++ class types.
+      if (!cpp_class)
+        continue;
+      uint64_t byte_offset =
+          child.GetAttributeValueAsUnsigned(DW_AT_data_member_location, 0);
+      DWARFDIE base_type_die =
+          child.GetAttributeValueAsReferenceDIE(DW_AT_type);
+      Type *base_type = child.ResolveTypeUID(base_type_die);
+      if (!base_type)
+        continue;
+      CompilerType base_compiler_type = base_type->GetForwardCompilerType();
+      auto *base_cpp_type =
+          TypeSystemCpp::GetCppType(base_compiler_type.GetOpaqueQualType());
+      cpp_class->AddBaseClass(base_cpp_type, byte_offset);
+      continue;
+    }
+
     if (child.Tag() != DW_TAG_member)
       continue;
 
