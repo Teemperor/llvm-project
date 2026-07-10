@@ -24,12 +24,17 @@ namespace cpp_typesystem {
 /// them. Types live as long as the Context (and therefore the TypeSystemCpp).
 class Context {
 public:
-  explicit Context(const LanguageOpts &opts) : builtin_types(opts) {
-  }
+  explicit Context(const LanguageOpts &opts)
+      : builtin_types(opts, identifiers) {}
 
-  BuiltinType *CreateBuiltinType(llvm::StringRef name,
-                                 std::optional<uint64_t> byte_size,
-                                 lldb::Encoding encoding);
+  /// Returns a builtin type for the given attributes. When the attributes
+  /// match one of the enumerated C/C++/Objective-C builtin types, the shared
+  /// canonical instance is returned; otherwise a bespoke type is created and
+  /// tracked by this Context.
+  BuiltinType *GetBuiltinType(llvm::StringRef name,
+                              std::optional<uint64_t> byte_size,
+                              lldb::Encoding encoding, lldb::Format format);
+
   StructType *CreateRecordType(llvm::StringRef name,
                                std::optional<uint64_t> byte_size);
 

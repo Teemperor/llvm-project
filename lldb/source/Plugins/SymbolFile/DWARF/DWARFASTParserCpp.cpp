@@ -91,15 +91,43 @@ static lldb::Encoding GetEncodingFromDWARF(uint64_t dw_ate) {
   }
 }
 
+/// Map a DWARF DW_AT_encoding value to the format used to display the type's
+/// values. This is only needed as a fallback: base types matching an
+/// enumerated builtin get their format from TypeSystemCpp's canonical
+/// instance. Char and boolean types share the integer encodings and so need
+/// to be distinguished here (mirroring TypeSystemClang::GetFormat).
+static lldb::Format GetFormatFromDWARF(uint64_t dw_ate) {
+  switch (dw_ate) {
+  case DW_ATE_signed_char:
+  case DW_ATE_unsigned_char:
+    return eFormatChar;
+  case DW_ATE_boolean:
+    return eFormatBoolean;
+  case DW_ATE_signed:
+    return eFormatDecimal;
+  case DW_ATE_unsigned:
+    return eFormatUnsigned;
+  case DW_ATE_float:
+    return eFormatFloat;
+  default:
+    return eFormatDefault;
+  }
+}
+
 TypeSP DWARFASTParserCpp::ParseBaseType(const DWARFDIE &die) {
   SymbolFileDWARF *dwarf = die.GetDWARF();
   ConstString name(die.GetName());
   std::optional<uint64_t> byte_size =
       die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size);
-  lldb::Encoding encoding =
-      GetEncodingFromDWARF(die.GetAttributeValueAsUnsigned(DW_AT_encoding, 0));
+  uint64_t dw_ate = die.GetAttributeValueAsUnsigned(DW_AT_encoding, 0);
+  lldb::Encoding encoding = GetEncodingFromDWARF(dw_ate);
+  lldb::Format format = GetFormatFromDWARF(dw_ate);
 
-  CompilerType compiler_type = m_ts.CreateBuiltinType(name, byte_size, encoding);
+  // Map this base type onto the matching canonical builtin type, falling back
+  // to a bespoke type (using the format derived above) if it is not one of the
+  // enumerated builtins.
+  CompilerType compiler_type =
+      m_ts.GetBuiltinType(name, byte_size, encoding, format);
 
   Declaration decl;
   return dwarf->MakeType(die.GetID(), name, byte_size, /*context=*/nullptr,
