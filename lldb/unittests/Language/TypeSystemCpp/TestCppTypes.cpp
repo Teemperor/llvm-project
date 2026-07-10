@@ -97,8 +97,9 @@ TEST(CppTypesTest, ContextCreatedTypes) {
   LanguageOpts opts(llvm::Triple("x86_64-pc-linux-gnu"));
   Context context(opts);
 
-  Type *builtin = context.CreateBuiltinType("int", /*byte_size=*/4,
-                                            lldb::eEncodingSint);
+  Type *builtin = context.GetBuiltinType("int", /*byte_size=*/4,
+                                         lldb::eEncodingSint,
+                                         lldb::eFormatDecimal);
   Type *record = context.CreateRecordType("MyStruct", /*byte_size=*/8);
 
   ASSERT_NE(builtin, nullptr);

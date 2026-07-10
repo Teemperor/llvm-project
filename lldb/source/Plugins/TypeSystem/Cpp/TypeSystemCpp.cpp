@@ -45,11 +45,12 @@ CompilerType TypeSystemCpp::GetCompilerType(cpp_typesystem::Type *type) {
   return CompilerType(weak_from_this(), type);
 }
 
-CompilerType TypeSystemCpp::CreateBuiltinType(ConstString name,
-                                              std::optional<uint64_t> byte_size,
-                                              lldb::Encoding encoding) {
-  return GetCompilerType(
-      m_context.CreateBuiltinType(name.GetStringRef(), byte_size, encoding));
+CompilerType TypeSystemCpp::GetBuiltinType(ConstString name,
+                                           std::optional<uint64_t> byte_size,
+                                           lldb::Encoding encoding,
+                                           lldb::Format format) {
+  return GetCompilerType(m_context.GetBuiltinType(name.GetStringRef(),
+                                                  byte_size, encoding, format));
 }
 
 CompilerType TypeSystemCpp::CreateRecordType(ConstString name,

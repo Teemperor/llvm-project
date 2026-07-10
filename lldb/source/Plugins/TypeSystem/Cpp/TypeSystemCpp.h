@@ -35,9 +35,9 @@ public:
   plugin::dwarf::DWARFASTParser *GetDWARFParser() override;
 
   // Type creation, used by the DWARF parser to populate this type system.
-  CompilerType CreateBuiltinType(ConstString name,
-                                 std::optional<uint64_t> byte_size,
-                                 lldb::Encoding encoding);
+  CompilerType GetBuiltinType(ConstString name,
+                              std::optional<uint64_t> byte_size,
+                              lldb::Encoding encoding, lldb::Format format);
   CompilerType CreateRecordType(ConstString name,
                                 std::optional<uint64_t> byte_size);
   /// Intern a name into this type system's Context so it can be used for a

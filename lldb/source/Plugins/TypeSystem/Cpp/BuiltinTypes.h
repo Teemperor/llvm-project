@@ -12,8 +12,15 @@
 #include "Type.h"
 #include "LanguageOpts.h"
 
+#include <array>
+#include <memory>
+#include <optional>
+#include <vector>
+
 namespace lldb_private {
 namespace cpp_typesystem {
+
+class IdentifierMap;
 
 /// This type represents builtin types like int/long/char/etc.
 class BuiltinType : public llvm::RTTIExtends<BuiltinType, Type> {
@@ -23,18 +30,11 @@ public:
   void SetEncoding(lldb::Encoding encoding) { m_encoding = encoding; }
   lldb::Encoding GetEncoding() const override { return m_encoding; }
 
-  lldb::Format GetFormat() const override {
-    switch (m_encoding) {
-    case lldb::eEncodingSint:
-      return lldb::eFormatDecimal;
-    case lldb::eEncodingUint:
-      return lldb::eFormatUnsigned;
-    case lldb::eEncodingIEEE754:
-      return lldb::eFormatFloat;
-    default:
-      return lldb::eFormatDefault;
-    }
-  }
+  /// The display format for values of this type. Unlike the encoding, this
+  /// cannot always be derived from the encoding alone (e.g. char and bool
+  /// share the integer encodings), so it is stored explicitly.
+  void SetFormat(lldb::Format format) { m_format = format; }
+  lldb::Format GetFormat() const override { return m_format; }
 
   lldb::TypeClass GetTypeClass() const override {
     return lldb::eTypeClassBuiltin;
@@ -60,14 +60,63 @@ public:
 
 private:
   lldb::Encoding m_encoding = lldb::eEncodingInvalid;
+  lldb::Format m_format = lldb::eFormatDefault;
 };
 
+/// Enumerates the builtin types of C, C++ and Objective-C.
+enum class BuiltinKind : uint8_t {
+  Void,
+  Bool,
+  Char,
+  SignedChar,
+  UnsignedChar,
+  WCharT,
+  Char8,
+  Char16,
+  Char32,
+  Short,
+  UnsignedShort,
+  Int,
+  UnsignedInt,
+  Long,
+  UnsignedLong,
+  LongLong,
+  UnsignedLongLong,
+  Int128,
+  UnsignedInt128,
+  Float,
+  Double,
+  LongDouble,
+  NumKinds
+};
+
+/// Owns one canonical BuiltinType instance for every C/C++/Objective-C builtin
+/// type (see BuiltinKind). Symbol readers map their source-format base types
+/// onto these shared instances via Match(), rather than creating a fresh type
+/// each time; each instance therefore carries the correct encoding, display
+/// format and type info for its kind in one place.
 class KnownBuiltinTypes {
-  BuiltinType *int_type = nullptr;
 public:
-  KnownBuiltinTypes(const LanguageOpts &opts) {
+  KnownBuiltinTypes(const LanguageOpts &opts, IdentifierMap &identifiers);
+
+  /// The canonical instance for a specific builtin kind.
+  BuiltinType *Get(BuiltinKind kind) const {
+    return m_by_kind[static_cast<size_t>(kind)];
   }
+
+  /// Returns the canonical builtin type matching the given encoding, byte size
+  /// and (one of the) known spelling(s), or nullptr if none of the enumerated
+  /// builtin types matches. A null result means the caller should fall back to
+  /// creating a bespoke type from the raw attributes.
+  BuiltinType *Match(llvm::StringRef name, lldb::Encoding encoding,
+                     std::optional<uint64_t> byte_size) const;
+
 private:
+  // Backing storage for the canonical instances; index has no meaning.
+  std::vector<std::unique_ptr<BuiltinType>> m_storage;
+  // Canonical instance for each BuiltinKind, indexed by the enum value.
+  std::array<BuiltinType *, static_cast<size_t>(BuiltinKind::NumKinds)>
+      m_by_kind{};
 };
 
 }

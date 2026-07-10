@@ -11,13 +11,21 @@
 using namespace lldb_private;
 using namespace lldb_private::cpp_typesystem;
 
-BuiltinType *Context::CreateBuiltinType(llvm::StringRef name,
-                                        std::optional<uint64_t> byte_size,
-                                        lldb::Encoding encoding) {
+BuiltinType *Context::GetBuiltinType(llvm::StringRef name,
+                                     std::optional<uint64_t> byte_size,
+                                     lldb::Encoding encoding,
+                                     lldb::Format format) {
+  // Prefer the shared canonical instance when the attributes describe one of
+  // the enumerated builtin types.
+  if (BuiltinType *known = builtin_types.Match(name, encoding, byte_size))
+    return known;
+
+  // Otherwise fall back to a bespoke type owned by this Context.
   auto type = std::make_unique<BuiltinType>();
   type->SetName(GetIdentifier(name));
   type->SetByteSize(byte_size);
   type->SetEncoding(encoding);
+  type->SetFormat(format);
   return Track(std::move(type));
 }
 
