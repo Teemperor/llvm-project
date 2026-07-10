@@ -60,55 +60,49 @@ static_assert(std::size(kDescs) == static_cast<size_t>(BuiltinKind::NumKinds),
               "every BuiltinKind needs exactly one description");
 
 /// The size (in bytes) of a builtin type on the given target, or nullopt for
-/// types without a size (void). These follow the common C/C++ data models; if
-/// the value here disagrees with what the symbol reader reports, Match() falls
-/// through and a bespoke type is created with the reported size instead.
+/// types without a size (void). The target-dependent sizes come from Clang's
+/// target knowledge (see LanguageOpts); if the value here disagrees with what
+/// the symbol reader reports, Match() falls through and a bespoke type is
+/// created with the reported size instead.
 std::optional<uint64_t> ByteSizeFor(BuiltinKind kind,
-                                    const llvm::Triple &triple) {
-  const bool is_windows = triple.isOSWindows();
+                                    const LanguageOpts::BuiltinSizes &sizes) {
   switch (kind) {
   case BuiltinKind::Void:
     return std::nullopt;
-  case BuiltinKind::Bool:
   case BuiltinKind::Char:
   case BuiltinKind::SignedChar:
   case BuiltinKind::UnsignedChar:
   case BuiltinKind::Char8:
     return 1;
+  case BuiltinKind::Bool:
+    return sizes.bool_size;
   case BuiltinKind::Char16:
+    return sizes.char16_size;
+  case BuiltinKind::Char32:
+    return sizes.char32_size;
+  case BuiltinKind::WCharT:
+    return sizes.wchar_size;
   case BuiltinKind::Short:
   case BuiltinKind::UnsignedShort:
-    return 2;
-  case BuiltinKind::WCharT:
-    // 2 bytes on Windows, 4 bytes on the Unix-like targets.
-    return is_windows ? 2 : 4;
-  case BuiltinKind::Char32:
+    return sizes.short_size;
   case BuiltinKind::Int:
   case BuiltinKind::UnsignedInt:
-  case BuiltinKind::Float:
-    return 4;
+    return sizes.int_size;
   case BuiltinKind::Long:
   case BuiltinKind::UnsignedLong:
-    // LLP64 (Windows, 32-bit) keeps long at 4 bytes; LP64 uses 8.
-    return (is_windows || triple.isArch32Bit()) ? 4 : 8;
+    return sizes.long_size;
   case BuiltinKind::LongLong:
   case BuiltinKind::UnsignedLongLong:
-  case BuiltinKind::Double:
-    return 8;
+    return sizes.long_long_size;
   case BuiltinKind::Int128:
   case BuiltinKind::UnsignedInt128:
-    return 16;
+    return sizes.int128_size;
+  case BuiltinKind::Float:
+    return sizes.float_size;
+  case BuiltinKind::Double:
+    return sizes.double_size;
   case BuiltinKind::LongDouble:
-    // long double is highly target-specific; this is only a best guess to
-    // enable canonical reuse. A mismatch falls back to a bespoke type.
-    if (is_windows)
-      return 8;
-    if (triple.getArch() == llvm::Triple::x86 ||
-        triple.getArch() == llvm::Triple::x86_64)
-      return 16;
-    if (triple.isAArch64())
-      return triple.isOSDarwin() ? 8 : 16;
-    return 8;
+    return sizes.long_double_size;
   case BuiltinKind::NumKinds:
     break;
   }
@@ -118,7 +112,7 @@ std::optional<uint64_t> ByteSizeFor(BuiltinKind kind,
 
 KnownBuiltinTypes::KnownBuiltinTypes(const LanguageOpts &opts,
                                      IdentifierMap &identifiers) {
-  const llvm::Triple &triple = opts.GetTriple();
+  const LanguageOpts::BuiltinSizes &sizes = opts.GetBuiltinSizes();
   m_storage.reserve(std::size(kDescs));
   for (const BuiltinDesc &desc : kDescs) {
     auto type = std::make_unique<BuiltinType>();
@@ -126,7 +120,7 @@ KnownBuiltinTypes::KnownBuiltinTypes(const LanguageOpts &opts,
     type->SetName(identifiers.getWithStaticStorageStr(desc.spellings[0]));
     type->SetEncoding(desc.encoding);
     type->SetFormat(desc.format);
-    type->SetByteSize(ByteSizeFor(desc.kind, triple));
+    type->SetByteSize(ByteSizeFor(desc.kind, sizes));
     m_by_kind[static_cast<size_t>(desc.kind)] = type.get();
     m_storage.push_back(std::move(type));
   }
