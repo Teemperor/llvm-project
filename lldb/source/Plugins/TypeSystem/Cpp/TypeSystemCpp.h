@@ -11,11 +11,13 @@
 
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
+#include "lldb/Utility/Locked.h"
 #include "llvm/TargetParser/Triple.h"
 
 #include "Context.h"
 
 #include <memory>
+#include <mutex>
 
 class DWARFASTParserCpp;
 
@@ -34,22 +36,52 @@ public:
   // DWARF parsing
   plugin::dwarf::DWARFASTParser *GetDWARFParser() override;
 
-  // Type creation, used by the DWARF parser to populate this type system.
-  CompilerType GetBuiltinType(ConstString name,
-                              std::optional<uint64_t> byte_size,
-                              lldb::Encoding encoding, lldb::Format format);
-  CompilerType CreateRecordType(ConstString name,
+  /// The mutating, non-thread-safe interface used to populate a TypeSystemCpp
+  /// (e.g. by the DWARF parser). It is only reachable through
+  /// TypeSystemCpp::Lock(), which hands one out inside a LockedPtr that owns
+  /// the type system's mutex. Because this is the only way to name these
+  /// methods, mutating the type system without serializing against other
+  /// threads is impossible by construction.
+  class Builder {
+  public:
+    // Type creation.
+    CompilerType GetBuiltinType(ConstString name,
                                 std::optional<uint64_t> byte_size,
-                                bool is_cpp_class);
-  /// Create an array of \p num_elements elements of \p element_type (or an
-  /// array of unknown bound when \p num_elements is std::nullopt).
-  CompilerType CreateArrayType(CompilerType element_type,
-                               std::optional<uint64_t> num_elements);
-  /// Intern a name into this type system's Context so it can be used for a
-  /// type or record member. All Identifiers must be created this way.
-  cpp_typesystem::Identifier GetIdentifier(llvm::StringRef name) {
-    return m_context.GetIdentifier(name);
-  }
+                                lldb::Encoding encoding, lldb::Format format);
+    CompilerType CreateRecordType(ConstString name,
+                                  std::optional<uint64_t> byte_size,
+                                  bool is_cpp_class);
+    /// Create an array of \p num_elements elements of \p element_type (or an
+    /// array of unknown bound when \p num_elements is std::nullopt).
+    CompilerType CreateArrayType(CompilerType element_type,
+                                 std::optional<uint64_t> num_elements);
+    /// Intern a name into the Context so it can be used for a type or record
+    /// member. All Identifiers must be created this way.
+    cpp_typesystem::Identifier GetIdentifier(llvm::StringRef name);
+
+    // Structural completion of a record type.
+    void SetRecordComplete(cpp_typesystem::RecordType &record);
+    void AddField(cpp_typesystem::RecordType &record,
+                  cpp_typesystem::Identifier name, cpp_typesystem::Type *type,
+                  uint64_t byte_offset);
+    void AddBaseClass(cpp_typesystem::ClassType &record,
+                      cpp_typesystem::Type *type, uint64_t byte_offset);
+
+  private:
+    friend class TypeSystemCpp;
+    explicit Builder(TypeSystemCpp &ts) : m_ts(ts) {}
+    Builder(const Builder &) = delete;
+    Builder &operator=(const Builder &) = delete;
+
+    TypeSystemCpp &m_ts;
+  };
+
+  /// Acquire exclusive, serialized access to this type system's mutable state.
+  /// The returned handle owns the type system's lock for its whole lifetime
+  /// and is the only way to reach the mutating Builder API, so all type
+  /// construction and completion is serialized against other threads.
+  LockedPtr<Builder> Lock() { return LockedPtr<Builder>(m_mutex, &m_builder); }
+
   /// Wrap one of our own Type nodes into a CompilerType owned by this system.
   CompilerType GetCompilerType(cpp_typesystem::Type *type);
   /// Recover the Type node backing a CompilerType created by this system.
@@ -261,6 +293,13 @@ private:
   llvm::Triple m_triple;
   cpp_typesystem::Context m_context;
   std::unique_ptr<DWARFASTParserCpp> m_dwarf_ast_parser_up;
+
+  // Serializes all mutation of m_context (and the Type nodes it owns) so the
+  // DWARF parser can resolve referenced types on worker threads. Recursive so
+  // that a locked resolution can nest further locked operations on the same
+  // thread. Handed out (paired with m_builder) by Lock().
+  std::recursive_mutex m_mutex;
+  Builder m_builder{*this};
 };
 
 class ScratchTypeSystemCpp : public TypeSystemCpp {

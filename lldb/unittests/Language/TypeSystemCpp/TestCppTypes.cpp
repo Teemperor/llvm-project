@@ -138,7 +138,9 @@ TEST(CppTypesTest, ClassTypeBaseClasses) {
   EXPECT_FALSE(llvm::isa<StructType>(derived));
 
   EXPECT_EQ(as_class->GetNumBaseClasses(), 0u);
-  as_class->AddBaseClass(base, /*byte_offset=*/0);
+  // Base classes are added through the Context (the gated mutation entry
+  // point); ClassType::AddBaseClass itself is private.
+  context.AddBaseClass(*as_class, base, /*byte_offset=*/0);
   ASSERT_EQ(as_class->GetNumBaseClasses(), 1u);
   const BaseClass *b = as_class->GetBaseClassAtIndex(0);
   ASSERT_NE(b, nullptr);

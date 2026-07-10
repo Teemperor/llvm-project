@@ -55,6 +55,20 @@ public:
   ArrayType *CreateArrayType(Type *element_type,
                              std::optional<uint64_t> num_elements);
 
+  /// Structural mutation of already-created record types. These are the gated
+  /// entry points for the mutations that happen during lazy completion; the
+  /// corresponding Type methods are private and befriend this class.
+  /// @{
+  void SetComplete(RecordType &record) { record.SetIsComplete(true); }
+  void AddField(RecordType &record, Identifier name, Type *type,
+                uint64_t byte_offset) {
+    record.AddField(name, type, byte_offset);
+  }
+  void AddBaseClass(ClassType &record, Type *type, uint64_t byte_offset) {
+    record.AddBaseClass(type, byte_offset);
+  }
+  /// @}
+
   /// Intern a name into this Context's IdentifierMap. All Identifiers used by
   /// types owned by this Context must be created here so that their backing
   /// storage lives exactly as long as the Context (and its types).

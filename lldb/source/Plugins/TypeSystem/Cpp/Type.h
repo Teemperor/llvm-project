@@ -112,15 +112,11 @@ public:
 
   bool IsAggregate() const override { return true; }
   bool IsComplete() const override { return m_complete; }
-  void SetIsComplete(bool complete) { m_complete = complete; }
 
   uint32_t GetTypeInfo() const override {
     return lldb::eTypeHasChildren | lldb::eTypeIsStructUnion;
   }
 
-  void AddField(Identifier name, Type *type, uint64_t byte_offset) {
-    m_fields.push_back(Field{name, type, byte_offset});
-  }
   uint32_t GetNumFields() const override { return m_fields.size(); }
   const Field *GetFieldAtIndex(uint32_t idx) const override {
     if (idx < m_fields.size())
@@ -129,6 +125,15 @@ public:
   }
 
 private:
+  // Structural mutation happens after creation (during lazy completion, which
+  // may run on worker threads), so it is gated: only Context can perform it,
+  // and Context is only reachable through TypeSystemCpp's locked Builder.
+  friend class Context;
+  void SetIsComplete(bool complete) { m_complete = complete; }
+  void AddField(Identifier name, Type *type, uint64_t byte_offset) {
+    m_fields.push_back(Field{name, type, byte_offset});
+  }
+
   bool m_complete = false;
   std::vector<Field> m_fields;
 };
@@ -154,9 +159,6 @@ public:
     return lldb::eTypeClassClass;
   }
 
-  void AddBaseClass(Type *type, uint64_t byte_offset) {
-    m_bases.push_back(BaseClass{type, byte_offset});
-  }
   uint32_t GetNumBaseClasses() const override { return m_bases.size(); }
   const BaseClass *GetBaseClassAtIndex(uint32_t idx) const override {
     if (idx < m_bases.size())
@@ -165,6 +167,13 @@ public:
   }
 
 private:
+  // Gated like RecordType's mutators (see there): only Context, reached through
+  // the locked Builder, may add base classes.
+  friend class Context;
+  void AddBaseClass(Type *type, uint64_t byte_offset) {
+    m_bases.push_back(BaseClass{type, byte_offset});
+  }
+
   std::vector<BaseClass> m_bases;
 };
 
