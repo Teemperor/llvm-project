@@ -14,13 +14,25 @@
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/TargetOptions.h"
 
+#include "llvm/ADT/APFloat.h"
+
 #include <memory>
 #include <utility>
 
 using namespace lldb_private;
 using namespace lldb_private::cpp_typesystem;
 
-LanguageOpts::LanguageOpts(llvm::Triple triple) : m_triple(std::move(triple)) {
+LanguageOpts::LanguageOpts()
+    : m_half_semantics(&llvm::APFloat::IEEEhalf()),
+      m_float_semantics(&llvm::APFloat::IEEEsingle()),
+      m_double_semantics(&llvm::APFloat::IEEEdouble()),
+      // The LP64 defaults describe an 8-byte (IEEE double) long double.
+      m_long_double_semantics(&llvm::APFloat::IEEEdouble()),
+      m_float128_semantics(&llvm::APFloat::IEEEquad()) {}
+
+LanguageOpts::LanguageOpts(llvm::Triple triple) : LanguageOpts() {
+  m_triple = std::move(triple);
+
   // Ask Clang's target knowledge for the ABI sizes of the builtin types on
   // this triple. This only uses clang::TargetInfo (target/ABI facts), not the
   // Clang AST, so it stays within TypeSystemCpp's "no clang::Decl/Type" rule.
@@ -49,4 +61,35 @@ LanguageOpts::LanguageOpts(llvm::Triple triple) : m_triple(std::move(triple)) {
   m_builtin_sizes.float_size = bytes(target->getFloatWidth());
   m_builtin_sizes.double_size = bytes(target->getDoubleWidth());
   m_builtin_sizes.long_double_size = bytes(target->getLongDoubleWidth());
+  m_builtin_sizes.pointer_size = bytes(target->getPointerWidth(clang::LangAS::Default));
+
+  // The fltSemantics returned here are references to static singletons, so
+  // caching their addresses past the transient TargetInfo is safe.
+  m_half_semantics = &target->getHalfFormat();
+  m_float_semantics = &target->getFloatFormat();
+  m_double_semantics = &target->getDoubleFormat();
+  m_long_double_semantics = &target->getLongDoubleFormat();
+  m_float128_semantics = &target->getFloat128Format();
+}
+
+const llvm::fltSemantics &
+LanguageOpts::GetFloatTypeSemantics(size_t byte_size,
+                                    lldb::Format format) const {
+  // Mirror TypeSystemClang::GetFloatTypeSemantics: match the storage size
+  // against the target's float types, in the same order.
+  const size_t bit_size = byte_size * 8;
+  if (bit_size == m_builtin_sizes.float_size * 8u)
+    return *m_float_semantics;
+  if (bit_size == m_builtin_sizes.double_size * 8u)
+    return *m_double_semantics;
+  if (format == lldb::eFormatFloat128 && bit_size == 128)
+    return *m_float128_semantics;
+  if (bit_size == m_builtin_sizes.long_double_size * 8u ||
+      bit_size == llvm::APFloat::semanticsSizeInBits(*m_long_double_semantics))
+    return *m_long_double_semantics;
+  if (bit_size == 16)
+    return *m_half_semantics;
+  if (bit_size == 128)
+    return *m_float128_semantics;
+  return llvm::APFloat::Bogus();
 }

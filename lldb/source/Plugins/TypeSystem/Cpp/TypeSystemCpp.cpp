@@ -59,6 +59,13 @@ CompilerType TypeSystemCpp::CreateRecordType(ConstString name,
       m_context.CreateRecordType(name.GetStringRef(), byte_size, is_cpp_class));
 }
 
+CompilerType
+TypeSystemCpp::CreateArrayType(CompilerType element_type,
+                               std::optional<uint64_t> num_elements) {
+  return GetCompilerType(m_context.CreateArrayType(
+      GetCppType(element_type.GetOpaqueQualType()), num_elements));
+}
+
 lldb::TypeSystemSP TypeSystemCpp::Create(llvm::StringRef name,
                                          llvm::Triple triple) {
   return std::make_shared<TypeSystemCpp>(name, std::move(triple));
@@ -130,7 +137,27 @@ bool TypeSystemCpp::Verify(opaque_compiler_type_t type) { return true; }
 bool TypeSystemCpp::IsArrayType(opaque_compiler_type_t type,
                                 CompilerType *element_type, uint64_t *size,
                                 bool *is_incomplete) {
-  return false;
+  if (element_type)
+    element_type->Clear();
+  if (size)
+    *size = 0;
+  if (is_incomplete)
+    *is_incomplete = false;
+
+  auto *array = llvm::dyn_cast_or_null<cpp_typesystem::ArrayType>(
+      type ? GetCppType(type) : nullptr);
+  if (!array)
+    return false;
+
+  if (element_type)
+    *element_type = GetCompilerType(array->GetElementType());
+  if (std::optional<uint64_t> num_elements = array->GetNumElements()) {
+    if (size)
+      *size = *num_elements;
+  } else if (is_incomplete) {
+    *is_incomplete = true;
+  }
+  return true;
 }
 
 bool TypeSystemCpp::IsAggregateType(opaque_compiler_type_t type) {
@@ -241,7 +268,9 @@ bool TypeSystemCpp::GetCompleteType(opaque_compiler_type_t type) {
   return t->IsComplete();
 }
 
-uint32_t TypeSystemCpp::GetPointerByteSize() { return 0; }
+uint32_t TypeSystemCpp::GetPointerByteSize() {
+  return m_context.GetLanguageOpts().GetBuiltinSizes().pointer_size;
+}
 
 CompilerType TypeSystemCpp::GetPointerDiffType(bool is_signed) {
   return CompilerType();
@@ -261,7 +290,17 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
                                        bool BaseOnly) {
   if (!type)
     return ConstString();
-  return ConstString(GetCppType(type)->GetName().GetName());
+  cpp_typesystem::Type *t = GetCppType(type);
+  // Arrays have no name of their own; build "<element>[<count>]".
+  if (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(t)) {
+    std::string element_name =
+        GetTypeName(array->GetElementType(), BaseOnly).GetStringRef().str();
+    if (std::optional<uint64_t> num_elements = array->GetNumElements())
+      return ConstString(
+          llvm::formatv("{0}[{1}]", element_name, *num_elements).str());
+    return ConstString(llvm::formatv("{0}[]", element_name).str());
+  }
+  return ConstString(t->GetName().GetName());
 }
 
 ConstString TypeSystemCpp::GetDisplayTypeName(opaque_compiler_type_t type) {
@@ -291,6 +330,11 @@ TypeClass TypeSystemCpp::GetTypeClass(opaque_compiler_type_t type) {
 CompilerType
 TypeSystemCpp::GetArrayElementType(opaque_compiler_type_t type,
                                    ExecutionContextScope *exe_scope) {
+  if (!type)
+    return CompilerType();
+  if (auto *array =
+          llvm::dyn_cast<cpp_typesystem::ArrayType>(GetCppType(type)))
+    return GetCompilerType(array->GetElementType());
   return CompilerType();
 }
 
@@ -337,7 +381,7 @@ CompilerType TypeSystemCpp::GetPointerType(opaque_compiler_type_t type) {
 
 const llvm::fltSemantics &
 TypeSystemCpp::GetFloatTypeSemantics(size_t byte_size, Format format) {
-  return llvm::APFloat::Bogus();
+  return m_context.GetLanguageOpts().GetFloatTypeSemantics(byte_size, format);
 }
 
 llvm::Expected<uint64_t>
@@ -369,6 +413,9 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
   if (!type)
     return 0;
   cpp_typesystem::Type *t = GetCppType(type);
+  // An array's children are its elements.
+  if (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(t))
+    return array->GetNumElements().value_or(0);
   if (!t->IsAggregate())
     return 0;
   GetCompleteType(type);
@@ -475,6 +522,22 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
   GetCompleteType(type);
   cpp_typesystem::Type *t = GetCppType(type);
 
+  // Array elements: child N is the element at offset N * element_size.
+  if (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(t)) {
+    if (!ignore_array_bounds) {
+      std::optional<uint64_t> num_elements = array->GetNumElements();
+      if (num_elements && idx >= *num_elements)
+        return CompilerType();
+    }
+    cpp_typesystem::Type *element_type = array->GetElementType();
+    child_name = llvm::formatv("[{0}]", idx).str();
+    if (std::optional<uint64_t> byte_size = element_type->GetByteSize()) {
+      child_byte_size = *byte_size;
+      child_byte_offset = idx * *byte_size;
+    }
+    return GetCompilerType(element_type);
+  }
+
   // Children are laid out as the direct base classes followed by the fields.
   uint32_t num_bases = t->GetNumBaseClasses();
   if (idx < num_bases) {
@@ -533,11 +596,24 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
   cpp_typesystem::Type *t = GetCppType(type);
   uint32_t num_bases = t->GetNumBaseClasses();
 
-  // A matching field is a direct child, laid out after the base classes.
+  // A matching field is a direct child, laid out after the base classes. An
+  // unnamed field is an anonymous union/struct whose members are reached as if
+  // they belonged to this record, so recurse into it.
   for (uint32_t i = 0, e = t->GetNumFields(); i < e; ++i) {
-    if (t->GetFieldAtIndex(i)->name.GetName() == name) {
+    const Field *field = t->GetFieldAtIndex(i);
+    llvm::StringRef field_name = field->name.GetName();
+    if (field_name == name) {
       child_indexes.push_back(num_bases + i);
       return child_indexes.size();
+    }
+    if (field_name.empty() && field->type) {
+      std::vector<uint32_t> save_indices = child_indexes;
+      child_indexes.push_back(num_bases + i);
+      if (GetCompilerType(field->type)
+              .GetIndexOfChildMemberWithName(name, omit_empty_base_classes,
+                                             child_indexes))
+        return child_indexes.size();
+      child_indexes = std::move(save_indices);
     }
   }
 
@@ -610,7 +686,40 @@ TypeSystemCpp::GetTypeBitAlign(opaque_compiler_type_t type,
 }
 
 CompilerType TypeSystemCpp::GetBasicTypeFromAST(BasicType basic_type) {
-  return CompilerType();
+  using cpp_typesystem::BuiltinKind;
+  // Map the language-neutral BasicType onto one of our enumerated builtin
+  // kinds. Only the kinds TypeSystemCpp models are listed; anything else has
+  // no basic type here.
+  std::optional<BuiltinKind> kind;
+  switch (basic_type) {
+  case eBasicTypeVoid:              kind = BuiltinKind::Void; break;
+  case eBasicTypeBool:             kind = BuiltinKind::Bool; break;
+  case eBasicTypeChar:             kind = BuiltinKind::Char; break;
+  case eBasicTypeSignedChar:       kind = BuiltinKind::SignedChar; break;
+  case eBasicTypeUnsignedChar:     kind = BuiltinKind::UnsignedChar; break;
+  case eBasicTypeWChar:            kind = BuiltinKind::WCharT; break;
+  case eBasicTypeChar8:            kind = BuiltinKind::Char8; break;
+  case eBasicTypeChar16:           kind = BuiltinKind::Char16; break;
+  case eBasicTypeChar32:           kind = BuiltinKind::Char32; break;
+  case eBasicTypeShort:            kind = BuiltinKind::Short; break;
+  case eBasicTypeUnsignedShort:    kind = BuiltinKind::UnsignedShort; break;
+  case eBasicTypeInt:              kind = BuiltinKind::Int; break;
+  case eBasicTypeUnsignedInt:      kind = BuiltinKind::UnsignedInt; break;
+  case eBasicTypeLong:             kind = BuiltinKind::Long; break;
+  case eBasicTypeUnsignedLong:     kind = BuiltinKind::UnsignedLong; break;
+  case eBasicTypeLongLong:         kind = BuiltinKind::LongLong; break;
+  case eBasicTypeUnsignedLongLong: kind = BuiltinKind::UnsignedLongLong; break;
+  case eBasicTypeInt128:           kind = BuiltinKind::Int128; break;
+  case eBasicTypeUnsignedInt128:   kind = BuiltinKind::UnsignedInt128; break;
+  case eBasicTypeFloat:            kind = BuiltinKind::Float; break;
+  case eBasicTypeDouble:           kind = BuiltinKind::Double; break;
+  case eBasicTypeLongDouble:       kind = BuiltinKind::LongDouble; break;
+  default:
+    break;
+  }
+  if (!kind)
+    return CompilerType();
+  return GetCompilerType(m_context.GetBuiltinType(*kind));
 }
 
 CompilerType
@@ -651,7 +760,9 @@ TypeSystemCpp::GetFullyUnqualifiedType(opaque_compiler_type_t type) {
 }
 
 CompilerType TypeSystemCpp::GetNonReferenceType(opaque_compiler_type_t type) {
-  return CompilerType();
+  // TypeSystemCpp does not model reference types yet, so a type is its own
+  // non-reference type.
+  return CompilerType(weak_from_this(), type);
 }
 
 bool TypeSystemCpp::IsReferenceType(opaque_compiler_type_t type,

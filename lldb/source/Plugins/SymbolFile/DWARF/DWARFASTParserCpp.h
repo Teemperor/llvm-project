@@ -80,6 +80,8 @@ private:
   ParseBaseType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParseStructureType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  lldb::TypeSP
+  ParseArrayType(const lldb_private::plugin::dwarf::DWARFDIE &die);
 
   lldb_private::TypeSystemCpp &m_ts;
 };

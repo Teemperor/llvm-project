@@ -41,6 +41,10 @@ public:
   CompilerType CreateRecordType(ConstString name,
                                 std::optional<uint64_t> byte_size,
                                 bool is_cpp_class);
+  /// Create an array of \p num_elements elements of \p element_type (or an
+  /// array of unknown bound when \p num_elements is std::nullopt).
+  CompilerType CreateArrayType(CompilerType element_type,
+                               std::optional<uint64_t> num_elements);
   /// Intern a name into this type system's Context so it can be used for a
   /// type or record member. All Identifiers must be created this way.
   cpp_typesystem::Identifier GetIdentifier(llvm::StringRef name) {
