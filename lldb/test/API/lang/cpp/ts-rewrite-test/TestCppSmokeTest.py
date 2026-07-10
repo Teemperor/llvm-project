@@ -11,7 +11,7 @@ class TestCase(TestBase):
         self.runCmd("settings set target.experimental.use-DIL false")
         self.build()
         lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.c")
+            self, "// break here", lldb.SBFileSpec("main.cpp")
         )
 
         self.expect_var_path("outer.m.i", value="4")
