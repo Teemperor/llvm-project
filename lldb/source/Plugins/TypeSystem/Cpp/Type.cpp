@@ -8,4 +8,5 @@ char Type::ID = 0;
 char RecordType::ID = 0;
 char StructType::ID = 0;
 char ClassType::ID = 0;
+char ArrayType::ID = 0;
 char PointerType::ID = 0;

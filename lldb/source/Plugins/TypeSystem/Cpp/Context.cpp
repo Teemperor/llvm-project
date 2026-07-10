@@ -41,3 +41,16 @@ RecordType *Context::CreateRecordType(llvm::StringRef name,
   type->SetByteSize(byte_size);
   return Track(std::move(type));
 }
+
+ArrayType *Context::CreateArrayType(Type *element_type,
+                                    std::optional<uint64_t> num_elements) {
+  auto type = std::make_unique<ArrayType>();
+  type->SetElementType(element_type);
+  type->SetNumElements(num_elements);
+  // The array's storage is the element size times the element count (when both
+  // are known).
+  if (num_elements)
+    if (std::optional<uint64_t> elem_size = element_type->GetByteSize())
+      type->SetByteSize(*elem_size * *num_elements);
+  return Track(std::move(type));
+}

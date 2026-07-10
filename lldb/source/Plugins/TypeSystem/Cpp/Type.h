@@ -168,6 +168,34 @@ private:
   std::vector<BaseClass> m_bases;
 };
 
+/// A C array type: a fixed number of contiguous elements of the same type.
+class ArrayType : public llvm::RTTIExtends<ArrayType, Type> {
+public:
+  static char ID;
+
+  Type *GetElementType() const { return m_element_type; }
+  void SetElementType(Type *type) { m_element_type = type; }
+
+  /// Number of elements, or std::nullopt for an array of unknown bound.
+  std::optional<uint64_t> GetNumElements() const { return m_num_elements; }
+  void SetNumElements(std::optional<uint64_t> num_elements) {
+    m_num_elements = num_elements;
+  }
+
+  // An array is an aggregate whose children are its elements.
+  bool IsAggregate() const override { return true; }
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassArray;
+  }
+  uint32_t GetTypeInfo() const override {
+    return lldb::eTypeHasChildren | lldb::eTypeIsArray;
+  }
+
+private:
+  Type *m_element_type = nullptr;
+  std::optional<uint64_t> m_num_elements;
+};
+
 /// A simple pointer type.
 class PointerType : public llvm::RTTIExtends<PointerType, Type> {
 public:
