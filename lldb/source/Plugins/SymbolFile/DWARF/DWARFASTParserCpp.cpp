@@ -25,10 +25,29 @@
 #include "lldb/Symbol/Type.h"
 #include "lldb/Target/Language.h"
 
+#include <future>
+#include <vector>
+
 using namespace lldb;
 using namespace lldb_private;
 using namespace lldb_private::plugin::dwarf;
 using namespace llvm::dwarf;
+
+// Launch policy for resolving a record's referenced member/base types while
+// completing it. Each future's type-system access is serialized through
+// TypeSystemCpp's lock (see ResolveReferencedType), so that side is thread
+// safe. The DWARF/SymbolFile side, however, is not: SymbolFileDWARF guards
+// itself with the Module's recursive_mutex, which CompleteType already holds
+// while CompleteTypeFromDWARF runs. A worker thread calling ResolveTypeUID
+// would block trying to re-acquire that mutex (recursive_mutex only re-enters
+// on the owning thread) while this thread waits on the worker -- a deadlock.
+//
+// So today the resolutions run with std::launch::deferred: each future
+// executes inline, on this (lock-owning) thread, when its result is needed.
+// The work is already structured as independent futures, so switching to
+// std::launch::async to spread it across cores is a one-line change once the
+// DWARF reads no longer require the Module mutex to be held across completion.
+static constexpr std::launch kMemberResolutionPolicy = std::launch::deferred;
 
 DWARFASTParserCpp::DWARFASTParserCpp(TypeSystemCpp &ts)
     : DWARFASTParser(Kind::DWARFASTParserCpp), m_ts(ts) {}
@@ -128,7 +147,7 @@ TypeSP DWARFASTParserCpp::ParseBaseType(const DWARFDIE &die) {
   // to a bespoke type (using the format derived above) if it is not one of the
   // enumerated builtins.
   CompilerType compiler_type =
-      m_ts.GetBuiltinType(name, byte_size, encoding, format);
+      m_ts.Lock()->GetBuiltinType(name, byte_size, encoding, format);
 
   Declaration decl;
   return dwarf->MakeType(die.GetID(), name, byte_size, /*context=*/nullptr,
@@ -149,7 +168,7 @@ TypeSP DWARFASTParserCpp::ParseStructureType(const DWARFDIE &die) {
   bool is_cpp_class = Language::LanguageIsCPlusPlus(language);
 
   CompilerType compiler_type =
-      m_ts.CreateRecordType(name, byte_size, is_cpp_class);
+      m_ts.Lock()->CreateRecordType(name, byte_size, is_cpp_class);
 
   Declaration decl;
   TypeSP type_sp =
@@ -181,14 +200,18 @@ TypeSP DWARFASTParserCpp::ParseArrayType(const DWARFDIE &die) {
   std::optional<SymbolFile::ArrayInfo> array_info = ParseChildArrayInfo(die);
 
   CompilerType array_type = element_type->GetForwardCompilerType();
-  if (array_info && !array_info->element_orders.empty()) {
-    for (auto it = array_info->element_orders.rbegin(),
-              end = array_info->element_orders.rend();
-         it != end; ++it)
-      array_type = m_ts.CreateArrayType(array_type, *it);
-  } else {
-    // No bound information; model it as an array of unknown length.
-    array_type = m_ts.CreateArrayType(array_type, std::nullopt);
+  {
+    // Build the (possibly nested) array type(s) under a single lock.
+    auto ts = m_ts.Lock();
+    if (array_info && !array_info->element_orders.empty()) {
+      for (auto it = array_info->element_orders.rbegin(),
+                end = array_info->element_orders.rend();
+           it != end; ++it)
+        array_type = ts->CreateArrayType(array_type, *it);
+    } else {
+      // No bound information; model it as an array of unknown length.
+      array_type = ts->CreateArrayType(array_type, std::nullopt);
+    }
   }
 
   std::optional<uint64_t> byte_size =
@@ -247,6 +270,25 @@ TypeSP DWARFASTParserCpp::ParseTypeFromDWARF(const SymbolContext &sc,
   return type_sp;
 }
 
+cpp_typesystem::Type *
+DWARFASTParserCpp::ResolveReferencedType(const DWARFDIE &referencing_die,
+                                         const DWARFDIE &type_die) {
+  if (!type_die)
+    return nullptr;
+
+  // Serialize the whole resolution under the type-system lock. It drives both
+  // the DWARF type bookkeeping (SymbolFileDWARF's DIE->type map) and the
+  // TypeSystemCpp mutation, and may run on a worker thread. The lock is
+  // recursive, so nested parsing (e.g. of an array element, or of this type's
+  // own referenced types) re-locks safely on the same thread.
+  auto ts = m_ts.Lock();
+  Type *resolved = referencing_die.ResolveTypeUID(type_die);
+  if (!resolved)
+    return nullptr;
+  CompilerType forward = resolved->GetForwardCompilerType();
+  return TypeSystemCpp::GetCppType(forward.GetOpaqueQualType());
+}
+
 bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     const DWARFDIE &die, Type *type, const CompilerType &compiler_type) {
   if (!die)
@@ -258,55 +300,85 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   if (!cpp_type || !cpp_type->IsAggregate())
     return false;
   auto *record = static_cast<cpp_typesystem::RecordType *>(cpp_type);
-  if (record->IsComplete())
-    return true;
 
-  // Mark complete up front so that a member whose type (indirectly) refers back
-  // to this record doesn't recurse forever.
-  record->SetIsComplete(true);
+  // Mark complete up front (under the lock) so that a member whose type
+  // (indirectly) refers back to this record doesn't recurse forever, and so
+  // that a concurrent completion of the same record bails out here.
+  {
+    auto ts = m_ts.Lock();
+    if (record->IsComplete())
+      return true;
+    ts->SetRecordComplete(*record);
+  }
 
   // C++-only information (base classes) is only stored on ClassType.
   auto *cpp_class = llvm::dyn_cast<cpp_typesystem::ClassType>(record);
 
+  // Collect the base classes and members in declaration order, along with the
+  // DWARF reference to each one's type. This DWARF traversal runs single
+  // threaded; only the (heavier) type resolution below is spread out.
+  struct MemberInfo {
+    bool is_base;
+    llvm::StringRef name; // Field name; empty for base classes.
+    uint64_t byte_offset;
+    DWARFDIE referencing_die;
+    DWARFDIE type_die;
+  };
+  std::vector<MemberInfo> members;
   for (DWARFDIE child : die.children()) {
-    if (child.Tag() == DW_TAG_inheritance) {
+    const dw_tag_t tag = child.Tag();
+    if (tag == DW_TAG_inheritance) {
       // Base classes only exist on C++ class types.
       if (!cpp_class)
         continue;
-      uint64_t byte_offset =
-          child.GetAttributeValueAsUnsigned(DW_AT_data_member_location, 0);
-      DWARFDIE base_type_die =
-          child.GetAttributeValueAsReferenceDIE(DW_AT_type);
-      Type *base_type = child.ResolveTypeUID(base_type_die);
-      if (!base_type)
-        continue;
-      CompilerType base_compiler_type = base_type->GetForwardCompilerType();
-      auto *base_cpp_type =
-          TypeSystemCpp::GetCppType(base_compiler_type.GetOpaqueQualType());
-      cpp_class->AddBaseClass(base_cpp_type, byte_offset);
-      continue;
+      members.push_back(
+          {/*is_base=*/true, /*name=*/{},
+           child.GetAttributeValueAsUnsigned(DW_AT_data_member_location, 0),
+           child, child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+    } else if (tag == DW_TAG_member) {
+      members.push_back(
+          {/*is_base=*/false, child.GetName(),
+           child.GetAttributeValueAsUnsigned(DW_AT_data_member_location, 0),
+           child, child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
     }
+  }
 
-    if (child.Tag() != DW_TAG_member)
-      continue;
+  // Resolve each referenced type, optionally on a worker thread. Each future
+  // serializes its type-system access through the lock (see
+  // ResolveReferencedType), so this stays thread-safe.
+  std::vector<std::future<cpp_typesystem::Type *>> resolved;
+  resolved.reserve(members.size());
+  for (const MemberInfo &member : members) {
+    DWARFDIE referencing_die = member.referencing_die;
+    DWARFDIE type_die = member.type_die;
+    resolved.push_back(
+        std::async(kMemberResolutionPolicy, [this, referencing_die, type_die] {
+          return ResolveReferencedType(referencing_die, type_die);
+        }));
+  }
 
-    // Intern the member name through the type system's Context so its storage
-    // is owned alongside the types (rather than pointing into DWARF data).
-    llvm::StringRef member_name = child.GetName();
-    uint64_t byte_offset =
-        child.GetAttributeValueAsUnsigned(DW_AT_data_member_location, 0);
+  // Wait for the workers *without* holding the lock -- they acquire it
+  // themselves, so holding it here would deadlock.
+  std::vector<cpp_typesystem::Type *> member_types(members.size());
+  for (size_t i = 0; i < members.size(); ++i)
+    member_types[i] = resolved[i].get();
 
-    DWARFDIE member_type_die =
-        child.GetAttributeValueAsReferenceDIE(DW_AT_type);
-    Type *member_type = child.ResolveTypeUID(member_type_die);
+  // Integrate the resolved base classes and members into the record, in
+  // declaration order, under a single lock.
+  auto ts = m_ts.Lock();
+  for (size_t i = 0; i < members.size(); ++i) {
+    cpp_typesystem::Type *member_type = member_types[i];
     if (!member_type)
       continue;
-
-    CompilerType member_compiler_type = member_type->GetForwardCompilerType();
-    auto *member_cpp_type =
-        TypeSystemCpp::GetCppType(member_compiler_type.GetOpaqueQualType());
-    record->AddField(m_ts.GetIdentifier(member_name), member_cpp_type,
-                     byte_offset);
+    const MemberInfo &member = members[i];
+    if (member.is_base)
+      ts->AddBaseClass(*cpp_class, member_type, member.byte_offset);
+    else
+      // Intern the member name through the type system's Context so its
+      // storage is owned alongside the types (rather than pointing into DWARF
+      // data).
+      ts->AddField(*record, ts->GetIdentifier(member.name), member_type,
+                   member.byte_offset);
   }
 
   return true;

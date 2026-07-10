@@ -14,7 +14,10 @@
 
 namespace lldb_private {
 class TypeSystemCpp;
+namespace cpp_typesystem {
+class Type;
 }
+} // namespace lldb_private
 
 /// Parses DWARF debug info into the lldb-internal TypeSystemCpp representation.
 ///
@@ -82,6 +85,14 @@ private:
   ParseStructureType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParseArrayType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+
+  /// Resolve a DWARF type reference to its TypeSystemCpp node. This is the unit
+  /// of work spread across threads while completing a record: it may run on a
+  /// worker, so it serializes its access to the shared type system through
+  /// TypeSystemCpp's lock. Returns nullptr if the reference can't be resolved.
+  lldb_private::cpp_typesystem::Type *ResolveReferencedType(
+      const lldb_private::plugin::dwarf::DWARFDIE &referencing_die,
+      const lldb_private::plugin::dwarf::DWARFDIE &type_die);
 
   lldb_private::TypeSystemCpp &m_ts;
 };

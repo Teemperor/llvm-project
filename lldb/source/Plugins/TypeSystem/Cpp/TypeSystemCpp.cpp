@@ -44,26 +44,50 @@ CompilerType TypeSystemCpp::GetCompilerType(cpp_typesystem::Type *type) {
   return CompilerType(weak_from_this(), type);
 }
 
-CompilerType TypeSystemCpp::GetBuiltinType(ConstString name,
-                                           std::optional<uint64_t> byte_size,
-                                           lldb::Encoding encoding,
-                                           lldb::Format format) {
-  return GetCompilerType(m_context.GetBuiltinType(name.GetStringRef(),
-                                                  byte_size, encoding, format));
-}
-
-CompilerType TypeSystemCpp::CreateRecordType(ConstString name,
-                                             std::optional<uint64_t> byte_size,
-                                             bool is_cpp_class) {
-  return GetCompilerType(
-      m_context.CreateRecordType(name.GetStringRef(), byte_size, is_cpp_class));
+CompilerType TypeSystemCpp::Builder::GetBuiltinType(
+    ConstString name, std::optional<uint64_t> byte_size, lldb::Encoding encoding,
+    lldb::Format format) {
+  return m_ts.GetCompilerType(m_ts.m_context.GetBuiltinType(
+      name.GetStringRef(), byte_size, encoding, format));
 }
 
 CompilerType
-TypeSystemCpp::CreateArrayType(CompilerType element_type,
-                               std::optional<uint64_t> num_elements) {
-  return GetCompilerType(m_context.CreateArrayType(
-      GetCppType(element_type.GetOpaqueQualType()), num_elements));
+TypeSystemCpp::Builder::CreateRecordType(ConstString name,
+                                         std::optional<uint64_t> byte_size,
+                                         bool is_cpp_class) {
+  return m_ts.GetCompilerType(m_ts.m_context.CreateRecordType(
+      name.GetStringRef(), byte_size, is_cpp_class));
+}
+
+CompilerType
+TypeSystemCpp::Builder::CreateArrayType(CompilerType element_type,
+                                        std::optional<uint64_t> num_elements) {
+  return m_ts.GetCompilerType(m_ts.m_context.CreateArrayType(
+      TypeSystemCpp::GetCppType(element_type.GetOpaqueQualType()),
+      num_elements));
+}
+
+cpp_typesystem::Identifier
+TypeSystemCpp::Builder::GetIdentifier(llvm::StringRef name) {
+  return m_ts.m_context.GetIdentifier(name);
+}
+
+void TypeSystemCpp::Builder::SetRecordComplete(
+    cpp_typesystem::RecordType &record) {
+  m_ts.m_context.SetComplete(record);
+}
+
+void TypeSystemCpp::Builder::AddField(cpp_typesystem::RecordType &record,
+                                      cpp_typesystem::Identifier name,
+                                      cpp_typesystem::Type *type,
+                                      uint64_t byte_offset) {
+  m_ts.m_context.AddField(record, name, type, byte_offset);
+}
+
+void TypeSystemCpp::Builder::AddBaseClass(cpp_typesystem::ClassType &record,
+                                          cpp_typesystem::Type *type,
+                                          uint64_t byte_offset) {
+  m_ts.m_context.AddBaseClass(record, type, byte_offset);
 }
 
 lldb::TypeSystemSP TypeSystemCpp::Create(llvm::StringRef name,
