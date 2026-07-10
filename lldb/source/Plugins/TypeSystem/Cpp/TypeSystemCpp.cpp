@@ -561,7 +561,24 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetDereferencedType(
     std::string &deref_name, uint32_t &deref_byte_size,
     int32_t &deref_byte_offset, ValueObject *valobj,
     uint64_t &language_flags) {
-  return CompilerType();
+  // Only pointers and arrays can be dereferenced. (References would too, but
+  // TypeSystemCpp does not model them yet.)
+  if (!IsPointerOrReferenceType(type, nullptr) &&
+      !IsArrayType(type, nullptr, nullptr, nullptr))
+    return llvm::createStringError("not a pointer, reference or array type");
+
+  // The dereferenced value is child 0. Ask for it non-transparently so a
+  // pointer-to-aggregate yields the pointee itself rather than its members.
+  uint32_t child_bitfield_bit_size = 0;
+  uint32_t child_bitfield_bit_offset = 0;
+  bool child_is_base_class = false;
+  bool child_is_deref_of_parent = false;
+  return GetChildCompilerTypeAtIndex(
+      type, exe_ctx, /*idx=*/0, /*transparent_pointers=*/false,
+      /*omit_empty_base_classes=*/true, /*ignore_array_bounds=*/false,
+      deref_name, deref_byte_size, deref_byte_offset, child_bitfield_bit_size,
+      child_bitfield_bit_offset, child_is_base_class, child_is_deref_of_parent,
+      valobj, language_flags);
 }
 
 llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
