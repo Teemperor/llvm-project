@@ -26,7 +26,7 @@ private:
   // Nested namespaces are held via unique_ptr because Namespace is an
   // incomplete type here and std::deque requires a complete element type.
   std::deque<std::unique_ptr<Namespace>> m_nested;
-  std::deque<RecordType> m_records;
+  std::deque<StructType> m_records;
 };
 
 }

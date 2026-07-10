@@ -30,7 +30,7 @@ public:
   BuiltinType *CreateBuiltinType(llvm::StringRef name,
                                  std::optional<uint64_t> byte_size,
                                  lldb::Encoding encoding);
-  RecordType *CreateRecordType(llvm::StringRef name,
+  StructType *CreateRecordType(llvm::StringRef name,
                                std::optional<uint64_t> byte_size);
 
   /// Intern a name into this Context's IdentifierMap. All Identifiers used by

@@ -21,9 +21,9 @@ BuiltinType *Context::CreateBuiltinType(llvm::StringRef name,
   return Track(std::move(type));
 }
 
-RecordType *Context::CreateRecordType(llvm::StringRef name,
+StructType *Context::CreateRecordType(llvm::StringRef name,
                                       std::optional<uint64_t> byte_size) {
-  auto type = std::make_unique<RecordType>();
+  auto type = std::make_unique<StructType>();
   type->SetName(GetIdentifier(name));
   type->SetByteSize(byte_size);
   return Track(std::move(type));

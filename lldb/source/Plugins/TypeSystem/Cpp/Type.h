@@ -79,8 +79,8 @@ private:
   std::optional<uint64_t> m_byte_size;
 };
 
-/// A record type (struct/class/union).
-class RecordType : public Type {
+/// A C struct type.
+class StructType : public Type {
 public:
   bool IsAggregate() const override { return true; }
   bool IsComplete() const override { return m_complete; }
