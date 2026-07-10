@@ -15,3 +15,4 @@ class TestCase(TestBase):
         )
 
         self.expect_var_path("outer.m.i", value="4")
+        self.expect_var_path("outer.x", value="-22")
