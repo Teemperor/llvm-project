@@ -58,6 +58,19 @@ public:
     /// Create a pointer to \p pointee_type (an empty CompilerType denotes a
     /// `void *`).
     CompilerType CreatePointerType(CompilerType pointee_type);
+    /// Create an lvalue or rvalue reference to \p pointee_type.
+    CompilerType CreateReferenceType(CompilerType pointee_type, bool is_rvalue);
+    /// Create a typedef named \p name aliasing \p underlying_type.
+    CompilerType CreateTypedefType(ConstString name,
+                                   CompilerType underlying_type);
+    /// Create a const- and/or volatile-qualified version of \p underlying_type.
+    CompilerType CreateCVQualifiedType(CompilerType underlying_type,
+                                       bool is_const, bool is_volatile);
+    /// Create an enumeration type. Enumerators are added afterwards via
+    /// AddEnumerator.
+    CompilerType CreateEnumType(ConstString name,
+                                std::optional<uint64_t> byte_size,
+                                CompilerType underlying_type, bool is_scoped);
     /// Intern a name into the Context so it can be used for a type or record
     /// member. All Identifiers must be created this way.
     cpp_typesystem::Identifier GetIdentifier(llvm::StringRef name);
@@ -66,9 +79,17 @@ public:
     void SetRecordComplete(cpp_typesystem::RecordType &record);
     void AddField(cpp_typesystem::RecordType &record,
                   cpp_typesystem::Identifier name, cpp_typesystem::Type *type,
-                  uint64_t byte_offset);
+                  uint64_t byte_offset, uint32_t bitfield_bit_size = 0,
+                  uint32_t bitfield_bit_offset = 0);
     void AddBaseClass(cpp_typesystem::ClassType &record,
                       cpp_typesystem::Type *type, uint64_t byte_offset);
+    void AddTemplateArgument(cpp_typesystem::RecordType &record,
+                             cpp_typesystem::TemplateArgument arg);
+    void AddNestedType(cpp_typesystem::RecordType &record,
+                       cpp_typesystem::Identifier name,
+                       cpp_typesystem::Type *type);
+    void AddEnumerator(cpp_typesystem::EnumType &enum_type,
+                       cpp_typesystem::Identifier name, uint64_t value);
 
   private:
     friend class TypeSystemCpp;
@@ -290,6 +311,23 @@ public:
   CompilerType GetNonReferenceType(lldb::opaque_compiler_type_t type) override;
   bool IsReferenceType(lldb::opaque_compiler_type_t type,
                        CompilerType *pointee_type, bool *is_rvalue) override;
+
+  // Template argument access (used by e.g. data formatters to recover a
+  // container's element type).
+  bool IsTemplateType(lldb::opaque_compiler_type_t type) override;
+  size_t GetNumTemplateArguments(lldb::opaque_compiler_type_t type,
+                                 bool expand_pack) override;
+  lldb::TemplateArgumentKind
+  GetTemplateArgumentKind(lldb::opaque_compiler_type_t type, size_t idx,
+                          bool expand_pack) override;
+  CompilerType GetTypeTemplateArgument(lldb::opaque_compiler_type_t type,
+                                       size_t idx, bool expand_pack) override;
+  std::optional<CompilerType::IntegralTemplateArgument>
+  GetIntegralTemplateArgument(lldb::opaque_compiler_type_t type, size_t idx,
+                              bool expand_pack) override;
+  CompilerType
+  GetDirectNestedTypeWithName(lldb::opaque_compiler_type_t type,
+                              llvm::StringRef name) override;
 
 private:
   std::string m_display_name;

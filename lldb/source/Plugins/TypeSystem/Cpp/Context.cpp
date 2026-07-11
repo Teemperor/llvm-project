@@ -61,3 +61,47 @@ PointerType *Context::CreatePointerType(Type *pointee_type) {
   type->SetByteSize(m_opts.GetBuiltinSizes().pointer_size);
   return Track(std::move(type));
 }
+
+ReferenceType *Context::CreateReferenceType(Type *pointee_type,
+                                            bool is_rvalue) {
+  auto type = std::make_unique<ReferenceType>();
+  type->SetPointeeType(pointee_type);
+  type->SetIsRValue(is_rvalue);
+  type->SetByteSize(m_opts.GetBuiltinSizes().pointer_size);
+  return Track(std::move(type));
+}
+
+TypedefType *Context::CreateTypedefType(llvm::StringRef name,
+                                        Type *underlying_type) {
+  auto type = std::make_unique<TypedefType>();
+  type->SetName(GetIdentifier(name));
+  type->SetUnderlyingType(underlying_type);
+  // A typedef has the same storage as the type it aliases.
+  if (underlying_type)
+    type->SetByteSize(underlying_type->GetByteSize());
+  return Track(std::move(type));
+}
+
+CVQualifiedType *Context::CreateCVQualifiedType(Type *underlying_type,
+                                                bool is_const,
+                                                bool is_volatile) {
+  auto type = std::make_unique<CVQualifiedType>();
+  type->SetUnderlyingType(underlying_type);
+  type->SetIsConst(is_const);
+  type->SetIsVolatile(is_volatile);
+  // A cv-qualified type has the same storage as its unqualified version.
+  if (underlying_type)
+    type->SetByteSize(underlying_type->GetByteSize());
+  return Track(std::move(type));
+}
+
+EnumType *Context::CreateEnumType(llvm::StringRef name,
+                                  std::optional<uint64_t> byte_size,
+                                  Type *underlying_type, bool is_scoped) {
+  auto type = std::make_unique<EnumType>();
+  type->SetName(GetIdentifier(name));
+  type->SetByteSize(byte_size);
+  type->SetUnderlyingType(underlying_type);
+  type->SetIsScoped(is_scoped);
+  return Track(std::move(type));
+}

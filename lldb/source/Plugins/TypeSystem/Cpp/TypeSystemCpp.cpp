@@ -16,6 +16,7 @@
 #include "lldb/Target/Language.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/DataExtractor.h"
+#include "lldb/Utility/Scalar.h"
 #include "lldb/Utility/Stream.h"
 #include "lldb/ValueObject/ValueObject.h"
 
@@ -23,6 +24,15 @@ using namespace lldb_private;
 using namespace lldb;
 
 using cpp_typesystem::Field;
+
+/// Peel typedef/cv-qualifier "sugar" off a type to reach its canonical type.
+/// Mirrors clang's RemoveWrappingTypes: queries about layout and children
+/// should see through aliases and qualifiers.
+static cpp_typesystem::Type *Desugar(cpp_typesystem::Type *t) {
+  while (auto *sugar = llvm::dyn_cast_or_null<cpp_typesystem::SugarType>(t))
+    t = sugar->GetUnderlyingType();
+  return t;
+}
 
 LLDB_PLUGIN_DEFINE(TypeSystemCpp)
 
@@ -74,6 +84,40 @@ TypeSystemCpp::Builder::CreatePointerType(CompilerType pointee_type) {
       TypeSystemCpp::GetCppType(pointee_type.GetOpaqueQualType())));
 }
 
+CompilerType
+TypeSystemCpp::Builder::CreateReferenceType(CompilerType pointee_type,
+                                            bool is_rvalue) {
+  return m_ts.GetCompilerType(m_ts.m_context.CreateReferenceType(
+      TypeSystemCpp::GetCppType(pointee_type.GetOpaqueQualType()), is_rvalue));
+}
+
+CompilerType
+TypeSystemCpp::Builder::CreateTypedefType(ConstString name,
+                                          CompilerType underlying_type) {
+  return m_ts.GetCompilerType(m_ts.m_context.CreateTypedefType(
+      name.GetStringRef(),
+      TypeSystemCpp::GetCppType(underlying_type.GetOpaqueQualType())));
+}
+
+CompilerType
+TypeSystemCpp::Builder::CreateCVQualifiedType(CompilerType underlying_type,
+                                              bool is_const, bool is_volatile) {
+  return m_ts.GetCompilerType(m_ts.m_context.CreateCVQualifiedType(
+      TypeSystemCpp::GetCppType(underlying_type.GetOpaqueQualType()), is_const,
+      is_volatile));
+}
+
+CompilerType
+TypeSystemCpp::Builder::CreateEnumType(ConstString name,
+                                       std::optional<uint64_t> byte_size,
+                                       CompilerType underlying_type,
+                                       bool is_scoped) {
+  return m_ts.GetCompilerType(m_ts.m_context.CreateEnumType(
+      name.GetStringRef(), byte_size,
+      TypeSystemCpp::GetCppType(underlying_type.GetOpaqueQualType()),
+      is_scoped));
+}
+
 cpp_typesystem::Identifier
 TypeSystemCpp::Builder::GetIdentifier(llvm::StringRef name) {
   return m_ts.m_context.GetIdentifier(name);
@@ -87,14 +131,34 @@ void TypeSystemCpp::Builder::SetRecordComplete(
 void TypeSystemCpp::Builder::AddField(cpp_typesystem::RecordType &record,
                                       cpp_typesystem::Identifier name,
                                       cpp_typesystem::Type *type,
-                                      uint64_t byte_offset) {
-  m_ts.m_context.AddField(record, name, type, byte_offset);
+                                      uint64_t byte_offset,
+                                      uint32_t bitfield_bit_size,
+                                      uint32_t bitfield_bit_offset) {
+  m_ts.m_context.AddField(record, name, type, byte_offset, bitfield_bit_size,
+                          bitfield_bit_offset);
 }
 
 void TypeSystemCpp::Builder::AddBaseClass(cpp_typesystem::ClassType &record,
                                           cpp_typesystem::Type *type,
                                           uint64_t byte_offset) {
   m_ts.m_context.AddBaseClass(record, type, byte_offset);
+}
+
+void TypeSystemCpp::Builder::AddEnumerator(cpp_typesystem::EnumType &enum_type,
+                                           cpp_typesystem::Identifier name,
+                                           uint64_t value) {
+  m_ts.m_context.AddEnumerator(enum_type, name, value);
+}
+
+void TypeSystemCpp::Builder::AddTemplateArgument(
+    cpp_typesystem::RecordType &record, cpp_typesystem::TemplateArgument arg) {
+  m_ts.m_context.AddTemplateArgument(record, arg);
+}
+
+void TypeSystemCpp::Builder::AddNestedType(cpp_typesystem::RecordType &record,
+                                           cpp_typesystem::Identifier name,
+                                           cpp_typesystem::Type *type) {
+  m_ts.m_context.AddNestedType(record, name, type);
 }
 
 lldb::TypeSystemSP TypeSystemCpp::Create(llvm::StringRef name,
@@ -176,7 +240,7 @@ bool TypeSystemCpp::IsArrayType(opaque_compiler_type_t type,
     *is_incomplete = false;
 
   auto *array = llvm::dyn_cast_or_null<cpp_typesystem::ArrayType>(
-      type ? GetCppType(type) : nullptr);
+      type ? Desugar(GetCppType(type)) : nullptr);
   if (!array)
     return false;
 
@@ -256,6 +320,11 @@ bool TypeSystemCpp::IsIntegerType(opaque_compiler_type_t type,
 }
 
 bool TypeSystemCpp::IsScopedEnumerationType(opaque_compiler_type_t type) {
+  if (!type)
+    return false;
+  if (auto *enum_type =
+          llvm::dyn_cast<cpp_typesystem::EnumType>(Desugar(GetCppType(type))))
+    return enum_type->IsScoped();
   return false;
 }
 
@@ -271,7 +340,7 @@ bool TypeSystemCpp::IsPointerType(opaque_compiler_type_t type,
   if (pointee_type)
     pointee_type->Clear();
   auto *ptr = llvm::dyn_cast_or_null<cpp_typesystem::PointerType>(
-      type ? GetCppType(type) : nullptr);
+      type ? Desugar(GetCppType(type)) : nullptr);
   if (!ptr)
     return false;
   if (pointee_type)
@@ -296,7 +365,11 @@ bool TypeSystemCpp::SupportsLanguage(LanguageType language) {
 bool TypeSystemCpp::GetCompleteType(opaque_compiler_type_t type) {
   if (!type)
     return false;
-  cpp_typesystem::Type *t = GetCppType(type);
+  // See through typedefs/qualifiers: it is the underlying record that carries
+  // completion state and is registered in the forward-declaration map.
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+  if (!t)
+    return false;
   if (t->IsComplete())
     return true;
   // Ask our SymbolFile to fill in the members from the debug info.
@@ -346,6 +419,30 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
         pointee ? GetTypeName(pointee, BaseOnly).GetStringRef().str() : "void";
     return ConstString(llvm::formatv("{0} *", pointee_name).str());
   }
+  // References likewise: "<pointee> &" or "<pointee> &&".
+  if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t)) {
+    cpp_typesystem::Type *pointee = ref->GetPointeeType();
+    std::string pointee_name =
+        pointee ? GetTypeName(pointee, BaseOnly).GetStringRef().str() : "void";
+    return ConstString(llvm::formatv("{0} {1}", pointee_name,
+                                     ref->IsRValue() ? "&&" : "&")
+                           .str());
+  }
+  // cv-qualified types render as "const"/"volatile" prefixing the unqualified
+  // name.
+  if (auto *cv = llvm::dyn_cast<cpp_typesystem::CVQualifiedType>(t)) {
+    std::string underlying_name =
+        cv->GetUnderlyingType()
+            ? GetTypeName(cv->GetUnderlyingType(), BaseOnly).GetStringRef().str()
+            : "";
+    std::string result;
+    if (cv->IsConst())
+      result += "const ";
+    if (cv->IsVolatile())
+      result += "volatile ";
+    result += underlying_name;
+    return ConstString(result);
+  }
   return ConstString(t->GetName().GetName());
 }
 
@@ -360,11 +457,30 @@ TypeSystemCpp::GetTypeInfo(opaque_compiler_type_t type,
     pointee_or_element_compiler_type->Clear();
   if (!type)
     return 0;
-  return GetCppType(type)->GetTypeInfo();
+  cpp_typesystem::Type *t = GetCppType(type);
+  // Hand back the element/pointee type when asked; callers such as
+  // ValueObject::GetPointeeData rely on it to know how to read array elements
+  // or dereference pointers/references.
+  if (pointee_or_element_compiler_type) {
+    cpp_typesystem::Type *inner = nullptr;
+    if (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(Desugar(t)))
+      inner = array->GetElementType();
+    else if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(Desugar(t)))
+      inner = ptr->GetPointeeType();
+    else if (auto *ref =
+                 llvm::dyn_cast<cpp_typesystem::ReferenceType>(Desugar(t)))
+      inner = ref->GetPointeeType();
+    if (inner)
+      *pointee_or_element_compiler_type = GetCompilerType(inner);
+  }
+  return t->GetTypeInfo();
 }
 
 LanguageType TypeSystemCpp::GetMinimumLanguage(opaque_compiler_type_t type) {
-  return eLanguageTypeUnknown;
+  // TypeSystemCpp models C/C++/Objective-C++ types. Reporting C++ is what puts
+  // types in the C++ formatter category, so that e.g. the libc++ container
+  // data formatters are consulted (see FormatManager::GetCandidateLanguages).
+  return eLanguageTypeC_plus_plus;
 }
 
 TypeClass TypeSystemCpp::GetTypeClass(opaque_compiler_type_t type) {
@@ -379,17 +495,25 @@ TypeSystemCpp::GetArrayElementType(opaque_compiler_type_t type,
   if (!type)
     return CompilerType();
   if (auto *array =
-          llvm::dyn_cast<cpp_typesystem::ArrayType>(GetCppType(type)))
+          llvm::dyn_cast<cpp_typesystem::ArrayType>(Desugar(GetCppType(type))))
     return GetCompilerType(array->GetElementType());
   return CompilerType();
 }
 
 CompilerType TypeSystemCpp::GetCanonicalType(opaque_compiler_type_t type) {
-  return CompilerType();
+  if (!type)
+    return CompilerType();
+  // The canonical type is the type with all typedef/cv sugar stripped.
+  return GetCompilerType(Desugar(GetCppType(type)));
 }
 
 CompilerType
 TypeSystemCpp::GetEnumerationIntegerType(opaque_compiler_type_t type) {
+  if (!type)
+    return CompilerType();
+  if (auto *enum_type =
+          llvm::dyn_cast<cpp_typesystem::EnumType>(Desugar(GetCppType(type))))
+    return GetCompilerType(enum_type->GetUnderlyingType());
   return CompilerType();
 }
 
@@ -421,7 +545,7 @@ CompilerType TypeSystemCpp::GetPointeeType(opaque_compiler_type_t type) {
   if (!type)
     return CompilerType();
   if (auto *ptr =
-          llvm::dyn_cast<cpp_typesystem::PointerType>(GetCppType(type)))
+          llvm::dyn_cast<cpp_typesystem::PointerType>(Desugar(GetCppType(type))))
     return GetCompilerType(ptr->GetPointeeType());
   return CompilerType();
 }
@@ -465,7 +589,7 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
                              const ExecutionContext *exe_ctx) {
   if (!type)
     return 0;
-  cpp_typesystem::Type *t = GetCppType(type);
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
   // An array's children are its elements.
   if (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(t))
     return array->GetNumElements().value_or(0);
@@ -474,6 +598,15 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
   // scalar has a single child (the dereferenced value). `void *` has none.
   if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
     cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+    if (!pointee)
+      return 0;
+    if (pointee->IsAggregate())
+      return GetNumChildren(pointee, omit_empty_base_classes, exe_ctx);
+    return 1;
+  }
+  // A reference is transparent: its children are those of the referenced type.
+  if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t)) {
+    cpp_typesystem::Type *pointee = ref->GetPointeeType();
     if (!pointee)
       return 0;
     if (pointee->IsAggregate())
@@ -512,11 +645,11 @@ CompilerType TypeSystemCpp::GetFieldAtIndex(opaque_compiler_type_t type,
     return CompilerType();
   name = field->name.GetName().str();
   if (bit_offset_ptr)
-    *bit_offset_ptr = field->byte_offset * 8;
+    *bit_offset_ptr = field->byte_offset * 8 + field->bitfield_bit_offset;
   if (bitfield_bit_size_ptr)
-    *bitfield_bit_size_ptr = 0;
+    *bitfield_bit_size_ptr = field->bitfield_bit_size;
   if (is_bitfield_ptr)
-    *is_bitfield_ptr = false;
+    *is_bitfield_ptr = field->IsBitfield();
   return GetCompilerType(field->type);
 }
 
@@ -561,8 +694,7 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetDereferencedType(
     std::string &deref_name, uint32_t &deref_byte_size,
     int32_t &deref_byte_offset, ValueObject *valobj,
     uint64_t &language_flags) {
-  // Only pointers and arrays can be dereferenced. (References would too, but
-  // TypeSystemCpp does not model them yet.)
+  // Only pointers, references and arrays can be dereferenced.
   if (!IsPointerOrReferenceType(type, nullptr) &&
       !IsArrayType(type, nullptr, nullptr, nullptr))
     return llvm::createStringError("not a pointer, reference or array type");
@@ -601,7 +733,7 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
   if (!type)
     return CompilerType();
   GetCompleteType(type);
-  cpp_typesystem::Type *t = GetCppType(type);
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
 
   // Array elements: child N is the element at offset N * element_size.
   if (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(t)) {
@@ -651,6 +783,37 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
     return GetCompilerType(pointee);
   }
 
+  // A reference is transparent, just like a pointer: expanding it either shows
+  // the referenced aggregate's members or the single referenced value.
+  if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t)) {
+    cpp_typesystem::Type *pointee = ref->GetPointeeType();
+    if (!pointee)
+      return CompilerType();
+
+    if (transparent_pointers && pointee->IsAggregate()) {
+      bool tmp_child_is_deref_of_parent = false;
+      return GetCompilerType(pointee).GetChildCompilerTypeAtIndex(
+          exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
+          ignore_array_bounds, child_name, child_byte_size, child_byte_offset,
+          child_bitfield_bit_size, child_bitfield_bit_offset,
+          child_is_base_class, tmp_child_is_deref_of_parent, valobj,
+          language_flags);
+    }
+
+    child_is_deref_of_parent = true;
+    if (const char *parent_name =
+            valobj ? valobj->GetName().GetCString() : nullptr) {
+      child_name.assign(1, '&');
+      child_name += parent_name;
+    }
+    if (idx != 0)
+      return CompilerType();
+    if (std::optional<uint64_t> byte_size = pointee->GetByteSize())
+      child_byte_size = *byte_size;
+    child_byte_offset = 0;
+    return GetCompilerType(pointee);
+  }
+
   // Children are laid out as the direct base classes followed by the fields.
   uint32_t num_bases = t->GetNumBaseClasses();
   if (idx < num_bases) {
@@ -673,6 +836,10 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
   child_byte_offset = field->byte_offset;
   if (std::optional<uint64_t> byte_size = field->type->GetByteSize())
     child_byte_size = *byte_size;
+  if (field->IsBitfield()) {
+    child_bitfield_bit_size = field->bitfield_bit_size;
+    child_bitfield_bit_offset = field->bitfield_bit_offset;
+  }
   return GetCompilerType(field->type);
 }
 
@@ -683,11 +850,15 @@ TypeSystemCpp::GetIndexOfChildWithName(opaque_compiler_type_t type,
   if (!type)
     return llvm::createStringError("invalid type");
   GetCompleteType(type);
-  cpp_typesystem::Type *t = GetCppType(type);
-  // A pointer forwards child lookup to its (aggregate) pointee.
-  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
-    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
-    if (pointee && pointee->IsAggregate())
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+  // A pointer or reference forwards child lookup to its (aggregate) pointee.
+  cpp_typesystem::Type *pointee = nullptr;
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t))
+    pointee = ptr->GetPointeeType();
+  else if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t))
+    pointee = ref->GetPointeeType();
+  if (pointee) {
+    if (pointee->IsAggregate())
       return GetCompilerType(pointee).GetIndexOfChildWithName(
           name, omit_empty_base_classes);
     return llvm::createStringError(
@@ -715,12 +886,17 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
   if (!type)
     return 0;
   GetCompleteType(type);
-  cpp_typesystem::Type *t = GetCppType(type);
-  // A pointer forwards member lookup to its (aggregate) pointee, so that e.g.
-  // `ptr->member` resolves against the pointed-to record.
-  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
-    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
-    if (pointee && pointee->IsAggregate())
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+  // A pointer or reference forwards member lookup to its (aggregate) pointee,
+  // so that e.g. `ptr->member` / `ref.member` resolves against the pointed-to
+  // record.
+  cpp_typesystem::Type *pointee = nullptr;
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t))
+    pointee = ptr->GetPointeeType();
+  else if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t))
+    pointee = ref->GetPointeeType();
+  if (pointee) {
+    if (pointee->IsAggregate())
       return GetCompilerType(pointee).GetIndexOfChildMemberWithName(
           name, omit_empty_base_classes, child_indexes);
     return 0;
@@ -768,6 +944,36 @@ LLVM_DUMP_METHOD void
 TypeSystemCpp::dump(opaque_compiler_type_t type) const {}
 #endif
 
+/// Render an enum value as an enumerator name when it matches one exactly,
+/// otherwise fall back to the numeric value. This is a trimmed-down version of
+/// TypeSystemClang's DumpEnumValue (it does not attempt bitfield/flag
+/// decomposition).
+static bool DumpEnumValue(const cpp_typesystem::EnumType &enum_type, Stream &s,
+                          const DataExtractor &data, lldb::offset_t byte_offset,
+                          size_t byte_size) {
+  lldb::offset_t offset = byte_offset;
+  const bool is_signed = enum_type.IsSigned();
+  const uint64_t enum_svalue =
+      is_signed ? static_cast<uint64_t>(
+                      data.GetMaxS64Bitfield(&offset, byte_size, 0, 0))
+                : data.GetMaxU64Bitfield(&offset, byte_size, 0, 0);
+
+  for (const cpp_typesystem::Enumerator &enumerator :
+       enum_type.GetEnumerators()) {
+    if (enumerator.value == enum_svalue) {
+      s.PutCString(enumerator.name.GetName());
+      return true;
+    }
+  }
+
+  // No exact match; print the raw value.
+  if (is_signed)
+    s.Printf("%" PRIi64, static_cast<int64_t>(enum_svalue));
+  else
+    s.Printf("%" PRIu64, enum_svalue);
+  return true;
+}
+
 bool TypeSystemCpp::DumpTypeValue(opaque_compiler_type_t type, Stream &s,
                                   Format format, const DataExtractor &data,
                                   offset_t data_offset, size_t data_byte_size,
@@ -776,13 +982,20 @@ bool TypeSystemCpp::DumpTypeValue(opaque_compiler_type_t type, Stream &s,
                                   ExecutionContextScope *exe_scope) {
   if (!type)
     return false;
-  cpp_typesystem::Type *t = GetCppType(type);
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
   // Aggregates don't have a scalar value to print; their children are dumped
   // individually.
   if (t->IsAggregate())
     return false;
   if (format == eFormatDefault)
     format = t->GetFormat();
+  // Enumerations: show the enumerator name when possible rather than the raw
+  // integer value.
+  if (auto *enum_type = llvm::dyn_cast<cpp_typesystem::EnumType>(t)) {
+    if ((format == eFormatEnum || format == eFormatDefault) &&
+        bitfield_bit_size == 0)
+      return DumpEnumValue(*enum_type, s, data, data_offset, data_byte_size);
+  }
   return DumpDataExtractor(data, &s, data_offset, format, data_byte_size,
                            /*item_count=*/1, UINT32_MAX, LLDB_INVALID_ADDRESS,
                            bitfield_bit_size, bitfield_bit_offset, exe_scope);
@@ -803,8 +1016,9 @@ bool TypeSystemCpp::IsRuntimeGeneratedType(opaque_compiler_type_t type) {
 
 bool TypeSystemCpp::IsPointerOrReferenceType(opaque_compiler_type_t type,
                                              CompilerType *pointee_type) {
-  // TypeSystemCpp does not model reference types yet, so this is just pointers.
-  return IsPointerType(type, pointee_type);
+  if (IsPointerType(type, pointee_type))
+    return true;
+  return IsReferenceType(type, pointee_type, /*is_rvalue=*/nullptr);
 }
 
 unsigned TypeSystemCpp::GetTypeQualifiers(opaque_compiler_type_t type) {
@@ -864,7 +1078,14 @@ bool TypeSystemCpp::IsBeingDefined(opaque_compiler_type_t type) {
   return false;
 }
 
-bool TypeSystemCpp::IsConst(opaque_compiler_type_t type) { return false; }
+bool TypeSystemCpp::IsConst(opaque_compiler_type_t type) {
+  if (!type)
+    return false;
+  if (auto *cv =
+          llvm::dyn_cast<cpp_typesystem::CVQualifiedType>(GetCppType(type)))
+    return cv->IsConst();
+  return false;
+}
 
 uint32_t TypeSystemCpp::IsHomogeneousAggregate(opaque_compiler_type_t type,
                                                CompilerType *base_type_ptr) {
@@ -875,9 +1096,15 @@ bool TypeSystemCpp::IsPolymorphicClass(opaque_compiler_type_t type) {
   return false;
 }
 
-bool TypeSystemCpp::IsTypedefType(opaque_compiler_type_t type) { return false; }
+bool TypeSystemCpp::IsTypedefType(opaque_compiler_type_t type) {
+  return type && llvm::isa<cpp_typesystem::TypedefType>(GetCppType(type));
+}
 
 CompilerType TypeSystemCpp::GetTypedefedType(opaque_compiler_type_t type) {
+  if (!type)
+    return CompilerType();
+  if (auto *td = llvm::dyn_cast<cpp_typesystem::TypedefType>(GetCppType(type)))
+    return GetCompilerType(td->GetUnderlyingType());
   return CompilerType();
 }
 
@@ -892,13 +1119,118 @@ TypeSystemCpp::GetFullyUnqualifiedType(opaque_compiler_type_t type) {
 }
 
 CompilerType TypeSystemCpp::GetNonReferenceType(opaque_compiler_type_t type) {
-  // TypeSystemCpp does not model reference types yet, so a type is its own
-  // non-reference type.
+  if (!type)
+    return CompilerType();
+  // Peeling only the reference (not typedef/cv sugar) mirrors clang: e.g. the
+  // non-reference type of `const int &` is `const int`.
+  if (auto *ref =
+          llvm::dyn_cast<cpp_typesystem::ReferenceType>(GetCppType(type)))
+    return GetCompilerType(ref->GetPointeeType());
   return CompilerType(weak_from_this(), type);
 }
 
 bool TypeSystemCpp::IsReferenceType(opaque_compiler_type_t type,
                                     CompilerType *pointee_type,
                                     bool *is_rvalue) {
+  if (pointee_type)
+    pointee_type->Clear();
+  if (is_rvalue)
+    *is_rvalue = false;
+  auto *ref = llvm::dyn_cast_or_null<cpp_typesystem::ReferenceType>(
+      type ? Desugar(GetCppType(type)) : nullptr);
+  if (!ref)
+    return false;
+  if (pointee_type)
+    *pointee_type = GetCompilerType(ref->GetPointeeType());
+  if (is_rvalue)
+    *is_rvalue = ref->IsRValue();
+  return true;
+}
+
+/// The record backing a class-template instantiation, or null if \p type is not
+/// a (possibly sugared) record. Template arguments are populated during
+/// completion, so callers must complete the type first.
+static cpp_typesystem::RecordType *
+GetRecordForTemplateArgs(cpp_typesystem::Type *type) {
+  return llvm::dyn_cast_or_null<cpp_typesystem::RecordType>(Desugar(type));
+}
+
+bool TypeSystemCpp::IsTemplateType(opaque_compiler_type_t type) {
+  if (!type)
+    return false;
+  GetCompleteType(type);
+  if (auto *record = GetRecordForTemplateArgs(GetCppType(type)))
+    return record->GetNumTemplateArguments() > 0;
   return false;
+}
+
+size_t TypeSystemCpp::GetNumTemplateArguments(opaque_compiler_type_t type,
+                                              bool expand_pack) {
+  if (!type)
+    return 0;
+  GetCompleteType(type);
+  if (auto *record = GetRecordForTemplateArgs(GetCppType(type)))
+    return record->GetNumTemplateArguments();
+  return 0;
+}
+
+lldb::TemplateArgumentKind
+TypeSystemCpp::GetTemplateArgumentKind(opaque_compiler_type_t type, size_t idx,
+                                       bool expand_pack) {
+  if (!type)
+    return eTemplateArgumentKindNull;
+  GetCompleteType(type);
+  if (auto *record = GetRecordForTemplateArgs(GetCppType(type)))
+    if (const cpp_typesystem::TemplateArgument *arg =
+            record->GetTemplateArgumentAtIndex(idx))
+      return arg->kind;
+  return eTemplateArgumentKindNull;
+}
+
+CompilerType
+TypeSystemCpp::GetTypeTemplateArgument(opaque_compiler_type_t type, size_t idx,
+                                       bool expand_pack) {
+  if (!type)
+    return CompilerType();
+  GetCompleteType(type);
+  if (auto *record = GetRecordForTemplateArgs(GetCppType(type)))
+    if (const cpp_typesystem::TemplateArgument *arg =
+            record->GetTemplateArgumentAtIndex(idx))
+      return GetCompilerType(arg->type);
+  return CompilerType();
+}
+
+std::optional<CompilerType::IntegralTemplateArgument>
+TypeSystemCpp::GetIntegralTemplateArgument(opaque_compiler_type_t type,
+                                           size_t idx, bool expand_pack) {
+  if (!type)
+    return std::nullopt;
+  GetCompleteType(type);
+  auto *record = GetRecordForTemplateArgs(GetCppType(type));
+  if (!record)
+    return std::nullopt;
+  const cpp_typesystem::TemplateArgument *arg =
+      record->GetTemplateArgumentAtIndex(idx);
+  if (!arg || arg->kind != eTemplateArgumentKindIntegral)
+    return std::nullopt;
+
+  // Reconstruct the value with the argument type's signedness.
+  Scalar value;
+  if (arg->type && arg->type->GetEncoding() == eEncodingSint)
+    value = static_cast<int64_t>(arg->integral_value);
+  else
+    value = arg->integral_value;
+  return CompilerType::IntegralTemplateArgument{value, GetCompilerType(arg->type)};
+}
+
+CompilerType
+TypeSystemCpp::GetDirectNestedTypeWithName(opaque_compiler_type_t type,
+                                           llvm::StringRef name) {
+  if (!type)
+    return CompilerType();
+  GetCompleteType(type);
+  if (auto *record = GetRecordForTemplateArgs(GetCppType(type)))
+    if (cpp_typesystem::Type *nested = record->GetNestedTypeWithName(name))
+      return GetCompilerType(nested);
+  return CompilerType();
 }

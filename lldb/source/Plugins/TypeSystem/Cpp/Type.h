@@ -30,8 +30,16 @@ struct Field {
   Identifier name;
   /// The type of this member. Owned by the same Context as the record.
   Type *type = nullptr;
-  /// Offset of this member from the start of the record, in bytes.
+  /// Offset of this member (or, for a bitfield, of its storage unit) from the
+  /// start of the record, in bytes.
   uint64_t byte_offset = 0;
+  /// For a bitfield: its width in bits. Zero means this is not a bitfield.
+  uint32_t bitfield_bit_size = 0;
+  /// For a bitfield: the offset of its first bit within the storage unit at
+  /// byte_offset.
+  uint32_t bitfield_bit_offset = 0;
+
+  bool IsBitfield() const { return bitfield_bit_size != 0; }
 };
 
 /// A direct base class of a C++ class type.
@@ -41,6 +49,20 @@ struct BaseClass {
   /// Offset of the base class subobject from the start of the derived record,
   /// in bytes.
   uint64_t byte_offset = 0;
+};
+
+/// A template argument of a class template instantiation (e.g. the `int` and
+/// `std::allocator<int>` of `std::vector<int, std::allocator<int>>`). Data
+/// formatters rely on these to recover, for instance, a container's element
+/// type.
+struct TemplateArgument {
+  lldb::TemplateArgumentKind kind = lldb::eTemplateArgumentKindNull;
+  /// Type argument: the argument's type. Integral argument: the value's type.
+  /// Owned by the same Context as the record.
+  Type *type = nullptr;
+  /// Integral argument: the raw value bits (interpret using `type`'s
+  /// signedness/size).
+  uint64_t integral_value = 0;
 };
 
 /// References a type, potentially in another Context.
@@ -124,18 +146,48 @@ public:
     return nullptr;
   }
 
+  /// Template arguments, if this record is a class-template instantiation.
+  uint32_t GetNumTemplateArguments() const { return m_template_args.size(); }
+  const TemplateArgument *GetTemplateArgumentAtIndex(uint32_t idx) const {
+    if (idx < m_template_args.size())
+      return &m_template_args[idx];
+    return nullptr;
+  }
+
+  /// Look up a type declared directly inside this record (a nested typedef,
+  /// class, union or enum) by its unqualified name. Returns null if there is no
+  /// such nested type. Data formatters use this to reach a container's internal
+  /// helper types (e.g. a tree's "__node_pointer").
+  Type *GetNestedTypeWithName(llvm::StringRef name) const {
+    for (const auto &entry : m_nested_types)
+      if (entry.first.GetName() == name)
+        return entry.second;
+    return nullptr;
+  }
+
 private:
   // Structural mutation happens after creation (during lazy completion, which
   // may run on worker threads), so it is gated: only Context can perform it,
   // and Context is only reachable through TypeSystemCpp's locked Builder.
   friend class Context;
   void SetIsComplete(bool complete) { m_complete = complete; }
-  void AddField(Identifier name, Type *type, uint64_t byte_offset) {
-    m_fields.push_back(Field{name, type, byte_offset});
+  void AddField(Identifier name, Type *type, uint64_t byte_offset,
+                uint32_t bitfield_bit_size = 0,
+                uint32_t bitfield_bit_offset = 0) {
+    m_fields.push_back(Field{name, type, byte_offset, bitfield_bit_size,
+                             bitfield_bit_offset});
+  }
+  void AddTemplateArgument(TemplateArgument arg) {
+    m_template_args.push_back(arg);
+  }
+  void AddNestedType(Identifier name, Type *type) {
+    m_nested_types.emplace_back(name, type);
   }
 
   bool m_complete = false;
   std::vector<Field> m_fields;
+  std::vector<TemplateArgument> m_template_args;
+  std::vector<std::pair<Identifier, Type *>> m_nested_types;
 };
 
 /// A C struct/union type. Records parsed from a C++ translation unit are
@@ -226,6 +278,182 @@ public:
 
 private:
   Type *m_pointee_type = nullptr;
+};
+
+/// A C++ reference type: lvalue `T &` or rvalue `T &&`. At runtime a reference
+/// is represented by an address (like a pointer), but it is transparent when
+/// exploring its value: its single child is the referenced object.
+class ReferenceType : public llvm::RTTIExtends<ReferenceType, Type> {
+public:
+  static char ID;
+
+  /// The type this reference refers to. E.g., for `int &` this is `int`.
+  Type *GetPointeeType() const { return m_pointee_type; }
+  void SetPointeeType(Type *type) { m_pointee_type = type; }
+
+  /// True for an rvalue reference (`T &&`), false for an lvalue one (`T &`).
+  bool IsRValue() const { return m_is_rvalue; }
+  void SetIsRValue(bool is_rvalue) { m_is_rvalue = is_rvalue; }
+
+  lldb::Encoding GetEncoding() const override { return lldb::eEncodingUint; }
+  lldb::Format GetFormat() const override { return lldb::eFormatHex; }
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassReference;
+  }
+  uint32_t GetTypeInfo() const override {
+    return lldb::eTypeHasChildren | lldb::eTypeIsReference | lldb::eTypeHasValue;
+  }
+
+private:
+  Type *m_pointee_type = nullptr;
+  bool m_is_rvalue = false;
+};
+
+/// Common base for "sugar" types that wrap another type and are transparent to
+/// most layout/children queries: typedefs and cv-qualified types. Stripping all
+/// sugar off a type yields its canonical type (see Type::GetCanonicalType-style
+/// desugaring in TypeSystemCpp). The transparent virtual queries forward to the
+/// underlying type; subclasses override the ones that must differ (e.g. a
+/// typedef reports its own name and type class).
+class SugarType : public llvm::RTTIExtends<SugarType, Type> {
+public:
+  static char ID;
+
+  /// The immediately-wrapped type. Peel repeatedly to reach the canonical type.
+  Type *GetUnderlyingType() const { return m_underlying_type; }
+  void SetUnderlyingType(Type *type) { m_underlying_type = type; }
+
+  // By default sugar is see-through: forward the value/layout queries to the
+  // wrapped type so a `typedef`/`const` of an aggregate still looks like one.
+  bool IsAggregate() const override {
+    return m_underlying_type && m_underlying_type->IsAggregate();
+  }
+  bool IsComplete() const override {
+    return !m_underlying_type || m_underlying_type->IsComplete();
+  }
+  lldb::Encoding GetEncoding() const override {
+    return m_underlying_type ? m_underlying_type->GetEncoding()
+                             : lldb::eEncodingInvalid;
+  }
+  lldb::Format GetFormat() const override {
+    return m_underlying_type ? m_underlying_type->GetFormat()
+                             : lldb::eFormatDefault;
+  }
+  lldb::TypeClass GetTypeClass() const override {
+    return m_underlying_type ? m_underlying_type->GetTypeClass()
+                             : lldb::eTypeClassOther;
+  }
+  uint32_t GetTypeInfo() const override {
+    return m_underlying_type ? m_underlying_type->GetTypeInfo() : 0;
+  }
+  uint32_t GetNumFields() const override {
+    return m_underlying_type ? m_underlying_type->GetNumFields() : 0;
+  }
+  const Field *GetFieldAtIndex(uint32_t idx) const override {
+    return m_underlying_type ? m_underlying_type->GetFieldAtIndex(idx)
+                             : nullptr;
+  }
+  uint32_t GetNumBaseClasses() const override {
+    return m_underlying_type ? m_underlying_type->GetNumBaseClasses() : 0;
+  }
+  const BaseClass *GetBaseClassAtIndex(uint32_t idx) const override {
+    return m_underlying_type ? m_underlying_type->GetBaseClassAtIndex(idx)
+                             : nullptr;
+  }
+
+private:
+  Type *m_underlying_type = nullptr;
+};
+
+/// A typedef/using alias. It carries its own (alias) name but otherwise behaves
+/// like the type it aliases.
+class TypedefType : public llvm::RTTIExtends<TypedefType, SugarType> {
+public:
+  static char ID;
+
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassTypedef;
+  }
+  uint32_t GetTypeInfo() const override {
+    return SugarType::GetTypeInfo() | lldb::eTypeIsTypedef;
+  }
+};
+
+/// A `const`- and/or `volatile`-qualified type. Transparent like all sugar; it
+/// only records which qualifiers apply so they can be reported and rendered in
+/// the type name.
+class CVQualifiedType : public llvm::RTTIExtends<CVQualifiedType, SugarType> {
+public:
+  static char ID;
+
+  bool IsConst() const { return m_is_const; }
+  void SetIsConst(bool is_const) { m_is_const = is_const; }
+  bool IsVolatile() const { return m_is_volatile; }
+  void SetIsVolatile(bool is_volatile) { m_is_volatile = is_volatile; }
+
+private:
+  bool m_is_const = false;
+  bool m_is_volatile = false;
+};
+
+/// A single (name, value) constant of an enumeration.
+struct Enumerator {
+  Identifier name;
+  /// The constant's value, stored as raw bits; interpret as signed when the
+  /// enum's underlying type is signed.
+  uint64_t value = 0;
+};
+
+/// A C/C++ enumeration type. It has an underlying integer type and a set of
+/// named constants; scoped enums (`enum class`) are distinguished so their
+/// enumerators are not treated as being in the enclosing scope.
+class EnumType : public llvm::RTTIExtends<EnumType, Type> {
+public:
+  static char ID;
+
+  Type *GetUnderlyingType() const { return m_underlying_type; }
+  void SetUnderlyingType(Type *type) { m_underlying_type = type; }
+
+  bool IsScoped() const { return m_is_scoped; }
+  void SetIsScoped(bool is_scoped) { m_is_scoped = is_scoped; }
+
+  /// True when the underlying integer type is signed.
+  bool IsSigned() const {
+    return !m_underlying_type ||
+           m_underlying_type->GetEncoding() == lldb::eEncodingSint;
+  }
+
+  const std::vector<Enumerator> &GetEnumerators() const {
+    return m_enumerators;
+  }
+
+  lldb::Encoding GetEncoding() const override {
+    return m_underlying_type ? m_underlying_type->GetEncoding()
+                             : lldb::eEncodingSint;
+  }
+  lldb::Format GetFormat() const override { return lldb::eFormatEnum; }
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassEnumeration;
+  }
+  uint32_t GetTypeInfo() const override {
+    uint32_t info = lldb::eTypeIsEnumeration | lldb::eTypeHasValue |
+                    lldb::eTypeIsScalar | lldb::eTypeIsInteger;
+    if (IsSigned())
+      info |= lldb::eTypeIsSigned;
+    return info;
+  }
+
+private:
+  // Gated like RecordType's mutators: only Context (through the locked Builder)
+  // may add enumerators.
+  friend class Context;
+  void AddEnumerator(Identifier name, uint64_t value) {
+    m_enumerators.push_back(Enumerator{name, value});
+  }
+
+  Type *m_underlying_type = nullptr;
+  bool m_is_scoped = false;
+  std::vector<Enumerator> m_enumerators;
 };
 
 }
