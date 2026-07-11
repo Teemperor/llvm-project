@@ -25,6 +25,8 @@
 #include "lldb/Symbol/Type.h"
 #include "lldb/Target/Language.h"
 
+#include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
+
 #include <future>
 #include <vector>
 
@@ -155,9 +157,44 @@ TypeSP DWARFASTParserCpp::ParseBaseType(const DWARFDIE &die) {
                          compiler_type, Type::ResolveState::Full);
 }
 
+std::string DWARFASTParserCpp::GetDIEClassTemplateParams(DWARFDIE die) {
+  if (DWARFDIE signature_die = die.GetReferencedDIE(DW_AT_signature))
+    die = signature_die;
+
+  // If the name already carries the template arguments (e.g. "Wrapper<int>"),
+  // don't reconstruct and duplicate them.
+  const char *name = die.GetName();
+  if (name && llvm::StringRef(name).contains('<'))
+    return {};
+
+  // Reconstruct the "<...>" suffix from the DW_TAG_template_{type,value}_-
+  // parameter children. This covers both type parameters (e.g. "int") and
+  // non-type/value parameters (e.g. "3").
+  std::string params;
+  llvm::raw_string_ostream os(params);
+  llvm::DWARFTypePrinter<DWARFDIE>(os).appendAndTerminateTemplateParameters(die);
+  return params;
+}
+
+/// The fully-qualified name of a named type DIE, including enclosing namespace
+/// and class scopes (e.g. "std::__1::vector<int, std::__1::allocator<int> >")
+/// and reconstructed template arguments. Producing the scoped spelling is what
+/// lets type-name-based data formatters (such as libc++'s container summaries)
+/// match our types.
+static std::string GetDIEQualifiedName(const DWARFDIE &die) {
+  std::string name;
+  llvm::raw_string_ostream os(name);
+  llvm::DWARFTypePrinter<DWARFDIE>(os).appendQualifiedName(die);
+  return name;
+}
+
 TypeSP DWARFASTParserCpp::ParseStructureType(const DWARFDIE &die) {
   SymbolFileDWARF *dwarf = die.GetDWARF();
-  ConstString name(die.GetName());
+
+  // Record the fully-qualified, template-argument-bearing spelling of the type
+  // (e.g. the instantiation "Wrapper<int>" or "std::__1::vector<int, ...>")
+  // rather than the bare DW_AT_name ("Wrapper" / "vector").
+  ConstString name(GetDIEQualifiedName(die));
   std::optional<uint64_t> byte_size =
       die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size);
 
@@ -251,6 +288,132 @@ TypeSP DWARFASTParserCpp::ParsePointerType(const DWARFDIE &die) {
                          Type::ResolveState::Full);
 }
 
+TypeSP DWARFASTParserCpp::ParseReferenceType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  std::optional<uint64_t> byte_size =
+      die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size);
+
+  // Resolve the referenced type. A reference may refer to an incomplete type,
+  // so use the forward-declared CompilerType and don't force completion here.
+  DWARFDIE pointee_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  CompilerType pointee_type;
+  if (pointee_die) {
+    if (Type *pointee = die.ResolveTypeUID(pointee_die))
+      pointee_type = pointee->GetForwardCompilerType();
+  }
+
+  bool is_rvalue = die.Tag() == DW_TAG_rvalue_reference_type;
+  CompilerType reference_type =
+      m_ts.Lock()->CreateReferenceType(pointee_type, is_rvalue);
+
+  Declaration decl;
+  ConstString empty_name;
+  return dwarf->MakeType(die.GetID(), empty_name, byte_size,
+                         /*context=*/nullptr, pointee_die.GetID(),
+                         Type::eEncodingIsUID, decl, reference_type,
+                         Type::ResolveState::Full);
+}
+
+TypeSP DWARFASTParserCpp::ParseTypedef(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+  ConstString name(GetDIEQualifiedName(die));
+
+  // Resolve the aliased type. A typedef can alias an incomplete type, so use
+  // its forward-declared CompilerType.
+  DWARFDIE underlying_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  CompilerType underlying_type;
+  if (underlying_die) {
+    if (Type *underlying = die.ResolveTypeUID(underlying_die))
+      underlying_type = underlying->GetForwardCompilerType();
+  }
+
+  CompilerType typedef_type =
+      m_ts.Lock()->CreateTypedefType(name, underlying_type);
+
+  std::optional<uint64_t> byte_size =
+      llvm::expectedToOptional(typedef_type.GetByteSize(nullptr));
+
+  Declaration decl;
+  return dwarf->MakeType(die.GetID(), name, byte_size, /*context=*/nullptr,
+                         underlying_die.GetID(), Type::eEncodingIsUID, decl,
+                         typedef_type, Type::ResolveState::Full);
+}
+
+TypeSP DWARFASTParserCpp::ParseCVQualifiedType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  // DWARF nests one qualifier per DIE (e.g. `const volatile int` is a
+  // DW_TAG_const_type wrapping a DW_TAG_volatile_type wrapping `int`), so each
+  // DIE carries exactly one of const/volatile.
+  bool is_const = die.Tag() == DW_TAG_const_type;
+  bool is_volatile = die.Tag() == DW_TAG_volatile_type;
+
+  DWARFDIE underlying_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  CompilerType underlying_type;
+  if (underlying_die) {
+    if (Type *underlying = die.ResolveTypeUID(underlying_die))
+      underlying_type = underlying->GetForwardCompilerType();
+  }
+
+  CompilerType cv_type = m_ts.Lock()->CreateCVQualifiedType(
+      underlying_type, is_const, is_volatile);
+
+  std::optional<uint64_t> byte_size =
+      llvm::expectedToOptional(cv_type.GetByteSize(nullptr));
+
+  Declaration decl;
+  ConstString empty_name;
+  return dwarf->MakeType(die.GetID(), empty_name, byte_size,
+                         /*context=*/nullptr, underlying_die.GetID(),
+                         Type::eEncodingIsUID, decl, cv_type,
+                         Type::ResolveState::Full);
+}
+
+TypeSP DWARFASTParserCpp::ParseEnum(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+  ConstString name(GetDIEQualifiedName(die));
+  std::optional<uint64_t> byte_size =
+      die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size);
+  bool is_scoped = die.GetAttributeValueAsUnsigned(DW_AT_enum_class, 0) != 0;
+
+  // The enum's underlying integer type, if the producer recorded one.
+  DWARFDIE underlying_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  CompilerType underlying_type;
+  if (underlying_die) {
+    if (Type *underlying = die.ResolveTypeUID(underlying_die))
+      underlying_type = underlying->GetForwardCompilerType();
+  }
+
+  CompilerType enum_type;
+  {
+    auto ts = m_ts.Lock();
+    enum_type = ts->CreateEnumType(name, byte_size, underlying_type, is_scoped);
+    cpp_typesystem::Type *cpp_type =
+        TypeSystemCpp::GetCppType(enum_type.GetOpaqueQualType());
+    auto &enum_node = *llvm::cast<cpp_typesystem::EnumType>(cpp_type);
+
+    // Enumerators are few and cheap, so parse them eagerly here rather than
+    // deferring to lazy completion.
+    for (DWARFDIE child : die.children()) {
+      if (child.Tag() != DW_TAG_enumerator)
+        continue;
+      const char *enumerator_name = child.GetName();
+      if (!enumerator_name || !enumerator_name[0])
+        continue;
+      // The raw 64-bit value carries the two's-complement bits for signed
+      // enumerators, which is what the value formatter compares against.
+      uint64_t value = child.GetAttributeValueAsUnsigned(DW_AT_const_value, 0);
+      ts->AddEnumerator(enum_node, ts->GetIdentifier(enumerator_name), value);
+    }
+  }
+
+  Declaration decl;
+  return dwarf->MakeType(die.GetID(), name, byte_size, /*context=*/nullptr,
+                         underlying_die.GetID(), Type::eEncodingIsUID, decl,
+                         enum_type, Type::ResolveState::Full);
+}
+
 TypeSP DWARFASTParserCpp::ParseTypeFromDWARF(const SymbolContext &sc,
                                              const DWARFDIE &die,
                                              bool *type_is_new_ptr) {
@@ -286,6 +449,20 @@ TypeSP DWARFASTParserCpp::ParseTypeFromDWARF(const SymbolContext &sc,
     break;
   case DW_TAG_pointer_type:
     type_sp = ParsePointerType(die);
+    break;
+  case DW_TAG_reference_type:
+  case DW_TAG_rvalue_reference_type:
+    type_sp = ParseReferenceType(die);
+    break;
+  case DW_TAG_typedef:
+    type_sp = ParseTypedef(die);
+    break;
+  case DW_TAG_const_type:
+  case DW_TAG_volatile_type:
+    type_sp = ParseCVQualifiedType(die);
+    break;
+  case DW_TAG_enumeration_type:
+    type_sp = ParseEnum(die);
     break;
   default:
     break;
@@ -343,15 +520,26 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   // C++-only information (base classes) is only stored on ClassType.
   auto *cpp_class = llvm::dyn_cast<cpp_typesystem::ClassType>(record);
 
-  // Collect the base classes and members in declaration order, along with the
-  // DWARF reference to each one's type. This DWARF traversal runs single
-  // threaded; only the (heavier) type resolution below is spread out.
+  // Collect the base classes, members and template arguments in declaration
+  // order, along with the DWARF reference to each one's type. This DWARF
+  // traversal runs single threaded; only the (heavier) type resolution below
+  // is spread out.
   struct MemberInfo {
-    bool is_base;
-    llvm::StringRef name; // Field name; empty for base classes.
-    uint64_t byte_offset;
+    enum class Kind {
+      Field,
+      Base,
+      TemplateType,
+      TemplateValue,
+      NestedType
+    } kind;
+    llvm::StringRef name; // Field/nested-type name; empty otherwise.
+    uint64_t byte_offset = 0;
+    uint64_t value = 0; // Value of a non-type template argument.
     DWARFDIE referencing_die;
     DWARFDIE type_die;
+    uint32_t bit_size = 0; // DW_AT_bit_size of a bitfield member (0 if none).
+    // DW_AT_data_bit_offset of a bitfield member, or UINT64_MAX if absent.
+    uint64_t data_bit_offset = UINT64_MAX;
   };
   std::vector<MemberInfo> members;
   for (DWARFDIE child : die.children()) {
@@ -361,14 +549,41 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
       if (!cpp_class)
         continue;
       members.push_back(
-          {/*is_base=*/true, /*name=*/{},
+          {MemberInfo::Kind::Base, /*name=*/{},
            child.GetAttributeValueAsUnsigned(DW_AT_data_member_location, 0),
-           child, child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+           /*value=*/0, child,
+           child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
     } else if (tag == DW_TAG_member) {
       members.push_back(
-          {/*is_base=*/false, child.GetName(),
+          {MemberInfo::Kind::Field, child.GetName(),
            child.GetAttributeValueAsUnsigned(DW_AT_data_member_location, 0),
-           child, child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+           /*value=*/0, child,
+           child.GetAttributeValueAsReferenceDIE(DW_AT_type),
+           /*bit_size=*/
+           static_cast<uint32_t>(
+               child.GetAttributeValueAsUnsigned(DW_AT_bit_size, 0)),
+           child.GetAttributeValueAsOptionalUnsigned(DW_AT_data_bit_offset)
+               .value_or(UINT64_MAX)});
+    } else if (tag == DW_TAG_template_type_parameter) {
+      members.push_back(
+          {MemberInfo::Kind::TemplateType, child.GetName(), /*byte_offset=*/0,
+           /*value=*/0, child,
+           child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+    } else if (tag == DW_TAG_template_value_parameter) {
+      members.push_back(
+          {MemberInfo::Kind::TemplateValue, child.GetName(), /*byte_offset=*/0,
+           child.GetAttributeValueAsUnsigned(DW_AT_const_value, 0), child,
+           child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+    } else if (tag == DW_TAG_typedef || tag == DW_TAG_structure_type ||
+               tag == DW_TAG_class_type || tag == DW_TAG_union_type ||
+               tag == DW_TAG_enumeration_type) {
+      // A type declared inside this record. Resolving the child DIE itself
+      // yields the nested type; data formatters look these up by name (e.g. a
+      // container's "__node_pointer"). Skip anonymous ones.
+      const char *nested_name = child.GetName();
+      if (nested_name && nested_name[0])
+        members.push_back({MemberInfo::Kind::NestedType, nested_name,
+                           /*byte_offset=*/0, /*value=*/0, die, child});
     }
   }
 
@@ -392,22 +607,62 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   for (size_t i = 0; i < members.size(); ++i)
     member_types[i] = resolved[i].get();
 
-  // Integrate the resolved base classes and members into the record, in
-  // declaration order, under a single lock.
+  // Integrate the resolved base classes, members and template arguments into
+  // the record, in declaration order, under a single lock.
   auto ts = m_ts.Lock();
   for (size_t i = 0; i < members.size(); ++i) {
     cpp_typesystem::Type *member_type = member_types[i];
-    if (!member_type)
-      continue;
     const MemberInfo &member = members[i];
-    if (member.is_base)
-      ts->AddBaseClass(*cpp_class, member_type, member.byte_offset);
-    else
-      // Intern the member name through the type system's Context so its
-      // storage is owned alongside the types (rather than pointing into DWARF
-      // data).
-      ts->AddField(*record, ts->GetIdentifier(member.name), member_type,
-                   member.byte_offset);
+    switch (member.kind) {
+    case MemberInfo::Kind::Base:
+      if (member_type)
+        ts->AddBaseClass(*cpp_class, member_type, member.byte_offset);
+      break;
+    case MemberInfo::Kind::Field:
+      if (member_type) {
+        // For a bitfield, translate the DWARF bit position into the storage
+        // unit's byte offset plus the bit offset within it (mirroring
+        // TypeSystemClang and what GetChildCompilerTypeAtIndex expects).
+        uint64_t byte_offset = member.byte_offset;
+        uint32_t bitfield_bit_size = 0;
+        uint32_t bitfield_bit_offset = 0;
+        if (member.bit_size > 0) {
+          bitfield_bit_size = member.bit_size;
+          uint64_t abs_bit_offset = member.data_bit_offset != UINT64_MAX
+                                        ? member.data_bit_offset
+                                        : member.byte_offset * 8;
+          uint64_t storage_bits =
+              member_type->GetByteSize().value_or(0) * 8;
+          if (storage_bits) {
+            bitfield_bit_offset = abs_bit_offset % storage_bits;
+            byte_offset = (abs_bit_offset - bitfield_bit_offset) / 8;
+          } else {
+            byte_offset = abs_bit_offset / 8;
+          }
+        }
+        // Intern the member name through the type system's Context so its
+        // storage is owned alongside the types (rather than pointing into
+        // DWARF data).
+        ts->AddField(*record, ts->GetIdentifier(member.name), member_type,
+                     byte_offset, bitfield_bit_size, bitfield_bit_offset);
+      }
+      break;
+    case MemberInfo::Kind::TemplateType:
+      ts->AddTemplateArgument(
+          *record, cpp_typesystem::TemplateArgument{
+                       lldb::eTemplateArgumentKindType, member_type, 0});
+      break;
+    case MemberInfo::Kind::TemplateValue:
+      ts->AddTemplateArgument(
+          *record, cpp_typesystem::TemplateArgument{
+                       lldb::eTemplateArgumentKindIntegral, member_type,
+                       member.value});
+      break;
+    case MemberInfo::Kind::NestedType:
+      if (member_type)
+        ts->AddNestedType(*record, ts->GetIdentifier(member.name), member_type);
+      break;
+    }
   }
 
   return true;

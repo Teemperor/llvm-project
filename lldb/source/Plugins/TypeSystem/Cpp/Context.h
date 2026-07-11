@@ -59,17 +59,46 @@ public:
   /// `void *`). Its byte size is the target's pointer size.
   PointerType *CreatePointerType(Type *pointee_type);
 
+  /// Create an lvalue (`T &`) or rvalue (`T &&`) reference to \p pointee_type.
+  /// Its byte size is the target's pointer size.
+  ReferenceType *CreateReferenceType(Type *pointee_type, bool is_rvalue);
+
+  /// Create a typedef named \p name aliasing \p underlying_type.
+  TypedefType *CreateTypedefType(llvm::StringRef name, Type *underlying_type);
+
+  /// Create a cv-qualified version of \p underlying_type.
+  CVQualifiedType *CreateCVQualifiedType(Type *underlying_type, bool is_const,
+                                         bool is_volatile);
+
+  /// Create an enumeration type. \p underlying_type is the integer type backing
+  /// the enum (may be null when unknown). Enumerators are added afterwards via
+  /// AddEnumerator during completion.
+  EnumType *CreateEnumType(llvm::StringRef name,
+                           std::optional<uint64_t> byte_size,
+                           Type *underlying_type, bool is_scoped);
+
   /// Structural mutation of already-created record types. These are the gated
   /// entry points for the mutations that happen during lazy completion; the
   /// corresponding Type methods are private and befriend this class.
   /// @{
   void SetComplete(RecordType &record) { record.SetIsComplete(true); }
   void AddField(RecordType &record, Identifier name, Type *type,
-                uint64_t byte_offset) {
-    record.AddField(name, type, byte_offset);
+                uint64_t byte_offset, uint32_t bitfield_bit_size = 0,
+                uint32_t bitfield_bit_offset = 0) {
+    record.AddField(name, type, byte_offset, bitfield_bit_size,
+                    bitfield_bit_offset);
   }
   void AddBaseClass(ClassType &record, Type *type, uint64_t byte_offset) {
     record.AddBaseClass(type, byte_offset);
+  }
+  void AddTemplateArgument(RecordType &record, TemplateArgument arg) {
+    record.AddTemplateArgument(arg);
+  }
+  void AddNestedType(RecordType &record, Identifier name, Type *type) {
+    record.AddNestedType(name, type);
+  }
+  void AddEnumerator(EnumType &enum_type, Identifier name, uint64_t value) {
+    enum_type.AddEnumerator(name, value);
   }
   /// @}
 

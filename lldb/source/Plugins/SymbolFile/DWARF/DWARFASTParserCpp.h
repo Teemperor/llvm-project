@@ -74,9 +74,7 @@ public:
       lldb_private::CompilerDeclContext decl_context) override {}
 
   std::string GetDIEClassTemplateParams(
-      lldb_private::plugin::dwarf::DWARFDIE die) override {
-    return std::string();
-  }
+      lldb_private::plugin::dwarf::DWARFDIE die) override;
 
 private:
   lldb::TypeSP
@@ -87,6 +85,13 @@ private:
   ParseArrayType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParsePointerType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  lldb::TypeSP
+  ParseReferenceType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  lldb::TypeSP
+  ParseTypedef(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  lldb::TypeSP
+  ParseCVQualifiedType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  lldb::TypeSP ParseEnum(const lldb_private::plugin::dwarf::DWARFDIE &die);
 
   /// Resolve a DWARF type reference to its TypeSystemCpp node. This is the unit
   /// of work spread across threads while completing a record: it may run on a
