@@ -33,7 +33,7 @@ BuiltinType *Context::GetBuiltinType(llvm::StringRef name,
 
 RecordType *Context::CreateRecordType(llvm::StringRef name,
                                       std::optional<uint64_t> byte_size,
-                                      bool is_cpp_class) {
+                                      bool is_cpp_class, bool is_union) {
   std::unique_ptr<RecordType> type;
   if (is_cpp_class)
     type = std::make_unique<ClassType>();
@@ -41,6 +41,7 @@ RecordType *Context::CreateRecordType(llvm::StringRef name,
     type = std::make_unique<StructType>();
   type->SetName(GetIdentifier(name));
   type->SetByteSize(byte_size);
+  type->m_is_union = is_union;
   return Track(std::move(type));
 }
 

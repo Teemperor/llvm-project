@@ -9,9 +9,11 @@
 #include "TypeSystemCpp.h"
 
 #include "Plugins/SymbolFile/DWARF/DWARFASTParserCpp.h"
+#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 
 #include "lldb/Core/DumpDataExtractor.h"
 #include "lldb/Core/PluginManager.h"
+#include "lldb/Expression/UtilityFunction.h"
 #include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Target/Language.h"
 #include "lldb/Target/Target.h"
@@ -87,7 +89,61 @@ void TypeSystemCpp::Terminate() {
 ScratchTypeSystemCpp::ScratchTypeSystemCpp(Target &target, llvm::Triple triple)
     : TypeSystemCpp(std::string("scratch TypeSystemCpp for ") +
                         target.GetArchitecture().GetArchitectureName(),
-                    std::move(triple)) {}
+                    std::move(triple)),
+      m_target_wp(target.shared_from_this()) {}
+
+lldb::TypeSystemSP ScratchTypeSystemCpp::GetOrCreateCompanion() {
+  if (!m_companion_clang_sp) {
+    TargetSP target = m_target_wp.lock();
+    if (!target)
+      return nullptr;
+    m_companion_clang_sp = ScratchTypeSystemClang::CreateStandalone(
+        *target, target->GetArchitecture().GetTriple());
+  }
+  return m_companion_clang_sp;
+}
+
+lldb::TypeSystemSP ScratchTypeSystemCpp::GetCompanionClangTypeSystem() {
+  return GetOrCreateCompanion();
+}
+
+UserExpression *ScratchTypeSystemCpp::GetUserExpression(
+    llvm::StringRef expr, llvm::StringRef prefix, SourceLanguage language,
+    Expression::ResultType desired_type,
+    const EvaluateExpressionOptions &options, ValueObject *ctx_obj) {
+  lldb::TypeSystemSP clang_ts = GetOrCreateCompanion();
+  if (!clang_ts)
+    return nullptr;
+  return clang_ts->GetUserExpression(expr, prefix, language, desired_type,
+                                     options, ctx_obj);
+}
+
+FunctionCaller *ScratchTypeSystemCpp::GetFunctionCaller(
+    const CompilerType &return_type, const Address &function_address,
+    const ValueList &arg_value_list, const char *name) {
+  lldb::TypeSystemSP clang_ts = GetOrCreateCompanion();
+  if (!clang_ts)
+    return nullptr;
+  return clang_ts->GetFunctionCaller(return_type, function_address,
+                                     arg_value_list, name);
+}
+
+std::unique_ptr<UtilityFunction>
+ScratchTypeSystemCpp::CreateUtilityFunction(std::string text,
+                                            std::string name) {
+  lldb::TypeSystemSP clang_ts = GetOrCreateCompanion();
+  if (!clang_ts)
+    return {};
+  return clang_ts->CreateUtilityFunction(std::move(text), std::move(name));
+}
+
+PersistentExpressionState *
+ScratchTypeSystemCpp::GetPersistentExpressionState() {
+  lldb::TypeSystemSP clang_ts = GetOrCreateCompanion();
+  if (!clang_ts)
+    return nullptr;
+  return clang_ts->GetPersistentExpressionState();
+}
 
 ConstString TypeSystemCpp::DeclGetName(void *opaque_decl) {
   return ConstString();
@@ -916,8 +972,29 @@ unsigned TypeSystemCpp::GetTypeQualifiers(opaque_compiler_type_t type) {
 
 std::optional<size_t>
 TypeSystemCpp::GetTypeBitAlign(opaque_compiler_type_t type,
-                               ExecutionContextScope *exe_scope) {
-  return std::nullopt;
+                              ExecutionContextScope *exe_scope) {
+  if (!type)
+    return std::nullopt;
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+  if (!t)
+    return std::nullopt;
+
+  // Pointers and references are pointer-aligned.
+  if (llvm::isa<cpp_typesystem::PointerType>(t) ||
+      llvm::isa<cpp_typesystem::ReferenceType>(t))
+    return GetPointerByteSize() * 8;
+
+  // The cpp_typesystem model doesn't record alignment. For scalars this is the
+  // size; for aggregates, derive an alignment that divides the size (natural
+  // alignment for the standard-layout types produced from debug info). Cap at
+  // 8 bytes, which matches the fundamental alignment on the supported targets.
+  std::optional<uint64_t> byte_size = t->GetByteSize();
+  if (!byte_size || *byte_size == 0)
+    return std::nullopt;
+  uint64_t align_bytes = 1;
+  while (align_bytes * 2 <= 8 && (*byte_size % (align_bytes * 2)) == 0)
+    align_bytes *= 2;
+  return align_bytes * 8;
 }
 
 CompilerType TypeSystemCpp::GetBasicTypeFromAST(BasicType basic_type) {

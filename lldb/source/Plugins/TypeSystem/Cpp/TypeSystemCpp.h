@@ -284,6 +284,37 @@ public:
     return ClassID == &ID || TypeSystemCpp::isA(ClassID);
   }
   static bool classof(const TypeSystem *ts) { return ts->isA(&ID); }
+
+  // Expressions are still parsed by the Clang expression parser; the actual
+  // expression objects are created by the target's ScratchTypeSystemClang.
+  // TypeSystemCpp-specific behavior (in particular translating debug-info types
+  // into the parser's Clang AST and mapping the result type back) is handled by
+  // CppExpressionDeclMap, which the parser installs when this setting is on.
+  UserExpression *
+  GetUserExpression(llvm::StringRef expr, llvm::StringRef prefix,
+                    SourceLanguage language, Expression::ResultType desired_type,
+                    const EvaluateExpressionOptions &options,
+                    ValueObject *ctx_obj) override;
+
+  FunctionCaller *GetFunctionCaller(const CompilerType &return_type,
+                                    const Address &function_address,
+                                    const ValueList &arg_value_list,
+                                    const char *name) override;
+
+  std::unique_ptr<UtilityFunction>
+  CreateUtilityFunction(std::string text, std::string name) override;
+
+  PersistentExpressionState *GetPersistentExpressionState() override;
+
+  lldb::TypeSystemSP GetCompanionClangTypeSystem() override;
+
+private:
+  /// Lazily-created companion scratch TypeSystemClang that hosts the Clang
+  /// expression parser (see GetCompanionClangTypeSystem).
+  lldb::TypeSystemSP GetOrCreateCompanion();
+
+  lldb::TargetWP m_target_wp;
+  lldb::TypeSystemSP m_companion_clang_sp;
 };
 
 } // namespace lldb_private

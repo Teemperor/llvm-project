@@ -1262,6 +1262,15 @@ public:
 
   ~ScratchTypeSystemClang() override = default;
 
+  /// Create a standalone scratch TypeSystemClang (not registered in any
+  /// target's type-system map). Used by ScratchTypeSystemCpp to host a Clang
+  /// expression parser when the target's scratch type system is a
+  /// TypeSystemCpp. Defined here (rather than at the call site) so the
+  /// ScratchTypeSystemClang destructor is instantiated where its members are
+  /// complete types.
+  static lldb::TypeSystemSP CreateStandalone(Target &target,
+                                             llvm::Triple triple);
+
   void Finalize() override;
 
   /// The different kinds of isolated ASTs within the scratch TypeSystem.

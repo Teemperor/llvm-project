@@ -41,9 +41,9 @@ CompilerType Builder::GetVoidType() {
 
 CompilerType Builder::CreateRecordType(ConstString name,
                                        std::optional<uint64_t> byte_size,
-                                       bool is_cpp_class) {
+                                       bool is_cpp_class, bool is_union) {
   return m_ts.GetCompilerType(m_ts.m_context.CreateRecordType(
-      name.GetStringRef(), byte_size, is_cpp_class));
+      name.GetStringRef(), byte_size, is_cpp_class, is_union));
 }
 
 CompilerType Builder::CreateArrayType(CompilerType element_type,

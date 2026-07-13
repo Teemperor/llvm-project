@@ -537,6 +537,15 @@ public:
     return nullptr;
   }
 
+  /// Some TypeSystems don't host a Clang expression parser themselves and
+  /// instead rely on a companion scratch TypeSystemClang (e.g. TypeSystemCpp,
+  /// whose module types have no Clang AST). Returns that companion, or nullptr
+  /// if this TypeSystem is self-contained. Used by
+  /// ScratchTypeSystemClang::GetForTarget so the Clang expression machinery can
+  /// find a Clang scratch context even when the target's scratch type system is
+  /// not itself a TypeSystemClang.
+  virtual lldb::TypeSystemSP GetCompanionClangTypeSystem() { return nullptr; }
+
   virtual CompilerType GetTypeForFormatters(void *type);
 
   virtual LazyBool ShouldPrintAsOneLiner(void *type, ValueObject *valobj);

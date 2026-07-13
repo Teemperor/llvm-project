@@ -48,7 +48,7 @@ public:
   /// a plain StructType is used.
   RecordType *CreateRecordType(llvm::StringRef name,
                                std::optional<uint64_t> byte_size,
-                               bool is_cpp_class);
+                               bool is_cpp_class, bool is_union = false);
 
   /// Create an array type of \p num_elements elements of \p element_type.
   /// \p num_elements is std::nullopt for an array of unknown bound.
