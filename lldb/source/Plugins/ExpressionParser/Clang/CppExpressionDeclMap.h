@@ -131,6 +131,11 @@ private:
   bool LookupGlobalVariable(const clang::DeclContext *dc, ConstString name,
                             llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
+  /// Look up a type named \p name in the target and generate a decl for it so
+  /// the expression can name it (e.g. in a cast, \c sizeof, or \c offsetof).
+  bool LookupType(const clang::DeclContext *dc, ConstString name,
+                  llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
   const lldb::TargetSP m_target;
   ValueObject *m_ctx_obj;
   Materializer::PersistentVariableDelegate *m_result_delegate;
