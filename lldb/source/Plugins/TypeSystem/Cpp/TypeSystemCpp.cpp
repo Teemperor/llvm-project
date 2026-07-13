@@ -603,6 +603,35 @@ TypeSystemCpp::GetEnumerationIntegerType(opaque_compiler_type_t type) {
   return CompilerType();
 }
 
+void TypeSystemCpp::ForEachEnumerator(
+    opaque_compiler_type_t type,
+    std::function<bool(const CompilerType &integer_type, ConstString name,
+                       const llvm::APSInt &value)> const &callback) {
+  if (!type)
+    return;
+  auto *enum_type =
+      llvm::dyn_cast<cpp_typesystem::EnumType>(Desugar(GetCppType(type)));
+  if (!enum_type)
+    return;
+
+  CompilerType integer_type = GetCompilerType(enum_type->GetUnderlyingType());
+  const bool is_signed = enum_type->IsSigned();
+  // Enumerator values are stored as raw bits; recover their APSInt using the
+  // underlying type's width so signed values sign-extend correctly.
+  unsigned bit_width = 64;
+  if (std::optional<uint64_t> byte_size =
+          llvm::expectedToOptional(integer_type.GetByteSize(nullptr)))
+    bit_width = static_cast<unsigned>(*byte_size * 8);
+
+  for (const cpp_typesystem::Enumerator &enumerator :
+       enum_type->GetEnumerators()) {
+    llvm::APSInt value(llvm::APInt(bit_width, enumerator.value, is_signed),
+                       !is_signed);
+    if (!callback(integer_type, ConstString(enumerator.name.GetName()), value))
+      break;
+  }
+}
+
 int TypeSystemCpp::GetFunctionArgumentCount(opaque_compiler_type_t type) {
   return -1;
 }
