@@ -16,6 +16,7 @@
 #include "lldb/lldb-enumerations.h"
 
 #include <cstdint>
+#include <mutex>
 #include <optional>
 
 namespace lldb_private {
@@ -25,13 +26,20 @@ class TypeSystemCpp;
 namespace cpp_typesystem {
 
 /// The mutating, non-thread-safe interface used to populate a TypeSystemCpp
-/// (e.g. by the DWARF parser). It is only reachable through
-/// TypeSystemCpp::Lock(), which hands one out inside a LockedPtr that owns
-/// the type system's mutex. Because this is the only way to name these
-/// methods, mutating the type system without serializing against other
-/// threads is impossible by construction.
+/// (e.g. by the DWARF parser). Constructing a Builder acquires the type
+/// system's mutex and holds it for the Builder's lifetime, so every mutation
+/// performed through it is serialized against other threads. This is the only
+/// way to reach the mutating API: a caller that wants to change the type
+/// system must name a Builder, and naming one takes the lock.
 class Builder {
 public:
+  /// Acquire exclusive, serialized access to \p ts's mutable state. The lock
+  /// is held until this Builder is destroyed.
+  explicit Builder(TypeSystemCpp &ts);
+
+  Builder(const Builder &) = delete;
+  Builder &operator=(const Builder &) = delete;
+
   // Type creation.
   CompilerType GetBuiltinType(ConstString name,
                               std::optional<uint64_t> byte_size,
@@ -78,12 +86,8 @@ public:
   void AddEnumerator(EnumType &enum_type, Identifier name, uint64_t value);
 
 private:
-  friend class lldb_private::TypeSystemCpp;
-  explicit Builder(TypeSystemCpp &ts) : m_ts(ts) {}
-  Builder(const Builder &) = delete;
-  Builder &operator=(const Builder &) = delete;
-
   TypeSystemCpp &m_ts;
+  std::lock_guard<std::recursive_mutex> m_lock;
 };
 
 } // namespace cpp_typesystem

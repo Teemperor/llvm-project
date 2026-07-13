@@ -10,8 +10,8 @@
 
 #include "Plugins/SymbolFile/DWARF/DWARFASTParserCpp.h"
 
-#include "lldb/Core/PluginManager.h"
 #include "lldb/Core/DumpDataExtractor.h"
+#include "lldb/Core/PluginManager.h"
 #include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Target/Language.h"
 #include "lldb/Target/Target.h"
@@ -318,17 +318,18 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
     cpp_typesystem::Type *pointee = ref->GetPointeeType();
     std::string pointee_name =
         pointee ? GetTypeName(pointee, BaseOnly).GetStringRef().str() : "void";
-    return ConstString(llvm::formatv("{0} {1}", pointee_name,
-                                     ref->IsRValue() ? "&&" : "&")
-                           .str());
+    return ConstString(
+        llvm::formatv("{0} {1}", pointee_name, ref->IsRValue() ? "&&" : "&")
+            .str());
   }
   // cv-qualified types render as "const"/"volatile" prefixing the unqualified
   // name.
   if (auto *cv = llvm::dyn_cast<cpp_typesystem::CVQualifiedType>(t)) {
     std::string underlying_name =
-        cv->GetUnderlyingType()
-            ? GetTypeName(cv->GetUnderlyingType(), BaseOnly).GetStringRef().str()
-            : "";
+        cv->GetUnderlyingType() ? GetTypeName(cv->GetUnderlyingType(), BaseOnly)
+                                      .GetStringRef()
+                                      .str()
+                                : "";
     std::string result;
     if (cv->IsConst())
       result += "const ";
@@ -359,7 +360,8 @@ TypeSystemCpp::GetTypeInfo(opaque_compiler_type_t type,
     cpp_typesystem::Type *inner = nullptr;
     if (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(Desugar(t)))
       inner = array->GetElementType();
-    else if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(Desugar(t)))
+    else if (auto *ptr =
+                 llvm::dyn_cast<cpp_typesystem::PointerType>(Desugar(t)))
       inner = ptr->GetPointeeType();
     else if (auto *ref =
                  llvm::dyn_cast<cpp_typesystem::ReferenceType>(Desugar(t)))
@@ -438,8 +440,8 @@ TypeSystemCpp::GetMemberFunctionAtIndex(opaque_compiler_type_t type,
 CompilerType TypeSystemCpp::GetPointeeType(opaque_compiler_type_t type) {
   if (!type)
     return CompilerType();
-  if (auto *ptr =
-          llvm::dyn_cast<cpp_typesystem::PointerType>(Desugar(GetCppType(type))))
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(
+          Desugar(GetCppType(type))))
     return GetCompilerType(ptr->GetPointeeType());
   return CompilerType();
 }
@@ -447,11 +449,12 @@ CompilerType TypeSystemCpp::GetPointeeType(opaque_compiler_type_t type) {
 CompilerType TypeSystemCpp::GetPointerType(opaque_compiler_type_t type) {
   if (!type)
     return CompilerType();
-  return Lock()->CreatePointerType(GetCompilerType(GetCppType(type)));
+  return cpp_typesystem::Builder(*this).CreatePointerType(
+      GetCompilerType(GetCppType(type)));
 }
 
-const llvm::fltSemantics &
-TypeSystemCpp::GetFloatTypeSemantics(size_t byte_size, Format format) {
+const llvm::fltSemantics &TypeSystemCpp::GetFloatTypeSemantics(size_t byte_size,
+                                                               Format format) {
   return m_context.GetLanguageOpts().GetFloatTypeSemantics(byte_size, format);
 }
 
@@ -479,8 +482,8 @@ Format TypeSystemCpp::GetFormat(opaque_compiler_type_t type) {
 
 llvm::Expected<uint32_t>
 TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
-                             bool omit_empty_base_classes,
-                             const ExecutionContext *exe_ctx) {
+                              bool omit_empty_base_classes,
+                              const ExecutionContext *exe_ctx) {
   if (!type)
     return 0;
   cpp_typesystem::Type *t = Desugar(GetCppType(type));
@@ -514,8 +517,7 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
   return t->GetNumBaseClasses() + t->GetNumFields();
 }
 
-BasicType
-TypeSystemCpp::GetBasicTypeEnumeration(opaque_compiler_type_t type) {
+BasicType TypeSystemCpp::GetBasicTypeEnumeration(opaque_compiler_type_t type) {
   return eBasicTypeInvalid;
 }
 
@@ -547,23 +549,20 @@ CompilerType TypeSystemCpp::GetFieldAtIndex(opaque_compiler_type_t type,
   return GetCompilerType(field->type);
 }
 
-uint32_t
-TypeSystemCpp::GetNumDirectBaseClasses(opaque_compiler_type_t type) {
+uint32_t TypeSystemCpp::GetNumDirectBaseClasses(opaque_compiler_type_t type) {
   if (!type)
     return 0;
   GetCompleteType(type);
   return GetCppType(type)->GetNumBaseClasses();
 }
 
-uint32_t
-TypeSystemCpp::GetNumVirtualBaseClasses(opaque_compiler_type_t type) {
+uint32_t TypeSystemCpp::GetNumVirtualBaseClasses(opaque_compiler_type_t type) {
   return 0;
 }
 
 CompilerType
 TypeSystemCpp::GetDirectBaseClassAtIndex(opaque_compiler_type_t type,
-                                         size_t idx,
-                                         uint32_t *bit_offset_ptr) {
+                                         size_t idx, uint32_t *bit_offset_ptr) {
   if (!type)
     return CompilerType();
   GetCompleteType(type);
@@ -576,18 +575,15 @@ TypeSystemCpp::GetDirectBaseClassAtIndex(opaque_compiler_type_t type,
   return GetCompilerType(base->type);
 }
 
-CompilerType
-TypeSystemCpp::GetVirtualBaseClassAtIndex(opaque_compiler_type_t type,
-                                          size_t idx,
-                                          uint32_t *bit_offset_ptr) {
+CompilerType TypeSystemCpp::GetVirtualBaseClassAtIndex(
+    opaque_compiler_type_t type, size_t idx, uint32_t *bit_offset_ptr) {
   return CompilerType();
 }
 
 llvm::Expected<CompilerType> TypeSystemCpp::GetDereferencedType(
     opaque_compiler_type_t type, ExecutionContext *exe_ctx,
     std::string &deref_name, uint32_t &deref_byte_size,
-    int32_t &deref_byte_offset, ValueObject *valobj,
-    uint64_t &language_flags) {
+    int32_t &deref_byte_offset, ValueObject *valobj, uint64_t &language_flags) {
   // Only pointers, references and arrays can be dereferenced.
   if (!IsPointerOrReferenceType(type, nullptr) &&
       !IsArrayType(type, nullptr, nullptr, nullptr))
@@ -834,8 +830,7 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
 }
 
 #ifndef NDEBUG
-LLVM_DUMP_METHOD void
-TypeSystemCpp::dump(opaque_compiler_type_t type) const {}
+LLVM_DUMP_METHOD void TypeSystemCpp::dump(opaque_compiler_type_t type) const {}
 #endif
 
 /// Render an enum value as an enumerator name when it matches one exactly,
@@ -932,28 +927,72 @@ CompilerType TypeSystemCpp::GetBasicTypeFromAST(BasicType basic_type) {
   // no basic type here.
   std::optional<BuiltinKind> kind;
   switch (basic_type) {
-  case eBasicTypeVoid:              kind = BuiltinKind::Void; break;
-  case eBasicTypeBool:             kind = BuiltinKind::Bool; break;
-  case eBasicTypeChar:             kind = BuiltinKind::Char; break;
-  case eBasicTypeSignedChar:       kind = BuiltinKind::SignedChar; break;
-  case eBasicTypeUnsignedChar:     kind = BuiltinKind::UnsignedChar; break;
-  case eBasicTypeWChar:            kind = BuiltinKind::WCharT; break;
-  case eBasicTypeChar8:            kind = BuiltinKind::Char8; break;
-  case eBasicTypeChar16:           kind = BuiltinKind::Char16; break;
-  case eBasicTypeChar32:           kind = BuiltinKind::Char32; break;
-  case eBasicTypeShort:            kind = BuiltinKind::Short; break;
-  case eBasicTypeUnsignedShort:    kind = BuiltinKind::UnsignedShort; break;
-  case eBasicTypeInt:              kind = BuiltinKind::Int; break;
-  case eBasicTypeUnsignedInt:      kind = BuiltinKind::UnsignedInt; break;
-  case eBasicTypeLong:             kind = BuiltinKind::Long; break;
-  case eBasicTypeUnsignedLong:     kind = BuiltinKind::UnsignedLong; break;
-  case eBasicTypeLongLong:         kind = BuiltinKind::LongLong; break;
-  case eBasicTypeUnsignedLongLong: kind = BuiltinKind::UnsignedLongLong; break;
-  case eBasicTypeInt128:           kind = BuiltinKind::Int128; break;
-  case eBasicTypeUnsignedInt128:   kind = BuiltinKind::UnsignedInt128; break;
-  case eBasicTypeFloat:            kind = BuiltinKind::Float; break;
-  case eBasicTypeDouble:           kind = BuiltinKind::Double; break;
-  case eBasicTypeLongDouble:       kind = BuiltinKind::LongDouble; break;
+  case eBasicTypeVoid:
+    kind = BuiltinKind::Void;
+    break;
+  case eBasicTypeBool:
+    kind = BuiltinKind::Bool;
+    break;
+  case eBasicTypeChar:
+    kind = BuiltinKind::Char;
+    break;
+  case eBasicTypeSignedChar:
+    kind = BuiltinKind::SignedChar;
+    break;
+  case eBasicTypeUnsignedChar:
+    kind = BuiltinKind::UnsignedChar;
+    break;
+  case eBasicTypeWChar:
+    kind = BuiltinKind::WCharT;
+    break;
+  case eBasicTypeChar8:
+    kind = BuiltinKind::Char8;
+    break;
+  case eBasicTypeChar16:
+    kind = BuiltinKind::Char16;
+    break;
+  case eBasicTypeChar32:
+    kind = BuiltinKind::Char32;
+    break;
+  case eBasicTypeShort:
+    kind = BuiltinKind::Short;
+    break;
+  case eBasicTypeUnsignedShort:
+    kind = BuiltinKind::UnsignedShort;
+    break;
+  case eBasicTypeInt:
+    kind = BuiltinKind::Int;
+    break;
+  case eBasicTypeUnsignedInt:
+    kind = BuiltinKind::UnsignedInt;
+    break;
+  case eBasicTypeLong:
+    kind = BuiltinKind::Long;
+    break;
+  case eBasicTypeUnsignedLong:
+    kind = BuiltinKind::UnsignedLong;
+    break;
+  case eBasicTypeLongLong:
+    kind = BuiltinKind::LongLong;
+    break;
+  case eBasicTypeUnsignedLongLong:
+    kind = BuiltinKind::UnsignedLongLong;
+    break;
+  case eBasicTypeInt128:
+    kind = BuiltinKind::Int128;
+    break;
+  case eBasicTypeUnsignedInt128:
+    kind = BuiltinKind::UnsignedInt128;
+    break;
+  case eBasicTypeFloat:
+    kind = BuiltinKind::Float;
+    break;
+  case eBasicTypeDouble:
+    kind = BuiltinKind::Double;
+    break;
+  case eBasicTypeLongDouble:
+    kind = BuiltinKind::LongDouble;
+    break;
   default:
     break;
   }
@@ -1081,9 +1120,9 @@ TypeSystemCpp::GetTemplateArgumentKind(opaque_compiler_type_t type, size_t idx,
   return eTemplateArgumentKindNull;
 }
 
-CompilerType
-TypeSystemCpp::GetTypeTemplateArgument(opaque_compiler_type_t type, size_t idx,
-                                       bool expand_pack) {
+CompilerType TypeSystemCpp::GetTypeTemplateArgument(opaque_compiler_type_t type,
+                                                    size_t idx,
+                                                    bool expand_pack) {
   if (!type)
     return CompilerType();
   GetCompleteType(type);
@@ -1114,7 +1153,8 @@ TypeSystemCpp::GetIntegralTemplateArgument(opaque_compiler_type_t type,
     value = static_cast<int64_t>(arg->integral_value);
   else
     value = arg->integral_value;
-  return CompilerType::IntegralTemplateArgument{value, GetCompilerType(arg->type)};
+  return CompilerType::IntegralTemplateArgument{value,
+                                                GetCompilerType(arg->type)};
 }
 
 CompilerType
