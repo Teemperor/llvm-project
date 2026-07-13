@@ -9612,11 +9612,6 @@ void ScratchTypeSystemClang::Finalize() {
   m_scratch_ast_source_up.reset();
 }
 
-lldb::TypeSystemSP ScratchTypeSystemClang::CreateStandalone(Target &target,
-                                                            llvm::Triple triple) {
-  return std::make_shared<ScratchTypeSystemClang>(target, std::move(triple));
-}
-
 TypeSystemClangSP
 ScratchTypeSystemClang::GetForTarget(Target &target,
                                      std::optional<IsolatedASTKind> ast_kind,
@@ -9629,11 +9624,6 @@ ScratchTypeSystemClang::GetForTarget(Target &target,
     return nullptr;
   }
   auto ts_sp = *type_system_or_err;
-  // A non-Clang scratch type system (e.g. ScratchTypeSystemCpp) may delegate
-  // expression evaluation to a companion scratch TypeSystemClang; use it.
-  if (lldb::TypeSystemSP companion =
-          ts_sp ? ts_sp->GetCompanionClangTypeSystem() : nullptr)
-    ts_sp = companion;
   ScratchTypeSystemClang *scratch_ast =
       llvm::dyn_cast_or_null<ScratchTypeSystemClang>(ts_sp.get());
   if (!scratch_ast)

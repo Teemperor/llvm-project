@@ -63,7 +63,7 @@ public:
 
     /// Return the object that the parser should use when resolving external
     /// values.  May be NULL if everything should be self-contained.
-    ClangExpressionDeclMap *DeclMap() override {
+    ExpressionDeclMap *DeclMap() override {
       return m_expr_decl_map_up.get();
     }
 
@@ -87,7 +87,7 @@ public:
 
   private:
     Target &m_target;
-    std::unique_ptr<ClangExpressionDeclMap> m_expr_decl_map_up;
+    std::unique_ptr<ExpressionDeclMap> m_expr_decl_map_up;
     std::unique_ptr<ASTStructExtractor> m_struct_extractor_up; ///< The class
                                                                ///that generates
                                                                ///the argument
@@ -159,7 +159,7 @@ public:
     return &m_type_system_helper;
   }
 
-  ClangExpressionDeclMap *DeclMap() { return m_type_system_helper.DeclMap(); }
+  ExpressionDeclMap *DeclMap() { return m_type_system_helper.DeclMap(); }
 
   void ResetDeclMap() { m_type_system_helper.ResetDeclMap(); }
 

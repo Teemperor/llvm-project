@@ -9,7 +9,7 @@
 #include "IRForTarget.h"
 #include "InjectPointerSigningFixups.h"
 
-#include "ClangExpressionDeclMap.h"
+#include "ExpressionDeclMap.h"
 #include "ClangUtil.h"
 
 #include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
@@ -71,7 +71,7 @@ static llvm::Value *FindEntryInstruction(llvm::Function *function) {
   return &*function->getEntryBlock().getFirstNonPHIOrDbg();
 }
 
-IRForTarget::IRForTarget(lldb_private::ClangExpressionDeclMap *decl_map,
+IRForTarget::IRForTarget(lldb_private::ExpressionDeclMap *decl_map,
                          bool resolve_vars,
                          lldb_private::IRExecutionUnit &execution_unit,
                          lldb_private::Stream &error_stream,
@@ -276,13 +276,13 @@ bool IRForTarget::CreateResultVariable(llvm::Function &llvm_function) {
       clang::QualType element_qual_type = pointer_pointertype->getPointeeType();
 
       m_result_type = lldb_private::TypeFromParser(
-          m_decl_map->GetTypeSystem()->GetType(element_qual_type));
+          m_decl_map->WrapType(element_qual_type));
     } else if (pointer_objcobjpointertype) {
       clang::QualType element_qual_type =
           clang::QualType(pointer_objcobjpointertype->getObjectType(), 0);
 
       m_result_type = lldb_private::TypeFromParser(
-          m_decl_map->GetTypeSystem()->GetType(element_qual_type));
+          m_decl_map->WrapType(element_qual_type));
     } else {
       LLDB_LOG(log, "Expected result to have pointer type, but it did not");
 
@@ -294,7 +294,7 @@ bool IRForTarget::CreateResultVariable(llvm::Function &llvm_function) {
     }
   } else {
     m_result_type = lldb_private::TypeFromParser(
-        m_decl_map->GetTypeSystem()->GetType(result_var->getType()));
+        m_decl_map->WrapType(result_var->getType()));
   }
 
   lldb::TargetSP target_sp(m_execution_unit.GetTarget());
@@ -893,7 +893,7 @@ bool IRForTarget::RewritePersistentAlloc(llvm::Instruction *persistent_alloc) {
   clang::VarDecl *decl = reinterpret_cast<clang::VarDecl *>(ptr);
 
   lldb_private::TypeFromParser result_decl_type(
-      m_decl_map->GetTypeSystem()->GetType(decl->getType()));
+      m_decl_map->WrapType(decl->getType()));
 
   StringRef decl_name(decl->getName());
   lldb_private::ConstString persistent_variable_name(decl_name);
@@ -1023,7 +1023,7 @@ bool IRForTarget::MaybeHandleVariable(Value *llvm_value_ptr) {
       return false;
 
     lldb_private::CompilerType compiler_type =
-        m_decl_map->GetTypeSystem()->GetType(value_decl->getType());
+        m_decl_map->WrapType(value_decl->getType());
 
     const Type *value_type = nullptr;
 

@@ -110,6 +110,12 @@ ClangExpressionDeclMap::~ClangExpressionDeclMap() {
   DisableStructVars();
 }
 
+CompilerType ClangExpressionDeclMap::WrapType(clang::QualType qt) {
+  if (!m_clang_ast_context || qt.isNull())
+    return {};
+  return m_clang_ast_context->GetType(qt);
+}
+
 bool ClangExpressionDeclMap::WillParse(ExecutionContext &exe_ctx,
                                        Materializer *materializer) {
   EnableParserVars();

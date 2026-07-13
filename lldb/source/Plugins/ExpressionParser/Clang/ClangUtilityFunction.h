@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "ClangExpressionDeclMap.h"
 #include "ClangExpressionHelper.h"
 
 #include "lldb/Expression/UtilityFunction.h"
@@ -60,7 +61,7 @@ public:
     return &m_type_system_helper;
   }
 
-  ClangExpressionDeclMap *DeclMap() { return m_type_system_helper.DeclMap(); }
+  ExpressionDeclMap *DeclMap() { return m_type_system_helper.DeclMap(); }
 
   void ResetDeclMap() { m_type_system_helper.ResetDeclMap(); }
 
@@ -81,7 +82,7 @@ private:
 
     /// Return the object that the parser should use when resolving external
     /// values.  May be NULL if everything should be self-contained.
-    ClangExpressionDeclMap *DeclMap() override {
+    ExpressionDeclMap *DeclMap() override {
       return m_expr_decl_map_up.get();
     }
 
