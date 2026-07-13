@@ -569,6 +569,88 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
   if (find != m_reverse.end())
     return result_ts.GetCompilerType(find->second);
 
+  // Builtin types (int, unsigned long, bool, ...) the parser created on its own
+  // -- e.g. the result type of `1 + 1`, a `sizeof` expression, or a cast -- are
+  // never in the reverse map because we didn't generate them. Map them onto the
+  // corresponding TypeSystemCpp builtin so the result type can be sized.
+  if (const auto *bt = qt->getAs<clang::BuiltinType>()) {
+    lldb::BasicType basic = lldb::eBasicTypeInvalid;
+    switch (bt->getKind()) {
+    case clang::BuiltinType::Void:
+      basic = lldb::eBasicTypeVoid;
+      break;
+    case clang::BuiltinType::Bool:
+      basic = lldb::eBasicTypeBool;
+      break;
+    case clang::BuiltinType::Char_U:
+    case clang::BuiltinType::Char_S:
+      basic = lldb::eBasicTypeChar;
+      break;
+    case clang::BuiltinType::UChar:
+      basic = lldb::eBasicTypeUnsignedChar;
+      break;
+    case clang::BuiltinType::SChar:
+      basic = lldb::eBasicTypeSignedChar;
+      break;
+    case clang::BuiltinType::WChar_U:
+    case clang::BuiltinType::WChar_S:
+      basic = lldb::eBasicTypeWChar;
+      break;
+    case clang::BuiltinType::Char8:
+      basic = lldb::eBasicTypeChar8;
+      break;
+    case clang::BuiltinType::Char16:
+      basic = lldb::eBasicTypeChar16;
+      break;
+    case clang::BuiltinType::Char32:
+      basic = lldb::eBasicTypeChar32;
+      break;
+    case clang::BuiltinType::Short:
+      basic = lldb::eBasicTypeShort;
+      break;
+    case clang::BuiltinType::UShort:
+      basic = lldb::eBasicTypeUnsignedShort;
+      break;
+    case clang::BuiltinType::Int:
+      basic = lldb::eBasicTypeInt;
+      break;
+    case clang::BuiltinType::UInt:
+      basic = lldb::eBasicTypeUnsignedInt;
+      break;
+    case clang::BuiltinType::Long:
+      basic = lldb::eBasicTypeLong;
+      break;
+    case clang::BuiltinType::ULong:
+      basic = lldb::eBasicTypeUnsignedLong;
+      break;
+    case clang::BuiltinType::LongLong:
+      basic = lldb::eBasicTypeLongLong;
+      break;
+    case clang::BuiltinType::ULongLong:
+      basic = lldb::eBasicTypeUnsignedLongLong;
+      break;
+    case clang::BuiltinType::Int128:
+      basic = lldb::eBasicTypeInt128;
+      break;
+    case clang::BuiltinType::UInt128:
+      basic = lldb::eBasicTypeUnsignedInt128;
+      break;
+    case clang::BuiltinType::Float:
+      basic = lldb::eBasicTypeFloat;
+      break;
+    case clang::BuiltinType::Double:
+      basic = lldb::eBasicTypeDouble;
+      break;
+    case clang::BuiltinType::LongDouble:
+      basic = lldb::eBasicTypeLongDouble;
+      break;
+    default:
+      break;
+    }
+    if (basic != lldb::eBasicTypeInvalid)
+      return result_ts.GetBasicTypeFromAST(basic);
+  }
+
   // Simple derived types (a reference or pointer created by the parser itself,
   // e.g. the `T &` VarDecls we synthesize for locals or the result
   // synthesizer's pointer wrappers) aren't in the map. Reconstruct them in
