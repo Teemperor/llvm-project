@@ -16,6 +16,8 @@
 #include "clang/AST/Type.h"
 #include "llvm/ADT/DenseMap.h"
 
+#include <memory>
+
 namespace clang {
 class ASTContext;
 class RecordDecl;
@@ -155,7 +157,11 @@ private:
     /// synthetic ones).
     llvm::DenseMap<const clang::FieldDecl *, uint64_t> field_bit_offsets;
   };
-  llvm::DenseMap<const clang::RecordDecl *, RecordInfo> m_records;
+  // Values are held behind unique_ptr so a RecordInfo& stays valid across the
+  // recursive GenerateType/completion calls that insert new entries here (a
+  // DenseMap rehash would otherwise invalidate references into it).
+  llvm::DenseMap<const clang::RecordDecl *, std::unique_ptr<RecordInfo>>
+      m_records;
 };
 
 } // namespace lldb_private
