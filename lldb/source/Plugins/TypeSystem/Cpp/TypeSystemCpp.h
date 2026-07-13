@@ -143,6 +143,10 @@ public:
   CompilerType GetCanonicalType(lldb::opaque_compiler_type_t type) override;
   CompilerType
   GetEnumerationIntegerType(lldb::opaque_compiler_type_t type) override;
+  void ForEachEnumerator(
+      lldb::opaque_compiler_type_t type,
+      std::function<bool(const CompilerType &integer_type, ConstString name,
+                         const llvm::APSInt &value)> const &callback) override;
   int GetFunctionArgumentCount(lldb::opaque_compiler_type_t type) override;
   CompilerType GetFunctionArgumentTypeAtIndex(lldb::opaque_compiler_type_t type,
                                               size_t idx) override;
