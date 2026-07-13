@@ -721,16 +721,38 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
            /*value=*/0, child,
            child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
     } else if (tag == DW_TAG_member) {
+      // Skip the artificial vtable pointer (`_vptr$Class`): Clang re-creates it
+      // itself for a polymorphic class, so adding it as a field here would
+      // duplicate it and overlap at offset 0 in the record layout.
+      if (child.GetAttributeValueAsUnsigned(DW_AT_artificial, 0)) {
+        const char *member_name = child.GetName();
+        llvm::StringRef member_name_ref(member_name ? member_name : "");
+        if (member_name_ref.starts_with("_vptr$") ||
+            member_name_ref.starts_with("_vptr."))
+          continue;
+      }
+      std::optional<uint64_t> data_member_location =
+          child.GetAttributeValueAsOptionalUnsigned(DW_AT_data_member_location);
+      std::optional<uint64_t> data_bit_offset =
+          child.GetAttributeValueAsOptionalUnsigned(DW_AT_data_bit_offset);
+      // Skip static data members: they occupy no storage in the object, so
+      // they have neither a DW_AT_data_member_location nor a
+      // DW_AT_data_bit_offset and (pre-DWARFv5) are marked DW_AT_declaration.
+      // Adding them as fields would give them a bogus offset of 0 and overlap
+      // the real members. (DWARFv5 emits them as DW_TAG_variable, which we
+      // already ignore.) TypeSystemCpp doesn't model static members.
+      if (!data_member_location && !data_bit_offset &&
+          child.GetAttributeValueAsUnsigned(DW_AT_declaration, 0))
+        continue;
       members.push_back(
           {MemberInfo::Kind::Field, child.GetName(),
-           child.GetAttributeValueAsUnsigned(DW_AT_data_member_location, 0),
+           data_member_location.value_or(0),
            /*value=*/0, child,
            child.GetAttributeValueAsReferenceDIE(DW_AT_type),
            /*bit_size=*/
            static_cast<uint32_t>(
                child.GetAttributeValueAsUnsigned(DW_AT_bit_size, 0)),
-           child.GetAttributeValueAsOptionalUnsigned(DW_AT_data_bit_offset)
-               .value_or(UINT64_MAX)});
+           data_bit_offset.value_or(UINT64_MAX)});
     } else if (tag == DW_TAG_template_type_parameter) {
       members.push_back({MemberInfo::Kind::TemplateType, child.GetName(),
                          /*byte_offset=*/0,

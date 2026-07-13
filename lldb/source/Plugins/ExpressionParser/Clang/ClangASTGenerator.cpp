@@ -169,11 +169,11 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     decl->setHasExternalVisibleStorage(true);
 
     result = ast.getCanonicalTagType(decl);
-    RecordInfo info;
-    info.ts = &ts;
-    info.cpp_record = rec;
-    info.clang_decl = decl;
-    m_records[decl] = info;
+    auto info = std::make_unique<RecordInfo>();
+    info->ts = &ts;
+    info->cpp_record = rec;
+    info->clang_decl = decl;
+    m_records[decl] = std::move(info);
   } else if (auto *ptr = llvm::dyn_cast<ct::PointerType>(cpp_type)) {
     clang::QualType pointee;
     if (ct::Type *p = ptr->GetPointeeType())
@@ -300,7 +300,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   auto it = m_records.find(record_decl);
   if (it == m_records.end())
     return;
-  RecordInfo &info = it->second;
+  RecordInfo &info = *it->second;
   if (info.completed)
     return;
   info.completed = true;
@@ -513,7 +513,7 @@ bool ClangASTGenerator::LayoutRecord(
   auto it = m_records.find(record_decl);
   if (it == m_records.end())
     return false;
-  RecordInfo &info = it->second;
+  RecordInfo &info = *it->second;
   ct::RecordType *rec = info.cpp_record;
 
   // Make sure the record is populated so we can iterate its clang fields.
