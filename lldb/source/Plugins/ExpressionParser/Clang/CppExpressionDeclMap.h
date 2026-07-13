@@ -126,6 +126,11 @@ private:
   bool LookupFunctions(ConstString name,
                        llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
+  /// Look up a global (or file-static) variable named \p name in the target and
+  /// create a VarDecl referencing its storage, mirroring LookupLocalVariable.
+  bool LookupGlobalVariable(const clang::DeclContext *dc, ConstString name,
+                            llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
   const lldb::TargetSP m_target;
   ValueObject *m_ctx_obj;
   Materializer::PersistentVariableDelegate *m_result_delegate;
