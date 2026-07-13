@@ -253,7 +253,9 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
       // C/C++ unqualified lookup), then fall back to functions.
       if (LookupGlobalVariable(dc, ConstString(sname), decls))
         return true;
-      return LookupFunctions(ConstString(sname), decls);
+      if (LookupFunctions(ConstString(sname), decls))
+        return true;
+      return LookupType(dc, ConstString(sname), decls);
     }
   }
   return false;
@@ -485,6 +487,52 @@ bool CppExpressionDeclMap::LookupGlobalVariable(
     pv->m_lldb_var = var;
     if (var_qt->isReferenceType())
       entity->m_flags |= ClangExpressionVariable::EVTypeIsReference;
+    return true;
+  }
+  return false;
+}
+
+bool CppExpressionDeclMap::LookupType(
+    const clang::DeclContext *dc, ConstString name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  Log *log = GetLog(LLDBLog::Expressions);
+  Target *target = m_exe_ctx.GetTargetPtr();
+  if (!target)
+    return false;
+
+  // Search the target for a type with this (unqualified) name. The legacy
+  // ClangExpressionDeclMap gets type lookups from ClangASTSource; the
+  // TypeSystemCpp path has no such helper, so do it here.
+  TypeQuery query(name.GetStringRef(),
+                  TypeQueryOptions::e_exact_match | TypeQueryOptions::e_find_one);
+  TypeResults results;
+  target->GetImages().FindTypes(nullptr, query, results);
+  lldb::TypeSP type_sp = results.GetFirstType();
+  if (!type_sp)
+    return false;
+
+  CompilerType type = type_sp->GetFullCompilerType();
+  // Only handle types owned by a TypeSystemCpp; other language plugins own
+  // their own decl-map path.
+  if (!type || !type.GetTypeSystem<TypeSystemCpp>())
+    return false;
+
+  clang::QualType qt = GetGenerator().Generate(type);
+  if (qt.isNull()) {
+    LLDB_LOG(log, "CppEDM: couldn't generate a parser type for type {0}", name);
+    return false;
+  }
+
+  if (clang::TagDecl *tag = qt->getAsTagDecl()) {
+    // Make sure the members/enumerators are available (e.g. for sizeof or
+    // offsetof, which need a complete type).
+    if (auto *record = llvm::dyn_cast<clang::RecordDecl>(tag))
+      GetGenerator().CompleteRecord(record);
+    decls.push_back(tag);
+    return true;
+  }
+  if (const auto *tdt = qt->getAs<clang::TypedefType>()) {
+    decls.push_back(tdt->getDecl());
     return true;
   }
   return false;
