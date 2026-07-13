@@ -1,4 +1,5 @@
 import lldb
+import os
 from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 from lldbsuite.test import lldbutil
@@ -9,6 +10,14 @@ class TestCase(TestBase):
         # Exercise the TypeSystemCpp "frame variable" path directly instead of
         # the DIL evaluator.
         self.runCmd("settings set target.experimental.use-DIL false")
+
+        # Capture DWARF type-completion messages so we can assert below that a
+        # type only reachable through a pointer (`DoNotComplete`) is never
+        # completed.
+        log_file = os.path.join(self.getBuildDir(), "type-completion.log")
+        self.runCmd("log enable -f '%s' dwarf comp" % log_file)
+        self.addTearDownHook(lambda: self.runCmd("log disable dwarf comp"))
+
         self.build()
         lldbutil.run_to_source_breakpoint(
             self, "// break in method", lldb.SBFileSpec("main.cpp")
@@ -36,8 +45,13 @@ class TestCase(TestBase):
 
         # Records, inheritance and pointers.
         self.expect_expr("outer.m.i", result_value="4")
-        self.expect_expr("outer.x", result_value="-22")
-        self.expect_expr("ptr->x", result_value="-22")
+        # `Outer::x` is a `DoNotComplete *`. Referencing it (as a field type and
+        # as the return type of `Outer::funcCall2`) must never complete
+        # `DoNotComplete`: a type reachable only through a pointer stays a
+        # forward declaration until explicitly accessed. This is verified via
+        # the completion log below.
+        self.expect_expr("outer.x", result_type="DoNotComplete *")
+        self.expect_expr("ptr->x", result_type="DoNotComplete *")
         self.expect_expr("ptr", result_type="Outer *")
         self.expect_expr("*ptr", result_type="Outer")
 
@@ -49,7 +63,7 @@ class TestCase(TestBase):
         self.expect_expr("outer_ref", result_type="Outer")
         # References are transparent: members are reachable directly.
         self.expect_expr("outer_ref.m.i", result_value="4")
-        self.expect_expr("outer_ref.x", result_value="-22")
+        self.expect_expr("outer_ref.x", result_type="DoNotComplete *")
 
         # Class templates: the instantiation is a normal record type whose name
         # includes the template arguments.
@@ -88,3 +102,17 @@ class TestCase(TestBase):
         self.expect_expr("vec", result_summary="size=3")
         self.expect_expr("tree_map", result_summary="size=2")
         self.expect_expr("hash_map", result_summary="size=1")
+
+        # `DoNotComplete` is only ever referenced through a pointer, so it must
+        # never have been completed (which would also load its member). The
+        # completion log records every "resolving forward declaration" event, so
+        # its name must not appear there.
+        self.runCmd("log disable dwarf comp")
+        with open(log_file, "r") as f:
+            completion_log = f.read()
+        self.assertNotIn(
+            "DoNotComplete",
+            completion_log,
+            "DoNotComplete was completed but should have stayed a forward "
+            "declaration:\n" + completion_log,
+        )

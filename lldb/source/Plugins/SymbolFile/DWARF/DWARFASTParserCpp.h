@@ -12,10 +12,13 @@
 #include "DWARFASTParser.h"
 #include "DWARFDIE.h"
 
+#include "llvm/ADT/DenseMap.h"
+
 namespace lldb_private {
 class TypeSystemCpp;
 namespace cpp_typesystem {
 class Type;
+class RecordType;
 }
 } // namespace lldb_private
 
@@ -54,6 +57,14 @@ public:
   bool CompleteTypeFromDWARF(
       const lldb_private::plugin::dwarf::DWARFDIE &die, lldb_private::Type *type,
       const lldb_private::CompilerType &compiler_type) override;
+
+  /// Parse the member functions of \p record, which must have been completed
+  /// earlier via CompleteTypeFromDWARF. Member functions are parsed lazily
+  /// (only when the expression evaluator needs them to call a method) rather
+  /// than as part of record completion, so this is a separate on-demand step
+  /// reached through TypeSystemCpp::CompleteMemberFunctions.
+  void CompleteMemberFunctionsFromDWARF(
+      lldb_private::cpp_typesystem::RecordType &record);
 
   lldb_private::CompilerDecl GetDeclForUIDFromDWARF(
       const lldb_private::plugin::dwarf::DWARFDIE &die) override {
@@ -130,6 +141,15 @@ private:
       const lldb_private::plugin::dwarf::DWARFDIE &type_die);
 
   lldb_private::TypeSystemCpp &m_ts;
+
+  /// Maps each record that was completed via CompleteTypeFromDWARF to its
+  /// defining DIE, so that CompleteMemberFunctionsFromDWARF can re-find the DIE
+  /// to parse the record's member functions on demand (the forward-declaration
+  /// map in SymbolFileDWARF is erased once completion starts, so it can't be
+  /// reused for this). Populated during completion.
+  llvm::DenseMap<lldb_private::cpp_typesystem::Type *,
+                 lldb_private::plugin::dwarf::DWARFDIE>
+      m_record_defining_die;
 };
 
 #endif // LLDB_SOURCE_PLUGINS_SYMBOLFILE_DWARF_DWARFASTPARSERCPP_H

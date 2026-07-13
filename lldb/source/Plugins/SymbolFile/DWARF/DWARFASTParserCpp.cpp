@@ -666,6 +666,12 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     return false;
   auto *record = static_cast<cpp_typesystem::RecordType *>(cpp_type);
 
+  // Remember the DIE that defines this record so that its member functions can
+  // be parsed on demand later. Unlike fields and base classes, member functions
+  // are not parsed here (they are only needed to call methods from an
+  // expression); see CompleteMemberFunctionsFromDWARF.
+  m_record_defining_die.insert_or_assign(record, die);
+
   // Mark complete up front (under the lock) so that a member whose type
   // (indirectly) refers back to this record doesn't recurse forever, and so
   // that a concurrent completion of the same record bails out here.
@@ -827,6 +833,27 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     }
   }
 
+  return true;
+}
+
+void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
+    cpp_typesystem::RecordType &record) {
+  // Serialize under the type-system lock, matching CompleteTypeFromDWARF. Parse
+  // the member functions at most once (parsing again would append duplicates),
+  // so mark them parsed up front.
+  cpp_typesystem::Builder ts(m_ts);
+  if (record.AreMemberFunctionsParsed())
+    return;
+  ts.SetRecordMemberFunctionsParsed(record);
+
+  // The defining DIE was recorded when the record was completed. If the record
+  // wasn't completed from DWARF (e.g. an expression-synthesized record) there
+  // is nothing to parse.
+  auto die_it = m_record_defining_die.find(&record);
+  if (die_it == m_record_defining_die.end())
+    return;
+  DWARFDIE die = die_it->second;
+
   // Member functions: parse the class's DW_TAG_subprogram children so calls
   // like `obj.method()` / `this->method()` can be resolved and JIT-called.
   for (DWARFDIE child : die.children()) {
@@ -864,11 +891,9 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     }
 
     const std::string asm_label = MakeFuncAsmLabel(child);
-    ts.AddMemberFunction(*record, ConstString(method_name),
+    ts.AddMemberFunction(record, ConstString(method_name),
                          func_type->GetForwardCompilerType(),
                          ConstString(asm_label), is_static, is_const,
                          is_virtual);
   }
-
-  return true;
 }

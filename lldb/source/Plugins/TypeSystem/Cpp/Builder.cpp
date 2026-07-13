@@ -119,6 +119,11 @@ void Builder::SetRecordComplete(cpp_typesystem::RecordType &record) {
   m_ts.m_context.SetComplete(record);
 }
 
+void Builder::SetRecordMemberFunctionsParsed(
+    cpp_typesystem::RecordType &record) {
+  m_ts.m_context.SetMemberFunctionsParsed(record);
+}
+
 void Builder::AddField(cpp_typesystem::RecordType &record,
                        cpp_typesystem::Identifier name,
                        cpp_typesystem::Type *type, uint64_t byte_offset,

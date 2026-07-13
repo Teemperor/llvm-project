@@ -41,6 +41,7 @@ static void noteReverse(llvm::DenseMap<void *, ct::Type *> &reverse,
 }
 
 clang::QualType ClangASTGenerator::Generate(const CompilerType &cpp_type) {
+  GenerationGuard guard(*this);
   if (!cpp_type)
     return {};
   auto ts = cpp_type.GetTypeSystem<TypeSystemCpp>();
@@ -336,7 +337,22 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
       decl->setBases(bases.data(), bases.size());
   }
 
-  // Fields.
+  // Fields. DWARF does not emit unnamed/zero-width padding bitfields, so two
+  // named bitfields that share a storage unit can end up non-contiguous (a gap
+  // where the padding used to be). Clang's record-layout codegen requires the
+  // bitfields in a run to be bit-contiguous, so we synthesize an unnamed
+  // bitfield to fill such a gap. This is only needed when a bitfield starts
+  // mid-byte right after another bitfield: a byte-aligned bitfield begins a
+  // fresh access unit (no contiguity requirement), and a bitfield never starts
+  // mid-byte after a non-bitfield. Restricting to exactly this case avoids
+  // inserting spurious padding that would otherwise overlap in the lowering.
+  bool prev_is_bitfield = false;
+  uint64_t prev_bitfield_end = 0; // Bit offset just past the previous bitfield.
+
+  auto abs_bit_offset = [](const ct::Field *f) -> uint64_t {
+    return f->byte_offset * 8 + f->bitfield_bit_offset;
+  };
+
   for (uint32_t i = 0; i < rec->GetNumFields(); ++i) {
     const ct::Field *field = rec->GetFieldAtIndex(i);
     clang::QualType field_qt = GenerateType(ts, field->type.Get());
@@ -345,6 +361,27 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     // A field held by value (directly or as an array element) is embedded in
     // this record, so it must be complete before we finalize the definition.
     EnsureComplete(field_qt);
+
+    const uint64_t this_offset = abs_bit_offset(field);
+
+    // Fill the gap left by an omitted padding bitfield between two bitfields in
+    // the same storage unit (see the comment above).
+    if (field->IsBitfield() && prev_is_bitfield && (this_offset % 8) != 0 &&
+        this_offset > prev_bitfield_end) {
+      uint64_t unnamed_bit_size = this_offset - prev_bitfield_end;
+      auto *pad =
+          clang::FieldDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+      pad->setDeclContext(decl);
+      pad->setType(ast.IntTy);
+      llvm::APInt pad_width(ast.getIntWidth(ast.IntTy), unnamed_bit_size);
+      auto *pad_literal = clang::IntegerLiteral::Create(
+          ast, pad_width, ast.IntTy, clang::SourceLocation());
+      pad->setBitWidth(clang::ConstantExpr::Create(
+          ast, pad_literal, clang::APValue(llvm::APSInt(pad_width))));
+      pad->setAccess(clang::AS_public);
+      decl->addDecl(pad);
+      info.field_bit_offsets[pad] = prev_bitfield_end;
+    }
 
     clang::Expr *bit_width = nullptr;
     if (field->IsBitfield()) {
@@ -364,10 +401,18 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
       fd->setBitWidth(bit_width);
     fd->setAccess(clang::AS_public);
     decl->addDecl(fd);
+    info.field_bit_offsets[fd] = this_offset;
+
+    prev_is_bitfield = field->IsBitfield();
+    if (field->IsBitfield())
+      prev_bitfield_end = this_offset + field->bitfield_bit_size;
   }
 
   // Member functions. Declaring them (with the asm label the JIT resolves)
-  // lets an expression call `obj.method()` / `this->method()`.
+  // lets an expression call `obj.method()` / `this->method()`. They are parsed
+  // lazily -- separately from the record's fields/bases -- so make sure they've
+  // been filled in now that we're building the clang decl.
+  ts.CompleteMemberFunctions(rec);
   for (uint32_t i = 0; i < rec->GetNumMemberFunctions(); ++i) {
     const ct::MemberFunction *mf = rec->GetMemberFunctionAtIndex(i);
     clang::QualType method_qt = GenerateType(ts, mf->type.Get());
@@ -417,6 +462,7 @@ clang::FunctionDecl *
 ClangASTGenerator::GenerateFunction(llvm::StringRef name,
                                     const CompilerType &function_cpp_type,
                                     llvm::StringRef asm_label) {
+  GenerationGuard guard(*this);
   clang::QualType function_qt = Generate(function_cpp_type);
   if (function_qt.isNull() || !function_qt->getAs<clang::FunctionProtoType>())
     return nullptr;
@@ -447,6 +493,7 @@ void ClangASTGenerator::EnsureComplete(clang::QualType qt) {
 }
 
 bool ClangASTGenerator::CompleteRecord(clang::TagDecl *tag_decl) {
+  GenerationGuard guard(*this);
   auto *record_decl = llvm::dyn_cast<clang::RecordDecl>(tag_decl);
   if (!record_decl)
     return false;
@@ -462,6 +509,7 @@ bool ClangASTGenerator::LayoutRecord(
     llvm::DenseMap<const clang::CXXRecordDecl *, clang::CharUnits> &base_offsets,
     llvm::DenseMap<const clang::CXXRecordDecl *, clang::CharUnits>
         &vbase_offsets) {
+  GenerationGuard guard(*this);
   auto it = m_records.find(record_decl);
   if (it == m_records.end())
     return false;
@@ -483,16 +531,14 @@ bool ClangASTGenerator::LayoutRecord(
     align_bytes *= 2;
   alignment = align_bytes * 8;
 
-  // Field offsets (in bits), matching the order in which we added them.
-  uint32_t field_idx = 0;
+  // Field offsets (in bits). PopulateRecord recorded the offset of every field
+  // decl it added -- including the synthetic unnamed bitfields -- so report
+  // those directly (a parallel walk of the cpp fields would miss the synthetic
+  // ones and misalign the rest).
   for (const clang::FieldDecl *fd : record_decl->fields()) {
-    if (field_idx >= rec->GetNumFields())
-      break;
-    const ct::Field *field = rec->GetFieldAtIndex(field_idx++);
-    uint64_t offset_bits = field->byte_offset * 8;
-    if (field->IsBitfield())
-      offset_bits += field->bitfield_bit_offset;
-    field_offsets[fd] = offset_bits;
+    auto offset_it = info.field_bit_offsets.find(fd);
+    if (offset_it != info.field_bit_offsets.end())
+      field_offsets[fd] = offset_it->second;
   }
 
   // Base-class offsets (in bytes), matching declaration order.

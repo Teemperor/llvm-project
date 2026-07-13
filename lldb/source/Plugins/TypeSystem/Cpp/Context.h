@@ -90,6 +90,9 @@ public:
   /// corresponding Type methods are private and befriend this class.
   /// @{
   void SetComplete(RecordType &record) { record.SetIsComplete(true); }
+  void SetMemberFunctionsParsed(RecordType &record) {
+    record.SetMemberFunctionsParsed();
+  }
   void AddField(RecordType &record, Identifier name, TypeRef type,
                 uint64_t byte_offset, uint32_t bitfield_bit_size = 0,
                 uint32_t bitfield_bit_offset = 0) {

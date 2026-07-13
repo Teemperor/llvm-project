@@ -10,13 +10,20 @@ struct SingleMember {
   int i;
 };
 
+struct DoNotComplete {
+  int should_never_be_loaded;
+};
+
 struct BaseClass {
   long x;
 };
 
 struct Outer : BaseClass {
   struct SingleMember m;
+  DoNotComplete *x = nullptr;
   SingleMember funcCall() { return m; }
+  DoNotComplete *funcCall2() { return nullptr; }
+  DoNotComplete &funcCall3() { return *x; }
 };
 
 // A class template; the debug info describes the instantiation Wrapper<int>
@@ -70,7 +77,7 @@ int main() {
 
   struct Outer outer;
   outer.m.i = 4;
-  outer.x = -22;
+  outer.x = nullptr;
   Outer *ptr = &outer;
 
   // Reference types: an lvalue reference to a scalar, an lvalue reference to a

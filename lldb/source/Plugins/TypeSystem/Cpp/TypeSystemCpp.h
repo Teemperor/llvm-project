@@ -113,6 +113,13 @@ public:
   // Type Completion
   bool GetCompleteType(lldb::opaque_compiler_type_t type) override;
 
+  /// Parse \p type's member functions from debug info if they haven't been
+  /// already. Member functions are only needed by the expression evaluator (to
+  /// call methods), so -- unlike fields and base classes -- they are not parsed
+  /// as part of GetCompleteType. This is the deferred step that fills them in
+  /// on demand (see ClangASTGenerator::PopulateRecord).
+  void CompleteMemberFunctions(cpp_typesystem::Type *type);
+
   // AST related queries
   uint32_t GetPointerByteSize() override;
   CompilerType GetPointerDiffType(bool is_signed) override;
