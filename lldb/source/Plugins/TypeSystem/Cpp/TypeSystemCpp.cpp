@@ -26,6 +26,10 @@
 #include "lldb/Utility/Stream.h"
 #include "lldb/ValueObject/ValueObject.h"
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/bit.h"
+#include "llvm/Support/MathExtras.h"
+
 using namespace lldb_private;
 using namespace lldb;
 
@@ -1067,10 +1071,10 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
 LLVM_DUMP_METHOD void TypeSystemCpp::dump(opaque_compiler_type_t type) const {}
 #endif
 
-/// Render an enum value as an enumerator name when it matches one exactly,
-/// otherwise fall back to the numeric value. This is a trimmed-down version of
-/// TypeSystemClang's DumpEnumValue (it does not attempt bitfield/flag
-/// decomposition).
+/// Render an enum value as an enumerator name when it matches one exactly. For
+/// a "bitfield/flag" enum (every enumerator is a single bit or a union of
+/// previously-seen bits) a combined value is decomposed into `A | B`. Mirrors
+/// TypeSystemClang's DumpEnumValue.
 static bool DumpEnumValue(const cpp_typesystem::EnumType &enum_type, Stream &s,
                           const DataExtractor &data, lldb::offset_t byte_offset,
                           size_t byte_size) {
@@ -1081,19 +1085,78 @@ static bool DumpEnumValue(const cpp_typesystem::EnumType &enum_type, Stream &s,
                       data.GetMaxS64Bitfield(&offset, byte_size, 0, 0))
                 : data.GetMaxU64Bitfield(&offset, byte_size, 0, 0);
 
-  for (const cpp_typesystem::Enumerator &enumerator :
-       enum_type.GetEnumerators()) {
+  bool can_be_bitfield = true;
+  uint64_t covered_bits = 0;
+  int num_enumerators = 0;
+
+  // Look for an exact match while applying the bitfield heuristic: an enum is
+  // likely a flag set if every enumerator is a single bit or a superset of the
+  // bits seen so far.
+  const std::vector<cpp_typesystem::Enumerator> &enumerators =
+      enum_type.GetEnumerators();
+  if (enumerators.empty())
+    can_be_bitfield = false;
+  for (const cpp_typesystem::Enumerator &enumerator : enumerators) {
+    uint64_t val = enumerator.value;
+    if (is_signed)
+      val = llvm::SignExtend64(val, 8 * byte_size);
+    if (llvm::popcount(val) != 1 && (val & ~covered_bits) != 0)
+      can_be_bitfield = false;
+    covered_bits |= val;
+    ++num_enumerators;
     if (enumerator.value == enum_svalue) {
       s.PutCString(enumerator.name.GetName());
       return true;
     }
   }
 
-  // No exact match; print the raw value.
-  if (is_signed)
-    s.Printf("%" PRIi64, static_cast<int64_t>(enum_svalue));
-  else
-    s.Printf("%" PRIu64, enum_svalue);
+  // Unsigned values make more sense for flags.
+  offset = byte_offset;
+  const uint64_t enum_uvalue =
+      data.GetMaxU64Bitfield(&offset, byte_size, 0, 0);
+
+  // No exact match and this isn't a flag enum: print the value numerically.
+  if (!can_be_bitfield) {
+    if (is_signed)
+      s.Printf("%" PRIi64, static_cast<int64_t>(enum_svalue));
+    else
+      s.Printf("%" PRIu64, enum_uvalue);
+    return true;
+  }
+
+  if (!enum_uvalue) {
+    // Flag enum, but the value is 0 and matched no enumerator above.
+    s.Printf("0x%" PRIx64, enum_uvalue);
+    return true;
+  }
+
+  uint64_t remaining_value = enum_uvalue;
+  std::vector<std::pair<uint64_t, llvm::StringRef>> values;
+  values.reserve(num_enumerators);
+  for (const cpp_typesystem::Enumerator &enumerator : enumerators)
+    if (enumerator.value)
+      values.emplace_back(enumerator.value, enumerator.name.GetName());
+
+  // Sort by descending population count (stably) so that in
+  // `enum { A, B, ALL = A|B }` we emit ALL before A/B, and `A | C` keeps the
+  // declaration order for equal popcounts.
+  llvm::stable_sort(values, [](const auto &a, const auto &b) {
+    return llvm::popcount(a.first) > llvm::popcount(b.first);
+  });
+
+  for (const auto &val : values) {
+    if ((remaining_value & val.first) != val.first)
+      continue;
+    remaining_value &= ~val.first;
+    s.PutCString(val.second);
+    if (remaining_value)
+      s.PutCString(" | ");
+  }
+
+  // Print any bits not covered by an enumerator as hex.
+  if (remaining_value)
+    s.Printf("0x%" PRIx64, remaining_value);
+
   return true;
 }
 
