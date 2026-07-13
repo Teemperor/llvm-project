@@ -43,8 +43,22 @@ union Number {
   float f;
 };
 
+// A class with a member function, used to exercise evaluating `this` and
+// unqualified member-variable access from inside a method (the implicit-`this`
+// expression context).
+struct Container {
+  int member_variable;
+  int GetMember() {
+    return member_variable; // break in method
+  }
+};
+
 int main() {
   int local = 20;
+
+  Container container;
+  container.member_variable = 99;
+  int from_method = container.GetMember();
 
   struct Outer outer;
   outer.m.i = 4;
@@ -97,5 +111,5 @@ int main() {
   return const_int + my_int + ref + rref + outer_ref.m.i + wrapper.value +
          fixed.data[1] + fixed.size + (color == Green) +
          (fruit == Fruit::Banana) + number.i + (int)str.size() + vec[0] +
-         tree_map[1] + hash_map[7]; // break here
+         tree_map[1] + hash_map[7] + from_method; // break here
 }

@@ -26,6 +26,7 @@
 #include "lldb/ValueObject/ValueObjectVariable.h"
 
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
 
@@ -219,12 +220,79 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
   }
 
   if (llvm::isa<clang::TranslationUnitDecl>(dc)) {
+    if (sname == "$__lldb_class") {
+      LookUpLldbClass(name, decls);
+      return !decls.empty();
+    }
     if (sname == "$__lldb_local_vars") {
       CreateLocalVarsNamespace(dc, decls);
       return !decls.empty();
     }
   }
   return false;
+}
+
+void CppExpressionDeclMap::LookUpLldbClass(
+    clang::DeclarationName name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  StackFrame *frame = m_exe_ctx.GetFramePtr();
+  if (!frame)
+    return;
+
+  // The enclosing method's object type is the pointee of the frame's `this`.
+  VariableListSP vars = frame->GetInScopeVariableList(true);
+  VariableSP this_var =
+      vars ? vars->FindVariable(ConstString("this")) : VariableSP();
+  if (!this_var)
+    return;
+  Type *this_type = this_var->GetType();
+  if (!this_type)
+    return;
+  CompilerType class_cpp_type =
+      this_type->GetForwardCompilerType().GetPointeeType();
+  if (!class_cpp_type || !class_cpp_type.GetTypeSystem<TypeSystemCpp>())
+    return;
+
+  clang::QualType class_qt = GetGenerator().Generate(class_cpp_type);
+  if (class_qt.isNull())
+    return;
+  auto *record = class_qt->getAsCXXRecordDecl();
+  if (!record)
+    return;
+  // Make sure members are available for unqualified lookup.
+  GetGenerator().CompleteRecord(record);
+
+  clang::ASTContext &ast = *m_ast_context;
+
+  // Declare `void $__lldb_expr(void *)` in the class so the wrapper's
+  // out-of-line `$__lldb_class::$__lldb_expr` definition has a matching
+  // declaration (and thus an implicit `this`).
+  clang::FunctionProtoType::ExtProtoInfo epi;
+  clang::QualType param_types[] = {ast.VoidPtrTy};
+  clang::QualType method_qt = ast.getFunctionType(ast.VoidTy, param_types, epi);
+  auto *method =
+      clang::CXXMethodDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+  method->setDeclContext(record);
+  method->setDeclName(&ast.Idents.get("$__lldb_expr"));
+  method->setType(method_qt);
+  method->setStorageClass(clang::SC_None);
+  method->setConstexprKind(clang::ConstexprSpecKind::Unspecified);
+  method->setAccess(clang::AS_public);
+  method->addAttr(clang::UsedAttr::CreateImplicit(ast));
+  auto *param =
+      clang::ParmVarDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+  param->setDeclContext(method);
+  param->setType(ast.VoidPtrTy);
+  param->setStorageClass(clang::SC_None);
+  method->setParams({param});
+  record->addDecl(method);
+
+  // Provide the `$__lldb_class` typedef the wrapper names.
+  clang::TypeSourceInfo *ti = ast.getTrivialTypeSourceInfo(class_qt);
+  auto *td = clang::TypedefDecl::Create(
+      ast, ast.getTranslationUnitDecl(), clang::SourceLocation(),
+      clang::SourceLocation(), name.getAsIdentifierInfo(), ti);
+  decls.push_back(td);
 }
 
 bool CppExpressionDeclMap::LookupLocalVariable(
