@@ -236,7 +236,8 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
       CreateLocalVarsNamespace(dc, decls);
       return !decls.empty();
     }
-    // A free function referenced by the expression (e.g. `globalFuncCall()`).
+    // A free function or global variable referenced by the expression
+    // (e.g. `globalFuncCall()` or `g_global`).
     if (!sname.starts_with("$")) {
       // Skip the whole-module function search while we are synthesizing decls:
       // adding a named decl to the (external-visible) TU makes clang look that
@@ -247,6 +248,11 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
       // parser runs (outside generation) and still resolve.
       if (IsGeneratingDecls())
         return false;
+      // A name at file scope can refer to a global variable or a function.
+      // Prefer the variable (an object shadows a function of the same name in
+      // C/C++ unqualified lookup), then fall back to functions.
+      if (LookupGlobalVariable(dc, ConstString(sname), decls))
+        return true;
       return LookupFunctions(ConstString(sname), decls);
     }
   }
@@ -406,6 +412,69 @@ bool CppExpressionDeclMap::LookupLocalVariable(
     decls.push_back(vd);
 
     ValueObjectSP valobj = ValueObjectVariable::Create(frame, var);
+    auto *entity = new ClangExpressionVariable(valobj);
+    m_found_entities.AddNewlyConstructedVariable(entity);
+    entity->EnableParserVars(GetParserID());
+    ClangExpressionVariable::ParserVars *pv =
+        entity->GetParserVars(GetParserID());
+    pv->m_named_decl = vd;
+    pv->m_llvm_value = nullptr;
+    pv->m_lldb_var = var;
+    if (var_qt->isReferenceType())
+      entity->m_flags |= ClangExpressionVariable::EVTypeIsReference;
+    return true;
+  }
+  return false;
+}
+
+bool CppExpressionDeclMap::LookupGlobalVariable(
+    const clang::DeclContext *dc, ConstString name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  Log *log = GetLog(LLDBLog::Expressions);
+  Target *target = m_exe_ctx.GetTargetPtr();
+  if (!target)
+    return false;
+
+  // Search the whole target for a global (or file-static) variable by name.
+  VariableList vars;
+  target->GetImages().FindGlobalVariables(name, -1, vars);
+
+  for (size_t i = 0, e = vars.GetSize(); i != e; ++i) {
+    VariableSP var = vars.GetVariableAtIndex(i);
+    if (!var || var->GetName() != name)
+      continue;
+
+    Type *var_type = var->GetType();
+    if (!var_type)
+      continue;
+    CompilerType var_cpp_type = var_type->GetFullCompilerType();
+    // Only handle variables whose type is described by a TypeSystemCpp; other
+    // language plugins own their own decl-map path.
+    if (!var_cpp_type || !var_cpp_type.GetTypeSystem<TypeSystemCpp>())
+      continue;
+
+    clang::QualType qt = GetGenerator().Generate(var_cpp_type);
+    if (qt.isNull()) {
+      LLDB_LOG(log, "CppEDM: couldn't generate a parser type for global {0}",
+               name);
+      continue;
+    }
+
+    // Like locals, globals are represented by a reference to their storage
+    // (unless the variable is itself a reference), so the materializer can bind
+    // the decl to the variable's load address.
+    clang::QualType var_qt =
+        qt->isReferenceType() ? qt : m_ast_context->getLValueReferenceType(qt);
+
+    auto *vd = clang::VarDecl::Create(
+        *m_ast_context, const_cast<clang::DeclContext *>(dc),
+        clang::SourceLocation(), clang::SourceLocation(),
+        &m_ast_context->Idents.get(name.GetStringRef()), var_qt, nullptr,
+        clang::SC_Static);
+    decls.push_back(vd);
+
+    ValueObjectSP valobj = ValueObjectVariable::Create(
+        m_exe_ctx.GetBestExecutionContextScope(), var);
     auto *entity = new ClangExpressionVariable(valobj);
     m_found_entities.AddNewlyConstructedVariable(entity);
     entity->EnableParserVars(GetParserID());
