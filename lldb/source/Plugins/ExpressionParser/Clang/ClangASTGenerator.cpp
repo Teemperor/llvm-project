@@ -17,6 +17,7 @@
 #include "lldb/Utility/Log.h"
 
 #include "clang/AST/ASTContext.h"
+#include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/Expr.h"
@@ -259,6 +260,26 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     decl->completeDefinition(integer, best_promotion, num_positive,
                              num_negative);
     result = ast.getCanonicalTagType(decl);
+  } else if (auto *fn = llvm::dyn_cast<ct::FunctionType>(cpp_type)) {
+    clang::QualType ret =
+        fn->GetReturnType() ? GenerateType(ts, fn->GetReturnType()) : ast.VoidTy;
+    if (ret.isNull())
+      ret = ast.VoidTy;
+    llvm::SmallVector<clang::QualType, 4> params;
+    bool ok = true;
+    for (uint32_t i = 0; i < fn->GetNumParameters(); ++i) {
+      clang::QualType p = GenerateType(ts, fn->GetParameterAtIndex(i));
+      if (p.isNull()) {
+        ok = false;
+        break;
+      }
+      params.push_back(p);
+    }
+    if (ok) {
+      clang::FunctionProtoType::ExtProtoInfo epi;
+      epi.Variadic = fn->IsVariadic();
+      result = ast.getFunctionType(ret, params, epi);
+    }
   } else {
     result = GenerateBuiltin(cpp_type);
   }
@@ -345,11 +366,72 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     decl->addDecl(fd);
   }
 
+  // Member functions. Declaring them (with the asm label the JIT resolves)
+  // lets an expression call `obj.method()` / `this->method()`.
+  for (uint32_t i = 0; i < rec->GetNumMemberFunctions(); ++i) {
+    const ct::MemberFunction *mf = rec->GetMemberFunctionAtIndex(i);
+    clang::QualType method_qt = GenerateType(ts, mf->type.Get());
+    if (method_qt.isNull())
+      continue;
+    auto *method =
+        clang::CXXMethodDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+    method->setDeclContext(decl);
+    method->setDeclName(&ast.Idents.get(mf->name.GetName()));
+    method->setType(method_qt);
+    method->setStorageClass(mf->is_static ? clang::SC_Static : clang::SC_None);
+    method->setConstexprKind(clang::ConstexprSpecKind::Unspecified);
+    method->setAccess(clang::AS_public);
+    method->setVirtualAsWritten(mf->is_virtual);
+    if (!mf->asm_label.GetName().empty())
+      method->addAttr(
+          clang::AsmLabelAttr::CreateImplicit(ast, mf->asm_label.GetName()));
+    BuildParams(method, method_qt);
+    decl->addDecl(method);
+  }
+
   if (!decl->isCompleteDefinition())
     decl->completeDefinition();
   decl->setHasLoadedFieldsFromExternalStorage(true);
   decl->setHasExternalLexicalStorage(false);
   decl->setHasExternalVisibleStorage(false);
+}
+
+void ClangASTGenerator::BuildParams(clang::FunctionDecl *func,
+                                    clang::QualType function_qt) {
+  const auto *proto = function_qt->getAs<clang::FunctionProtoType>();
+  if (!proto)
+    return;
+  llvm::SmallVector<clang::ParmVarDecl *, 4> params;
+  for (unsigned i = 0; i < proto->getNumParams(); ++i) {
+    auto *param =
+        clang::ParmVarDecl::CreateDeserialized(m_ast, clang::GlobalDeclID());
+    param->setDeclContext(func);
+    param->setType(proto->getParamType(i));
+    param->setStorageClass(clang::SC_None);
+    params.push_back(param);
+  }
+  func->setParams(params);
+}
+
+clang::FunctionDecl *
+ClangASTGenerator::GenerateFunction(llvm::StringRef name,
+                                    const CompilerType &function_cpp_type,
+                                    llvm::StringRef asm_label) {
+  clang::QualType function_qt = Generate(function_cpp_type);
+  if (function_qt.isNull() || !function_qt->getAs<clang::FunctionProtoType>())
+    return nullptr;
+  clang::ASTContext &ast = m_ast;
+  auto *fd = clang::FunctionDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+  fd->setDeclContext(ast.getTranslationUnitDecl());
+  fd->setDeclName(&ast.Idents.get(name));
+  fd->setType(function_qt);
+  fd->setStorageClass(clang::SC_Extern);
+  fd->setConstexprKind(clang::ConstexprSpecKind::Unspecified);
+  if (!asm_label.empty())
+    fd->addAttr(clang::AsmLabelAttr::CreateImplicit(ast, asm_label));
+  BuildParams(fd, function_qt);
+  ast.getTranslationUnitDecl()->addDecl(fd);
+  return fd;
 }
 
 void ClangASTGenerator::EnsureComplete(clang::QualType qt) {

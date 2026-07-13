@@ -98,6 +98,22 @@ struct TemplateArgument {
   bool is_default = false;
 };
 
+/// A member function of a record type. Only what an expression needs to build a
+/// clang::CXXMethodDecl and call it: the (non-`this`) signature, the mangled
+/// name (so the JIT can resolve the callee), and the basic C++ flags.
+struct MemberFunction {
+  Identifier name;
+  /// The function's type (a FunctionType); its parameters exclude the implicit
+  /// object parameter for non-static methods.
+  TypeRef type;
+  /// The asm label (an lldb FunctionCallLabel) the call resolves through, so
+  /// the JIT can find the callee in the inferior.
+  Identifier asm_label;
+  bool is_static = false;
+  bool is_const = false;
+  bool is_virtual = false;
+};
+
 /// Represents everything needed to understand a type.
 ///
 /// A pointer to a Type is what TypeSystemCpp hands out as its
@@ -195,6 +211,15 @@ public:
     return nullptr;
   }
 
+  /// Member functions of this record (used to resolve/call methods from an
+  /// expression).
+  uint32_t GetNumMemberFunctions() const { return m_methods.size(); }
+  const MemberFunction *GetMemberFunctionAtIndex(uint32_t idx) const {
+    if (idx < m_methods.size())
+      return &m_methods[idx];
+    return nullptr;
+  }
+
   /// Look up a type declared directly inside this record (a nested typedef,
   /// class, union or enum) by its unqualified name. Returns null if there is no
   /// such nested type. Data formatters use this to reach a container's internal
@@ -229,12 +254,16 @@ private:
   void AddNestedType(Identifier name, TypeRef type) {
     m_nested_types.emplace_back(name, type);
   }
+  void AddMemberFunction(MemberFunction method) {
+    m_methods.push_back(method);
+  }
 
   bool m_complete = false;
   bool m_is_union = false;
   std::vector<Field> m_fields;
   std::vector<TemplateArgument> m_template_args;
   std::vector<std::pair<Identifier, TypeRef>> m_nested_types;
+  std::vector<MemberFunction> m_methods;
 };
 
 /// A C struct/union type. Records parsed from a C++ translation unit are
@@ -502,6 +531,45 @@ private:
   TypeRef m_underlying_type;
   bool m_is_scoped = false;
   std::vector<Enumerator> m_enumerators;
+};
+
+/// A function type: a return type plus parameter types. For a member function
+/// the parameters exclude the implicit object (`this`) parameter. Used to build
+/// clang::FunctionDecl/CXXMethodDecl signatures for calling functions from
+/// expressions.
+class FunctionType : public llvm::RTTIExtends<FunctionType, Type> {
+public:
+  static char ID;
+
+  Type *GetReturnType() const { return m_return_type.Get(); }
+  void SetReturnType(TypeRef type) { m_return_type = type; }
+
+  uint32_t GetNumParameters() const { return m_params.size(); }
+  Type *GetParameterAtIndex(uint32_t idx) const {
+    if (idx < m_params.size())
+      return m_params[idx].Get();
+    return nullptr;
+  }
+
+  bool IsVariadic() const { return m_is_variadic; }
+  void SetIsVariadic(bool is_variadic) { m_is_variadic = is_variadic; }
+
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassFunction;
+  }
+  uint32_t GetTypeInfo() const override {
+    return lldb::eTypeIsFuncPrototype | lldb::eTypeHasValue;
+  }
+
+private:
+  // Gated like the other mutators: only Context (through the locked Builder)
+  // may add parameters.
+  friend class Context;
+  void AddParameter(TypeRef type) { m_params.push_back(type); }
+
+  TypeRef m_return_type;
+  std::vector<TypeRef> m_params;
+  bool m_is_variadic = false;
 };
 } // namespace cpp_typesystem
 } // namespace lldb_private

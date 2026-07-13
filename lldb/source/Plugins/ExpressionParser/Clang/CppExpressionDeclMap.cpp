@@ -10,10 +10,13 @@
 
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
+#include "lldb/Core/Mangled.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/ModuleList.h"
 #include "lldb/Expression/DiagnosticManager.h"
+#include "lldb/Expression/Expression.h"
 #include "lldb/Expression/ExpressionVariable.h"
+#include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Symbol/Type.h"
@@ -228,8 +231,57 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
       CreateLocalVarsNamespace(dc, decls);
       return !decls.empty();
     }
+    // A free function referenced by the expression (e.g. `globalFuncCall()`).
+    if (!sname.starts_with("$"))
+      return LookupFunctions(ConstString(sname), decls);
   }
   return false;
+}
+
+bool CppExpressionDeclMap::LookupFunctions(
+    ConstString name, llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  Target *target = m_exe_ctx.GetTargetPtr();
+  if (!target)
+    return false;
+
+  SymbolContextList sc_list;
+  ModuleFunctionSearchOptions options;
+  options.include_inlines = false;
+  options.include_symbols = true;
+  target->GetImages().FindFunctions(
+      name, lldb::eFunctionNameTypeFull | lldb::eFunctionNameTypeBase, options,
+      sc_list);
+
+  bool added = false;
+  for (const SymbolContext &sc : sc_list) {
+    Function *function = sc.function;
+    if (!function)
+      continue;
+    Type *func_type = function->GetType();
+    if (!func_type)
+      continue;
+    CompilerType func_cpp_type = func_type->GetFullCompilerType();
+    if (!func_cpp_type || !func_cpp_type.GetTypeSystem<TypeSystemCpp>())
+      continue;
+
+    // Build the asm label the JIT resolves the call through.
+    ConstString mangled = function->GetMangled().GetMangledName();
+    if (!mangled)
+      mangled = function->GetMangled().GetDemangledName();
+    lldb::user_id_t module_id =
+        sc.module_sp ? sc.module_sp->GetID() : LLDB_INVALID_UID;
+    std::string label =
+        FunctionCallLabel{/*discriminator=*/{}, module_id, function->GetID(),
+                          mangled.GetStringRef()}
+            .toString();
+
+    if (clang::FunctionDecl *fd = GetGenerator().GenerateFunction(
+            name.GetStringRef(), func_cpp_type, label)) {
+      decls.push_back(fd);
+      added = true;
+    }
+  }
+  return added;
 }
 
 void CppExpressionDeclMap::LookUpLldbClass(

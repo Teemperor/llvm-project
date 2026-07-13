@@ -18,6 +18,12 @@ class TestCase(TestBase):
         # to a member variable (resolved through `this`).
         self.expect_expr("this", result_type="Container *")
         self.expect_expr("member_variable", result_value="99")
+        # Calling a member function and a free function.
+        self.expect_expr("this->funcCall()", result_type="SingleMember")
+        self.expect_expr("globalFuncCall()", result_value="40")
+        # Passing arguments into a member and a free function.
+        self.expect_expr("this->addToMember(1)", result_value="100")
+        self.expect_expr("globalAdd(3, 4)", result_value="7")
 
         # Continue to the breakpoint in main for the remaining checks.
         bkpt = self.target().BreakpointCreateBySourceRegex(

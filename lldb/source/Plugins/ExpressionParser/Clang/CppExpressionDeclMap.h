@@ -114,6 +114,11 @@ private:
   void LookUpLldbClass(clang::DeclarationName name,
                        llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
+  /// Resolve free functions named \p name in the target and generate
+  /// FunctionDecls (with asm labels) for them so an expression can call them.
+  bool LookupFunctions(ConstString name,
+                       llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
   const lldb::TargetSP m_target;
   ValueObject *m_ctx_obj;
   Materializer::PersistentVariableDelegate *m_result_delegate;
