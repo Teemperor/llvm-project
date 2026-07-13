@@ -50,7 +50,12 @@ public:
     llvm::SmallVector<clang::NamedDecl *, 4> decls;
     m_map.FindExternalVisibleDecls(dc, name, decls);
     if (decls.empty()) {
-      SetNoExternalVisibleDeclsForName(dc, name);
+      // Don't cache a negative result produced while we were mid-generation:
+      // the global-function search is skipped then (it would just be
+      // reconciling names of decls we are synthesizing), so caching "no decls"
+      // could hide a function that the expression genuinely references later.
+      if (!m_map.IsGeneratingDecls())
+        SetNoExternalVisibleDeclsForName(dc, name);
       return false;
     }
     SetExternalVisibleDeclsForName(dc, name, decls);
@@ -232,8 +237,18 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
       return !decls.empty();
     }
     // A free function referenced by the expression (e.g. `globalFuncCall()`).
-    if (!sname.starts_with("$"))
+    if (!sname.starts_with("$")) {
+      // Skip the whole-module function search while we are synthesizing decls:
+      // adding a named decl to the (external-visible) TU makes clang look that
+      // name up here, but those are internal reconciliation lookups, not
+      // references from the expression. Running a module-wide FindFunctions per
+      // such name is what made completing large types (e.g. clang::Sema)
+      // effectively never finish. Genuine references are looked up while the
+      // parser runs (outside generation) and still resolve.
+      if (IsGeneratingDecls())
+        return false;
       return LookupFunctions(ConstString(sname), decls);
+    }
   }
   return false;
 }

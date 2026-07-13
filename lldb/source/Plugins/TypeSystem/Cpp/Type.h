@@ -220,6 +220,15 @@ public:
     return nullptr;
   }
 
+  /// True once this record's member functions have been parsed. Member
+  /// functions are only needed by the expression evaluator (to call methods),
+  /// so -- unlike fields and base classes -- they are parsed lazily, in a
+  /// separate step after the record is otherwise complete. This avoids pulling
+  /// in every method's signature (and the types it references) merely to
+  /// inspect a value of this type. A complete record may still have unparsed
+  /// member functions.
+  bool AreMemberFunctionsParsed() const { return m_member_functions_parsed; }
+
   /// Look up a type declared directly inside this record (a nested typedef,
   /// class, union or enum) by its unqualified name. Returns null if there is no
   /// such nested type. Data formatters use this to reach a container's internal
@@ -237,6 +246,7 @@ private:
   // and Context is only reachable through TypeSystemCpp's locked Builder.
   friend class Context;
   void SetIsComplete(bool complete) { m_complete = complete; }
+  void SetMemberFunctionsParsed() { m_member_functions_parsed = true; }
   void AddField(Identifier name, TypeRef type, uint64_t byte_offset,
                 uint32_t bitfield_bit_size = 0,
                 uint32_t bitfield_bit_offset = 0) {
@@ -260,6 +270,7 @@ private:
 
   bool m_complete = false;
   bool m_is_union = false;
+  bool m_member_functions_parsed = false;
   std::vector<Field> m_fields;
   std::vector<TemplateArgument> m_template_args;
   std::vector<std::pair<Identifier, TypeRef>> m_nested_types;

@@ -83,6 +83,13 @@ public:
   bool FindExternalVisibleDecls(const clang::DeclContext *dc,
                                 clang::DeclarationName name,
                                 llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+  /// True while ClangASTGenerator is synthesizing decls. The proxy uses this to
+  /// avoid caching a negative lookup result that was only skipped because we
+  /// were mid-generation (see FindExternalVisibleDecls), which would otherwise
+  /// hide a function that is genuinely referenced later.
+  bool IsGeneratingDecls() const {
+    return m_generator && m_generator->IsGenerating();
+  }
   void CompleteType(clang::TagDecl *tag_decl);
   bool LayoutRecordType(
       const clang::RecordDecl *record, uint64_t &size, uint64_t &alignment,

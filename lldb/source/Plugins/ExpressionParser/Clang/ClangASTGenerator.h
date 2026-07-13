@@ -87,7 +87,31 @@ public:
                                         const CompilerType &function_cpp_type,
                                         llvm::StringRef asm_label);
 
+  /// True while this generator is actively synthesizing clang decls. Adding a
+  /// named decl to the (external-visible) translation unit makes clang
+  /// reconcile that name against the external source; those reentrant lookups
+  /// are internal bookkeeping, not genuine references from the expression, so
+  /// callers use this to skip expensive global searches while it is set. See
+  /// CppExpressionDeclMap::FindExternalVisibleDecls.
+  bool IsGenerating() const { return m_generation_depth != 0; }
+
 private:
+  /// RAII marker for IsGenerating(): held for the duration of each public
+  /// AST-synthesizing entry point (so nested/recursive generation stays
+  /// "generating" until the outermost call returns).
+  class GenerationGuard {
+  public:
+    explicit GenerationGuard(ClangASTGenerator &gen) : m_gen(gen) {
+      ++m_gen.m_generation_depth;
+    }
+    ~GenerationGuard() { --m_gen.m_generation_depth; }
+    GenerationGuard(const GenerationGuard &) = delete;
+    GenerationGuard &operator=(const GenerationGuard &) = delete;
+
+  private:
+    ClangASTGenerator &m_gen;
+  };
+
   /// Generate the clang type for \p cpp_type, which is owned by \p ts.
   clang::QualType GenerateType(TypeSystemCpp &ts, cpp_typesystem::Type *cpp_type);
 
@@ -107,6 +131,10 @@ private:
 
   clang::ASTContext &m_ast;
 
+  /// Nonzero while inside a public AST-synthesizing entry point. See
+  /// IsGenerating() / GenerationGuard.
+  unsigned m_generation_depth = 0;
+
   /// cpp_typesystem::Type -> produced clang QualType (opaque pointer).
   llvm::DenseMap<cpp_typesystem::Type *, void *> m_generated;
 
@@ -120,6 +148,12 @@ private:
     cpp_typesystem::RecordType *cpp_record = nullptr;
     clang::CXXRecordDecl *clang_decl = nullptr;
     bool completed = false;
+    /// Bit offset of every field decl we added while populating this record,
+    /// including the synthetic unnamed bitfields inserted to fill the gaps left
+    /// by DWARF's omitted padding bitfields. LayoutRecord reports these to
+    /// Clang (a plain parallel walk of the cpp fields wouldn't account for the
+    /// synthetic ones).
+    llvm::DenseMap<const clang::FieldDecl *, uint64_t> field_bit_offsets;
   };
   llvm::DenseMap<const clang::RecordDecl *, RecordInfo> m_records;
 };

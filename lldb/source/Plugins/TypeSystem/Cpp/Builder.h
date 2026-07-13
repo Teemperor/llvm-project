@@ -93,6 +93,9 @@ public:
 
   // Structural completion of a record type.
   void SetRecordComplete(RecordType &record);
+  /// Mark \p record's member functions as parsed (they are filled in lazily,
+  /// after completion; see DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF).
+  void SetRecordMemberFunctionsParsed(RecordType &record);
   void AddField(RecordType &record, Identifier name, Type *type,
                 uint64_t byte_offset, uint32_t bitfield_bit_size = 0,
                 uint32_t bitfield_bit_offset = 0);

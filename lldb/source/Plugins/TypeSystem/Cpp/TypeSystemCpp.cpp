@@ -426,6 +426,23 @@ bool TypeSystemCpp::GetCompleteType(opaque_compiler_type_t type) {
   return t->IsComplete();
 }
 
+void TypeSystemCpp::CompleteMemberFunctions(cpp_typesystem::Type *type) {
+  if (!type)
+    return;
+  // See through typedefs/qualifiers to the underlying record, mirroring
+  // GetCompleteType.
+  auto *record =
+      llvm::dyn_cast_or_null<cpp_typesystem::RecordType>(Desugar(type));
+  if (!record || record->AreMemberFunctionsParsed())
+    return;
+  // Member functions live on the completed record, and the DWARF parser learns
+  // the record's defining DIE while completing it, so complete it first.
+  GetCompleteType(record);
+  if (auto *parser =
+          llvm::dyn_cast_or_null<DWARFASTParserCpp>(GetDWARFParser()))
+    parser->CompleteMemberFunctionsFromDWARF(*record);
+}
+
 uint32_t TypeSystemCpp::GetPointerByteSize() {
   return m_context.GetLanguageOpts().GetBuiltinSizes().pointer_size;
 }
@@ -647,20 +664,25 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
   // A pointer's children are those of its pointee: expanding a pointer to an
   // aggregate shows the aggregate's members directly, while a pointer to a
   // scalar has a single child (the dereferenced value). `void *` has none.
+  // Looking through to the pointee's members must not *complete* it, though: a
+  // type reachable only through a pointer stays a forward declaration until it
+  // is explicitly dereferenced/accessed (see the note in
+  // GetChildCompilerTypeAtIndex). So only expand an already-complete pointee.
   if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
     cpp_typesystem::Type *pointee = ptr->GetPointeeType();
     if (!pointee)
       return 0;
-    if (pointee->IsAggregate())
+    if (pointee->IsAggregate() && pointee->IsComplete())
       return GetNumChildren(pointee, omit_empty_base_classes, exe_ctx);
     return 1;
   }
   // A reference is transparent: its children are those of the referenced type.
+  // Like pointers, counting them must not force completion of the referent.
   if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t)) {
     cpp_typesystem::Type *pointee = ref->GetPointeeType();
     if (!pointee)
       return 0;
-    if (pointee->IsAggregate())
+    if (pointee->IsAggregate() && pointee->IsComplete())
       return GetNumChildren(pointee, omit_empty_base_classes, exe_ctx);
     return 1;
   }
@@ -803,7 +825,14 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
     if (!pointee)
       return CompilerType(); // Can't dereference `void *`.
 
-    if (transparent_pointers && pointee->IsAggregate()) {
+    // Only look through to the pointee's members if it is already complete.
+    // Doing so must never *cause* completion: a type reachable only through a
+    // pointer stays a forward declaration until it is explicitly dereferenced
+    // or a member is accessed. An incomplete pointee is treated like a scalar
+    // one -- its single child is the dereferenced value (which, when actually
+    // materialized, completes it), matching GetNumChildren.
+    if (transparent_pointers && pointee->IsAggregate() &&
+        pointee->IsComplete()) {
       bool tmp_child_is_deref_of_parent = false;
       return GetCompilerType(pointee).GetChildCompilerTypeAtIndex(
           exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
@@ -834,7 +863,10 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
     if (!pointee)
       return CompilerType();
 
-    if (transparent_pointers && pointee->IsAggregate()) {
+    // As with pointers, only expand an already-complete referent transparently
+    // so that merely inspecting the reference doesn't force its completion.
+    if (transparent_pointers && pointee->IsAggregate() &&
+        pointee->IsComplete()) {
       bool tmp_child_is_deref_of_parent = false;
       return GetCompilerType(pointee).GetChildCompilerTypeAtIndex(
           exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
