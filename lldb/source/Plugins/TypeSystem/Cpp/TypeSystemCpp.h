@@ -11,7 +11,6 @@
 
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
-#include "lldb/Utility/Locked.h"
 #include "llvm/TargetParser/Triple.h"
 
 #include "Builder.h"
@@ -36,14 +35,6 @@ public:
 
   // DWARF parsing
   plugin::dwarf::DWARFASTParser *GetDWARFParser() override;
-
-  /// Acquire exclusive, serialized access to this type system's mutable state.
-  /// The returned handle owns the type system's lock for its whole lifetime
-  /// and is the only way to reach the mutating Builder API, so all type
-  /// construction and completion is serialized against other threads.
-  LockedPtr<cpp_typesystem::Builder> Lock() {
-    return LockedPtr<cpp_typesystem::Builder>(m_mutex, &m_builder);
-  }
 
   /// Wrap one of our own Type nodes into a CompilerType owned by this system.
   CompilerType GetCompilerType(cpp_typesystem::Type *type);
@@ -133,9 +124,8 @@ public:
   ConstString GetTypeName(lldb::opaque_compiler_type_t type,
                           bool BaseOnly) override;
   ConstString GetDisplayTypeName(lldb::opaque_compiler_type_t type) override;
-  uint32_t
-  GetTypeInfo(lldb::opaque_compiler_type_t type,
-              CompilerType *pointee_or_element_compiler_type) override;
+  uint32_t GetTypeInfo(lldb::opaque_compiler_type_t type,
+                       CompilerType *pointee_or_element_compiler_type) override;
   lldb::LanguageType
   GetMinimumLanguage(lldb::opaque_compiler_type_t type) override;
   lldb::TypeClass GetTypeClass(lldb::opaque_compiler_type_t type) override;
@@ -149,7 +139,8 @@ public:
   int GetFunctionArgumentCount(lldb::opaque_compiler_type_t type) override;
   CompilerType GetFunctionArgumentTypeAtIndex(lldb::opaque_compiler_type_t type,
                                               size_t idx) override;
-  CompilerType GetFunctionReturnType(lldb::opaque_compiler_type_t type) override;
+  CompilerType
+  GetFunctionReturnType(lldb::opaque_compiler_type_t type) override;
   size_t GetNumMemberFunctions(lldb::opaque_compiler_type_t type) override;
   TypeMemberFunctionImpl
   GetMemberFunctionAtIndex(lldb::opaque_compiler_type_t type,
@@ -158,8 +149,8 @@ public:
   CompilerType GetPointerType(lldb::opaque_compiler_type_t type) override;
 
   // Exploring the type
-  const llvm::fltSemantics &
-  GetFloatTypeSemantics(size_t byte_size, lldb::Format format) override;
+  const llvm::fltSemantics &GetFloatTypeSemantics(size_t byte_size,
+                                                  lldb::Format format) override;
   llvm::Expected<uint64_t>
   GetBitSize(lldb::opaque_compiler_type_t type,
              ExecutionContextScope *exe_scope) override;
@@ -201,15 +192,15 @@ public:
   GetIndexOfChildWithName(lldb::opaque_compiler_type_t type,
                           llvm::StringRef name,
                           bool omit_empty_base_classes) override;
-  size_t GetIndexOfChildMemberWithName(
-      lldb::opaque_compiler_type_t type, llvm::StringRef name,
-      bool omit_empty_base_classes,
-      std::vector<uint32_t> &child_indexes) override;
+  size_t
+  GetIndexOfChildMemberWithName(lldb::opaque_compiler_type_t type,
+                                llvm::StringRef name,
+                                bool omit_empty_base_classes,
+                                std::vector<uint32_t> &child_indexes) override;
 
   // Dumping types
 #ifndef NDEBUG
-  LLVM_DUMP_METHOD void
-  dump(lldb::opaque_compiler_type_t type) const override;
+  LLVM_DUMP_METHOD void dump(lldb::opaque_compiler_type_t type) const override;
 #endif
 
   bool DumpTypeValue(lldb::opaque_compiler_type_t type, Stream &s,
@@ -246,7 +237,8 @@ public:
   CompilerType GetTypedefedType(lldb::opaque_compiler_type_t type) override;
   bool IsVectorType(lldb::opaque_compiler_type_t type,
                     CompilerType *element_type, uint64_t *size) override;
-  CompilerType GetFullyUnqualifiedType(lldb::opaque_compiler_type_t type) override;
+  CompilerType
+  GetFullyUnqualifiedType(lldb::opaque_compiler_type_t type) override;
   CompilerType GetNonReferenceType(lldb::opaque_compiler_type_t type) override;
   bool IsReferenceType(lldb::opaque_compiler_type_t type,
                        CompilerType *pointee_type, bool *is_rvalue) override;
@@ -264,9 +256,8 @@ public:
   std::optional<CompilerType::IntegralTemplateArgument>
   GetIntegralTemplateArgument(lldb::opaque_compiler_type_t type, size_t idx,
                               bool expand_pack) override;
-  CompilerType
-  GetDirectNestedTypeWithName(lldb::opaque_compiler_type_t type,
-                              llvm::StringRef name) override;
+  CompilerType GetDirectNestedTypeWithName(lldb::opaque_compiler_type_t type,
+                                           llvm::StringRef name) override;
 
 private:
   friend class cpp_typesystem::Builder;
@@ -279,9 +270,8 @@ private:
   // Serializes all mutation of m_context (and the Type nodes it owns) so the
   // DWARF parser can resolve referenced types on worker threads. Recursive so
   // that a locked resolution can nest further locked operations on the same
-  // thread. Handed out (paired with m_builder) by Lock().
+  // thread. Acquired by constructing a cpp_typesystem::Builder.
   std::recursive_mutex m_mutex;
-  cpp_typesystem::Builder m_builder{*this};
 };
 
 class ScratchTypeSystemCpp : public TypeSystemCpp {

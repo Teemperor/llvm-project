@@ -12,6 +12,8 @@ using namespace lldb_private;
 using namespace lldb_private::cpp_typesystem;
 using namespace lldb;
 
+Builder::Builder(TypeSystemCpp &ts) : m_ts(ts), m_lock(ts.m_mutex) {}
+
 CompilerType Builder::GetBuiltinType(ConstString name,
                                      std::optional<uint64_t> byte_size,
                                      lldb::Encoding encoding,
