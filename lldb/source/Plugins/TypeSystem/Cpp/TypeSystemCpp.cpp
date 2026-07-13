@@ -62,6 +62,11 @@ CompilerType TypeSystemCpp::Builder::GetBuiltinType(
       name.GetStringRef(), byte_size, encoding, format));
 }
 
+CompilerType TypeSystemCpp::Builder::GetVoidType() {
+  return m_ts.GetCompilerType(
+      m_ts.m_context.GetBuiltinType(cpp_typesystem::BuiltinKind::Void));
+}
+
 CompilerType
 TypeSystemCpp::Builder::CreateRecordType(ConstString name,
                                          std::optional<uint64_t> byte_size,
