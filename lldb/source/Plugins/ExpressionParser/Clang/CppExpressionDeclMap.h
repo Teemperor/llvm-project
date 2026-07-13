@@ -107,6 +107,13 @@ private:
   CreateLocalVarsNamespace(const clang::DeclContext *dc,
                            llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
+  /// Provide `$__lldb_class` (the type of the enclosing method's object) so an
+  /// expression evaluated in a member function can use `this` and reach members
+  /// unqualified. Mirrors ClangExpressionDeclMap::LookUpLldbClass' `this`-based
+  /// path.
+  void LookUpLldbClass(clang::DeclarationName name,
+                       llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
   const lldb::TargetSP m_target;
   ValueObject *m_ctx_obj;
   Materializer::PersistentVariableDelegate *m_result_delegate;

@@ -132,6 +132,25 @@ void ClangUserExpression::ScanContext(DiagnosticManager &diagnostic_manager,
 
   if (!decl_context) {
     LLDB_LOGF(log, "  [CUE::SC] Null decl context");
+    // TypeSystemCpp does not model function decl contexts, so the CXXMethodDecl
+    // detection below can't fire. Detect a C++ instance method from the frame's
+    // `this` pointer instead; the object pointer and $__lldb_class context are
+    // then handled the same way as for the Clang path.
+    if (m_allow_cxx && !m_ctx_obj) {
+      if (lldb::VariableListSP vars = function_block->GetBlockVariableList(true))
+        if (lldb::VariableSP this_var =
+                vars->FindVariable(ConstString("this"))) {
+          if (this_var->IsInScope(frame) &&
+              this_var->LocationIsValidForFrame(frame)) {
+            Type *this_type = this_var->GetType();
+            if (this_type &&
+                this_type->GetForwardCompilerType().IsPointerType(nullptr)) {
+              m_in_cplusplus_method = true;
+              m_needs_object_ptr = true;
+            }
+          }
+        }
+    }
     return;
   }
 

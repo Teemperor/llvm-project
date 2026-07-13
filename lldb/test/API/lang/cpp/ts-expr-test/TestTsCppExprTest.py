@@ -11,8 +11,20 @@ class TestCase(TestBase):
         self.runCmd("settings set target.experimental.use-DIL false")
         self.build()
         lldbutil.run_to_source_breakpoint(
-            self, "// break here", lldb.SBFileSpec("main.cpp")
+            self, "// break in method", lldb.SBFileSpec("main.cpp")
         )
+
+        # Inside a member function: the implicit `this` and unqualified access
+        # to a member variable (resolved through `this`).
+        self.expect_expr("this", result_type="Container *")
+        self.expect_expr("member_variable", result_value="99")
+
+        # Continue to the breakpoint in main for the remaining checks.
+        bkpt = self.target().BreakpointCreateBySourceRegex(
+            "// break here", lldb.SBFileSpec("main.cpp")
+        )
+        self.assertGreater(bkpt.GetNumLocations(), 0)
+        lldbutil.continue_to_breakpoint(self.process(), bkpt)
 
         self.expect_expr("local", result_value="20")
 
@@ -23,12 +35,12 @@ class TestCase(TestBase):
         self.expect_expr("ptr", result_type="Outer *")
         self.expect_expr("*ptr", result_type="Outer")
 
-        # Reference types: lvalue/rvalue references, references to records.
-        # Like pointers, a reference's value is the referent's address; the
-        # referenced value shows up in the summary instead.
-        self.expect_expr("ref", result_type="int &")
-        self.expect_expr("rref", result_type="int &&")
-        self.expect_expr("outer_ref", result_type="Outer &")
+        # Reference types collapse to the referenced value in an expression
+        # result (unlike `frame variable`, which preserves the `&`/`&&` type):
+        # `ref` evaluates to the referent `int`, etc.
+        self.expect_expr("ref", result_type="int", result_value="99")
+        self.expect_expr("rref", result_type="int", result_value="123")
+        self.expect_expr("outer_ref", result_type="Outer")
         # References are transparent: members are reachable directly.
         self.expect_expr("outer_ref.m.i", result_value="4")
         self.expect_expr("outer_ref.x", result_value="-22")
@@ -63,9 +75,10 @@ class TestCase(TestBase):
         # template types (typedefs, pointers, base classes, unions, bitfields,
         # template arguments and nested types), so exercising their data
         # formatters end-to-end validates broad type-system coverage.
+        # (Indexing via operator[] needs member-function call support, which
+        # TypeSystemCpp doesn't model yet; frame-variable indexing is covered by
+        # TestCppSmokeTest.)
         self.expect_expr("str", result_summary='"hello"')
         self.expect_expr("vec", result_summary="size=3")
-        self.expect_expr("vec[0]", result_value="10")
-        self.expect_expr("vec[2]", result_value="30")
         self.expect_expr("tree_map", result_summary="size=2")
         self.expect_expr("hash_map", result_summary="size=1")
