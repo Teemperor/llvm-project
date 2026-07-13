@@ -83,6 +83,34 @@ CompilerType Builder::CreateEnumType(ConstString name,
       name.GetStringRef(), byte_size, ToTypeRef(underlying_type), is_scoped));
 }
 
+CompilerType Builder::CreateFunctionType(CompilerType return_type,
+                                         bool is_variadic) {
+  return m_ts.GetCompilerType(m_ts.m_context.CreateFunctionType(
+      ToTypeRef(return_type), is_variadic));
+}
+
+void Builder::AddParameter(CompilerType function_type,
+                           CompilerType param_type) {
+  auto *func = llvm::dyn_cast_or_null<cpp_typesystem::FunctionType>(
+      static_cast<cpp_typesystem::Type *>(function_type.GetOpaqueQualType()));
+  if (func)
+    m_ts.m_context.AddParameter(*func, ToTypeRef(param_type));
+}
+
+void Builder::AddMemberFunction(cpp_typesystem::RecordType &record,
+                                ConstString name, CompilerType function_type,
+                                ConstString asm_label, bool is_static,
+                                bool is_const, bool is_virtual) {
+  cpp_typesystem::MemberFunction method;
+  method.name = GetIdentifier(name.GetStringRef());
+  method.type = ToTypeRef(function_type);
+  method.asm_label = GetIdentifier(asm_label.GetStringRef());
+  method.is_static = is_static;
+  method.is_const = is_const;
+  method.is_virtual = is_virtual;
+  m_ts.m_context.AddMemberFunction(record, method);
+}
+
 cpp_typesystem::Identifier Builder::GetIdentifier(llvm::StringRef name) {
   return m_ts.m_context.GetIdentifier(name);
 }

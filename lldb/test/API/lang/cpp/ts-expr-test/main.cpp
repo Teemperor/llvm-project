@@ -3,6 +3,9 @@
 #include <unordered_map>
 #include <vector>
 
+int globalFuncCall() { return 40; }
+int globalAdd(int a, int b) { return a + b; }
+
 struct SingleMember {
   int i;
 };
@@ -13,6 +16,7 @@ struct BaseClass {
 
 struct Outer : BaseClass {
   struct SingleMember m;
+  SingleMember funcCall() { return m; }
 };
 
 // A class template; the debug info describes the instantiation Wrapper<int>
@@ -51,6 +55,8 @@ struct Container {
   int GetMember() {
     return member_variable; // break in method
   }
+  SingleMember funcCall() { return {member_variable}; }
+  int addToMember(int x) { return member_variable + x; }
 };
 
 int main() {
@@ -58,7 +64,9 @@ int main() {
 
   Container container;
   container.member_variable = 99;
-  int from_method = container.GetMember();
+  int from_method = container.GetMember() + container.funcCall().i +
+                    container.addToMember(1) + globalFuncCall() +
+                    globalAdd(3, 4);
 
   struct Outer outer;
   outer.m.i = 4;

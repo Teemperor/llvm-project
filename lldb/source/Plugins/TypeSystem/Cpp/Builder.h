@@ -71,6 +71,14 @@ public:
   CompilerType CreateEnumType(ConstString name,
                               std::optional<uint64_t> byte_size,
                               CompilerType underlying_type, bool is_scoped);
+  /// Create a function type. Parameters are added afterwards via AddParameter.
+  CompilerType CreateFunctionType(CompilerType return_type, bool is_variadic);
+  /// Append a parameter type to a FunctionType created by CreateFunctionType.
+  void AddParameter(CompilerType function_type, CompilerType param_type);
+  /// Add a member function to \p record.
+  void AddMemberFunction(RecordType &record, ConstString name,
+                         CompilerType function_type, ConstString asm_label,
+                         bool is_static, bool is_const, bool is_virtual);
   /// Intern a name into the Context so it can be used for a type or record
   /// member. All Identifiers must be created this way.
   Identifier GetIdentifier(llvm::StringRef name);

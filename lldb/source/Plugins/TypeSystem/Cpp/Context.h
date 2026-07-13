@@ -81,6 +81,10 @@ public:
                            std::optional<uint64_t> byte_size,
                            TypeRef underlying_type, bool is_scoped);
 
+  /// Create a function type with the given return type. Parameters are added
+  /// afterwards via AddParameter.
+  FunctionType *CreateFunctionType(TypeRef return_type, bool is_variadic);
+
   /// Structural mutation of already-created record types. These are the gated
   /// entry points for the mutations that happen during lazy completion; the
   /// corresponding Type methods are private and befriend this class.
@@ -103,6 +107,12 @@ public:
   }
   void AddEnumerator(EnumType &enum_type, Identifier name, uint64_t value) {
     enum_type.AddEnumerator(name, value);
+  }
+  void AddParameter(FunctionType &func, TypeRef type) {
+    func.AddParameter(type);
+  }
+  void AddMemberFunction(RecordType &record, MemberFunction method) {
+    record.AddMemberFunction(method);
   }
   /// @}
 

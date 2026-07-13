@@ -12,6 +12,7 @@
 #include "DWARFDIE.h"
 #include "DWARFDefines.h"
 #include "SymbolFileDWARF.h"
+#include "SymbolFileDWARFDebugMap.h"
 
 #include "Plugins/TypeSystem/Cpp/Builder.h"
 #include "Plugins/TypeSystem/Cpp/Namespace.h"
@@ -20,10 +21,13 @@
 
 #include "lldb/Core/Declaration.h"
 #include "lldb/Core/Mangled.h"
+#include "lldb/Core/Module.h"
 #include "lldb/Expression/DWARFExpressionList.h"
+#include "lldb/Expression/Expression.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/Function.h"
+#include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/Type.h"
 #include "lldb/Target/Language.h"
 
@@ -227,6 +231,41 @@ static void SetTypeNameInfo(const DWARFDIE &die, CompilerType type,
   builder.SetDeclContext(type, BuildDeclNamespace(die, builder));
   if (const char *name = die.GetName())
     builder.SetUnqualifiedName(type, ConstString(name));
+}
+
+/// Build the asm label (an lldb FunctionCallLabel) for a function/method DIE so
+/// the JIT can resolve the call to the right symbol in the inferior. Mirrors
+/// DWARFASTParserClang's MakeLLDBFuncAsmLabel.
+static std::string MakeFuncAsmLabel(const DWARFDIE &die) {
+  const char *name = die.GetMangledName(/*substitute_name_allowed=*/false);
+  if (!name)
+    return {};
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+  if (!dwarf)
+    return {};
+
+  auto get_module_id = [&](SymbolFile *sym) -> lldb::user_id_t {
+    if (!sym)
+      return LLDB_INVALID_UID;
+    ObjectFile *obj = sym->GetMainObjectFile();
+    if (!obj)
+      return LLDB_INVALID_UID;
+    lldb::ModuleSP module_sp = obj->GetModule();
+    return module_sp ? module_sp->GetID() : LLDB_INVALID_UID;
+  };
+
+  lldb::user_id_t module_id = get_module_id(dwarf->GetDebugMapSymfile());
+  if (module_id == LLDB_INVALID_UID)
+    module_id = get_module_id(dwarf);
+  if (module_id == LLDB_INVALID_UID)
+    return {};
+
+  const lldb::user_id_t die_id = die.GetID();
+  if (die_id == LLDB_INVALID_UID)
+    return {};
+
+  return FunctionCallLabel{/*discriminator=*/{}, module_id, die_id, name}
+      .toString();
 }
 
 TypeSP DWARFASTParserCpp::ParseStructureType(const DWARFDIE &die) {
@@ -484,6 +523,52 @@ TypeSP DWARFASTParserCpp::ParseEnum(const DWARFDIE &die) {
                          enum_type, Type::ResolveState::Full);
 }
 
+TypeSP DWARFASTParserCpp::ParseFunctionType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  // Resolve the return type (a missing DW_AT_type means `void`).
+  DWARFDIE return_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  CompilerType return_type;
+  if (return_die)
+    if (Type *ret = die.ResolveTypeUID(return_die))
+      return_type = ret->GetForwardCompilerType();
+
+  // Resolve the parameter types, skipping the implicit object (`this`)
+  // parameter (DW_AT_artificial) so a method's signature matches its
+  // clang::CXXMethodDecl.
+  std::vector<CompilerType> params;
+  bool is_variadic = false;
+  for (DWARFDIE child : die.children()) {
+    if (child.Tag() == DW_TAG_formal_parameter) {
+      if (child.GetAttributeValueAsUnsigned(DW_AT_artificial, 0))
+        continue;
+      DWARFDIE param_die = child.GetAttributeValueAsReferenceDIE(DW_AT_type);
+      if (param_die)
+        if (Type *p = die.ResolveTypeUID(param_die))
+          params.push_back(p->GetForwardCompilerType());
+    } else if (child.Tag() == DW_TAG_unspecified_parameters) {
+      is_variadic = true;
+    }
+  }
+
+  CompilerType function_type;
+  {
+    cpp_typesystem::Builder builder(m_ts);
+    if (!return_type)
+      return_type = builder.GetVoidType();
+    function_type = builder.CreateFunctionType(return_type, is_variadic);
+    for (const CompilerType &param : params)
+      builder.AddParameter(function_type, param);
+  }
+
+  Declaration decl;
+  ConstString empty_name;
+  return dwarf->MakeType(die.GetID(), empty_name, /*byte_size=*/std::nullopt,
+                         /*context=*/nullptr, LLDB_INVALID_UID,
+                         Type::eEncodingIsUID, decl, function_type,
+                         Type::ResolveState::Full);
+}
+
 TypeSP DWARFASTParserCpp::ParseTypeFromDWARF(const SymbolContext &sc,
                                              const DWARFDIE &die,
                                              bool *type_is_new_ptr) {
@@ -533,6 +618,10 @@ TypeSP DWARFASTParserCpp::ParseTypeFromDWARF(const SymbolContext &sc,
     break;
   case DW_TAG_enumeration_type:
     type_sp = ParseEnum(die);
+    break;
+  case DW_TAG_subroutine_type:
+  case DW_TAG_subprogram:
+    type_sp = ParseFunctionType(die);
     break;
   default:
     break;
@@ -736,6 +825,49 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
         ts.AddNestedType(*record, ts.GetIdentifier(member.name), member_type);
       break;
     }
+  }
+
+  // Member functions: parse the class's DW_TAG_subprogram children so calls
+  // like `obj.method()` / `this->method()` can be resolved and JIT-called.
+  for (DWARFDIE child : die.children()) {
+    if (child.Tag() != DW_TAG_subprogram)
+      continue;
+    const char *method_name = child.GetName();
+    if (!method_name || !method_name[0])
+      continue;
+    // Skip compiler-generated special members (implicit ctors/dtors/etc.).
+    if (child.GetAttributeValueAsUnsigned(DW_AT_artificial, 0))
+      continue;
+
+    Type *func_type = die.ResolveTypeUID(child);
+    if (!func_type)
+      continue;
+
+    bool is_virtual =
+        child.GetAttributeValueAsUnsigned(DW_AT_virtuality, 0) != 0;
+    // A non-static method has an artificial `this` parameter; a `const` method
+    // has a `this` whose pointee is const-qualified.
+    bool is_static = true;
+    bool is_const = false;
+    for (DWARFDIE param : child.children()) {
+      if (param.Tag() != DW_TAG_formal_parameter ||
+          !param.GetAttributeValueAsUnsigned(DW_AT_artificial, 0))
+        continue;
+      is_static = false;
+      if (DWARFDIE this_die = param.GetAttributeValueAsReferenceDIE(DW_AT_type))
+        if (Type *this_type = die.ResolveTypeUID(this_die)) {
+          CompilerType pointee =
+              this_type->GetForwardCompilerType().GetPointeeType();
+          is_const = pointee.IsConst();
+        }
+      break;
+    }
+
+    const std::string asm_label = MakeFuncAsmLabel(child);
+    ts.AddMemberFunction(*record, ConstString(method_name),
+                         func_type->GetForwardCompilerType(),
+                         ConstString(asm_label), is_static, is_const,
+                         is_virtual);
   }
 
   return true;

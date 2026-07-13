@@ -137,3 +137,11 @@ EnumType *Context::CreateEnumType(llvm::StringRef name,
   type->SetIsScoped(is_scoped);
   return Track(std::move(type));
 }
+
+FunctionType *Context::CreateFunctionType(TypeRef return_type,
+                                          bool is_variadic) {
+  auto type = std::make_unique<FunctionType>();
+  type->SetReturnType(return_type);
+  type->SetIsVariadic(is_variadic);
+  return Track(std::move(type));
+}

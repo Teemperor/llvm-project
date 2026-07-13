@@ -21,6 +21,7 @@ class ASTContext;
 class RecordDecl;
 class CXXRecordDecl;
 class FieldDecl;
+class FunctionDecl;
 class TagDecl;
 } // namespace clang
 
@@ -79,6 +80,13 @@ public:
   /// scratch TypeSystemCpp), so it can be stored as an expression result.
   CompilerType MapClangTypeToCpp(clang::QualType qt, TypeSystemCpp &result_ts);
 
+  /// Build a clang::FunctionDecl (in the translation unit) for a free function
+  /// with the given signature and asm label; the JIT resolves the call through
+  /// the label. Returns null on failure.
+  clang::FunctionDecl *GenerateFunction(llvm::StringRef name,
+                                        const CompilerType &function_cpp_type,
+                                        llvm::StringRef asm_label);
+
 private:
   /// Generate the clang type for \p cpp_type, which is owned by \p ts.
   clang::QualType GenerateType(TypeSystemCpp &ts, cpp_typesystem::Type *cpp_type);
@@ -92,6 +100,10 @@ private:
 
   /// Map a cpp_typesystem builtin type to a Clang builtin QualType.
   clang::QualType GenerateBuiltin(cpp_typesystem::Type *cpp_type);
+
+  /// Create ParmVarDecls for \p func from the parameter types of \p function_qt
+  /// (a FunctionProtoType).
+  void BuildParams(clang::FunctionDecl *func, clang::QualType function_qt);
 
   clang::ASTContext &m_ast;
 
