@@ -17,6 +17,7 @@
 
 #include "ClangASTSource.h"
 #include "ClangExpressionVariable.h"
+#include "ExpressionDeclMap.h"
 
 #include "lldb/Core/Value.h"
 #include "lldb/Expression/Materializer.h"
@@ -54,7 +55,7 @@ class ClangPersistentVariables;
 ///
 /// Fourth and finally, it "dematerializes" the struct after the JITted code
 /// has executed, placing the new values back where it found the old ones.
-class ClangExpressionDeclMap : public ClangASTSource {
+class ClangExpressionDeclMap : public ClangASTSource, public ExpressionDeclMap {
 public:
   /// Constructor
   ///
@@ -93,6 +94,18 @@ public:
 
   /// Destructor
   ~ClangExpressionDeclMap() override;
+
+  // ExpressionDeclMap methods whose implementations live in the ClangASTSource
+  // base (which predates the interface); forward to them here.
+  llvm::IntrusiveRefCntPtr<clang::ExternalASTSource> CreateProxy() override {
+    return ClangASTSource::CreateProxy();
+  }
+  void SetLookupsEnabled(bool enabled) override {
+    ClangASTSource::SetLookupsEnabled(enabled);
+  }
+
+  /// [ExpressionDeclMap] Wrap a parser QualType in this map's TypeSystemClang.
+  CompilerType WrapType(clang::QualType qt) override;
 
   /// Enable the state needed for parsing and IR transformation.
   ///

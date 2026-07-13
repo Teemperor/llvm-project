@@ -9,7 +9,11 @@
 #include "TypeSystemCpp.h"
 
 #include "Plugins/SymbolFile/DWARF/DWARFASTParserCpp.h"
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
+
+#include "Plugins/ExpressionParser/Clang/ClangFunctionCaller.h"
+#include "Plugins/ExpressionParser/Clang/ClangPersistentVariables.h"
+#include "Plugins/ExpressionParser/Clang/ClangUserExpression.h"
+#include "Plugins/ExpressionParser/Clang/ClangUtilityFunction.h"
 
 #include "lldb/Core/DumpDataExtractor.h"
 #include "lldb/Core/PluginManager.h"
@@ -92,57 +96,51 @@ ScratchTypeSystemCpp::ScratchTypeSystemCpp(Target &target, llvm::Triple triple)
                     std::move(triple)),
       m_target_wp(target.shared_from_this()) {}
 
-lldb::TypeSystemSP ScratchTypeSystemCpp::GetOrCreateCompanion() {
-  if (!m_companion_clang_sp) {
-    TargetSP target = m_target_wp.lock();
-    if (!target)
-      return nullptr;
-    m_companion_clang_sp = ScratchTypeSystemClang::CreateStandalone(
-        *target, target->GetArchitecture().GetTriple());
-  }
-  return m_companion_clang_sp;
-}
-
-lldb::TypeSystemSP ScratchTypeSystemCpp::GetCompanionClangTypeSystem() {
-  return GetOrCreateCompanion();
-}
-
 UserExpression *ScratchTypeSystemCpp::GetUserExpression(
     llvm::StringRef expr, llvm::StringRef prefix, SourceLanguage language,
     Expression::ResultType desired_type,
     const EvaluateExpressionOptions &options, ValueObject *ctx_obj) {
-  lldb::TypeSystemSP clang_ts = GetOrCreateCompanion();
-  if (!clang_ts)
+  TargetSP target = m_target_wp.lock();
+  if (!target)
     return nullptr;
-  return clang_ts->GetUserExpression(expr, prefix, language, desired_type,
-                                     options, ctx_obj);
+  return new ClangUserExpression(*target, expr, prefix, language, desired_type,
+                                 options, ctx_obj);
 }
 
 FunctionCaller *ScratchTypeSystemCpp::GetFunctionCaller(
     const CompilerType &return_type, const Address &function_address,
     const ValueList &arg_value_list, const char *name) {
-  lldb::TypeSystemSP clang_ts = GetOrCreateCompanion();
-  if (!clang_ts)
+  TargetSP target = m_target_wp.lock();
+  if (!target)
     return nullptr;
-  return clang_ts->GetFunctionCaller(return_type, function_address,
-                                     arg_value_list, name);
+  Process *process = target->GetProcessSP().get();
+  if (!process)
+    return nullptr;
+  return new ClangFunctionCaller(*process, return_type, function_address,
+                                 arg_value_list, name);
 }
 
 std::unique_ptr<UtilityFunction>
 ScratchTypeSystemCpp::CreateUtilityFunction(std::string text,
                                             std::string name) {
-  lldb::TypeSystemSP clang_ts = GetOrCreateCompanion();
-  if (!clang_ts)
+  TargetSP target = m_target_wp.lock();
+  if (!target)
     return {};
-  return clang_ts->CreateUtilityFunction(std::move(text), std::move(name));
+  return std::make_unique<ClangUtilityFunction>(
+      *target, std::move(text), std::move(name),
+      target->GetDebugUtilityExpression());
 }
 
 PersistentExpressionState *
 ScratchTypeSystemCpp::GetPersistentExpressionState() {
-  lldb::TypeSystemSP clang_ts = GetOrCreateCompanion();
-  if (!clang_ts)
-    return nullptr;
-  return clang_ts->GetPersistentExpressionState();
+  if (!m_persistent_variables) {
+    TargetSP target = m_target_wp.lock();
+    if (!target)
+      return nullptr;
+    m_persistent_variables =
+        std::make_unique<ClangPersistentVariables>(target->shared_from_this());
+  }
+  return m_persistent_variables.get();
 }
 
 ConstString TypeSystemCpp::DeclGetName(void *opaque_decl) {
