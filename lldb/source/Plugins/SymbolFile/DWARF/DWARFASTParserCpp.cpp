@@ -803,6 +803,30 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   // Integrate the resolved base classes, members and template arguments into
   // the record, in declaration order, under a single lock.
   cpp_typesystem::Builder ts(m_ts);
+
+  // Compilers omit unnamed bitfields (padding) from DWARF, but LLDB
+  // reconstructs them so the gaps between named bitfields are visible when
+  // inspecting a value. We track where the previous field ended (in bits) and,
+  // whenever a bitfield starts past that point, synthesize a padding member for
+  // the hole. This mirrors DWARFASTParserClang's unnamed-bitfield handling.
+  bool have_base = false;
+  for (const MemberInfo &member : members)
+    if (member.kind == MemberInfo::Kind::Base) {
+      have_base = true;
+      break;
+    }
+  // The synthetic padding member is an `int` (matching TypeSystemClang, which
+  // uses a signed word-width builtin). Fetch it once.
+  constexpr uint64_t word_width = 32;
+  auto *padding_type = static_cast<cpp_typesystem::Type *>(
+      ts.GetBuiltinType(ConstString("int"), word_width / 8, lldb::eEncodingSint,
+                        lldb::eFormatDecimal)
+          .GetOpaqueQualType());
+  // State of the previous field, in absolute bits from the start of the record.
+  uint64_t last_field_end = 0;
+  bool last_field_is_bitfield = false;
+  bool seen_field = false;
+
   for (size_t i = 0; i < members.size(); ++i) {
     cpp_typesystem::Type *member_type = member_types[i];
     const MemberInfo &member = members[i];
@@ -819,11 +843,17 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
         uint64_t byte_offset = member.byte_offset;
         uint32_t bitfield_bit_size = 0;
         uint32_t bitfield_bit_offset = 0;
-        if (member.bit_size > 0) {
+        // Absolute bit offset/end of this field within the record, used to
+        // detect unnamed-bitfield gaps.
+        uint64_t abs_bit_offset;
+        uint64_t this_bit_size;
+        const bool is_bitfield = member.bit_size > 0;
+        if (is_bitfield) {
           bitfield_bit_size = member.bit_size;
-          uint64_t abs_bit_offset = member.data_bit_offset != UINT64_MAX
-                                        ? member.data_bit_offset
-                                        : member.byte_offset * 8;
+          abs_bit_offset = member.data_bit_offset != UINT64_MAX
+                               ? member.data_bit_offset
+                               : member.byte_offset * 8;
+          this_bit_size = member.bit_size;
           uint64_t storage_bits = member_type->GetByteSize().value_or(0) * 8;
           if (storage_bits) {
             bitfield_bit_offset = abs_bit_offset % storage_bits;
@@ -831,12 +861,46 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
           } else {
             byte_offset = abs_bit_offset / 8;
           }
+        } else {
+          abs_bit_offset = member.byte_offset * 8;
+          this_bit_size = member_type->GetByteSize().value_or(0) * 8;
         }
+
+        // Fill any gap before a bitfield with a synthetic unnamed bitfield.
+        if (is_bitfield && padding_type) {
+          uint64_t gap_start = last_field_end;
+          // If the previous field was not a bitfield and did not end on a word
+          // boundary, its padding fills the rest of the word, so the gap does
+          // not start until the next word.
+          if (!last_field_is_bitfield && gap_start != 0 &&
+              (gap_start % word_width) != 0)
+            gap_start += word_width - (gap_start % word_width);
+
+          const bool this_is_first_field = !seen_field;
+          if (abs_bit_offset > gap_start &&
+              !(have_base && this_is_first_field)) {
+            uint64_t pad_bits = abs_bit_offset - gap_start;
+            uint32_t pad_bit_in_word =
+                static_cast<uint32_t>(gap_start % word_width);
+            uint64_t pad_byte_offset = (gap_start - pad_bit_in_word) / 8;
+            ts.AddField(*record, ts.GetIdentifier(llvm::StringRef()),
+                        padding_type, pad_byte_offset,
+                        static_cast<uint32_t>(pad_bits), pad_bit_in_word);
+          }
+        }
+
         // Intern the member name through the type system's Context so its
         // storage is owned alongside the types (rather than pointing into
         // DWARF data).
         ts.AddField(*record, ts.GetIdentifier(member.name), member_type,
                     byte_offset, bitfield_bit_size, bitfield_bit_offset);
+
+        // Advance the running field-end used for gap detection.
+        uint64_t this_end = abs_bit_offset + this_bit_size;
+        if (this_end > last_field_end || !seen_field)
+          last_field_end = this_end;
+        last_field_is_bitfield = is_bitfield;
+        seen_field = true;
       }
       break;
     case MemberInfo::Kind::TemplateType:
