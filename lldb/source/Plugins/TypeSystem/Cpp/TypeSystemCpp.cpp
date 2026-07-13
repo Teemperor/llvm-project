@@ -79,11 +79,22 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t) {
     return "";
 
   // Composite types have no name of their own; build them from their parts.
-  if (auto *array = llvm::dyn_cast<ArrayType>(t)) {
-    std::string element = BuildDisplayName(array->GetElementType());
-    if (std::optional<uint64_t> n = array->GetNumElements())
-      return llvm::formatv("{0}[{1}]", element, *n).str();
-    return element + "[]";
+  if (llvm::isa<ArrayType>(t)) {
+    // For a multidimensional C array the DWARF/type nesting goes
+    // outermost-dimension first (`T[2][3]` == array-of-2 of array-of-3 of T),
+    // but the element name must be printed innermost-last. Peel the whole
+    // array chain collecting dimensions left-to-right, then append them after
+    // the innermost element's name so the brackets keep their source order.
+    std::string dims;
+    cpp_typesystem::Type *cur = t;
+    while (auto *array = llvm::dyn_cast<ArrayType>(cur)) {
+      if (std::optional<uint64_t> n = array->GetNumElements())
+        dims += llvm::formatv("[{0}]", *n).str();
+      else
+        dims += "[]";
+      cur = array->GetElementType();
+    }
+    return BuildDisplayName(cur) + dims;
   }
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
     cpp_typesystem::Type *pointee = ptr->GetPointeeType();
@@ -466,14 +477,22 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
   if (!type)
     return ConstString();
   cpp_typesystem::Type *t = GetCppType(type);
-  // Arrays have no name of their own; build "<element>[<count>]".
-  if (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(t)) {
-    std::string element_name =
-        GetTypeName(array->GetElementType(), BaseOnly).GetStringRef().str();
-    if (std::optional<uint64_t> num_elements = array->GetNumElements())
-      return ConstString(
-          llvm::formatv("{0}[{1}]", element_name, *num_elements).str());
-    return ConstString(llvm::formatv("{0}[]", element_name).str());
+  // Arrays have no name of their own; build "<element>[<count>]". For a
+  // multidimensional array the nesting is outermost-dimension first, so peel
+  // the whole chain and print the dimensions in source order after the
+  // innermost element's name.
+  if (llvm::isa<cpp_typesystem::ArrayType>(t)) {
+    std::string dims;
+    cpp_typesystem::Type *cur = t;
+    while (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(cur)) {
+      if (std::optional<uint64_t> num_elements = array->GetNumElements())
+        dims += llvm::formatv("[{0}]", *num_elements).str();
+      else
+        dims += "[]";
+      cur = array->GetElementType();
+    }
+    std::string element_name = GetTypeName(cur, BaseOnly).GetStringRef().str();
+    return ConstString(element_name + dims);
   }
   // Pointers have no name of their own either; build "<pointee> *".
   if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
