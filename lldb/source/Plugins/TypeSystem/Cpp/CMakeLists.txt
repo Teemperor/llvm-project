@@ -1,4 +1,5 @@
 add_lldb_library(lldbPluginTypeSystemCpp PLUGIN
+  Builder.cpp
   BuiltinTypes.cpp
   Context.cpp
   Identifier.cpp
