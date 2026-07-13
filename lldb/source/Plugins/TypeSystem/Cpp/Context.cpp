@@ -8,6 +8,8 @@
 
 #include "Context.h"
 
+#include <cassert>
+
 using namespace lldb_private;
 using namespace lldb_private::cpp_typesystem;
 
@@ -44,6 +46,7 @@ RecordType *Context::CreateRecordType(llvm::StringRef name,
 
 ArrayType *Context::CreateArrayType(Type *element_type,
                                     std::optional<uint64_t> num_elements) {
+  assert(element_type && "an array must have an element type");
   auto type = std::make_unique<ArrayType>();
   type->SetElementType(element_type);
   type->SetNumElements(num_elements);
@@ -64,6 +67,9 @@ PointerType *Context::CreatePointerType(Type *pointee_type) {
 
 ReferenceType *Context::CreateReferenceType(Type *pointee_type,
                                             bool is_rvalue) {
+  // Unlike a pointer (which can be `void *`), a reference always refers to a
+  // concrete type.
+  assert(pointee_type && "a reference must refer to a type");
   auto type = std::make_unique<ReferenceType>();
   type->SetPointeeType(pointee_type);
   type->SetIsRValue(is_rvalue);
@@ -73,25 +79,30 @@ ReferenceType *Context::CreateReferenceType(Type *pointee_type,
 
 TypedefType *Context::CreateTypedefType(llvm::StringRef name,
                                         Type *underlying_type) {
+  // A typedef always aliases a type. A `typedef void Foo;` is represented by
+  // aliasing the `void` builtin, not by a null underlying type.
+  assert(underlying_type && "a typedef must alias a type");
   auto type = std::make_unique<TypedefType>();
   type->SetName(GetIdentifier(name));
   type->SetUnderlyingType(underlying_type);
   // A typedef has the same storage as the type it aliases.
-  if (underlying_type)
-    type->SetByteSize(underlying_type->GetByteSize());
+  type->SetByteSize(underlying_type->GetByteSize());
   return Track(std::move(type));
 }
 
 CVQualifiedType *Context::CreateCVQualifiedType(Type *underlying_type,
                                                 bool is_const,
                                                 bool is_volatile) {
+  // A cv-qualified type always qualifies a type. `const/volatile void` (e.g.
+  // the pointee of a `const void *`) qualifies the `void` builtin, not a null
+  // underlying type.
+  assert(underlying_type && "a cv-qualified type must qualify a type");
   auto type = std::make_unique<CVQualifiedType>();
   type->SetUnderlyingType(underlying_type);
   type->SetIsConst(is_const);
   type->SetIsVolatile(is_volatile);
   // A cv-qualified type has the same storage as its unqualified version.
-  if (underlying_type)
-    type->SetByteSize(underlying_type->GetByteSize());
+  type->SetByteSize(underlying_type->GetByteSize());
   return Track(std::move(type));
 }
 

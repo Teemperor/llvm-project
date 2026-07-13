@@ -48,6 +48,10 @@ public:
     CompilerType GetBuiltinType(ConstString name,
                                 std::optional<uint64_t> byte_size,
                                 lldb::Encoding encoding, lldb::Format format);
+    /// The `void` builtin type. DWARF encodes `void` as the absence of a
+    /// DW_AT_type, so the parser uses this to fill in the underlying type of a
+    /// cv-qualified or typedef'd `void` (e.g. the pointee of a `const void *`).
+    CompilerType GetVoidType();
     CompilerType CreateRecordType(ConstString name,
                                   std::optional<uint64_t> byte_size,
                                   bool is_cpp_class);

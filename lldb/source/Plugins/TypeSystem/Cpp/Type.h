@@ -9,6 +9,7 @@
 #ifndef LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_TYPE_H
 #define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_TYPE_H
 
+#include <cassert>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -32,12 +33,12 @@ struct Field {
   Type *type = nullptr;
   /// Offset of this member (or, for a bitfield, of its storage unit) from the
   /// start of the record, in bytes.
-  uint64_t byte_offset = 0;
+  uint32_t byte_offset = 0;
   /// For a bitfield: its width in bits. Zero means this is not a bitfield.
-  uint32_t bitfield_bit_size = 0;
+  uint16_t bitfield_bit_size = 0;
   /// For a bitfield: the offset of its first bit within the storage unit at
   /// byte_offset.
-  uint32_t bitfield_bit_offset = 0;
+  uint16_t bitfield_bit_offset = 0;
 
   bool IsBitfield() const { return bitfield_bit_size != 0; }
 };
@@ -174,8 +175,13 @@ private:
   void AddField(Identifier name, Type *type, uint64_t byte_offset,
                 uint32_t bitfield_bit_size = 0,
                 uint32_t bitfield_bit_offset = 0) {
-    m_fields.push_back(Field{name, type, byte_offset, bitfield_bit_size,
-                             bitfield_bit_offset});
+    Field f;
+    f.name = name;
+    f.type = type;
+    f.byte_offset = byte_offset;
+    f.bitfield_bit_size = bitfield_bit_size;
+    f.bitfield_bit_offset = bitfield_bit_offset;
+    m_fields.push_back(f);
   }
   void AddTemplateArgument(TemplateArgument arg) {
     m_template_args.push_back(arg);
@@ -320,45 +326,42 @@ public:
   static char ID;
 
   /// The immediately-wrapped type. Peel repeatedly to reach the canonical type.
+  /// Never null: a `const void`/`typedef void` wraps the `void` builtin, so
+  /// sugar always has a concrete underlying type (enforced by the Context
+  /// factories that create these).
   Type *GetUnderlyingType() const { return m_underlying_type; }
-  void SetUnderlyingType(Type *type) { m_underlying_type = type; }
+  void SetUnderlyingType(Type *type) {
+    assert(type && "sugar must wrap a type (use the void builtin for void)");
+    m_underlying_type = type;
+  }
 
-  // By default sugar is see-through: forward the value/layout queries to the
-  // wrapped type so a `typedef`/`const` of an aggregate still looks like one.
-  bool IsAggregate() const override {
-    return m_underlying_type && m_underlying_type->IsAggregate();
-  }
-  bool IsComplete() const override {
-    return !m_underlying_type || m_underlying_type->IsComplete();
-  }
+  // Sugar is see-through: forward the value/layout queries to the wrapped type
+  // so a `typedef`/`const` of an aggregate still looks like one.
+  bool IsAggregate() const override { return m_underlying_type->IsAggregate(); }
+  bool IsComplete() const override { return m_underlying_type->IsComplete(); }
   lldb::Encoding GetEncoding() const override {
-    return m_underlying_type ? m_underlying_type->GetEncoding()
-                             : lldb::eEncodingInvalid;
+    return m_underlying_type->GetEncoding();
   }
   lldb::Format GetFormat() const override {
-    return m_underlying_type ? m_underlying_type->GetFormat()
-                             : lldb::eFormatDefault;
+    return m_underlying_type->GetFormat();
   }
   lldb::TypeClass GetTypeClass() const override {
-    return m_underlying_type ? m_underlying_type->GetTypeClass()
-                             : lldb::eTypeClassOther;
+    return m_underlying_type->GetTypeClass();
   }
   uint32_t GetTypeInfo() const override {
-    return m_underlying_type ? m_underlying_type->GetTypeInfo() : 0;
+    return m_underlying_type->GetTypeInfo();
   }
   uint32_t GetNumFields() const override {
-    return m_underlying_type ? m_underlying_type->GetNumFields() : 0;
+    return m_underlying_type->GetNumFields();
   }
   const Field *GetFieldAtIndex(uint32_t idx) const override {
-    return m_underlying_type ? m_underlying_type->GetFieldAtIndex(idx)
-                             : nullptr;
+    return m_underlying_type->GetFieldAtIndex(idx);
   }
   uint32_t GetNumBaseClasses() const override {
-    return m_underlying_type ? m_underlying_type->GetNumBaseClasses() : 0;
+    return m_underlying_type->GetNumBaseClasses();
   }
   const BaseClass *GetBaseClassAtIndex(uint32_t idx) const override {
-    return m_underlying_type ? m_underlying_type->GetBaseClassAtIndex(idx)
-                             : nullptr;
+    return m_underlying_type->GetBaseClassAtIndex(idx);
   }
 
 private:

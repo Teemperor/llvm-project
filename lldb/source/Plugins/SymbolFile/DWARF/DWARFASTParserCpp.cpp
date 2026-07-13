@@ -295,13 +295,16 @@ TypeSP DWARFASTParserCpp::ParseReferenceType(const DWARFDIE &die) {
       die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size);
 
   // Resolve the referenced type. A reference may refer to an incomplete type,
-  // so use the forward-declared CompilerType and don't force completion here.
+  // so use the forward-declared CompilerType and don't force completion here. A
+  // reference must refer to something (there is no `void &`), so a missing or
+  // unresolvable referent means we can't build this type.
   DWARFDIE pointee_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
-  CompilerType pointee_type;
-  if (pointee_die) {
-    if (Type *pointee = die.ResolveTypeUID(pointee_die))
-      pointee_type = pointee->GetForwardCompilerType();
-  }
+  if (!pointee_die)
+    return nullptr;
+  Type *pointee = die.ResolveTypeUID(pointee_die);
+  if (!pointee)
+    return nullptr;
+  CompilerType pointee_type = pointee->GetForwardCompilerType();
 
   bool is_rvalue = die.Tag() == DW_TAG_rvalue_reference_type;
   CompilerType reference_type =
@@ -324,12 +327,20 @@ TypeSP DWARFASTParserCpp::ParseTypedef(const DWARFDIE &die) {
   DWARFDIE underlying_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
   CompilerType underlying_type;
   if (underlying_die) {
-    if (Type *underlying = die.ResolveTypeUID(underlying_die))
-      underlying_type = underlying->GetForwardCompilerType();
+    Type *underlying = die.ResolveTypeUID(underlying_die);
+    if (!underlying)
+      return nullptr;
+    underlying_type = underlying->GetForwardCompilerType();
   }
 
-  CompilerType typedef_type =
-      m_ts.Lock()->CreateTypedefType(name, underlying_type);
+  CompilerType typedef_type;
+  {
+    auto ts = m_ts.Lock();
+    // A missing DW_AT_type means the aliased type is `void`.
+    if (!underlying_type)
+      underlying_type = ts->GetVoidType();
+    typedef_type = ts->CreateTypedefType(name, underlying_type);
+  }
 
   std::optional<uint64_t> byte_size =
       llvm::expectedToOptional(typedef_type.GetByteSize(nullptr));
@@ -352,12 +363,21 @@ TypeSP DWARFASTParserCpp::ParseCVQualifiedType(const DWARFDIE &die) {
   DWARFDIE underlying_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
   CompilerType underlying_type;
   if (underlying_die) {
-    if (Type *underlying = die.ResolveTypeUID(underlying_die))
-      underlying_type = underlying->GetForwardCompilerType();
+    Type *underlying = die.ResolveTypeUID(underlying_die);
+    if (!underlying)
+      return nullptr;
+    underlying_type = underlying->GetForwardCompilerType();
   }
 
-  CompilerType cv_type = m_ts.Lock()->CreateCVQualifiedType(
-      underlying_type, is_const, is_volatile);
+  CompilerType cv_type;
+  {
+    auto ts = m_ts.Lock();
+    // A missing DW_AT_type means the qualified type is `void` (e.g. the pointee
+    // of a `const void *`).
+    if (!underlying_type)
+      underlying_type = ts->GetVoidType();
+    cv_type = ts->CreateCVQualifiedType(underlying_type, is_const, is_volatile);
+  }
 
   std::optional<uint64_t> byte_size =
       llvm::expectedToOptional(cv_type.GetByteSize(nullptr));

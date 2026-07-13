@@ -76,6 +76,32 @@ public:
   std::string GetDIEClassTemplateParams(
       lldb_private::plugin::dwarf::DWARFDIE die) override;
 
+  // TypeSystemCpp doesn't import types from another AST, so it can't complete
+  // types that way.
+  bool CanCompleteTypeFromImporter(
+      const lldb_private::CompilerType &compiler_type) override {
+    return false;
+  }
+
+  bool CompleteTypeFromImporter(
+      const lldb_private::CompilerType &compiler_type) override {
+    return false;
+  }
+
+  void MapDeclDIEToDefDIE(
+      const lldb_private::plugin::dwarf::DWARFDIE &decl_die,
+      const lldb_private::plugin::dwarf::DWARFDIE &def_die) override {}
+
+  // TypeSystemCpp doesn't track clang decl contexts.
+  void *GetCachedDeclContext(
+      const lldb_private::plugin::dwarf::DWARFDIE &die) override {
+    return nullptr;
+  }
+
+  void LinkCachedDeclContextToDIE(
+      void *decl_ctx,
+      const lldb_private::plugin::dwarf::DWARFDIE &die) override {}
+
 private:
   lldb::TypeSP
   ParseBaseType(const lldb_private::plugin::dwarf::DWARFDIE &die);

@@ -1554,23 +1554,19 @@ bool SymbolFileDWARF::HasForwardDeclForCompilerType(
           compiler_type_no_qualifiers.GetOpaqueQualType())) {
     return true;
   }
-  auto clang_type_system = compiler_type.GetTypeSystem<TypeSystemClang>();
-  if (!clang_type_system)
+  auto type_system = compiler_type.GetTypeSystem();
+  if (!type_system)
     return false;
-  auto *ast_parser =
-      llvm::cast<DWARFASTParserClang>(clang_type_system->GetDWARFParser());
-  return ast_parser->GetClangASTImporter().CanImport(compiler_type);
+  auto *ast_parser = type_system->GetDWARFParser();
+  return ast_parser && ast_parser->CanCompleteTypeFromImporter(compiler_type);
 }
 
 bool SymbolFileDWARF::CompleteType(CompilerType &compiler_type) {
   std::lock_guard<std::recursive_mutex> guard(GetModuleMutex());
-  auto clang_type_system = compiler_type.GetTypeSystem<TypeSystemClang>();
-  if (clang_type_system) {
-    auto *ast_parser =
-        llvm::cast<DWARFASTParserClang>(clang_type_system->GetDWARFParser());
-    if (ast_parser &&
-        ast_parser->GetClangASTImporter().CanImport(compiler_type))
-      return ast_parser->GetClangASTImporter().CompleteType(compiler_type);
+  if (auto type_system = compiler_type.GetTypeSystem()) {
+    auto *ast_parser = type_system->GetDWARFParser();
+    if (ast_parser && ast_parser->CanCompleteTypeFromImporter(compiler_type))
+      return ast_parser->CompleteTypeFromImporter(compiler_type);
   }
 
   // We have a struct/union/class/enum that needs to be fully resolved.
@@ -1611,8 +1607,7 @@ bool SymbolFileDWARF::CompleteType(CompilerType &compiler_type) {
 
   if (decl_die != def_die) {
     GetDIEToType()[def_die.GetDIE()] = type;
-    auto *ast_parser = llvm::cast<DWARFASTParserClang>(dwarf_ast);
-    ast_parser->MapDeclDIEToDefDIE(decl_die, def_die);
+    dwarf_ast->MapDeclDIEToDefDIE(decl_die, def_die);
   }
 
   Log *log = GetLog(DWARFLog::DebugInfo | DWARFLog::TypeCompletion);
