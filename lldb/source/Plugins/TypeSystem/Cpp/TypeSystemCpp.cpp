@@ -546,7 +546,7 @@ CompilerType TypeSystemCpp::GetFieldAtIndex(opaque_compiler_type_t type,
     *bitfield_bit_size_ptr = field->bitfield_bit_size;
   if (is_bitfield_ptr)
     *is_bitfield_ptr = field->IsBitfield();
-  return GetCompilerType(field->type);
+  return GetCompilerType(field->type.Get());
 }
 
 uint32_t TypeSystemCpp::GetNumDirectBaseClasses(opaque_compiler_type_t type) {
@@ -572,7 +572,7 @@ TypeSystemCpp::GetDirectBaseClassAtIndex(opaque_compiler_type_t type,
     return CompilerType();
   if (bit_offset_ptr)
     *bit_offset_ptr = base->byte_offset * 8;
-  return GetCompilerType(base->type);
+  return GetCompilerType(base->type.Get());
 }
 
 CompilerType TypeSystemCpp::GetVirtualBaseClassAtIndex(
@@ -710,12 +710,12 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
     const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(idx);
     if (!base)
       return CompilerType();
-    child_name = base->type->GetName().GetName().str();
+    child_name = base->type.Get()->GetName().GetName().str();
     child_byte_offset = base->byte_offset;
-    if (std::optional<uint64_t> byte_size = base->type->GetByteSize())
+    if (std::optional<uint64_t> byte_size = base->type.Get()->GetByteSize())
       child_byte_size = *byte_size;
     child_is_base_class = true;
-    return GetCompilerType(base->type);
+    return GetCompilerType(base->type.Get());
   }
 
   const Field *field = t->GetFieldAtIndex(idx - num_bases);
@@ -724,13 +724,13 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
 
   child_name = field->name.GetName().str();
   child_byte_offset = field->byte_offset;
-  if (std::optional<uint64_t> byte_size = field->type->GetByteSize())
+  if (std::optional<uint64_t> byte_size = field->type.Get()->GetByteSize())
     child_byte_size = *byte_size;
   if (field->IsBitfield()) {
     child_bitfield_bit_size = field->bitfield_bit_size;
     child_bitfield_bit_offset = field->bitfield_bit_offset;
   }
-  return GetCompilerType(field->type);
+  return GetCompilerType(field->type.Get());
 }
 
 llvm::Expected<uint32_t>
@@ -758,7 +758,7 @@ TypeSystemCpp::GetIndexOfChildWithName(opaque_compiler_type_t type,
   // Base classes are the first children; match them by their type name.
   for (uint32_t i = 0; i < num_bases; ++i) {
     const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
-    if (base->type->GetName().GetName() == name)
+    if (base->type.Get()->GetName().GetName() == name)
       return i;
   }
   // Fields follow the base classes.
@@ -806,7 +806,7 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
     if (field_name.empty() && field->type) {
       std::vector<uint32_t> save_indices = child_indexes;
       child_indexes.push_back(num_bases + i);
-      if (GetCompilerType(field->type)
+      if (GetCompilerType(field->type.Get())
               .GetIndexOfChildMemberWithName(name, omit_empty_base_classes,
                                              child_indexes))
         return child_indexes.size();
@@ -820,7 +820,7 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
     const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
     std::vector<uint32_t> save_indices = child_indexes;
     child_indexes.push_back(i);
-    if (GetCompilerType(base->type)
+    if (GetCompilerType(base->type.Get())
             .GetIndexOfChildMemberWithName(name, omit_empty_base_classes,
                                            child_indexes))
       return child_indexes.size();
@@ -1129,7 +1129,7 @@ CompilerType TypeSystemCpp::GetTypeTemplateArgument(opaque_compiler_type_t type,
   if (auto *record = GetRecordForTemplateArgs(GetCppType(type)))
     if (const cpp_typesystem::TemplateArgument *arg =
             record->GetTemplateArgumentAtIndex(idx))
-      return GetCompilerType(arg->type);
+      return GetCompilerType(arg->type.Get());
   return CompilerType();
 }
 
@@ -1149,12 +1149,12 @@ TypeSystemCpp::GetIntegralTemplateArgument(opaque_compiler_type_t type,
 
   // Reconstruct the value with the argument type's signedness.
   Scalar value;
-  if (arg->type && arg->type->GetEncoding() == eEncodingSint)
+  if (arg->type && arg->type.Get()->GetEncoding() == eEncodingSint)
     value = static_cast<int64_t>(arg->integral_value);
   else
     value = arg->integral_value;
   return CompilerType::IntegralTemplateArgument{value,
-                                                GetCompilerType(arg->type)};
+                                                GetCompilerType(arg->type.Get())};
 }
 
 CompilerType

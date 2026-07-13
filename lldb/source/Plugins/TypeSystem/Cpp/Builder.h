@@ -81,11 +81,22 @@ public:
                 uint64_t byte_offset, uint32_t bitfield_bit_size = 0,
                 uint32_t bitfield_bit_offset = 0);
   void AddBaseClass(ClassType &record, Type *type, uint64_t byte_offset);
-  void AddTemplateArgument(RecordType &record, TemplateArgument arg);
+  void AddTemplateArgument(RecordType &record,
+                           lldb::TemplateArgumentKind kind, Type *type,
+                           uint64_t integral_value);
   void AddNestedType(RecordType &record, Identifier name, Type *type);
   void AddEnumerator(EnumType &enum_type, Identifier name, uint64_t value);
 
 private:
+  /// Wrap a CompilerType into a TypeRef that pairs the referenced Type with the
+  /// Context that owns it (derived from the CompilerType's own type system, so
+  /// the reference stays correct even when it points into another Context). An
+  /// empty CompilerType (e.g. the `void *` pointee) yields an empty TypeRef.
+  static TypeRef ToTypeRef(const CompilerType &type);
+  /// Wrap a Type that this Builder's Context owns (e.g. one the DWARF parser
+  /// resolved through this type system) into a TypeRef.
+  TypeRef ToTypeRef(Type *type) const;
+
   TypeSystemCpp &m_ts;
   std::lock_guard<std::recursive_mutex> m_lock;
 };

@@ -669,14 +669,12 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
       }
       break;
     case MemberInfo::Kind::TemplateType:
-      ts.AddTemplateArgument(
-          *record, cpp_typesystem::TemplateArgument{
-                       lldb::eTemplateArgumentKindType, member_type, 0});
+      ts.AddTemplateArgument(*record, lldb::eTemplateArgumentKindType,
+                             member_type, /*integral_value=*/0);
       break;
     case MemberInfo::Kind::TemplateValue:
-      ts.AddTemplateArgument(*record, cpp_typesystem::TemplateArgument{
-                                          lldb::eTemplateArgumentKindIntegral,
-                                          member_type, member.value});
+      ts.AddTemplateArgument(*record, lldb::eTemplateArgumentKindIntegral,
+                             member_type, member.value);
       break;
     case MemberInfo::Kind::NestedType:
       if (member_type)
