@@ -33,12 +33,12 @@ struct Field {
   Type *type = nullptr;
   /// Offset of this member (or, for a bitfield, of its storage unit) from the
   /// start of the record, in bytes.
-  uint32_t byte_offset = 0;
+  uint64_t byte_offset = 0;
   /// For a bitfield: its width in bits. Zero means this is not a bitfield.
-  uint16_t bitfield_bit_size = 0;
+  uint32_t bitfield_bit_size = 0;
   /// For a bitfield: the offset of its first bit within the storage unit at
   /// byte_offset.
-  uint16_t bitfield_bit_offset = 0;
+  uint32_t bitfield_bit_offset = 0;
 
   bool IsBitfield() const { return bitfield_bit_size != 0; }
 };
