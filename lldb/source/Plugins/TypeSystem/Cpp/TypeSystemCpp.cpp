@@ -40,6 +40,104 @@ static cpp_typesystem::Type *Desugar(cpp_typesystem::Type *t) {
   return t;
 }
 
+// Append the namespace qualification for `ns` (outermost first), skipping
+// inline namespaces so that e.g. `std::__1` prints as `std::`.
+static void AppendNamespacePrefix(const cpp_typesystem::Namespace *ns,
+                                  std::string &out) {
+  if (!ns)
+    return;
+  AppendNamespacePrefix(ns->GetParent(), out);
+  if (!ns->IsInline()) {
+    out += ns->GetName().GetName().str();
+    out += "::";
+  }
+}
+
+static std::string BuildDisplayName(cpp_typesystem::Type *t);
+
+// Render a single template argument for the display name.
+static std::string
+BuildTemplateArgName(const cpp_typesystem::TemplateArgument &arg) {
+  if (arg.kind == lldb::eTemplateArgumentKindType)
+    return arg.type.Get() ? BuildDisplayName(arg.type.Get())
+                          : std::string("void");
+  // Integral (non-type) argument: print its value, honoring signedness.
+  cpp_typesystem::Type *value_type = arg.type.Get();
+  bool is_signed =
+      !value_type || value_type->GetEncoding() == lldb::eEncodingSint;
+  if (is_signed)
+    return std::to_string(static_cast<int64_t>(arg.integral_value));
+  return std::to_string(arg.integral_value);
+}
+
+// Build a type's (simplified) display name from the type model: qualified with
+// its declaring namespaces (inline ones skipped) and, for a class-template
+// instantiation, its template arguments with defaulted ones hidden.
+static std::string BuildDisplayName(cpp_typesystem::Type *t) {
+  using namespace cpp_typesystem;
+  if (!t)
+    return "";
+
+  // Composite types have no name of their own; build them from their parts.
+  if (auto *array = llvm::dyn_cast<ArrayType>(t)) {
+    std::string element = BuildDisplayName(array->GetElementType());
+    if (std::optional<uint64_t> n = array->GetNumElements())
+      return llvm::formatv("{0}[{1}]", element, *n).str();
+    return element + "[]";
+  }
+  if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
+    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+    return (pointee ? BuildDisplayName(pointee) : std::string("void")) + " *";
+  }
+  if (auto *ref = llvm::dyn_cast<ReferenceType>(t)) {
+    cpp_typesystem::Type *pointee = ref->GetPointeeType();
+    return (pointee ? BuildDisplayName(pointee) : std::string("void")) +
+           (ref->IsRValue() ? " &&" : " &");
+  }
+  if (auto *cv = llvm::dyn_cast<CVQualifiedType>(t)) {
+    std::string result;
+    if (cv->IsConst())
+      result += "const ";
+    if (cv->IsVolatile())
+      result += "volatile ";
+    return result + (cv->GetUnderlyingType()
+                         ? BuildDisplayName(cv->GetUnderlyingType())
+                         : "");
+  }
+
+  // Named leaf type (record/typedef/enum/builtin). Builtins carry no
+  // unqualified name; fall back to their stored name.
+  llvm::StringRef unqualified = t->GetUnqualifiedName().GetName();
+  if (unqualified.empty())
+    return t->GetName().GetName().str();
+
+  std::string result;
+  AppendNamespacePrefix(t->GetDeclContext(), result);
+
+  // For a class-template instantiation we have modeled args, so reconstruct
+  // "base<non-default args>". Otherwise use the unqualified spelling verbatim
+  // (this also covers not-yet-completed templates, whose args aren't parsed).
+  auto *rec = llvm::dyn_cast<RecordType>(t);
+  if (rec && rec->GetNumTemplateArguments() > 0) {
+    result += unqualified.substr(0, unqualified.find('<')).str();
+    std::string args;
+    for (uint32_t i = 0; i < rec->GetNumTemplateArguments(); ++i) {
+      const TemplateArgument *arg = rec->GetTemplateArgumentAtIndex(i);
+      if (arg->is_default)
+        continue;
+      if (!args.empty())
+        args += ", ";
+      args += BuildTemplateArgName(*arg);
+    }
+    if (!args.empty())
+      result += "<" + args + ">";
+  } else {
+    result += unqualified.str();
+  }
+  return result;
+}
+
+
 LLDB_PLUGIN_DEFINE(TypeSystemCpp)
 
 char TypeSystemCpp::ID;
@@ -396,7 +494,9 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
 }
 
 ConstString TypeSystemCpp::GetDisplayTypeName(opaque_compiler_type_t type) {
-  return GetTypeName(type, /*BaseOnly=*/false);
+  if (!type)
+    return ConstString();
+  return ConstString(BuildDisplayName(GetCppType(type)));
 }
 
 uint32_t

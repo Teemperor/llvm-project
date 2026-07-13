@@ -15,9 +15,9 @@ class TestCase(TestBase):
         )
 
         # Records, inheritance and pointers.
-        self.expect_var_path("outer.m.i", value="4")
-        self.expect_var_path("outer.x", value="-22")
-        self.expect_var_path("ptr->x", value="-22")
+        self.expect_var_path("outer.m.i", type="int", value="4")
+        self.expect_var_path("outer.x", type="long", value="-22")
+        self.expect_var_path("ptr->x", type="long", value="-22")
         self.expect_var_path("ptr", type="Outer *")
         self.expect_var_path("*ptr", type="Outer")
 
@@ -28,20 +28,20 @@ class TestCase(TestBase):
         self.expect_var_path("rref", type="int &&")
         self.expect_var_path("outer_ref", type="Outer &")
         # References are transparent: members are reachable directly.
-        self.expect_var_path("outer_ref.m.i", value="4")
-        self.expect_var_path("outer_ref.x", value="-22")
+        self.expect_var_path("outer_ref.m.i", type="int", value="4")
+        self.expect_var_path("outer_ref.x", type="long", value="-22")
 
         # Class templates: the instantiation is a normal record type whose name
         # includes the template arguments.
         self.expect_var_path("wrapper", type="Wrapper<int>")
-        self.expect_var_path("wrapper.value", value="7")
-        self.expect_var_path("wrapper.tag", value="-1")
+        self.expect_var_path("wrapper.value", type="int", value="7")
+        self.expect_var_path("wrapper.tag", type="int", value="-1")
 
         # Non-type (value) template parameters: the instantiation name embeds
         # the value and the class is otherwise a normal record.
         self.expect_var_path("fixed", type="FixedArray<3>")
-        self.expect_var_path("fixed.size", value="3")
-        self.expect_var_path("fixed.data[1]", value="20")
+        self.expect_var_path("fixed.size", type="int", value="3")
+        self.expect_var_path("fixed.data[1]", type="int", value="20")
 
         # Typedefs keep their alias name but behave like the aliased type.
         self.expect_var_path("my_int", type="MyInt", value="55")
@@ -55,15 +55,17 @@ class TestCase(TestBase):
 
         # Unions: all members share the same storage (offset 0).
         self.expect_var_path("number", type="Number")
-        self.expect_var_path("number.i", value="65")
+        self.expect_var_path("number.i", type="int", value="65")
 
         # Standard-library containers. These generate large, deeply-nested
         # template types (typedefs, pointers, base classes, unions, bitfields,
         # template arguments and nested types), so exercising their data
         # formatters end-to-end validates broad type-system coverage.
-        self.expect_var_path("str", summary='"hello"')
-        self.expect_var_path("vec", summary="size=3")
-        self.expect_var_path("vec[0]", value="10")
-        self.expect_var_path("vec[2]", value="30")
-        self.expect_var_path("tree_map", summary="size=2")
-        self.expect_var_path("hash_map", summary="size=1")
+        self.expect_var_path("str", type="std::string", summary='"hello"')
+        self.expect_var_path("vec", type="std::vector<int>", summary="size=3")
+        self.expect_var_path("vec[0]", type="int", value="10")
+        self.expect_var_path("vec[2]", type="int", value="30")
+        self.expect_var_path("tree_map", type="std::map<int, int>", summary="size=2")
+        self.expect_var_path(
+            "hash_map", type="std::unordered_map<int, int>", summary="size=1"
+        )
