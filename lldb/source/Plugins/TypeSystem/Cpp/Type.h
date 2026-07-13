@@ -24,6 +24,7 @@ namespace lldb_private {
 namespace cpp_typesystem {
 
 class Context;
+class Namespace;
 class Type;
 
 /// References a type, potentially in another Context. Type nodes are owned by
@@ -91,6 +92,10 @@ struct TemplateArgument {
   /// Integral argument: the raw value bits (interpret using `type`'s
   /// signedness/size).
   uint64_t integral_value = 0;
+  /// True when this argument was defaulted (DWARF's DW_AT_default_value), so it
+  /// is hidden when building the type's display name (`std::vector<int>` rather
+  /// than `std::vector<int, std::allocator<int>>`).
+  bool is_default = false;
 };
 
 /// Represents everything needed to understand a type.
@@ -109,6 +114,19 @@ public:
 
   Identifier GetName() const { return m_name; }
   void SetName(Identifier name) { m_name = name; }
+
+  /// The namespace this type is declared in (null for the global namespace).
+  /// Used to build the qualified display name while skipping inline
+  /// namespaces. See cpp_typesystem::Namespace.
+  const Namespace *GetDeclContext() const { return m_decl_context; }
+  void SetDeclContext(const Namespace *ns) { m_decl_context = ns; }
+
+  /// The unqualified spelling as written in the debug info (e.g. `string` or
+  /// `vector<int, std::allocator<int>>`), without any namespace qualification.
+  /// Used, together with GetDeclContext() and the template arguments, to build
+  /// the (possibly simplified) display name.
+  Identifier GetUnqualifiedName() const { return m_unqualified_name; }
+  void SetUnqualifiedName(Identifier name) { m_unqualified_name = name; }
 
   std::optional<uint64_t> GetByteSize() const { return m_byte_size; }
   void SetByteSize(std::optional<uint64_t> byte_size) { m_byte_size = byte_size; }
@@ -138,6 +156,8 @@ public:
 
 private:
   Identifier m_name;
+  Identifier m_unqualified_name;
+  const Namespace *m_decl_context = nullptr;
   std::optional<uint64_t> m_byte_size;
 };
 

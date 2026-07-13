@@ -13,6 +13,26 @@
 using namespace lldb_private;
 using namespace lldb_private::cpp_typesystem;
 
+const Namespace *Context::GetNamespace(Identifier name, const Namespace *parent,
+                                       bool is_inline) {
+  // Deduplicate by (parent, interned-name storage, is_inline). Identifiers from
+  // the same IdentifierMap share backing storage, so the StringRef's data
+  // pointer is a stable key for a given name.
+  auto key = std::make_tuple(parent, (const void *)name.GetName().data(),
+                             is_inline);
+  auto it = m_namespace_map.find(key);
+  if (it != m_namespace_map.end())
+    return it->second;
+
+  // Namespace's constructor is private; Context is a friend, so construct it
+  // directly here rather than via make_unique.
+  m_namespaces.emplace_back(
+      std::unique_ptr<Namespace>(new Namespace(name, parent, is_inline)));
+  const Namespace *ns = m_namespaces.back().get();
+  m_namespace_map.emplace(key, ns);
+  return ns;
+}
+
 BuiltinType *Context::GetBuiltinType(llvm::StringRef name,
                                      std::optional<uint64_t> byte_size,
                                      lldb::Encoding encoding,

@@ -9,27 +9,34 @@
 #ifndef LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_NAMESPACE_H
 #define LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_NAMESPACE_H
 
-#include <deque>
-#include <memory>
-
 #include "Identifier.h"
-#include "Type.h"
 
 namespace lldb_private {
 namespace cpp_typesystem {
 
-// Represents a C++ namespace that holds various contents.
+/// A C++ namespace that a type is declared in. Namespaces form a chain up to
+/// the global namespace (a null parent). An inline namespace (e.g. libc++'s
+/// `std::__1`) is transparent: it is skipped when building a type's qualified
+/// name, so `std::__1::string` prints as `std::string`.
 class Namespace {
 public:
+  Identifier GetName() const { return m_name; }
+  /// The enclosing namespace, or null if this is a top-level namespace.
+  const Namespace *GetParent() const { return m_parent; }
+  bool IsInline() const { return m_is_inline; }
+
 private:
+  // Only Context creates and owns Namespaces (see Context::GetNamespace).
+  friend class Context;
+  Namespace(Identifier name, const Namespace *parent, bool is_inline)
+      : m_name(name), m_parent(parent), m_is_inline(is_inline) {}
+
   Identifier m_name;
-  // Nested namespaces are held via unique_ptr because Namespace is an
-  // incomplete type here and std::deque requires a complete element type.
-  std::deque<std::unique_ptr<Namespace>> m_nested;
-  std::deque<StructType> m_records;
+  const Namespace *m_parent = nullptr;
+  bool m_is_inline = false;
 };
 
-}
+} // namespace cpp_typesystem
 } // namespace lldb_private
 
 #endif // LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_NAMESPACE_H

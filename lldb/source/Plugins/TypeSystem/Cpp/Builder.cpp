@@ -113,10 +113,28 @@ void Builder::AddEnumerator(cpp_typesystem::EnumType &enum_type,
 void Builder::AddTemplateArgument(cpp_typesystem::RecordType &record,
                                   lldb::TemplateArgumentKind kind,
                                   cpp_typesystem::Type *type,
-                                  uint64_t integral_value) {
+                                  uint64_t integral_value, bool is_default) {
   m_ts.m_context.AddTemplateArgument(
       record, cpp_typesystem::TemplateArgument{kind, ToTypeRef(type),
-                                               integral_value});
+                                               integral_value, is_default});
+}
+
+const cpp_typesystem::Namespace *
+Builder::GetNamespace(ConstString name, const cpp_typesystem::Namespace *parent,
+                      bool is_inline) {
+  return m_ts.m_context.GetNamespace(GetIdentifier(name.GetStringRef()), parent,
+                                     is_inline);
+}
+
+void Builder::SetDeclContext(CompilerType type,
+                             const cpp_typesystem::Namespace *ns) {
+  if (auto *t = static_cast<cpp_typesystem::Type *>(type.GetOpaqueQualType()))
+    t->SetDeclContext(ns);
+}
+
+void Builder::SetUnqualifiedName(CompilerType type, ConstString name) {
+  if (auto *t = static_cast<cpp_typesystem::Type *>(type.GetOpaqueQualType()))
+    t->SetUnqualifiedName(GetIdentifier(name.GetStringRef()));
 }
 
 void Builder::AddNestedType(cpp_typesystem::RecordType &record,

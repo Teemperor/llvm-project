@@ -13,6 +13,8 @@
 #include "DWARFDefines.h"
 #include "SymbolFileDWARF.h"
 
+#include "Plugins/TypeSystem/Cpp/Builder.h"
+#include "Plugins/TypeSystem/Cpp/Namespace.h"
 #include "Plugins/TypeSystem/Cpp/Type.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
@@ -25,6 +27,8 @@
 #include "lldb/Symbol/Type.h"
 #include "lldb/Target/Language.h"
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallVector.h"
 #include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
 
 #include <future>
@@ -189,6 +193,42 @@ static std::string GetDIEQualifiedName(const DWARFDIE &die) {
   return name;
 }
 
+/// Build the chain of enclosing namespaces for \p die, marking libc++-style
+/// inline namespaces (DWARF's DW_AT_export_symbols) so they can be skipped when
+/// printing the type name. Returns the innermost namespace, or null if the type
+/// is not (directly) inside a namespace.
+static const cpp_typesystem::Namespace *
+BuildDeclNamespace(const DWARFDIE &die, cpp_typesystem::Builder &builder) {
+  llvm::SmallVector<DWARFDIE, 4> namespaces;
+  for (DWARFDIE parent = die.GetParent(); parent; parent = parent.GetParent()) {
+    // Only namespace scopes are modelled here; stop at the CU or any other
+    // (e.g. record) scope.
+    if (parent.Tag() != DW_TAG_namespace)
+      break;
+    namespaces.push_back(parent);
+  }
+  // Build outermost-first so each namespace can reference its parent.
+  const cpp_typesystem::Namespace *ns = nullptr;
+  for (DWARFDIE ns_die : llvm::reverse(namespaces)) {
+    const char *ns_name = ns_die.GetName();
+    bool is_inline =
+        ns_die.GetAttributeValueAsUnsigned(DW_AT_export_symbols, 0) != 0;
+    ns = builder.GetNamespace(ConstString(ns_name ? ns_name : ""), ns,
+                              is_inline);
+  }
+  return ns;
+}
+
+/// Record on \p type the namespace it is declared in and its unqualified
+/// DW_AT_name spelling, so TypeSystemCpp can rebuild the display name while
+/// hiding inline namespaces.
+static void SetTypeNameInfo(const DWARFDIE &die, CompilerType type,
+                            cpp_typesystem::Builder &builder) {
+  builder.SetDeclContext(type, BuildDeclNamespace(die, builder));
+  if (const char *name = die.GetName())
+    builder.SetUnqualifiedName(type, ConstString(name));
+}
+
 TypeSP DWARFASTParserCpp::ParseStructureType(const DWARFDIE &die) {
   SymbolFileDWARF *dwarf = die.GetDWARF();
 
@@ -206,8 +246,13 @@ TypeSP DWARFASTParserCpp::ParseStructureType(const DWARFDIE &die) {
   bool is_cpp_class = Language::LanguageIsCPlusPlus(language);
   bool is_union = die.Tag() == DW_TAG_union_type;
 
-  CompilerType compiler_type = cpp_typesystem::Builder(m_ts).CreateRecordType(
-      name, byte_size, is_cpp_class, is_union);
+  CompilerType compiler_type;
+  {
+    cpp_typesystem::Builder builder(m_ts);
+    compiler_type =
+        builder.CreateRecordType(name, byte_size, is_cpp_class, is_union);
+    SetTypeNameInfo(die, compiler_type, builder);
+  }
 
   Declaration decl;
   TypeSP type_sp = dwarf->MakeType(
@@ -343,6 +388,7 @@ TypeSP DWARFASTParserCpp::ParseTypedef(const DWARFDIE &die) {
     if (!underlying_type)
       underlying_type = ts.GetVoidType();
     typedef_type = ts.CreateTypedefType(name, underlying_type);
+    SetTypeNameInfo(die, typedef_type, ts);
   }
 
   std::optional<uint64_t> byte_size =
@@ -429,6 +475,7 @@ TypeSP DWARFASTParserCpp::ParseEnum(const DWARFDIE &die) {
       uint64_t value = child.GetAttributeValueAsUnsigned(DW_AT_const_value, 0);
       ts.AddEnumerator(enum_node, ts.GetIdentifier(enumerator_name), value);
     }
+    SetTypeNameInfo(die, enum_type, ts);
   }
 
   Declaration decl;
@@ -563,6 +610,8 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     uint32_t bit_size = 0; // DW_AT_bit_size of a bitfield member (0 if none).
     // DW_AT_data_bit_offset of a bitfield member, or UINT64_MAX if absent.
     uint64_t data_bit_offset = UINT64_MAX;
+    // For a template argument: true if it was defaulted (DW_AT_default_value).
+    bool is_default = false;
   };
   std::vector<MemberInfo> members;
   for (DWARFDIE child : die.children()) {
@@ -592,11 +641,15 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
                          /*byte_offset=*/0,
                          /*value=*/0, child,
                          child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+      members.back().is_default =
+          child.GetAttributeValueAsUnsigned(DW_AT_default_value, 0) != 0;
     } else if (tag == DW_TAG_template_value_parameter) {
       members.push_back(
           {MemberInfo::Kind::TemplateValue, child.GetName(), /*byte_offset=*/0,
            child.GetAttributeValueAsUnsigned(DW_AT_const_value, 0), child,
            child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+      members.back().is_default =
+          child.GetAttributeValueAsUnsigned(DW_AT_default_value, 0) != 0;
     } else if (tag == DW_TAG_typedef || tag == DW_TAG_structure_type ||
                tag == DW_TAG_class_type || tag == DW_TAG_union_type ||
                tag == DW_TAG_enumeration_type) {
@@ -671,11 +724,12 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
       break;
     case MemberInfo::Kind::TemplateType:
       ts.AddTemplateArgument(*record, lldb::eTemplateArgumentKindType,
-                             member_type, /*integral_value=*/0);
+                             member_type, /*integral_value=*/0,
+                             member.is_default);
       break;
     case MemberInfo::Kind::TemplateValue:
       ts.AddTemplateArgument(*record, lldb::eTemplateArgumentKindIntegral,
-                             member_type, member.value);
+                             member_type, member.value, member.is_default);
       break;
     case MemberInfo::Kind::NestedType:
       if (member_type)

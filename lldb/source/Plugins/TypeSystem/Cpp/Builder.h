@@ -75,6 +75,14 @@ public:
   /// member. All Identifiers must be created this way.
   Identifier GetIdentifier(llvm::StringRef name);
 
+  /// Intern a namespace (see Context::GetNamespace).
+  const Namespace *GetNamespace(ConstString name, const Namespace *parent,
+                                bool is_inline);
+  /// Record the namespace a type is declared in and its unqualified spelling,
+  /// used to build the (inline-namespace-aware) display name.
+  void SetDeclContext(CompilerType type, const Namespace *ns);
+  void SetUnqualifiedName(CompilerType type, ConstString name);
+
   // Structural completion of a record type.
   void SetRecordComplete(RecordType &record);
   void AddField(RecordType &record, Identifier name, Type *type,
@@ -83,7 +91,7 @@ public:
   void AddBaseClass(ClassType &record, Type *type, uint64_t byte_offset);
   void AddTemplateArgument(RecordType &record,
                            lldb::TemplateArgumentKind kind, Type *type,
-                           uint64_t integral_value);
+                           uint64_t integral_value, bool is_default);
   void AddNestedType(RecordType &record, Identifier name, Type *type);
   void AddEnumerator(EnumType &enum_type, Identifier name, uint64_t value);
 
