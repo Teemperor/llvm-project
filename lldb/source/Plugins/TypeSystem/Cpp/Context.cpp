@@ -44,7 +44,7 @@ RecordType *Context::CreateRecordType(llvm::StringRef name,
   return Track(std::move(type));
 }
 
-ArrayType *Context::CreateArrayType(Type *element_type,
+ArrayType *Context::CreateArrayType(TypeRef element_type,
                                     std::optional<uint64_t> num_elements) {
   assert(element_type && "an array must have an element type");
   auto type = std::make_unique<ArrayType>();
@@ -53,19 +53,19 @@ ArrayType *Context::CreateArrayType(Type *element_type,
   // The array's storage is the element size times the element count (when both
   // are known).
   if (num_elements)
-    if (std::optional<uint64_t> elem_size = element_type->GetByteSize())
+    if (std::optional<uint64_t> elem_size = element_type.Get()->GetByteSize())
       type->SetByteSize(*elem_size * *num_elements);
   return Track(std::move(type));
 }
 
-PointerType *Context::CreatePointerType(Type *pointee_type) {
+PointerType *Context::CreatePointerType(TypeRef pointee_type) {
   auto type = std::make_unique<PointerType>();
   type->SetPointeeType(pointee_type);
   type->SetByteSize(m_opts.GetBuiltinSizes().pointer_size);
   return Track(std::move(type));
 }
 
-ReferenceType *Context::CreateReferenceType(Type *pointee_type,
+ReferenceType *Context::CreateReferenceType(TypeRef pointee_type,
                                             bool is_rvalue) {
   // Unlike a pointer (which can be `void *`), a reference always refers to a
   // concrete type.
@@ -78,7 +78,7 @@ ReferenceType *Context::CreateReferenceType(Type *pointee_type,
 }
 
 TypedefType *Context::CreateTypedefType(llvm::StringRef name,
-                                        Type *underlying_type) {
+                                        TypeRef underlying_type) {
   // A typedef always aliases a type. A `typedef void Foo;` is represented by
   // aliasing the `void` builtin, not by a null underlying type.
   assert(underlying_type && "a typedef must alias a type");
@@ -86,11 +86,11 @@ TypedefType *Context::CreateTypedefType(llvm::StringRef name,
   type->SetName(GetIdentifier(name));
   type->SetUnderlyingType(underlying_type);
   // A typedef has the same storage as the type it aliases.
-  type->SetByteSize(underlying_type->GetByteSize());
+  type->SetByteSize(underlying_type.Get()->GetByteSize());
   return Track(std::move(type));
 }
 
-CVQualifiedType *Context::CreateCVQualifiedType(Type *underlying_type,
+CVQualifiedType *Context::CreateCVQualifiedType(TypeRef underlying_type,
                                                 bool is_const,
                                                 bool is_volatile) {
   // A cv-qualified type always qualifies a type. `const/volatile void` (e.g.
@@ -102,13 +102,13 @@ CVQualifiedType *Context::CreateCVQualifiedType(Type *underlying_type,
   type->SetIsConst(is_const);
   type->SetIsVolatile(is_volatile);
   // A cv-qualified type has the same storage as its unqualified version.
-  type->SetByteSize(underlying_type->GetByteSize());
+  type->SetByteSize(underlying_type.Get()->GetByteSize());
   return Track(std::move(type));
 }
 
 EnumType *Context::CreateEnumType(llvm::StringRef name,
                                   std::optional<uint64_t> byte_size,
-                                  Type *underlying_type, bool is_scoped) {
+                                  TypeRef underlying_type, bool is_scoped) {
   auto type = std::make_unique<EnumType>();
   type->SetName(GetIdentifier(name));
   type->SetByteSize(byte_size);

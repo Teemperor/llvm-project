@@ -14,6 +14,18 @@ using namespace lldb;
 
 Builder::Builder(TypeSystemCpp &ts) : m_ts(ts), m_lock(ts.m_mutex) {}
 
+TypeRef Builder::ToTypeRef(const CompilerType &type) {
+  auto ts = type.GetTypeSystem().dyn_cast_or_null<TypeSystemCpp>();
+  if (!ts)
+    return TypeRef();
+  return TypeRef(ts->m_context,
+                 TypeSystemCpp::GetCppType(type.GetOpaqueQualType()));
+}
+
+TypeRef Builder::ToTypeRef(Type *type) const {
+  return TypeRef(m_ts.m_context, type);
+}
+
 CompilerType Builder::GetBuiltinType(ConstString name,
                                      std::optional<uint64_t> byte_size,
                                      lldb::Encoding encoding,
@@ -36,34 +48,31 @@ CompilerType Builder::CreateRecordType(ConstString name,
 
 CompilerType Builder::CreateArrayType(CompilerType element_type,
                                       std::optional<uint64_t> num_elements) {
-  return m_ts.GetCompilerType(m_ts.m_context.CreateArrayType(
-      TypeSystemCpp::GetCppType(element_type.GetOpaqueQualType()),
-      num_elements));
+  return m_ts.GetCompilerType(
+      m_ts.m_context.CreateArrayType(ToTypeRef(element_type), num_elements));
 }
 
 CompilerType Builder::CreatePointerType(CompilerType pointee_type) {
-  return m_ts.GetCompilerType(m_ts.m_context.CreatePointerType(
-      TypeSystemCpp::GetCppType(pointee_type.GetOpaqueQualType())));
+  return m_ts.GetCompilerType(
+      m_ts.m_context.CreatePointerType(ToTypeRef(pointee_type)));
 }
 
 CompilerType Builder::CreateReferenceType(CompilerType pointee_type,
                                           bool is_rvalue) {
-  return m_ts.GetCompilerType(m_ts.m_context.CreateReferenceType(
-      TypeSystemCpp::GetCppType(pointee_type.GetOpaqueQualType()), is_rvalue));
+  return m_ts.GetCompilerType(
+      m_ts.m_context.CreateReferenceType(ToTypeRef(pointee_type), is_rvalue));
 }
 
 CompilerType Builder::CreateTypedefType(ConstString name,
                                         CompilerType underlying_type) {
   return m_ts.GetCompilerType(m_ts.m_context.CreateTypedefType(
-      name.GetStringRef(),
-      TypeSystemCpp::GetCppType(underlying_type.GetOpaqueQualType())));
+      name.GetStringRef(), ToTypeRef(underlying_type)));
 }
 
 CompilerType Builder::CreateCVQualifiedType(CompilerType underlying_type,
                                             bool is_const, bool is_volatile) {
   return m_ts.GetCompilerType(m_ts.m_context.CreateCVQualifiedType(
-      TypeSystemCpp::GetCppType(underlying_type.GetOpaqueQualType()), is_const,
-      is_volatile));
+      ToTypeRef(underlying_type), is_const, is_volatile));
 }
 
 CompilerType Builder::CreateEnumType(ConstString name,
@@ -71,9 +80,7 @@ CompilerType Builder::CreateEnumType(ConstString name,
                                      CompilerType underlying_type,
                                      bool is_scoped) {
   return m_ts.GetCompilerType(m_ts.m_context.CreateEnumType(
-      name.GetStringRef(), byte_size,
-      TypeSystemCpp::GetCppType(underlying_type.GetOpaqueQualType()),
-      is_scoped));
+      name.GetStringRef(), byte_size, ToTypeRef(underlying_type), is_scoped));
 }
 
 cpp_typesystem::Identifier Builder::GetIdentifier(llvm::StringRef name) {
@@ -89,13 +96,13 @@ void Builder::AddField(cpp_typesystem::RecordType &record,
                        cpp_typesystem::Type *type, uint64_t byte_offset,
                        uint32_t bitfield_bit_size,
                        uint32_t bitfield_bit_offset) {
-  m_ts.m_context.AddField(record, name, type, byte_offset, bitfield_bit_size,
-                          bitfield_bit_offset);
+  m_ts.m_context.AddField(record, name, ToTypeRef(type), byte_offset,
+                          bitfield_bit_size, bitfield_bit_offset);
 }
 
 void Builder::AddBaseClass(cpp_typesystem::ClassType &record,
                            cpp_typesystem::Type *type, uint64_t byte_offset) {
-  m_ts.m_context.AddBaseClass(record, type, byte_offset);
+  m_ts.m_context.AddBaseClass(record, ToTypeRef(type), byte_offset);
 }
 
 void Builder::AddEnumerator(cpp_typesystem::EnumType &enum_type,
@@ -104,12 +111,16 @@ void Builder::AddEnumerator(cpp_typesystem::EnumType &enum_type,
 }
 
 void Builder::AddTemplateArgument(cpp_typesystem::RecordType &record,
-                                  cpp_typesystem::TemplateArgument arg) {
-  m_ts.m_context.AddTemplateArgument(record, arg);
+                                  lldb::TemplateArgumentKind kind,
+                                  cpp_typesystem::Type *type,
+                                  uint64_t integral_value) {
+  m_ts.m_context.AddTemplateArgument(
+      record, cpp_typesystem::TemplateArgument{kind, ToTypeRef(type),
+                                               integral_value});
 }
 
 void Builder::AddNestedType(cpp_typesystem::RecordType &record,
                             cpp_typesystem::Identifier name,
                             cpp_typesystem::Type *type) {
-  m_ts.m_context.AddNestedType(record, name, type);
+  m_ts.m_context.AddNestedType(record, name, ToTypeRef(type));
 }
