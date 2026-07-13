@@ -152,6 +152,10 @@ public:
   bool IsAggregate() const override { return true; }
   bool IsComplete() const override { return m_complete; }
 
+  /// True if this record is a `union` (all members share offset 0). Needed so
+  /// the type can be reconstructed with the correct tag kind.
+  bool IsUnion() const { return m_is_union; }
+
   uint32_t GetTypeInfo() const override {
     return lldb::eTypeHasChildren | lldb::eTypeIsStructUnion;
   }
@@ -207,6 +211,7 @@ private:
   }
 
   bool m_complete = false;
+  bool m_is_union = false;
   std::vector<Field> m_fields;
   std::vector<TemplateArgument> m_template_args;
   std::vector<std::pair<Identifier, TypeRef>> m_nested_types;

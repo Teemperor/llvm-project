@@ -204,9 +204,10 @@ TypeSP DWARFASTParserCpp::ParseStructureType(const DWARFDIE &die) {
   // information). Plain C records use the lighter StructType.
   lldb::LanguageType language = SymbolFileDWARF::GetLanguage(*die.GetCU());
   bool is_cpp_class = Language::LanguageIsCPlusPlus(language);
+  bool is_union = die.Tag() == DW_TAG_union_type;
 
   CompilerType compiler_type = cpp_typesystem::Builder(m_ts).CreateRecordType(
-      name, byte_size, is_cpp_class);
+      name, byte_size, is_cpp_class, is_union);
 
   Declaration decl;
   TypeSP type_sp = dwarf->MakeType(

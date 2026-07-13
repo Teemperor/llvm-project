@@ -50,7 +50,7 @@ public:
   CompilerType GetVoidType();
   CompilerType CreateRecordType(ConstString name,
                                 std::optional<uint64_t> byte_size,
-                                bool is_cpp_class);
+                                bool is_cpp_class, bool is_union = false);
   /// Create an array of \p num_elements elements of \p element_type (or an
   /// array of unknown bound when \p num_elements is std::nullopt).
   CompilerType CreateArrayType(CompilerType element_type,

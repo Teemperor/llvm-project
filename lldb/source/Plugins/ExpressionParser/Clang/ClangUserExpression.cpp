@@ -22,11 +22,13 @@
 #include "ClangExpressionParser.h"
 #include "ClangModulesDeclVendor.h"
 #include "ClangPersistentVariables.h"
+#include "CppExpressionDeclMap.h"
 #include "CppModuleConfiguration.h"
 
 #include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Module.h"
+#include "lldb/Core/ModuleList.h"
 #include "lldb/Expression/DiagnosticManager.h"
 #include "lldb/Expression/ExpressionSourceCode.h"
 #include "lldb/Expression/IRExecutionUnit.h"
@@ -1036,6 +1038,16 @@ void ClangUserExpression::ClangUserExpressionHelper::ResetDeclMap(
   if (state) {
     auto *persistent_vars = llvm::cast<ClangPersistentVariables>(state);
     ast_importer = persistent_vars->GetClangASTImporter();
+  }
+  // When TypeSystemCpp is enabled, module-level debug-info types are
+  // cpp_typesystem::Type nodes rather than clang::Decls, so the ASTImporter-
+  // based decl map can't copy them. Use the TypeSystemCpp-aware decl map, which
+  // synthesizes the parser's clang AST from the cpp_typesystem description.
+  if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp()) {
+    m_expr_decl_map_up = std::make_unique<CppExpressionDeclMap>(
+        keep_result_in_memory, &delegate, exe_ctx.GetTargetSP(), ast_importer,
+        ctx_obj, ignore_context_qualifiers);
+    return;
   }
   m_expr_decl_map_up = std::make_unique<ClangExpressionDeclMap>(
       keep_result_in_memory, &delegate, exe_ctx.GetTargetSP(), ast_importer,

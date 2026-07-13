@@ -130,9 +130,9 @@ public:
   ///
   /// \return
   ///     True on success; false otherwise.
-  bool AddPersistentVariable(const clang::NamedDecl *decl,
-                             ConstString name, TypeFromParser type,
-                             bool is_result, bool is_lvalue);
+  virtual bool AddPersistentVariable(const clang::NamedDecl *decl,
+                                     ConstString name, TypeFromParser type,
+                                     bool is_result, bool is_lvalue);
 
   /// [Used by IRForTarget] Add a variable to the struct that needs to
   ///     be materialized each time the expression runs.
@@ -299,6 +299,11 @@ protected:
   virtual clang::NamedDecl *GetPersistentDecl(ConstString name);
 
 private:
+  // NOTE: The section below was relocated from `private` to `protected` so the
+  // TypeSystemCpp-backed subclass (CppExpressionDeclMap) can reuse the
+  // variable/struct/materialization machinery. Nothing here changes behavior
+  // for the existing Clang path.
+protected:
   ExpressionVariableList
       m_found_entities; ///< All entities that were looked up for the parser.
   ExpressionVariableList
@@ -434,8 +439,8 @@ private:
   ///
   /// \param[in] name_context
   ///     The NameSearchContext that can construct Decls for this name.
-  void LookupLocalVarNamespace(SymbolContext &sym_ctx,
-                               NameSearchContext &name_context);
+  virtual void LookupLocalVarNamespace(SymbolContext &sym_ctx,
+                                       NameSearchContext &name_context);
 
   /// Lookup entities in the ClangModulesDeclVendor.
   /// \param[in] context
@@ -461,9 +466,9 @@ private:
   ///
   /// \return
   ///    True iff a local variable was found.
-  bool LookupLocalVariable(NameSearchContext &context, ConstString name,
-                           SymbolContext &sym_ctx,
-                           const CompilerDeclContext &namespace_decl);
+  virtual bool LookupLocalVariable(NameSearchContext &context, ConstString name,
+                                   SymbolContext &sym_ctx,
+                                   const CompilerDeclContext &namespace_decl);
 
   /// Searches for functions in the given SymbolContextList.
   ///
@@ -543,10 +548,10 @@ private:
   ///
   /// \return
   ///     Return true if the value was successfully filled in.
-  bool GetVariableValue(lldb::VariableSP &var,
-                        lldb_private::Value &var_location,
-                        TypeFromUser *found_type = nullptr,
-                        TypeFromParser *parser_type = nullptr);
+  virtual bool GetVariableValue(lldb::VariableSP &var,
+                                lldb_private::Value &var_location,
+                                TypeFromUser *found_type = nullptr,
+                                TypeFromParser *parser_type = nullptr);
 
   /// Use the NameSearchContext to generate a Decl for the given LLDB
   /// ValueObject, and put it in the list of found entities.
