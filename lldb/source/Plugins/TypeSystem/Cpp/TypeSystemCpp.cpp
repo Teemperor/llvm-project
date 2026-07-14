@@ -899,13 +899,35 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
             .str());
   }
   // cv-qualified types render as "const"/"volatile" prefixing the unqualified
-  // name.
+  // name. Matching TypeSystemClang's GetTypeName: the cv-qualifiers are only
+  // spelled for types whose name is printed from the QualType (builtins,
+  // pointers, references, ...). For a tag type (record/enum) or a typedef the
+  // name is taken from the underlying decl, which carries no qualifiers, so
+  // `const Enum` prints as `Enum` (while `const int` stays `const int`).
   if (auto *cv = llvm::dyn_cast<cpp_typesystem::CVQualifiedType>(t)) {
     std::string underlying_name =
         cv->GetUnderlyingType() ? GetTypeName(cv->GetUnderlyingType(), BaseOnly)
                                       .GetStringRef()
                                       .str()
                                 : "";
+    // Look through display/cv sugar to the leaf type to decide whether the
+    // qualifiers are spelled.
+    cpp_typesystem::Type *leaf = cv->GetUnderlyingType();
+    while (leaf) {
+      if (auto *el = llvm::dyn_cast<cpp_typesystem::ElaboratedType>(leaf))
+        leaf = el->GetUnderlyingType();
+      else if (auto *inner =
+                   llvm::dyn_cast<cpp_typesystem::CVQualifiedType>(leaf))
+        leaf = inner->GetUnderlyingType();
+      else
+        break;
+    }
+    const bool drop_qualifiers =
+        leaf && (llvm::isa<cpp_typesystem::RecordType>(leaf) ||
+                 llvm::isa<cpp_typesystem::EnumType>(leaf) ||
+                 llvm::isa<cpp_typesystem::TypedefType>(leaf));
+    if (drop_qualifiers)
+      return ConstString(underlying_name);
     std::string result;
     if (cv->IsConst())
       result += "const ";
