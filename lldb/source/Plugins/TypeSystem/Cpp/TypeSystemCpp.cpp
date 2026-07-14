@@ -1379,6 +1379,13 @@ TypeSystemCpp::GetTypeBitAlign(opaque_compiler_type_t type,
   return align_bytes * 8;
 }
 
+CompilerType TypeSystemCpp::GetBuiltinTypeByName(ConstString name) {
+  if (cpp_typesystem::BuiltinType *bt =
+          m_context.GetBuiltinTypeByName(name.GetStringRef()))
+    return GetCompilerType(bt);
+  return CompilerType();
+}
+
 CompilerType TypeSystemCpp::GetBasicTypeFromAST(BasicType basic_type) {
   using cpp_typesystem::BuiltinKind;
   // Map the language-neutral BasicType onto one of our enumerated builtin

@@ -47,6 +47,13 @@ public:
     return builtin_types.Get(kind);
   }
 
+  /// The canonical builtin type whose spelling is \p name (e.g. "unsigned
+  /// long"), or nullptr if no builtin is spelled that way. Used to answer type
+  /// lookups by name.
+  BuiltinType *GetBuiltinTypeByName(llvm::StringRef name) {
+    return builtin_types.MatchByName(name);
+  }
+
   /// Create a record type. When \p is_cpp_class is true the record can carry
   /// C++-only information (base classes) and a ClassType is created; otherwise
   /// a plain StructType is used.
