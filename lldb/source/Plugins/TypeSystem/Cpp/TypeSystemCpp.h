@@ -237,6 +237,7 @@ public:
   GetTypeBitAlign(lldb::opaque_compiler_type_t type,
                   ExecutionContextScope *exe_scope) override;
   CompilerType GetBasicTypeFromAST(lldb::BasicType basic_type) override;
+  CompilerType GetBuiltinTypeByName(ConstString name) override;
   CompilerType GetBuiltinTypeForEncodingAndBitSize(lldb::Encoding encoding,
                                                    size_t bit_size) override;
   bool IsBeingDefined(lldb::opaque_compiler_type_t type) override;

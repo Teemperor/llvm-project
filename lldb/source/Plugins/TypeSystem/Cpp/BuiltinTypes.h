@@ -111,6 +111,11 @@ public:
   BuiltinType *Match(llvm::StringRef name, lldb::Encoding encoding,
                      std::optional<uint64_t> byte_size) const;
 
+  /// Returns the canonical builtin type whose (canonical or alternative)
+  /// spelling equals \p name, or nullptr if no enumerated builtin is spelled
+  /// that way. Used to answer type lookups by name (e.g. FindTypes).
+  BuiltinType *MatchByName(llvm::StringRef name) const;
+
 private:
   // Backing storage for the canonical instances; index has no meaning.
   std::vector<std::unique_ptr<BuiltinType>> m_storage;

@@ -142,3 +142,11 @@ BuiltinType *KnownBuiltinTypes::Match(llvm::StringRef name,
   }
   return nullptr;
 }
+
+BuiltinType *KnownBuiltinTypes::MatchByName(llvm::StringRef name) const {
+  for (const BuiltinDesc &desc : kDescs)
+    for (const char *spelling : desc.spellings)
+      if (spelling && name == spelling)
+        return Get(desc.kind);
+  return nullptr;
+}
