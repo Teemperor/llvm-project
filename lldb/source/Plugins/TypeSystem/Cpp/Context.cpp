@@ -145,3 +145,12 @@ FunctionType *Context::CreateFunctionType(TypeRef return_type,
   type->SetIsVariadic(is_variadic);
   return Track(std::move(type));
 }
+
+ComplexType *Context::CreateComplexType(TypeRef element_type) {
+  auto type = std::make_unique<ComplexType>();
+  type->SetElementType(element_type);
+  if (element_type)
+    if (std::optional<uint64_t> element_size = element_type.Get()->GetByteSize())
+      type->SetByteSize(*element_size * 2);
+  return Track(std::move(type));
+}

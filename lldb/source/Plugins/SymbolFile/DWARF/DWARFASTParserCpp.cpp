@@ -153,6 +153,43 @@ TypeSP DWARFASTParserCpp::ParseBaseType(const DWARFDIE &die) {
   lldb::Encoding encoding = GetEncodingFromDWARF(dw_ate);
   lldb::Format format = GetFormatFromDWARF(dw_ate);
 
+  // A `_Complex` type: `_Complex float/double/long double`
+  // (DW_ATE_complex_float) or the Clang extension `_Complex int` (emitted with
+  // the vendor encoding DW_ATE_lo_user and a "complex" name). Model it as a
+  // ComplexType over an element builtin of half the total size.
+  const bool is_complex_float = dw_ate == DW_ATE_complex_float;
+  const bool is_complex_int =
+      dw_ate == DW_ATE_lo_user && name.GetStringRef().contains("complex");
+  if ((is_complex_float || is_complex_int) && byte_size && *byte_size) {
+    uint64_t element_bytes = *byte_size / 2;
+    cpp_typesystem::Builder builder(m_ts);
+    CompilerType element;
+    if (is_complex_float)
+      element = builder.GetBuiltinType(
+          ConstString(element_bytes == 4   ? "float"
+                      : element_bytes == 8 ? "double"
+                                           : "long double"),
+          element_bytes, lldb::eEncodingIEEE754, lldb::eFormatFloat);
+    else {
+      // The vendor complex-integer encoding doesn't record the element type, so
+      // pick the signed integer builtin of the right size by name (LLDB can't
+      // tell `long` from `long long` when they share a size -- see the FIXMEs in
+      // the ComplexInt test).
+      llvm::StringRef int_name = element_bytes == 1   ? "signed char"
+                                 : element_bytes == 2 ? "short"
+                                 : element_bytes == 4 ? "int"
+                                 : element_bytes == 8 ? "long"
+                                                      : "__int128";
+      element = builder.GetBuiltinType(ConstString(int_name), element_bytes,
+                                       lldb::eEncodingSint, lldb::eFormatDecimal);
+    }
+    CompilerType complex_type = builder.CreateComplexType(element);
+    Declaration decl;
+    return dwarf->MakeType(die.GetID(), name, byte_size, /*context=*/nullptr,
+                           LLDB_INVALID_UID, Type::eEncodingIsUID, decl,
+                           complex_type, Type::ResolveState::Full);
+  }
+
   // Map this base type onto the matching canonical builtin type, falling back
   // to a bespoke type (using the format derived above) if it is not one of the
   // enumerated builtins.

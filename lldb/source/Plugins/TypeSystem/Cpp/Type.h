@@ -544,6 +544,43 @@ private:
   std::vector<Enumerator> m_enumerators;
 };
 
+/// A C99 `_Complex` type: two contiguous components (real, imaginary) of an
+/// element type. Both `_Complex float/double/long double` (DW_ATE_complex_float)
+/// and the Clang extension `_Complex int` (a vendor encoding) are modeled here.
+class ComplexType : public llvm::RTTIExtends<ComplexType, Type> {
+public:
+  static char ID;
+
+  Type *GetElementType() const { return m_element_type.Get(); }
+  void SetElementType(TypeRef type) { m_element_type = type; }
+
+  /// Complex-float when the element is a floating-point type, else
+  /// complex-integer.
+  bool IsFloat() const {
+    return m_element_type &&
+           m_element_type.Get()->GetEncoding() == lldb::eEncodingIEEE754;
+  }
+
+  // No lldb::Encoding value describes a complex type.
+  lldb::Encoding GetEncoding() const override { return lldb::eEncodingInvalid; }
+  lldb::Format GetFormat() const override {
+    return IsFloat() ? lldb::eFormatComplexFloat : lldb::eFormatComplexInteger;
+  }
+  lldb::TypeClass GetTypeClass() const override {
+    return IsFloat() ? lldb::eTypeClassComplexFloat
+                     : lldb::eTypeClassComplexInteger;
+  }
+  uint32_t GetTypeInfo() const override {
+    uint32_t info = lldb::eTypeIsBuiltIn | lldb::eTypeHasValue |
+                    lldb::eTypeIsComplex | lldb::eTypeIsScalar;
+    info |= IsFloat() ? lldb::eTypeIsFloat : lldb::eTypeIsInteger;
+    return info;
+  }
+
+private:
+  TypeRef m_element_type;
+};
+
 /// A function type: a return type plus parameter types. For a member function
 /// the parameters exclude the implicit object (`this`) parameter. Used to build
 /// clang::FunctionDecl/CXXMethodDecl signatures for calling functions from
