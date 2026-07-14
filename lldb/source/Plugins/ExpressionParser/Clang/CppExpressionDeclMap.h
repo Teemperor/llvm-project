@@ -166,6 +166,13 @@ private:
                   lldb::ModuleSP module, const CompilerDeclContext &scope,
                   llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
+  /// Find a complete TypeSystemCpp type named \p name (fully qualified) by
+  /// searching every module in the target. Used by WrapType to recover the
+  /// definition of a record that was only forward-declared in the module the
+  /// expression stopped in. Returns an empty CompilerType if no complete
+  /// definition is found.
+  CompilerType FindCompleteType(ConstString name);
+
   /// A C++ namespace named \p name can live in several modules; this is the
   /// per-module (module, namespace decl context) list the legacy path calls a
   /// "namespace map".

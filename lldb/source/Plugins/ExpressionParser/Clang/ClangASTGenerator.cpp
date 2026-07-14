@@ -966,8 +966,19 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
   auto find = m_reverse.find(qt.getAsOpaquePtr());
   if (find == m_reverse.end())
     find = m_reverse.find(qt.getCanonicalType().getAsOpaquePtr());
-  if (find != m_reverse.end())
+  if (find != m_reverse.end()) {
+    // A record's cpp_typesystem::Type is owned by the module TypeSystemCpp that
+    // parsed it (not by result_ts, the scratch TS). Its byte size and members
+    // can only be filled in on demand through that owning TypeSystem's
+    // SymbolFile, so wrap it there. Non-record types don't require completion
+    // and are fine in result_ts.
+    if (auto *rd = qt->getAsCXXRecordDecl()) {
+      auto rec_it = m_records.find(rd);
+      if (rec_it != m_records.end() && rec_it->second->ts)
+        return rec_it->second->ts->GetCompilerType(find->second);
+    }
     return result_ts.GetCompilerType(find->second);
+  }
 
   // Preserve cv-qualifiers the parser applied but that we didn't generate
   // ourselves (e.g. the `const` of the `const char *` parameter in a function

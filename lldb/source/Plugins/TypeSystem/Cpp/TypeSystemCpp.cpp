@@ -1144,6 +1144,14 @@ TypeSystemCpp::GetBitSize(opaque_compiler_type_t type,
     return llvm::createStringError("invalid type");
   if (std::optional<uint64_t> byte_size = GetCppType(type)->GetByteSize())
     return *byte_size * 8;
+  // The size is unknown, which for a record means it hasn't been completed yet.
+  // Complete it on demand and try again, so sizing e.g. an expression result
+  // type whose record was only forward-declared in the parser's module still
+  // works. Completion is skipped above for the common already-sized case to
+  // avoid disturbing lazy parsing.
+  GetCompleteType(type);
+  if (std::optional<uint64_t> byte_size = GetCppType(type)->GetByteSize())
+    return *byte_size * 8;
   return llvm::createStringError("TypeSystemCpp::GetBitSize: unknown size");
 }
 
@@ -1804,6 +1812,12 @@ TypeSystemCpp::GetTypeBitAlign(opaque_compiler_type_t type,
   // alignment for the standard-layout types produced from debug info). Cap at
   // 8 bytes, which matches the fundamental alignment on the supported targets.
   std::optional<uint64_t> byte_size = t->GetByteSize();
+  if (!byte_size) {
+    // Unknown size means the record isn't completed yet; complete it on demand
+    // and retry (mirrors GetBitSize).
+    GetCompleteType(type);
+    byte_size = t->GetByteSize();
+  }
   if (!byte_size || *byte_size == 0)
     return std::nullopt;
   uint64_t align_bytes = 1;
