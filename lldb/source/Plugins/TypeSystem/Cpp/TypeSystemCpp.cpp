@@ -17,6 +17,7 @@
 
 #include "lldb/Core/DumpDataExtractor.h"
 #include "lldb/Core/PluginManager.h"
+#include "lldb/Host/StreamFile.h"
 #include "lldb/Expression/UtilityFunction.h"
 #include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Target/Language.h"
@@ -1188,10 +1189,81 @@ bool TypeSystemCpp::DumpTypeValue(opaque_compiler_type_t type, Stream &s,
 }
 
 void TypeSystemCpp::DumpTypeDescription(opaque_compiler_type_t type,
-                                        DescriptionLevel level) {}
+                                        DescriptionLevel level) {
+  StreamFile s(stdout, false);
+  DumpTypeDescription(type, s, level);
+}
+
+// Append a C declarator ("<type> <name>") for a record member, using array
+// declarator syntax (`char padding[0]`) when the member's type is an array so
+// the printed definition matches C source form.
+static void AppendMemberDecl(Stream &s, TypeSystemCpp &ts,
+                             cpp_typesystem::Type *field_type,
+                             llvm::StringRef name) {
+  using namespace cpp_typesystem;
+  std::string dims;
+  cpp_typesystem::Type *cur = field_type;
+  while (auto *array = llvm::dyn_cast_or_null<ArrayType>(cur)) {
+    if (std::optional<uint64_t> n = array->GetNumElements())
+      dims += llvm::formatv("[{0}]", *n).str();
+    else
+      dims += "[]";
+    cur = array->GetElementType();
+  }
+  std::string base = ts.GetTypeName(cur, /*BaseOnly=*/false).GetStringRef().str();
+  s << base;
+  if (!name.empty())
+    s << " " << name;
+  s << dims;
+}
 
 void TypeSystemCpp::DumpTypeDescription(opaque_compiler_type_t type, Stream &s,
-                                        DescriptionLevel level) {}
+                                        DescriptionLevel level) {
+  if (!type)
+    return;
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+
+  if (auto *enum_type = llvm::dyn_cast<cpp_typesystem::EnumType>(t)) {
+    GetCompleteType(type);
+    s.Printf("enum %s {\n", GetTypeName(t, /*BaseOnly=*/false).GetCString());
+    for (const cpp_typesystem::Enumerator &e : enum_type->GetEnumerators()) {
+      if (enum_type->IsSigned())
+        s.Printf("    %s = %" PRId64 ",\n", e.name.GetName().str().c_str(),
+                 static_cast<int64_t>(e.value));
+      else
+        s.Printf("    %s = %" PRIu64 ",\n", e.name.GetName().str().c_str(),
+                 e.value);
+    }
+    s.PutCString("}");
+    return;
+  }
+
+  if (auto *record = llvm::dyn_cast<cpp_typesystem::RecordType>(t)) {
+    GetCompleteType(type);
+    const char *tag =
+        record->IsUnion()
+            ? "union"
+            : (llvm::isa<cpp_typesystem::ClassType>(record) ? "class"
+                                                            : "struct");
+    s.Printf("%s %s {\n", tag, GetTypeName(t, /*BaseOnly=*/false).GetCString());
+    for (uint32_t i = 0, e = record->GetNumFields(); i != e; ++i) {
+      const cpp_typesystem::Field *field = record->GetFieldAtIndex(i);
+      if (!field)
+        continue;
+      s.PutCString("    ");
+      AppendMemberDecl(s, *this, field->type.Get(), field->name.GetName());
+      if (field->IsBitfield())
+        s.Printf(" : %u", field->bitfield_bit_size);
+      s.PutCString(";\n");
+    }
+    s.PutCString("}");
+    return;
+  }
+
+  // Anything else: just print its name.
+  if (ConstString name = GetTypeName(t, /*BaseOnly=*/false))
+    s.PutCString(name.GetStringRef());
+}
 
 void TypeSystemCpp::Dump(llvm::raw_ostream &output, llvm::StringRef filter,
                          bool show_color) {}
