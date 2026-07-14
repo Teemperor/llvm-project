@@ -183,48 +183,7 @@ CompilerType CppExpressionDeclMap::WrapType(clang::QualType qt) {
   CompilerType mapped = GetGenerator().MapClangTypeToCpp(qt, *scratch);
   if (!mapped)
     return {};
-
-  // If the mapped type is a record whose size we can't determine through its
-  // owning module (e.g. it was only forward-declared in the module the
-  // expression stopped in, with the definition living in another module),
-  // IRForTarget won't be able to size the expression result. Look the record's
-  // definition up by name across the target's modules -- the same cross-module
-  // lookup the parser uses for named types -- and prefer a sized one.
-  if (mapped.IsAggregateType()) {
-    mapped.GetCompleteType();
-    if (!llvm::expectedToOptional(mapped.GetByteSize(nullptr))) {
-      if (CompilerType complete = FindCompleteType(mapped.GetTypeName()))
-        return complete;
-    }
-  }
   return mapped;
-}
-
-CompilerType CppExpressionDeclMap::FindCompleteType(ConstString name) {
-  Target *target = m_exe_ctx.GetTargetPtr();
-  if (!target || name.IsEmpty())
-    return {};
-
-  // Search every module for a type with this name. Don't ask for just one
-  // match: the module the expression stopped in may itself export a
-  // forward-declaration of the type (which is what got us here), and that could
-  // be returned first. Walk all matches and return the first TypeSystemCpp type
-  // whose size is known -- that is what IRForTarget needs to size the result,
-  // and its members can still be parsed lazily for value inspection.
-  TypeResults results;
-  TypeQuery query(name.GetStringRef(), TypeQueryOptions::e_exact_match);
-  target->GetImages().FindTypes(nullptr, query, results);
-  for (const lldb::TypeSP &type_sp : results.GetTypeMap().Types()) {
-    if (!type_sp)
-      continue;
-    CompilerType type = type_sp->GetFullCompilerType();
-    if (!type || !type.GetTypeSystem<TypeSystemCpp>())
-      continue;
-    type.GetCompleteType();
-    if (llvm::expectedToOptional(type.GetByteSize(nullptr)))
-      return type;
-  }
-  return {};
 }
 
 void CppExpressionDeclMap::StartTranslationUnit() {

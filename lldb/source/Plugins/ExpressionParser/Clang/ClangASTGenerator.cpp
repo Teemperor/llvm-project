@@ -1096,19 +1096,13 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
   if (find == m_reverse.end())
     find = m_reverse.find(qt.getCanonicalType().getAsOpaquePtr());
   if (find != m_reverse.end()) {
-    // A record's cpp_typesystem::Type is owned by the module TypeSystemCpp that
-    // parsed it (not by result_ts, the scratch TS). Its byte size and members
-    // can only be filled in on demand through that owning TypeSystem's
-    // SymbolFile, so wrap it there. Non-record types don't require completion
-    // and are fine in result_ts.
-    CompilerType mapped;
-    if (auto *rd = qt->getAsCXXRecordDecl()) {
-      auto rec_it = m_records.find(rd);
-      if (rec_it != m_records.end() && rec_it->second->ts)
-        mapped = rec_it->second->ts->GetCompilerType(find->second);
-    }
-    if (!mapped)
-      mapped = result_ts.GetCompilerType(find->second);
+    // Map the recovered type into result_ts (the scratch TypeSystemCpp that
+    // owns expression result/persistent types). Keeping result types in the
+    // scratch TS -- rather than their parsing module's TS -- means a type
+    // reachable only through a pointer in the result stays a forward
+    // declaration (it has no SymbolFile in the scratch TS to complete it),
+    // matching the lazy-completion contract.
+    CompilerType mapped = result_ts.GetCompilerType(find->second);
 
     // The parser may have kept elaborated/spelling sugar around the type the
     // user wrote (e.g. `::Struct`, `$V< ::Struct>`). It only reached us via the
