@@ -16,3 +16,4 @@ char TypedefType::ID = 0;
 char CVQualifiedType::ID = 0;
 char EnumType::ID = 0;
 char FunctionType::ID = 0;
+char ComplexType::ID = 0;

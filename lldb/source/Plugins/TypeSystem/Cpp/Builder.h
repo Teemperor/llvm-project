@@ -73,6 +73,8 @@ public:
                               CompilerType underlying_type, bool is_scoped);
   /// Create a function type. Parameters are added afterwards via AddParameter.
   CompilerType CreateFunctionType(CompilerType return_type, bool is_variadic);
+  /// Create a `_Complex` type over \p element_type.
+  CompilerType CreateComplexType(CompilerType element_type);
   /// Append a parameter type to a FunctionType created by CreateFunctionType.
   void AddParameter(CompilerType function_type, CompilerType param_type);
   /// Add a member function to \p record.

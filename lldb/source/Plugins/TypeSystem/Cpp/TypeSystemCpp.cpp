@@ -136,6 +136,12 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t) {
   }
   if (auto *fn = llvm::dyn_cast<FunctionType>(t))
     return BuildFunctionName(fn, "");
+  if (auto *cx = llvm::dyn_cast<ComplexType>(t)) {
+    std::string element = cx->GetElementType()
+                              ? BuildDisplayName(cx->GetElementType())
+                              : std::string("float");
+    return "_Complex " + element;
+  }
   if (auto *cv = llvm::dyn_cast<CVQualifiedType>(t)) {
     std::string result;
     if (cv->IsConst())
@@ -542,6 +548,8 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
   // Function types and pointers/references to them need C declarator syntax
   // (`int (*)(const char *)`); BuildDisplayName already produces it.
   if (llvm::isa<cpp_typesystem::FunctionType>(t))
+    return ConstString(BuildDisplayName(t));
+  if (llvm::isa<cpp_typesystem::ComplexType>(t))
     return ConstString(BuildDisplayName(t));
   // Pointers have no name of their own either; build "<pointee> *".
   if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {

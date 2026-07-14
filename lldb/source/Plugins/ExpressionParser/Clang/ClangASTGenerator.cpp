@@ -281,6 +281,10 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
       epi.Variadic = fn->IsVariadic();
       result = ast.getFunctionType(ret, params, epi);
     }
+  } else if (auto *cx = llvm::dyn_cast<ct::ComplexType>(cpp_type)) {
+    clang::QualType elem = GenerateType(ts, cx->GetElementType());
+    if (!elem.isNull())
+      result = ast.getComplexType(elem);
   } else {
     result = GenerateBuiltin(cpp_type);
   }
@@ -719,6 +723,12 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
   } else if (qt->isPointerType()) {
     if (CompilerType pointee = MapClangTypeToCpp(qt->getPointeeType(), result_ts))
       return cpp_typesystem::Builder(result_ts).CreatePointerType(pointee);
+  } else if (const auto *cx = qt->getAs<clang::ComplexType>()) {
+    // A complex value produced by the expression (e.g. `a + (1.0f + 2.0fi)`)
+    // maps back to a TypeSystemCpp ComplexType over its mapped element.
+    if (CompilerType element =
+            MapClangTypeToCpp(cx->getElementType(), result_ts))
+      return cpp_typesystem::Builder(result_ts).CreateComplexType(element);
   }
   return {};
 }

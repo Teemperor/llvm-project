@@ -89,6 +89,11 @@ CompilerType Builder::CreateFunctionType(CompilerType return_type,
       ToTypeRef(return_type), is_variadic));
 }
 
+CompilerType Builder::CreateComplexType(CompilerType element_type) {
+  return m_ts.GetCompilerType(
+      m_ts.m_context.CreateComplexType(ToTypeRef(element_type)));
+}
+
 void Builder::AddParameter(CompilerType function_type,
                            CompilerType param_type) {
   auto *func = llvm::dyn_cast_or_null<cpp_typesystem::FunctionType>(

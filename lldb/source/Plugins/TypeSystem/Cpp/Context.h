@@ -92,6 +92,10 @@ public:
   /// afterwards via AddParameter.
   FunctionType *CreateFunctionType(TypeRef return_type, bool is_variadic);
 
+  /// Create a `_Complex` type over \p element_type. Its byte size is twice the
+  /// element's.
+  ComplexType *CreateComplexType(TypeRef element_type);
+
   /// Structural mutation of already-created record types. These are the gated
   /// entry points for the mutations that happen during lazy completion; the
   /// corresponding Type methods are private and befriend this class.
