@@ -619,6 +619,21 @@ LanguageType TypeSystemCpp::GetMinimumLanguage(opaque_compiler_type_t type) {
   // TypeSystemCpp models C/C++/Objective-C++ types. Reporting C++ is what puts
   // types in the C++ formatter category, so that e.g. the libc++ container
   // data formatters are consulted (see FormatManager::GetCandidateLanguages).
+  //
+  // Exception: a pointer to a plain scalar/enum (e.g. `int *`, `enum E *`) is a
+  // C construct. Reporting it as C++ makes CPlusPlusLanguage::IsNilReference
+  // treat a null such pointer as a nil object reference and print it as "NULL"
+  // instead of its address; TypeSystemClang reports C for these, printing 0x0.
+  // Pointers to records keep reporting C++ so class data formatters still fire.
+  if (type) {
+    cpp_typesystem::Type *t = Desugar(GetCppType(type));
+    if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
+      cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+      if (!pointee ||
+          !llvm::isa<cpp_typesystem::RecordType>(Desugar(pointee)))
+        return eLanguageTypeC;
+    }
+  }
   return eLanguageTypeC_plus_plus;
 }
 
