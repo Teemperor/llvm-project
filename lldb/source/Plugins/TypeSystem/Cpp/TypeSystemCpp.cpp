@@ -1732,7 +1732,12 @@ void TypeSystemCpp::DumpTypeDescription(opaque_compiler_type_t type, Stream &s,
 
   if (auto *enum_type = llvm::dyn_cast<cpp_typesystem::EnumType>(t)) {
     GetCompleteType(type);
-    s.Printf("enum %s {\n", GetTypeName(t, /*BaseOnly=*/false).GetCString());
+    // Scoped enums (`enum class`) print their tag so the definition matches C++
+    // source form. The class/struct distinction is not modeled, so scoped enums
+    // always use `class` (clang's default spelling).
+    const char *scope = enum_type->IsScoped() ? " class" : "";
+    s.Printf("enum%s %s {\n", scope,
+             GetTypeName(t, /*BaseOnly=*/false).GetCString());
     for (const cpp_typesystem::Enumerator &e : enum_type->GetEnumerators()) {
       if (enum_type->IsSigned())
         s.Printf("    %s = %" PRId64 ",\n", e.name.GetName().str().c_str(),
