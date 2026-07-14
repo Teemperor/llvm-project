@@ -834,6 +834,7 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
       Base,
       TemplateType,
       TemplateValue,
+      TemplateTemplate,
       NestedType,
       StaticDataMember
     } kind;
@@ -870,6 +871,15 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
                          /*byte_offset=*/0,
                          /*value=*/0, param,
                          param.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+    } else if (param.Tag() == DW_TAG_GNU_template_template_param) {
+      // A template-template argument (e.g. the `T1` in `C<float, T1>`). It is
+      // not a modeled type; only its spelling (DW_AT_GNU_template_name) is kept
+      // so the instantiation's name can be reconstructed.
+      const char *template_name =
+          param.GetAttributeValueAsString(DW_AT_GNU_template_name, nullptr);
+      members.push_back({MemberInfo::Kind::TemplateTemplate,
+                         llvm::StringRef(template_name ? template_name : ""),
+                         /*byte_offset=*/0, /*value=*/0, param, DWARFDIE()});
     } else {
       members.push_back(
           {MemberInfo::Kind::TemplateValue, param.GetName(), /*byte_offset=*/0,
@@ -935,18 +945,21 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
                child.GetAttributeValueAsUnsigned(DW_AT_bit_size, 0)),
            data_bit_offset.value_or(UINT64_MAX)});
     } else if (tag == DW_TAG_template_type_parameter ||
-               tag == DW_TAG_template_value_parameter) {
+               tag == DW_TAG_template_value_parameter ||
+               tag == DW_TAG_GNU_template_template_param) {
       is_template = true;
       add_template_param(child);
     } else if (tag == DW_TAG_GNU_template_parameter_pack) {
       // A variadic template parameter pack (`Ss...`): each expanded argument is
-      // a child DW_TAG_template_{type,value}_parameter. Add them individually so
-      // they appear in the reconstructed name (e.g. "FooPack<char, int>"). The
-      // pack itself (even when empty) marks this as a template instantiation.
+      // a child DW_TAG_template_{type,value}_parameter (or a template-template
+      // parameter). Add them individually so they appear in the reconstructed
+      // name (e.g. "FooPack<char, int>" or "C<float, T1>"). The pack itself
+      // (even when empty) marks this as a template instantiation.
       is_template = true;
       for (DWARFDIE pack_param : child.children())
         if (pack_param.Tag() == DW_TAG_template_type_parameter ||
-            pack_param.Tag() == DW_TAG_template_value_parameter)
+            pack_param.Tag() == DW_TAG_template_value_parameter ||
+            pack_param.Tag() == DW_TAG_GNU_template_template_param)
           add_template_param(pack_param);
     } else if (tag == DW_TAG_typedef || tag == DW_TAG_structure_type ||
                tag == DW_TAG_class_type || tag == DW_TAG_union_type ||
@@ -1109,6 +1122,9 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     case MemberInfo::Kind::TemplateValue:
       ts.AddTemplateArgument(*record, lldb::eTemplateArgumentKindIntegral,
                              member_type, member.value, member.is_default);
+      break;
+    case MemberInfo::Kind::TemplateTemplate:
+      ts.AddTemplateTemplateArgument(*record, member.name, member.is_default);
       break;
     case MemberInfo::Kind::NestedType:
       if (member_type)

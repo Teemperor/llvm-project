@@ -113,6 +113,11 @@ struct TemplateArgument {
   /// Integral argument: the raw value bits (interpret using `type`'s
   /// signedness/size).
   uint64_t integral_value = 0;
+  /// Template argument (a template-template parameter, e.g. the `T1` in
+  /// `C<float, T1>`): the referenced template's name. Such arguments are not a
+  /// modeled type, so only their spelling is kept -- enough to reconstruct the
+  /// instantiation's display name.
+  Identifier name;
   /// True when this argument was defaulted (DWARF's DW_AT_default_value), so it
   /// is hidden when building the type's display name (`std::vector<int>` rather
   /// than `std::vector<int, std::allocator<int>>`).

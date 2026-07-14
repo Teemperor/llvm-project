@@ -171,9 +171,22 @@ void Builder::AddTemplateArgument(cpp_typesystem::RecordType &record,
                                   lldb::TemplateArgumentKind kind,
                                   cpp_typesystem::Type *type,
                                   uint64_t integral_value, bool is_default) {
-  m_ts.m_context.AddTemplateArgument(
-      record, cpp_typesystem::TemplateArgument{kind, ToTypeRef(type),
-                                               integral_value, is_default});
+  cpp_typesystem::TemplateArgument arg;
+  arg.kind = kind;
+  arg.type = ToTypeRef(type);
+  arg.integral_value = integral_value;
+  arg.is_default = is_default;
+  m_ts.m_context.AddTemplateArgument(record, arg);
+}
+
+void Builder::AddTemplateTemplateArgument(cpp_typesystem::RecordType &record,
+                                          llvm::StringRef name,
+                                          bool is_default) {
+  cpp_typesystem::TemplateArgument arg;
+  arg.kind = lldb::eTemplateArgumentKindTemplate;
+  arg.name = GetIdentifier(name);
+  arg.is_default = is_default;
+  m_ts.m_context.AddTemplateArgument(record, arg);
 }
 
 const cpp_typesystem::Namespace *

@@ -129,6 +129,11 @@ public:
   /// on demand (see ClangASTGenerator::PopulateRecord).
   void CompleteMemberFunctions(cpp_typesystem::Type *type);
 
+  /// Complete an incomplete class-template instantiation so its modeled
+  /// template arguments are available for building its display name (see the
+  /// definition for details). A no-op for non-record or already-complete types.
+  void CompleteTemplateInstantiationForName(cpp_typesystem::Type *type);
+
   // AST related queries
   uint32_t GetPointerByteSize() override;
   CompilerType GetPointerDiffType(bool is_signed) override;

@@ -44,13 +44,20 @@ namespace ct = cpp_typesystem;
 /// Records a (clang type -> cpp type) mapping so the type can later be mapped
 /// back onto a TypeSystemCpp type (e.g. an expression result type). The key is
 /// the opaque QualType so cv-qualified variants (const int vs int) stay
-/// distinct.
+/// distinct. Also register the canonical type as a fallback so a desugared
+/// variant the parser formed still maps back -- but only when the type is
+/// itself canonical (unsugared). Registering the canonical alias for a sugared
+/// type would be wrong: a generated typedef (e.g. `int32_t`, whose canonical
+/// type is `int`) would claim the canonical `int` mapping, and an unrelated
+/// `int` result would then be reported as `int32_t`.
 static void noteReverse(llvm::DenseMap<void *, ct::Type *> &reverse,
                         clang::QualType qt, ct::Type *cpp_type) {
   if (qt.isNull())
     return;
   reverse[qt.getAsOpaquePtr()] = cpp_type;
-  reverse[qt.getCanonicalType().getAsOpaquePtr()] = cpp_type;
+  clang::QualType canonical = qt.getCanonicalType();
+  if (canonical.getAsOpaquePtr() == qt.getAsOpaquePtr())
+    reverse[canonical.getAsOpaquePtr()] = cpp_type;
 }
 
 void ClangASTGenerator::RegisterNamespace(const ct::Namespace *cpp_ns,
