@@ -395,7 +395,16 @@ TypeSystemCpp::GetFunctionArgumentAtIndex(opaque_compiler_type_t type,
 }
 
 bool TypeSystemCpp::IsFunctionPointerType(opaque_compiler_type_t type) {
-  return false;
+  if (!type)
+    return false;
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+  cpp_typesystem::Type *pointee = nullptr;
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t))
+    pointee = ptr->GetPointeeType();
+  else if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t))
+    pointee = ref->GetPointeeType();
+  return pointee &&
+         llvm::isa<cpp_typesystem::FunctionType>(Desugar(pointee));
 }
 
 bool TypeSystemCpp::IsMemberFunctionPointerType(opaque_compiler_type_t type) {

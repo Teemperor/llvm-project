@@ -630,6 +630,17 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
   if (find != m_reverse.end())
     return result_ts.GetCompilerType(find->second);
 
+  // Preserve cv-qualifiers the parser applied but that we didn't generate
+  // ourselves (e.g. the `const` of the `const char *` parameter in a function
+  // cast): map the unqualified type and re-wrap it.
+  if (qt.hasLocalQualifiers()) {
+    if (CompilerType inner =
+            MapClangTypeToCpp(qt.getLocalUnqualifiedType(), result_ts))
+      return cpp_typesystem::Builder(result_ts).CreateCVQualifiedType(
+          inner, qt.isLocalConstQualified(), qt.isLocalVolatileQualified());
+    return {};
+  }
+
   // Builtin types (int, unsigned long, bool, ...) the parser created on its own
   // -- e.g. the result type of `1 + 1`, a `sizeof` expression, or a cast -- are
   // never in the reverse map because we didn't generate them. Map them onto the
@@ -729,6 +740,19 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
     if (CompilerType element =
             MapClangTypeToCpp(cx->getElementType(), result_ts))
       return cpp_typesystem::Builder(result_ts).CreateComplexType(element);
+  } else if (const auto *fpt = qt->getAs<clang::FunctionProtoType>()) {
+    // A function type the parser formed (e.g. the pointee of a function-pointer
+    // cast result). Rebuild it so a pointer to it can be sized/stored.
+    CompilerType ret = MapClangTypeToCpp(fpt->getReturnType(), result_ts);
+    cpp_typesystem::Builder builder(result_ts);
+    CompilerType fn = builder.CreateFunctionType(ret, fpt->isVariadic());
+    for (clang::QualType param : fpt->param_types()) {
+      CompilerType cpp_param = MapClangTypeToCpp(param, result_ts);
+      if (!cpp_param)
+        return {};
+      builder.AddParameter(fn, cpp_param);
+    }
+    return fn;
   }
   return {};
 }
