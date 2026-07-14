@@ -128,6 +128,17 @@ private:
   void LookUpLldbClass(clang::DeclarationName name,
                        llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
+  /// Resolve free overloaded operator functions (e.g. `operator==`) referenced
+  /// by an expression -- either explicitly (`operator==(a, b)`) or via operator
+  /// syntax (`a == b`). \p name is the CXXOperatorName DeclarationName clang
+  /// looked up; the target is searched for functions spelled `operator<X>` and
+  /// the generated FunctionDecls carry that same operator DeclarationName so
+  /// overload resolution binds to them.
+  bool
+  LookupOperatorFunctions(const clang::DeclContext *dc,
+                          clang::DeclarationName name,
+                          llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
   /// Resolve free functions named \p name and generate FunctionDecls (with asm
   /// labels) for them so an expression can call them. When \p scope is a valid
   /// namespace CompilerDeclContext the search is restricted to that namespace

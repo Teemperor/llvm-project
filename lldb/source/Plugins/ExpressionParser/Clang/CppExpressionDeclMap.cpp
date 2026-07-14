@@ -37,6 +37,10 @@
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclarationName.h"
+#include "clang/Basic/OperatorKinds.h"
+#include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/Twine.h"
 
 using namespace lldb_private;
 using namespace lldb;
@@ -223,6 +227,23 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
     llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
   if (!m_ast_context)
     return false;
+
+  // An overloaded operator (`operator==`, `operator+`, ...) is looked up by a
+  // special DeclarationName that carries no identifier, so it never reaches the
+  // identifier-based path below. Resolve it to the matching free operator
+  // function(s) in the target so `a == b` / `operator==(a, b)` bind to them.
+  if (name.getNameKind() ==
+      clang::DeclarationName::CXXOperatorName) {
+    // Only genuine references from the expression (not the reconciliation
+    // lookups clang runs while we synthesize decls) should trigger the
+    // whole-module function search; see the note below.
+    if (IsGeneratingDecls())
+      return false;
+    if (llvm::isa<clang::TranslationUnitDecl>(dc))
+      return LookupOperatorFunctions(dc, name, decls);
+    return false;
+  }
+
   clang::IdentifierInfo *ii = name.getAsIdentifierInfo();
   if (!ii)
     return false;
@@ -342,6 +363,71 @@ bool CppExpressionDeclMap::LookupFunctions(
         fd->setDeclContext(const_cast<clang::DeclContext *>(dc));
         const_cast<clang::DeclContext *>(dc)->addDecl(fd);
       }
+      decls.push_back(fd);
+      added = true;
+    }
+  }
+  return added;
+}
+
+bool CppExpressionDeclMap::LookupOperatorFunctions(
+    const clang::DeclContext *dc, clang::DeclarationName name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  Target *target = m_exe_ctx.GetTargetPtr();
+  if (!target)
+    return false;
+
+  // The debug info / symbol table spells a free operator function as
+  // `operator<X>` (e.g. `operator==`), so reconstruct that spelling from the
+  // operator kind and search for it. A word-spelled operator (new/delete) needs
+  // a separating space (`operator new`), while symbol operators do not
+  // (`operator==`).
+  clang::OverloadedOperatorKind oo = name.getCXXOverloadedOperator();
+  const char *spelling = clang::getOperatorSpelling(oo);
+  if (!spelling)
+    return false;
+  llvm::StringRef spelling_ref(spelling);
+  const char *sep =
+      (!spelling_ref.empty() && llvm::isAlpha(spelling_ref.front())) ? " " : "";
+  ConstString search_name(
+      (llvm::Twine("operator") + sep + spelling_ref).str());
+
+  SymbolContextList sc_list;
+  ModuleFunctionSearchOptions options;
+  options.include_inlines = false;
+  options.include_symbols = true;
+  target->GetImages().FindFunctions(
+      search_name, lldb::eFunctionNameTypeFull | lldb::eFunctionNameTypeBase,
+      options, sc_list);
+
+  bool added = false;
+  for (const SymbolContext &sc : sc_list) {
+    Function *function = sc.function;
+    if (!function)
+      continue;
+    Type *func_type = function->GetType();
+    if (!func_type)
+      continue;
+    CompilerType func_cpp_type = func_type->GetFullCompilerType();
+    if (!func_cpp_type || !func_cpp_type.GetTypeSystem<TypeSystemCpp>())
+      continue;
+
+    // Build the asm label the JIT resolves the call through.
+    ConstString mangled = function->GetMangled().GetMangledName();
+    if (!mangled)
+      mangled = function->GetMangled().GetDemangledName();
+    lldb::user_id_t module_id =
+        sc.module_sp ? sc.module_sp->GetID() : LLDB_INVALID_UID;
+    std::string label =
+        FunctionCallLabel{/*discriminator=*/{}, module_id, function->GetID(),
+                          mangled.GetStringRef()}
+            .toString();
+
+    // Name the generated decl with the operator DeclarationName so operator
+    // syntax (`a == b`) and the explicit `operator==(a, b)` spelling both bind
+    // to it during overload resolution.
+    if (clang::FunctionDecl *fd =
+            GetGenerator().GenerateFunction(name, func_cpp_type, label)) {
       decls.push_back(fd);
       added = true;
     }
