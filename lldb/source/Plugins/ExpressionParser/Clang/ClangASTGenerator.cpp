@@ -1263,6 +1263,19 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
       builder.AddParameter(fn, cpp_param);
     }
     return fn;
+  } else if (const clang::ArrayType *at = m_ast.getAsArrayType(qt)) {
+    // An array the parser formed (e.g. the `const char16_t[6]` result type of a
+    // `u"hello"` string literal). Map the element type recursively and rebuild
+    // the array so the result type can be sized. A constant array carries its
+    // element count; an incomplete array (`char[]`) has no bound.
+    if (CompilerType element =
+            MapClangTypeToCpp(at->getElementType(), result_ts)) {
+      std::optional<uint64_t> num_elements;
+      if (const auto *cat = llvm::dyn_cast<clang::ConstantArrayType>(at))
+        num_elements = cat->getSize().getZExtValue();
+      return cpp_typesystem::Builder(result_ts).CreateArrayType(element,
+                                                                num_elements);
+    }
   }
   return {};
 }
