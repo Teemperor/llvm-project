@@ -236,6 +236,10 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
       CreateLocalVarsNamespace(dc, decls);
       return !decls.empty();
     }
+    // A persistent expression variable ($0, $1, $foo, ...) referenced by the
+    // expression, but not one of the internal $__lldb_* names.
+    if (sname.starts_with("$") && !sname.starts_with("$__lldb"))
+      return LookupPersistentVariable(dc, ConstString(sname), decls);
     // A free function or global variable referenced by the expression
     // (e.g. `globalFuncCall()` or `g_global`).
     if (!sname.starts_with("$")) {
@@ -538,6 +542,52 @@ bool CppExpressionDeclMap::LookupType(
   return false;
 }
 
+bool CppExpressionDeclMap::LookupPersistentVariable(
+    const clang::DeclContext *dc, ConstString name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  Log *log = GetLog(LLDBLog::Expressions);
+  if (!m_persistent_vars)
+    return false;
+
+  lldb::ExpressionVariableSP pvar_sp = m_persistent_vars->GetVariable(name);
+  if (!pvar_sp)
+    return false;
+  auto *pvar = llvm::dyn_cast<ClangExpressionVariable>(pvar_sp.get());
+  if (!pvar)
+    return false;
+
+  CompilerType pvar_type = pvar->GetCompilerType();
+  if (!pvar_type || !pvar_type.GetTypeSystem<TypeSystemCpp>())
+    return false;
+
+  clang::QualType qt = GetGenerator().Generate(pvar_type);
+  if (qt.isNull()) {
+    LLDB_LOG(log, "CppEDM: couldn't generate a parser type for pvar {0}", name);
+    return false;
+  }
+
+  // Persistent variables are referenced through their storage, so hand out a
+  // reference-typed VarDecl (unless the variable is itself a reference).
+  clang::QualType var_qt =
+      qt->isReferenceType() ? qt : m_ast_context->getLValueReferenceType(qt);
+  auto *vd = clang::VarDecl::Create(
+      *m_ast_context, const_cast<clang::DeclContext *>(dc),
+      clang::SourceLocation(), clang::SourceLocation(),
+      &m_ast_context->Idents.get(name.GetStringRef()), var_qt, nullptr,
+      clang::SC_Static);
+  decls.push_back(vd);
+
+  // Bind the persistent variable (which lives in the persistent state, not in
+  // m_found_entities) to this decl so AddValueToStruct can materialize it.
+  pvar->EnableParserVars(GetParserID());
+  ClangExpressionVariable::ParserVars *parser_vars =
+      pvar->GetParserVars(GetParserID());
+  parser_vars->m_named_decl = vd;
+  parser_vars->m_llvm_value = nullptr;
+  parser_vars->m_lldb_value.Clear();
+  return true;
+}
+
 bool CppExpressionDeclMap::AddPersistentVariable(const clang::NamedDecl *decl,
                                                  ConstString name,
                                                  TypeFromParser type,
@@ -589,6 +639,14 @@ bool CppExpressionDeclMap::AddValueToStruct(const clang::NamedDecl *decl,
 
   ClangExpressionVariable *var = ClangExpressionVariable::FindVariableInList(
       m_found_entities, decl, GetParserID());
+  // A persistent variable ($0, $foo, ...) lives in the persistent state rather
+  // than in m_found_entities; look for it there.
+  bool is_persistent_variable = false;
+  if (!var && m_persistent_vars) {
+    var = ClangExpressionVariable::FindVariableInList(*m_persistent_vars, decl,
+                                                      GetParserID());
+    is_persistent_variable = true;
+  }
   if (!var)
     return false;
 
@@ -606,7 +664,11 @@ bool CppExpressionDeclMap::AddValueToStruct(const clang::NamedDecl *decl,
   if (m_materializer) {
     Status err;
     uint32_t member_offset = 0;
-    if (parser_vars->m_lldb_var)
+    if (is_persistent_variable) {
+      lldb::ExpressionVariableSP var_sp(var->shared_from_this());
+      member_offset =
+          m_materializer->AddPersistentVariable(var_sp, nullptr, err);
+    } else if (parser_vars->m_lldb_var)
       member_offset = m_materializer->AddVariable(parser_vars->m_lldb_var, err);
     else if (parser_vars->m_lldb_valobj_provider)
       member_offset = m_materializer->AddValueObject(
