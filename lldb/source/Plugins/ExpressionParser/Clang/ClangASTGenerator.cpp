@@ -353,6 +353,10 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     return f->byte_offset * 8 + f->bitfield_bit_offset;
   };
 
+  // Unnamed struct/union members, collected so their members can be promoted
+  // (C11 anonymous struct/union) after the field loop.
+  llvm::SmallVector<clang::FieldDecl *, 4> anon_fields;
+
   for (uint32_t i = 0; i < rec->GetNumFields(); ++i) {
     const ct::Field *field = rec->GetFieldAtIndex(i);
     clang::QualType field_qt = GenerateType(ts, field->type.Get());
@@ -403,9 +407,62 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     decl->addDecl(fd);
     info.field_bit_offsets[fd] = this_offset;
 
+    // A field with no name whose type is a struct/union is a C11 anonymous
+    // struct/union member; remember it so we can promote its members below.
+    if (field->name.GetName().empty() && field_qt->isRecordType())
+      anon_fields.push_back(fd);
+
     prev_is_bitfield = field->IsBitfield();
     if (field->IsBitfield())
       prev_bitfield_end = this_offset + field->bitfield_bit_size;
+  }
+
+  // C11 anonymous struct/union member promotion: make the members of each
+  // unnamed struct/union member reachable directly on this record via
+  // IndirectFieldDecls, so clang name lookup resolves e.g. `n->foo` / `n->b`.
+  // (The frame-variable path handles this separately via
+  // TypeSystemCpp::GetIndexOfChildMemberWithName.) Nested anonymous members
+  // already have their own IndirectFieldDecls -- built when EnsureComplete
+  // populated them above -- so extending those chains handles multiple levels.
+  for (clang::FieldDecl *anon : anon_fields) {
+    const auto *rt = anon->getType()->getAs<clang::RecordType>();
+    if (!rt)
+      continue;
+    clang::RecordDecl *nested = rt->getDecl()->getDefinition();
+    if (!nested)
+      continue;
+    for (clang::Decl *d : nested->decls()) {
+      llvm::SmallVector<clang::NamedDecl *, 4> chain;
+      chain.push_back(anon);
+      clang::DeclarationName member_name;
+      clang::QualType member_ty;
+      if (auto *nf = llvm::dyn_cast<clang::FieldDecl>(d)) {
+        // Skip unnamed nested fields (e.g. a nested anonymous member or
+        // padding); a nested anonymous member's own members are promoted via
+        // its IndirectFieldDecls, handled below.
+        if (!nf->getDeclName())
+          continue;
+        chain.push_back(nf);
+        member_name = nf->getDeclName();
+        member_ty = nf->getType();
+      } else if (auto *nifd = llvm::dyn_cast<clang::IndirectFieldDecl>(d)) {
+        for (clang::NamedDecl *link : nifd->chain())
+          chain.push_back(link);
+        member_name = nifd->getDeclName();
+        member_ty = nifd->getType();
+      } else {
+        continue;
+      }
+      auto **chain_arr = new (ast) clang::NamedDecl *[chain.size()];
+      for (size_t i = 0; i < chain.size(); ++i)
+        chain_arr[i] = chain[i];
+      auto *ifd = clang::IndirectFieldDecl::Create(
+          ast, decl, clang::SourceLocation(), member_name.getAsIdentifierInfo(),
+          member_ty, {chain_arr, chain.size()});
+      ifd->setAccess(clang::AS_public);
+      ifd->setImplicit();
+      decl->addDecl(ifd);
+    }
   }
 
   // Member functions. Declaring them (with the asm label the JIT resolves)
