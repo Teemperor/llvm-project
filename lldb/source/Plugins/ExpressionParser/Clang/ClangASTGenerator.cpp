@@ -280,6 +280,21 @@ void ClangASTGenerator::DumpRecords(TypeSystemCpp &ts,
     generator.EnsureComplete(qt);
   }
 
+  // Completing a record only forward-declares the records it points to (a
+  // pointer/reference member needs no definition). Those still-incomplete
+  // decls kept the external-storage flags set in GenerateType, but this
+  // standalone context has no external source to satisfy them -- the AST
+  // dumper would assert when it tried to load their lexical decls. Clear the
+  // flags on every generated record so the dumper treats an uncompleted one as
+  // a plain forward declaration.
+  for (auto &entry : generator.m_records) {
+    clang::CXXRecordDecl *decl = entry.second->clang_decl;
+    if (!decl->isCompleteDefinition()) {
+      decl->setHasExternalLexicalStorage(false);
+      decl->setHasExternalVisibleStorage(false);
+    }
+  }
+
   std::unique_ptr<clang::ASTConsumer> consumer = clang::CreateASTDumper(
       output, filter, /*DumpDecls=*/true, /*Deserialize=*/false,
       /*DumpLookups=*/false, /*DumpDeclTypes=*/false, clang::ADOF_Default);
@@ -917,16 +932,21 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   if (!decl->isCompleteDefinition())
     decl->completeDefinition();
 
+  // Clear the external-storage flags before iterating the members below: the
+  // members were added directly (addDecl), so no external source is needed to
+  // enumerate them, and leaving the flags set would make `decl->methods()`
+  // try to load from an external source that a sourceless context (e.g. the
+  // `target modules dump ast` path) does not have.
+  decl->setHasLoadedFieldsFromExternalStorage(true);
+  decl->setHasExternalLexicalStorage(false);
+  decl->setHasExternalVisibleStorage(false);
+
   // Wire up virtual-method overrides now that the class (and its bases) are
   // complete. Clang derives the vtable layout from these override links; an
   // overriding method must share its base method's slot, otherwise a virtual
   // call dispatches through a wrong/out-of-range slot and crashes.
   for (clang::CXXMethodDecl *method : decl->methods())
     AddOverridesForMethod(method);
-
-  decl->setHasLoadedFieldsFromExternalStorage(true);
-  decl->setHasExternalLexicalStorage(false);
-  decl->setHasExternalVisibleStorage(false);
 }
 
 void ClangASTGenerator::BuildParams(clang::FunctionDecl *func,
