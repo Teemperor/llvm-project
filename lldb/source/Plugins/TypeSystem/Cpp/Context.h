@@ -18,6 +18,8 @@
 #include "Namespace.h"
 #include "Type.h"
 
+#include "llvm/Support/Casting.h"
+
 #include <map>
 #include <tuple>
 
@@ -128,6 +130,9 @@ public:
   void AddMemberFunction(RecordType &record, MemberFunction method) {
     record.AddMemberFunction(method);
   }
+  void AddStaticDataMember(RecordType &record, StaticDataMember member) {
+    record.AddStaticDataMember(member);
+  }
   /// @}
 
   /// Intern a namespace. Namespaces are deduplicated by (parent, name, inline),
@@ -141,6 +146,15 @@ public:
   /// storage lives exactly as long as the Context (and its types).
   Identifier GetIdentifier(llvm::StringRef name) {
     return identifiers.get(name);
+  }
+
+  /// Invoke \p callback for every RecordType owned by this Context, in creation
+  /// order. Used by `target modules dump ast` to synthesize a Clang AST of all
+  /// the record types the module has produced.
+  template <typename F> void ForEachRecordType(F callback) const {
+    for (const std::unique_ptr<Type> &type : m_types)
+      if (auto *record = llvm::dyn_cast<RecordType>(type.get()))
+        callback(record);
   }
 
 private:

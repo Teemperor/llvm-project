@@ -14,6 +14,8 @@
 
 #include "llvm/ADT/DenseMap.h"
 
+#include <vector>
+
 namespace lldb_private {
 class TypeSystemCpp;
 namespace cpp_typesystem {
@@ -72,14 +74,19 @@ public:
   }
 
   lldb_private::CompilerDeclContext GetDeclContextForUIDFromDWARF(
-      const lldb_private::plugin::dwarf::DWARFDIE &die) override {
-    return lldb_private::CompilerDeclContext();
-  }
+      const lldb_private::plugin::dwarf::DWARFDIE &die) override;
 
   lldb_private::CompilerDeclContext GetDeclContextContainingUIDFromDWARF(
-      const lldb_private::plugin::dwarf::DWARFDIE &die) override {
-    return lldb_private::CompilerDeclContext();
-  }
+      const lldb_private::plugin::dwarf::DWARFDIE &die) override;
+
+  /// Collect the target namespaces of the `using namespace` directives
+  /// (DW_TAG_imported_module) lexically in scope at \p block_die and its
+  /// enclosing blocks, innermost-first. Used so an expression evaluated in a
+  /// block with an active using-directive resolves unqualified names through
+  /// the imported namespace.
+  void CollectUsingDirectiveNamespaces(
+      const lldb_private::plugin::dwarf::DWARFDIE &block_die,
+      std::vector<lldb_private::CompilerDeclContext> &namespaces);
 
   void EnsureAllDIEsInDeclContextHaveBeenParsed(
       lldb_private::CompilerDeclContext decl_context) override {}

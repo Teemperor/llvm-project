@@ -72,6 +72,27 @@ struct Field {
   bool IsBitfield() const { return bitfield_bit_size != 0; }
 };
 
+/// A static data member of a record type (`static int s;`). Unlike a Field it
+/// occupies no storage inside the object; at runtime it is a global whose
+/// address is resolved through its mangled/linkage name. An integral
+/// `static const`/`constexpr` member may instead (or additionally) carry a
+/// compile-time constant value and have no storage at all.
+struct StaticDataMember {
+  Identifier name;
+  /// The type of this member.
+  TypeRef type;
+  /// The mangled (linkage) name of the member's definition, used to resolve
+  /// its runtime address from an expression. Empty when the member has no
+  /// storage (a constant-only `static const`/`constexpr` member).
+  Identifier mangled_name;
+  /// The compile-time constant value for an integral `static const`/`constexpr`
+  /// member (DWARF's DW_AT_const_value), as raw bits; std::nullopt when the
+  /// member has no such constant.
+  std::optional<uint64_t> const_value;
+
+  bool HasConstValue() const { return const_value.has_value(); }
+};
+
 /// A direct base class of a C++ class type.
 struct BaseClass {
   /// The base class type.
@@ -98,6 +119,15 @@ struct TemplateArgument {
   bool is_default = false;
 };
 
+/// The ref-qualifier applied to a member function's implicit object parameter
+/// (the `&`/`&&` in `void f() &` / `void f() &&`). A class can overload on this,
+/// so it must be modeled to disambiguate calls.
+enum class RefQualifier {
+  None,   ///< No ref-qualifier (`void f()`).
+  LValue, ///< Lvalue ref-qualifier (`void f() &`).
+  RValue, ///< Rvalue ref-qualifier (`void f() &&`).
+};
+
 /// A member function of a record type. Only what an expression needs to build a
 /// clang::CXXMethodDecl and call it: the (non-`this`) signature, the mangled
 /// name (so the JIT can resolve the callee), and the basic C++ flags.
@@ -112,6 +142,8 @@ struct MemberFunction {
   bool is_static = false;
   bool is_const = false;
   bool is_virtual = false;
+  /// The `&`/`&&` ref-qualifier, if any (overloadable, so must be modeled).
+  RefQualifier ref_qualifier = RefQualifier::None;
 };
 
 /// Represents everything needed to understand a type.
@@ -220,6 +252,18 @@ public:
     return nullptr;
   }
 
+  /// Static data members of this record (`static int s;`). Used by the
+  /// expression evaluator to resolve `record.s` / `Record::s` and, for a
+  /// constant integral member, to fold its value.
+  uint32_t GetNumStaticDataMembers() const {
+    return m_static_data_members.size();
+  }
+  const StaticDataMember *GetStaticDataMemberAtIndex(uint32_t idx) const {
+    if (idx < m_static_data_members.size())
+      return &m_static_data_members[idx];
+    return nullptr;
+  }
+
   /// True once this record's member functions have been parsed. Member
   /// functions are only needed by the expression evaluator (to call methods),
   /// so -- unlike fields and base classes -- they are parsed lazily, in a
@@ -267,6 +311,9 @@ private:
   void AddMemberFunction(MemberFunction method) {
     m_methods.push_back(method);
   }
+  void AddStaticDataMember(StaticDataMember member) {
+    m_static_data_members.push_back(member);
+  }
 
   bool m_complete = false;
   bool m_is_union = false;
@@ -275,6 +322,7 @@ private:
   std::vector<TemplateArgument> m_template_args;
   std::vector<std::pair<Identifier, TypeRef>> m_nested_types;
   std::vector<MemberFunction> m_methods;
+  std::vector<StaticDataMember> m_static_data_members;
 };
 
 /// A C struct/union type. Records parsed from a C++ translation unit are

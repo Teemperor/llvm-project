@@ -15,17 +15,23 @@
 
 #include "lldb/Core/Value.h"
 #include "lldb/Expression/Materializer.h"
+#include "lldb/Symbol/CompilerDeclContext.h"
 #include "lldb/Target/ExecutionContext.h"
 #include "lldb/lldb-public.h"
 
+#include "llvm/ADT/DenseMap.h"
+
 #include <memory>
 #include <optional>
+#include <utility>
+#include <vector>
 
 namespace clang {
 class ASTContext;
 class DeclContext;
 class DeclarationName;
 class NamedDecl;
+class NamespaceDecl;
 class RecordDecl;
 class TagDecl;
 } // namespace clang
@@ -121,20 +127,61 @@ private:
   void LookUpLldbClass(clang::DeclarationName name,
                        llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
-  /// Resolve free functions named \p name in the target and generate
-  /// FunctionDecls (with asm labels) for them so an expression can call them.
-  bool LookupFunctions(ConstString name,
+  /// Resolve free functions named \p name and generate FunctionDecls (with asm
+  /// labels) for them so an expression can call them. When \p scope is a valid
+  /// namespace CompilerDeclContext the search is restricted to that namespace
+  /// (in \p module); otherwise the whole target is searched. Generated decls
+  /// are placed in \p dc.
+  bool LookupFunctions(const clang::DeclContext *dc, ConstString name,
+                       lldb::ModuleSP module,
+                       const CompilerDeclContext &scope,
                        llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
-  /// Look up a global (or file-static) variable named \p name in the target and
-  /// create a VarDecl referencing its storage, mirroring LookupLocalVariable.
+  /// Look up a global (or file-static) variable named \p name and create a
+  /// VarDecl referencing its storage, mirroring LookupLocalVariable. When
+  /// \p scope is a valid namespace the search is restricted to it (in
+  /// \p module); otherwise the whole target is searched.
   bool LookupGlobalVariable(const clang::DeclContext *dc, ConstString name,
+                            lldb::ModuleSP module,
+                            const CompilerDeclContext &scope,
                             llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
-  /// Look up a type named \p name in the target and generate a decl for it so
-  /// the expression can name it (e.g. in a cast, \c sizeof, or \c offsetof).
+  /// Look up a type named \p name and generate a decl for it so the expression
+  /// can name it (e.g. in a cast, \c sizeof, or \c offsetof). When \p scope is
+  /// a valid namespace the search is restricted to it (in \p module);
+  /// otherwise the whole target is searched.
   bool LookupType(const clang::DeclContext *dc, ConstString name,
+                  lldb::ModuleSP module, const CompilerDeclContext &scope,
                   llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
+  /// A C++ namespace named \p name can live in several modules; this is the
+  /// per-module (module, namespace decl context) list the legacy path calls a
+  /// "namespace map".
+  using NamespaceMap =
+      std::vector<std::pair<lldb::ModuleSP, CompilerDeclContext>>;
+
+  /// If \p name names a C++ namespace visible in \p parent_dc (the translation
+  /// unit for a top-level namespace, or a previously created namespace decl for
+  /// a nested one), create a clang::NamespaceDecl for it in \p parent_dc (with
+  /// external visible storage so member lookups call back here), cache its
+  /// NamespaceMap, and push it into \p decls.
+  bool LookupNamespace(const clang::DeclContext *parent_dc, ConstString name,
+                       llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
+  /// Resolve a name looked up inside a namespace decl \p nsd we created: fan
+  /// the lookup out over the namespace's NamespaceMap (nested namespaces,
+  /// types, variables, functions).
+  bool LookupInNamespace(const clang::NamespaceDecl *nsd, ConstString name,
+                         llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
+  /// Honor the current frame's enclosing C++ namespace scope for an unqualified
+  /// lookup: search the frame function's namespace and its parents
+  /// (innermost-first) for \p name, so an expression evaluated in `A::B::f`
+  /// resolves an unqualified `x` to `A::B::x` (then `A::x`) before falling back
+  /// to a global-scope search. Decls are created in \p dc (the translation
+  /// unit).
+  bool LookupInFrameNamespaces(const clang::DeclContext *dc, ConstString name,
+                               llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
   /// Look up a persistent expression variable (e.g. a prior result \c $0 or a
   /// user variable \c $foo) and create a reference-typed VarDecl for it.
@@ -148,6 +195,12 @@ private:
 
   clang::ASTContext *m_ast_context = nullptr;
   std::optional<ClangASTGenerator> m_generator;
+
+  /// The NamespaceMap (per-module namespace decl contexts) for each
+  /// clang::NamespaceDecl we synthesized, so a member lookup inside it can be
+  /// fanned out to the right modules/namespaces. Also serves as the cache that
+  /// keeps a namespace decl unique per name/scope.
+  llvm::DenseMap<const clang::NamespaceDecl *, NamespaceMap> m_namespace_maps;
 
   bool m_lookups_enabled = false;
   ExecutionContext m_exe_ctx;

@@ -9,7 +9,10 @@
 #include "TypeSystemCpp.h"
 
 #include "Plugins/SymbolFile/DWARF/DWARFASTParserCpp.h"
+#include "Plugins/SymbolFile/DWARF/DWARFDIE.h"
+#include "Plugins/SymbolFile/DWARF/SymbolFileDWARF.h"
 
+#include "Plugins/ExpressionParser/Clang/ClangASTGenerator.h"
 #include "Plugins/ExpressionParser/Clang/ClangFunctionCaller.h"
 #include "Plugins/ExpressionParser/Clang/ClangPersistentVariables.h"
 #include "Plugins/ExpressionParser/Clang/ClangUserExpression.h"
@@ -19,7 +22,9 @@
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Host/StreamFile.h"
 #include "lldb/Expression/UtilityFunction.h"
+#include "lldb/Symbol/Block.h"
 #include "lldb/Symbol/SymbolFile.h"
+#include "lldb/Symbol/Type.h"
 #include "lldb/Target/Language.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/DataExtractor.h"
@@ -30,6 +35,8 @@
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/MathExtras.h"
+
+#include <algorithm>
 
 using namespace lldb_private;
 using namespace lldb;
@@ -298,25 +305,82 @@ CompilerType TypeSystemCpp::GetTypeForDecl(void *opaque_decl) {
 }
 
 ConstString TypeSystemCpp::DeclContextGetName(void *opaque_decl_ctx) {
-  return ConstString();
+  // A TypeSystemCpp CompilerDeclContext wraps a cpp_typesystem::Namespace (the
+  // global namespace is a null opaque pointer, which is never a valid
+  // CompilerDeclContext).
+  if (!opaque_decl_ctx)
+    return ConstString();
+  auto *ns = static_cast<const cpp_typesystem::Namespace *>(opaque_decl_ctx);
+  return ConstString(ns->GetName().GetName());
 }
 
 ConstString
 TypeSystemCpp::DeclContextGetScopeQualifiedName(void *opaque_decl_ctx) {
-  return ConstString();
+  if (!opaque_decl_ctx)
+    return ConstString();
+  auto *ns = static_cast<const cpp_typesystem::Namespace *>(opaque_decl_ctx);
+  // Build "A::B::C" from the namespace chain, skipping the (transparent)
+  // inline namespaces so the spelling matches the source.
+  llvm::SmallVector<llvm::StringRef, 4> parts;
+  for (const cpp_typesystem::Namespace *cur = ns; cur; cur = cur->GetParent()) {
+    if (cur->IsInline())
+      continue;
+    parts.push_back(cur->GetName().GetName());
+  }
+  std::string qualified;
+  for (llvm::StringRef part : llvm::reverse(parts)) {
+    if (!qualified.empty())
+      qualified += "::";
+    qualified += part.str();
+  }
+  return ConstString(qualified);
 }
 
 bool TypeSystemCpp::DeclContextIsClassMethod(void *opaque_decl_ctx) {
   return false;
 }
 
+std::vector<lldb_private::CompilerContext>
+TypeSystemCpp::DeclContextGetCompilerContext(void *opaque_decl_ctx) {
+  // Build the CompilerContext chain (topmost namespace first) so a
+  // namespace-scoped type query (TypeQuery(decl_ctx, name)) can match a type's
+  // DWARF lookup context. Inline namespaces stay in the chain (they are
+  // transparent for name printing but the DWARF context lists them too);
+  // ContextMatches handles anonymous namespaces optionally.
+  std::vector<lldb_private::CompilerContext> context;
+  for (auto *ns = static_cast<const cpp_typesystem::Namespace *>(opaque_decl_ctx);
+       ns; ns = ns->GetParent())
+    context.push_back({CompilerContextKind::Namespace,
+                       ConstString(ns->GetName().GetName())});
+  std::reverse(context.begin(), context.end());
+  return context;
+}
+
 bool TypeSystemCpp::DeclContextIsContainedInLookup(
     void *opaque_decl_ctx, void *other_opaque_decl_ctx) {
+  // Namespaces are interned uniquely per Context, so identity is pointer
+  // equality. The lookup of a namespace also transparently contains any inline
+  // namespace nested (transitively through inline namespaces) inside it, so
+  // walk `other` up through its inline-namespace parents looking for a match.
+  auto *self = static_cast<const cpp_typesystem::Namespace *>(opaque_decl_ctx);
+  auto *other =
+      static_cast<const cpp_typesystem::Namespace *>(other_opaque_decl_ctx);
+  for (const cpp_typesystem::Namespace *cur = other; cur;
+       cur = cur->GetParent()) {
+    if (cur == self)
+      return true;
+    // Keep ascending while we are inside a transparent namespace: members of an
+    // inline namespace (and of an unnamed namespace, which is implicitly a
+    // using-directive into its parent) are visible in the enclosing scope. A
+    // named, non-inline namespace is a distinct lookup scope, so stop there.
+    if (!cur->IsInline() && !cur->GetName().GetName().empty())
+      break;
+  }
   return false;
 }
 
 LanguageType TypeSystemCpp::DeclContextGetLanguage(void *opaque_decl_ctx) {
-  return eLanguageTypeUnknown;
+  return eLanguageTypeC_plus_plus;
 }
 
 #ifndef NDEBUG
@@ -512,6 +576,23 @@ void TypeSystemCpp::CompleteMemberFunctions(cpp_typesystem::Type *type) {
   if (auto *parser =
           llvm::dyn_cast_or_null<DWARFASTParserCpp>(GetDWARFParser()))
     parser->CompleteMemberFunctionsFromDWARF(*record);
+}
+
+std::vector<CompilerDeclContext>
+TypeSystemCpp::GetUsingDirectiveNamespaces(Block &block) {
+  std::vector<CompilerDeclContext> namespaces;
+  auto *parser = llvm::dyn_cast_or_null<DWARFASTParserCpp>(GetDWARFParser());
+  if (!parser)
+    return namespaces;
+  auto *dwarf = llvm::dyn_cast_or_null<plugin::dwarf::SymbolFileDWARF>(
+      block.GetSymbolFile());
+  if (!dwarf)
+    return namespaces;
+  plugin::dwarf::DWARFDIE block_die = dwarf->GetDIE(block.GetID());
+  if (!block_die)
+    return namespaces;
+  parser->CollectUsingDirectiveNamespaces(block_die, namespaces);
+  return namespaces;
 }
 
 uint32_t TypeSystemCpp::GetPointerByteSize() {
@@ -1363,7 +1444,18 @@ void TypeSystemCpp::DumpTypeDescription(opaque_compiler_type_t type, Stream &s,
 }
 
 void TypeSystemCpp::Dump(llvm::raw_ostream &output, llvm::StringRef filter,
-                         bool show_color) {}
+                         bool show_color) {
+  // Collect every record type this system has produced and hand them to the
+  // Clang-AST synthesizer (which lives in the expression-parser plugin, since
+  // TypeSystem/Cpp must not depend on the clang AST) to build and print a
+  // throwaway clang AST. Backs `target modules dump ast`.
+  std::vector<CompilerType> records;
+  m_context.ForEachRecordType([&](cpp_typesystem::RecordType *record) {
+    records.push_back(GetCompilerType(record));
+  });
+  ClangASTGenerator::DumpRecords(*this, m_triple, records, output, filter,
+                                 show_color);
+}
 
 bool TypeSystemCpp::IsRuntimeGeneratedType(opaque_compiler_type_t type) {
   return false;

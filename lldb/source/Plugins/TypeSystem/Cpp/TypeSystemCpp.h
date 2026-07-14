@@ -36,6 +36,13 @@ public:
   // DWARF parsing
   plugin::dwarf::DWARFASTParser *GetDWARFParser() override;
 
+  /// The target namespaces of the `using namespace` directives lexically in
+  /// scope at \p block (innermost first). Used by the expression evaluator so
+  /// an unqualified name is resolved through an active using-directive. Empty
+  /// unless this type system was populated from DWARF.
+  std::vector<CompilerDeclContext>
+  GetUsingDirectiveNamespaces(Block &block);
+
   /// Wrap one of our own Type nodes into a CompilerType owned by this system.
   CompilerType GetCompilerType(cpp_typesystem::Type *type);
   /// Recover the Type node backing a CompilerType created by this system.
@@ -69,6 +76,8 @@ public:
   // CompilerDeclContext functions
   ConstString DeclContextGetName(void *opaque_decl_ctx) override;
   ConstString DeclContextGetScopeQualifiedName(void *opaque_decl_ctx) override;
+  std::vector<lldb_private::CompilerContext>
+  DeclContextGetCompilerContext(void *opaque_decl_ctx) override;
   bool DeclContextIsClassMethod(void *opaque_decl_ctx) override;
   bool DeclContextIsContainedInLookup(void *opaque_decl_ctx,
                                       void *other_opaque_decl_ctx) override;

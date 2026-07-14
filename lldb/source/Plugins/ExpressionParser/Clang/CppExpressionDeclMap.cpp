@@ -16,9 +16,11 @@
 #include "lldb/Expression/DiagnosticManager.h"
 #include "lldb/Expression/Expression.h"
 #include "lldb/Expression/ExpressionVariable.h"
+#include "lldb/Symbol/Block.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Symbol/SymbolContext.h"
+#include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Symbol/Type.h"
 #include "lldb/Symbol/Variable.h"
 #include "lldb/Symbol/VariableList.h"
@@ -224,6 +226,9 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
   if (const auto *nsd = llvm::dyn_cast<clang::NamespaceDecl>(dc)) {
     if (nsd->getName() == "$__lldb_local_vars")
       return LookupLocalVariable(dc, ConstString(sname), decls);
+    // A member lookup inside a real C++ namespace we created earlier.
+    if (m_namespace_maps.count(nsd))
+      return LookupInNamespace(nsd, ConstString(sname), decls);
     return false;
   }
 
@@ -252,21 +257,35 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
       // parser runs (outside generation) and still resolve.
       if (IsGeneratingDecls())
         return false;
+      // Unqualified name: first honor the frame's enclosing namespace scope
+      // (an expression in `A::B::f` should see names in `A::B`, then `A`), then
+      // fall through to a global-scope search.
+      if (LookupInFrameNamespaces(dc, ConstString(sname), decls))
+        return true;
       // A name at file scope can refer to a global variable or a function.
       // Prefer the variable (an object shadows a function of the same name in
-      // C/C++ unqualified lookup), then fall back to functions.
-      if (LookupGlobalVariable(dc, ConstString(sname), decls))
+      // C/C++ unqualified lookup), then fall back to functions, then to types,
+      // and finally to a namespace (so a qualified `A::B::x` can start
+      // resolving from the leftmost namespace name).
+      if (LookupGlobalVariable(dc, ConstString(sname), /*module=*/nullptr,
+                               CompilerDeclContext(), decls))
         return true;
-      if (LookupFunctions(ConstString(sname), decls))
+      if (LookupFunctions(dc, ConstString(sname), /*module=*/nullptr,
+                          CompilerDeclContext(), decls))
         return true;
-      return LookupType(dc, ConstString(sname), decls);
+      if (LookupType(dc, ConstString(sname), /*module=*/nullptr,
+                     CompilerDeclContext(), decls))
+        return true;
+      return LookupNamespace(dc, ConstString(sname), decls);
     }
   }
   return false;
 }
 
 bool CppExpressionDeclMap::LookupFunctions(
-    ConstString name, llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+    const clang::DeclContext *dc, ConstString name, lldb::ModuleSP module,
+    const CompilerDeclContext &scope,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
   Target *target = m_exe_ctx.GetTargetPtr();
   if (!target)
     return false;
@@ -275,10 +294,18 @@ bool CppExpressionDeclMap::LookupFunctions(
   ModuleFunctionSearchOptions options;
   options.include_inlines = false;
   options.include_symbols = true;
-  target->GetImages().FindFunctions(
-      name, lldb::eFunctionNameTypeFull | lldb::eFunctionNameTypeBase, options,
-      sc_list);
+  if (scope.IsValid() && module) {
+    // A namespace-scoped lookup: restrict to functions declared in that
+    // namespace, matching only the basename.
+    module->FindFunctions(name, scope, lldb::eFunctionNameTypeBase, options,
+                          sc_list);
+  } else {
+    target->GetImages().FindFunctions(
+        name, lldb::eFunctionNameTypeFull | lldb::eFunctionNameTypeBase,
+        options, sc_list);
+  }
 
+  clang::ASTContext &ast = *m_ast_context;
   bool added = false;
   for (const SymbolContext &sc : sc_list) {
     Function *function = sc.function;
@@ -304,6 +331,12 @@ bool CppExpressionDeclMap::LookupFunctions(
 
     if (clang::FunctionDecl *fd = GetGenerator().GenerateFunction(
             name.GetStringRef(), func_cpp_type, label)) {
+      // A namespace-scoped function must live in the namespace decl so its
+      // (mangled) qualified name is correct and clang finds it there.
+      if (dc && dc != ast.getTranslationUnitDecl()) {
+        fd->setDeclContext(const_cast<clang::DeclContext *>(dc));
+        const_cast<clang::DeclContext *>(dc)->addDecl(fd);
+      }
       decls.push_back(fd);
       added = true;
     }
@@ -434,20 +467,27 @@ bool CppExpressionDeclMap::LookupLocalVariable(
 }
 
 bool CppExpressionDeclMap::LookupGlobalVariable(
-    const clang::DeclContext *dc, ConstString name,
+    const clang::DeclContext *dc, ConstString name, lldb::ModuleSP module,
+    const CompilerDeclContext &scope,
     llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
   Log *log = GetLog(LLDBLog::Expressions);
   Target *target = m_exe_ctx.GetTargetPtr();
   if (!target)
     return false;
 
-  // Search the whole target for a global (or file-static) variable by name.
+  // Search for a global (or file-static) variable by name, either restricted to
+  // a namespace (in one module) or across the whole target.
   VariableList vars;
-  target->GetImages().FindGlobalVariables(name, -1, vars);
+  if (scope.IsValid() && module)
+    module->FindGlobalVariables(name, scope, -1, vars);
+  else
+    target->GetImages().FindGlobalVariables(name, -1, vars);
 
   for (size_t i = 0, e = vars.GetSize(); i != e; ++i) {
     VariableSP var = vars.GetVariableAtIndex(i);
-    if (!var || var->GetName() != name)
+    // A namespace-scoped variable reports its fully-qualified name (e.g.
+    // "A::B::j") from GetName(); compare the unqualified spelling.
+    if (!var || (var->GetName() != name && var->GetUnqualifiedName() != name))
       continue;
 
     Type *var_type = var->GetType();
@@ -497,20 +537,27 @@ bool CppExpressionDeclMap::LookupGlobalVariable(
 }
 
 bool CppExpressionDeclMap::LookupType(
-    const clang::DeclContext *dc, ConstString name,
+    const clang::DeclContext *dc, ConstString name, lldb::ModuleSP module,
+    const CompilerDeclContext &scope,
     llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
   Log *log = GetLog(LLDBLog::Expressions);
   Target *target = m_exe_ctx.GetTargetPtr();
   if (!target)
     return false;
 
-  // Search the target for a type with this (unqualified) name. The legacy
+  // Search for a type with this (unqualified) name. The legacy
   // ClangExpressionDeclMap gets type lookups from ClangASTSource; the
-  // TypeSystemCpp path has no such helper, so do it here.
-  TypeQuery query(name.GetStringRef(),
-                  TypeQueryOptions::e_exact_match | TypeQueryOptions::e_find_one);
+  // TypeSystemCpp path has no such helper, so do it here. A namespace-scoped
+  // lookup restricts the query to the namespace (in one module).
   TypeResults results;
-  target->GetImages().FindTypes(nullptr, query, results);
+  if (scope.IsValid() && module) {
+    TypeQuery query(scope, name, TypeQueryOptions::e_find_one);
+    module->FindTypes(query, results);
+  } else {
+    TypeQuery query(name.GetStringRef(), TypeQueryOptions::e_exact_match |
+                                             TypeQueryOptions::e_find_one);
+    target->GetImages().FindTypes(nullptr, query, results);
+  }
   lldb::TypeSP type_sp = results.GetFirstType();
   if (!type_sp)
     return false;
@@ -538,6 +585,215 @@ bool CppExpressionDeclMap::LookupType(
   if (const auto *tdt = qt->getAs<clang::TypedefType>()) {
     decls.push_back(tdt->getDecl());
     return true;
+  }
+  return false;
+}
+
+bool CppExpressionDeclMap::LookupNamespace(
+    const clang::DeclContext *parent_dc, ConstString name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  Target *target = m_exe_ctx.GetTargetPtr();
+  if (!target || !m_ast_context)
+    return false;
+
+  // Discover, per module, the namespace named `name` in the parent scope. For a
+  // top-level lookup (parent_dc is the translation unit) the parent scope is
+  // the global namespace (an invalid CompilerDeclContext); for a nested lookup
+  // it is each entry of the parent namespace's cached NamespaceMap. This
+  // mirrors ClangASTSource's namespace-map machinery, but produces a
+  // TypeSystemCpp-backed CompilerDeclContext.
+  NamespaceMap map;
+
+  auto is_global_reachable = [](const CompilerDeclContext &found) {
+    // True if `found` is reachable from the global scope: a top-level
+    // namespace, or one nested only inside transparent (anonymous/inline)
+    // namespaces.
+    for (auto *ns = static_cast<const cpp_typesystem::Namespace *>(
+             found.GetOpaqueDeclContext())
+                        ->GetParent();
+         ns; ns = ns->GetParent()) {
+      if (!ns->IsInline() && !ns->GetName().GetName().empty())
+        return false;
+    }
+    return true;
+  };
+
+  auto add_from_module = [&](const lldb::ModuleSP &module_sp,
+                             const CompilerDeclContext &parent_ctx,
+                             bool top_level) {
+    if (!module_sp)
+      return;
+    SymbolFile *sf = module_sp->GetSymbolFile();
+    if (!sf)
+      return;
+    CompilerDeclContext found;
+    if (top_level) {
+      // Prefer a root (directly top-level) namespace so an unqualified `B`
+      // never resolves to a nested `A::B` (only its parent `A` should). Fall
+      // back to any global-reachable namespace (e.g. one inside an anonymous
+      // namespace at file scope, like `InAnon1`).
+      found = sf->FindNamespace(name, CompilerDeclContext(),
+                                /*only_root_namespaces=*/true);
+      if (!found.IsValid()) {
+        CompilerDeclContext any = sf->FindNamespace(name, CompilerDeclContext());
+        if (any.IsValid() &&
+            llvm::isa_and_nonnull<TypeSystemCpp>(any.GetTypeSystem()) &&
+            is_global_reachable(any))
+          found = any;
+      }
+    } else {
+      found = sf->FindNamespace(name, parent_ctx);
+    }
+    // Only namespaces owned by a TypeSystemCpp participate in this path.
+    if (found.IsValid() &&
+        llvm::isa_and_nonnull<TypeSystemCpp>(found.GetTypeSystem()))
+      map.emplace_back(module_sp, found);
+  };
+
+  const NamespaceMap *parent_map = nullptr;
+  const auto *parent_nsd = llvm::dyn_cast<clang::NamespaceDecl>(parent_dc);
+  if (parent_nsd) {
+    auto it = m_namespace_maps.find(parent_nsd);
+    if (it == m_namespace_maps.end())
+      return false;
+    parent_map = &it->second;
+  }
+
+  if (parent_map) {
+    // Nested: look for `name` in each module's copy of the parent namespace.
+    for (const auto &entry : *parent_map)
+      add_from_module(entry.first, entry.second, /*top_level=*/false);
+  } else {
+    // Top level (parent is the global namespace): search every module.
+    for (const lldb::ModuleSP &module_sp : target->GetImages().Modules())
+      add_from_module(module_sp, CompilerDeclContext(), /*top_level=*/true);
+  }
+
+  if (map.empty())
+    return false;
+
+  // Create the parser-side namespace decl (once) and cache its map. The decl is
+  // given external visible storage so clang calls back into us for member
+  // lookups (LookupInNamespace).
+  clang::ASTContext &ast = *m_ast_context;
+  auto *nsd = clang::NamespaceDecl::Create(
+      ast, const_cast<clang::DeclContext *>(parent_dc), /*Inline=*/false,
+      clang::SourceLocation(), clang::SourceLocation(),
+      &ast.Idents.get(name.GetStringRef()), /*PrevDecl=*/nullptr,
+      /*Nested=*/false);
+  clang::Decl::castToDeclContext(nsd)->setHasExternalVisibleStorage(true);
+  const_cast<clang::DeclContext *>(parent_dc)->addDecl(nsd);
+
+  // Register the cpp namespace -> clang namespace mapping so types declared in
+  // this namespace are generated inside it (correct qualified mangling). Use
+  // the first module's decl context as the representative cpp namespace.
+  auto *cpp_ns = static_cast<const cpp_typesystem::Namespace *>(
+      map.front().second.GetOpaqueDeclContext());
+  GetGenerator().RegisterNamespace(cpp_ns, nsd);
+
+  m_namespace_maps.insert({nsd, std::move(map)});
+  decls.push_back(nsd);
+  return true;
+}
+
+bool CppExpressionDeclMap::LookupInNamespace(
+    const clang::NamespaceDecl *nsd, ConstString name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  auto it = m_namespace_maps.find(nsd);
+  if (it == m_namespace_maps.end())
+    return false;
+  const NamespaceMap &map = it->second;
+  auto *dc = const_cast<clang::NamespaceDecl *>(nsd);
+
+  // A name inside a namespace can be a nested namespace, a type, a variable or
+  // a function. Try a nested namespace first (so a qualified `A::B::x` keeps
+  // descending), then the value/type entities. Fan the search out over every
+  // module that has this namespace.
+  if (LookupNamespace(dc, name, decls))
+    return true;
+
+  bool added = false;
+  for (const auto &entry : map) {
+    const lldb::ModuleSP &module_sp = entry.first;
+    const CompilerDeclContext &scope = entry.second;
+    // Prefer a variable, then a function, then a type (matching the TU-scope
+    // ordering), but collect across modules.
+    if (LookupGlobalVariable(dc, name, module_sp, scope, decls)) {
+      added = true;
+      break;
+    }
+    if (LookupFunctions(dc, name, module_sp, scope, decls))
+      added = true;
+    if (!added && LookupType(dc, name, module_sp, scope, decls)) {
+      added = true;
+      break;
+    }
+  }
+  return added;
+}
+
+bool CppExpressionDeclMap::LookupInFrameNamespaces(
+    const clang::DeclContext *dc, ConstString name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  StackFrame *frame = m_exe_ctx.GetFramePtr();
+  if (!frame)
+    return false;
+
+  SymbolContext sc = frame->GetSymbolContext(lldb::eSymbolContextFunction |
+                                             lldb::eSymbolContextBlock);
+  Block *function_block = sc.GetFunctionBlock();
+  if (!function_block || !sc.module_sp)
+    return false;
+  lldb::ModuleSP module = sc.module_sp;
+
+  // The frame's TypeSystemCpp (owns the namespaces of the module the frame is
+  // in). Used both to resolve the frame's own namespace scope and its active
+  // using-directives.
+  auto ts_or_err =
+      module->GetTypeSystemForLanguage(lldb::eLanguageTypeC_plus_plus);
+  if (!ts_or_err) {
+    llvm::consumeError(ts_or_err.takeError());
+    return false;
+  }
+  auto *ts = llvm::dyn_cast_or_null<TypeSystemCpp>(ts_or_err->get());
+  if (!ts)
+    return false;
+
+  // First honor the `using namespace` directives lexically in scope at the
+  // current PC: a `using namespace ns2;` makes an unqualified `value` resolve
+  // to `ns2::value`. Search the innermost block containing the PC (falling back
+  // to the function block).
+  Block *pc_block = sc.block ? sc.block : function_block;
+  for (const CompilerDeclContext &used :
+       ts->GetUsingDirectiveNamespaces(*pc_block)) {
+    if (!used.IsValid())
+      continue;
+    if (LookupGlobalVariable(dc, name, module, used, decls))
+      return true;
+    if (LookupFunctions(dc, name, module, used, decls))
+      return true;
+    if (LookupType(dc, name, module, used, decls))
+      return true;
+  }
+
+  // Then honor the frame's enclosing namespace scope: walk the namespaces the
+  // frame function is declared in, innermost-first, doing a scoped lookup in
+  // each. Members of the frame's own namespace shadow those of its parents. A
+  // global-scope function has no enclosing namespace (an invalid context).
+  CompilerDeclContext frame_ctx = function_block->GetDeclContext();
+  if (!frame_ctx ||
+      !llvm::isa_and_nonnull<TypeSystemCpp>(frame_ctx.GetTypeSystem()))
+    return false;
+  for (auto *ns = static_cast<const cpp_typesystem::Namespace *>(
+           frame_ctx.GetOpaqueDeclContext());
+       ns; ns = ns->GetParent()) {
+    CompilerDeclContext scope(ts, const_cast<cpp_typesystem::Namespace *>(ns));
+    if (LookupGlobalVariable(dc, name, module, scope, decls))
+      return true;
+    if (LookupFunctions(dc, name, module, scope, decls))
+      return true;
+    if (LookupType(dc, name, module, scope, decls))
+      return true;
   }
   return false;
 }

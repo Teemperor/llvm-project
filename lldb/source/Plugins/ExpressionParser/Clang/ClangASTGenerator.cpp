@@ -13,15 +13,28 @@
 #include "Plugins/TypeSystem/Cpp/Type.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
+#include "lldb/Host/FileSystem.h"
 #include "lldb/Utility/LLDBLog.h"
 #include "lldb/Utility/Log.h"
 
+#include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/Expr.h"
+#include "clang/AST/ExprCXX.h"
+#include "clang/Basic/Builtins.h"
+#include "clang/Basic/Diagnostic.h"
+#include "clang/Basic/DiagnosticOptions.h"
+#include "clang/Basic/FileManager.h"
+#include "clang/Basic/IdentifierTable.h"
+#include "clang/Basic/LangOptions.h"
+#include "clang/Basic/SourceManager.h"
 #include "clang/Basic/Specifiers.h"
+#include "clang/Basic/TargetInfo.h"
+#include "clang/Basic/TargetOptions.h"
+#include "clang/Frontend/ASTConsumers.h"
 #include "llvm/ADT/StringSwitch.h"
 
 using namespace lldb_private;
@@ -40,6 +53,22 @@ static void noteReverse(llvm::DenseMap<void *, ct::Type *> &reverse,
   reverse[qt.getCanonicalType().getAsOpaquePtr()] = cpp_type;
 }
 
+void ClangASTGenerator::RegisterNamespace(const ct::Namespace *cpp_ns,
+                                          clang::NamespaceDecl *clang_ns) {
+  if (cpp_ns)
+    m_namespaces[cpp_ns] = clang_ns;
+}
+
+clang::DeclContext *
+ClangASTGenerator::GetDeclContextForNamespace(const ct::Namespace *cpp_ns) {
+  if (cpp_ns) {
+    auto it = m_namespaces.find(cpp_ns);
+    if (it != m_namespaces.end())
+      return clang::Decl::castToDeclContext(it->second);
+  }
+  return m_ast.getTranslationUnitDecl();
+}
+
 clang::QualType ClangASTGenerator::Generate(const CompilerType &cpp_type) {
   GenerationGuard guard(*this);
   if (!cpp_type)
@@ -52,6 +81,59 @@ clang::QualType ClangASTGenerator::Generate(const CompilerType &cpp_type) {
     return {};
   return GenerateType(*ts, type);
 }
+
+void ClangASTGenerator::DumpRecords(TypeSystemCpp &ts,
+                                    const llvm::Triple &triple,
+                                    llvm::ArrayRef<CompilerType> records,
+                                    llvm::raw_ostream &output,
+                                    llvm::StringRef filter, bool show_color) {
+  // Build a throwaway clang::ASTContext for the module's target. Mirrors
+  // TypeSystemClang::CreateASTContext(); everything here is owned locally and
+  // torn down when this function returns.
+  clang::LangOptions lang_opts;
+  lang_opts.CPlusPlus = true;
+  lang_opts.CPlusPlus11 = true;
+
+  clang::IdentifierTable idents(lang_opts, nullptr);
+  clang::Builtin::Context builtins;
+  clang::SelectorTable selectors;
+
+  clang::FileSystemOptions file_system_options;
+  clang::FileManager file_manager(
+      file_system_options, FileSystem::Instance().GetVirtualFileSystem());
+
+  auto diag_options = std::make_shared<clang::DiagnosticOptions>();
+  clang::DiagnosticsEngine diagnostics(clang::DiagnosticIDs::create(),
+                                       *diag_options);
+  clang::SourceManager source_manager(diagnostics, file_manager);
+
+  clang::ASTContext ast(lang_opts, source_manager, idents, selectors, builtins,
+                        clang::TranslationUnitKind::TU_Complete);
+  ast.getDiagnostics().getDiagnosticOptions().setShowColors(
+      show_color ? clang::ShowColorsKind::On : clang::ShowColorsKind::Off);
+
+  auto target_options = std::make_shared<clang::TargetOptions>();
+  target_options->Triple = triple.str();
+  if (clang::TargetInfo *target_info = clang::TargetInfo::CreateTargetInfo(
+          ast.getDiagnostics(), *target_options))
+    ast.InitBuiltinTypes(*target_info);
+
+  // Synthesize a full definition for each record into the throwaway context.
+  // Generate() only hands out a forward declaration (completion is normally
+  // driven lazily by clang's external source, which this standalone context
+  // has none of), so complete each record explicitly.
+  ClangASTGenerator generator(ast);
+  for (const CompilerType &record : records) {
+    clang::QualType qt = generator.Generate(record);
+    generator.EnsureComplete(qt);
+  }
+
+  std::unique_ptr<clang::ASTConsumer> consumer = clang::CreateASTDumper(
+      output, filter, /*DumpDecls=*/true, /*Deserialize=*/false,
+      /*DumpLookups=*/false, /*DumpDeclTypes=*/false, clang::ADOF_Default);
+  consumer->HandleTranslationUnit(ast);
+}
+
 
 clang::QualType ClangASTGenerator::GenerateBuiltin(ct::Type *cpp_type) {
   clang::ASTContext &ast = m_ast;
@@ -143,8 +225,20 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
 
   Log *log = GetLog(LLDBLog::Expressions);
   clang::ASTContext &ast = m_ast;
-  clang::DeclContext *tu = ast.getTranslationUnitDecl();
   clang::QualType result;
+
+  // A named type (record/enum/typedef) is placed inside the clang
+  // NamespaceDecl matching its cpp declaration context (if the decl map has
+  // created one), so its qualified name mangles correctly for the JIT and
+  // qualified lookups (`A::B::Bar`) resolve. Unnamespaced types fall back to
+  // the translation unit. The declared name is the *unqualified* spelling
+  // (the record's GetName() is the fully-qualified one).
+  clang::DeclContext *decl_ctx = GetDeclContextForNamespace(
+      cpp_type->GetDeclContext());
+  auto unqualified_name = [&](ct::Type *t) -> llvm::StringRef {
+    llvm::StringRef n = t->GetUnqualifiedName().GetName();
+    return n.empty() ? t->GetName().GetName() : n;
+  };
 
   if (auto *rec = llvm::dyn_cast<ct::RecordType>(cpp_type)) {
     // Records are created as forward declarations and completed on demand (see
@@ -157,12 +251,12 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     auto *decl =
         clang::CXXRecordDecl::CreateDeserialized(ast, clang::GlobalDeclID());
     decl->setTagKind(kind);
-    decl->setDeclContext(tu);
-    llvm::StringRef name = rec->GetName().GetName();
+    decl->setDeclContext(decl_ctx);
+    llvm::StringRef name = unqualified_name(rec);
     if (!name.empty())
       decl->setDeclName(&ast.Idents.get(name));
     decl->setAccess(clang::AS_public);
-    tu->addDecl(decl);
+    decl_ctx->addDecl(decl);
     // Ask Clang to call back into us (CompleteType) before it needs the
     // definition.
     decl->setHasExternalLexicalStorage(true);
@@ -201,12 +295,12 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
   } else if (auto *td = llvm::dyn_cast<ct::TypedefType>(cpp_type)) {
     clang::QualType underlying = GenerateType(ts, td->GetUnderlyingType());
     if (!underlying.isNull()) {
-      llvm::StringRef name = td->GetName().GetName();
+      llvm::StringRef name = unqualified_name(td);
       auto *decl = clang::TypedefDecl::Create(
-          ast, tu, clang::SourceLocation(), clang::SourceLocation(),
+          ast, decl_ctx, clang::SourceLocation(), clang::SourceLocation(),
           &ast.Idents.get(name), ast.getTrivialTypeSourceInfo(underlying));
       decl->setAccess(clang::AS_public);
-      tu->addDecl(decl);
+      decl_ctx->addDecl(decl);
       result = ast.getTypedefType(clang::ElaboratedTypeKeyword::None,
                                   /*Qualifier=*/std::nullopt, decl);
     }
@@ -227,15 +321,15 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
       integer = ast.IntTy;
 
     auto *decl = clang::EnumDecl::CreateDeserialized(ast, clang::GlobalDeclID());
-    decl->setDeclContext(tu);
-    llvm::StringRef name = en->GetName().GetName();
+    decl->setDeclContext(decl_ctx);
+    llvm::StringRef name = unqualified_name(en);
     if (!name.empty())
       decl->setDeclName(&ast.Idents.get(name));
     decl->setScoped(en->IsScoped());
     decl->setScopedUsingClassTag(en->IsScoped());
     decl->setFixed(false);
     decl->setAccess(clang::AS_public);
-    tu->addDecl(decl);
+    decl_ctx->addDecl(decl);
     decl->startDefinition();
     decl->setIntegerType(integer);
 
@@ -479,6 +573,37 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     clang::QualType method_qt = GenerateType(ts, mf->type.Get());
     if (method_qt.isNull())
       continue;
+    // The cpp_typesystem FunctionType doesn't carry the method's cv-qualifiers
+    // (the `const` in `int func() const`) or ref-qualifier (the `&`/`&&` in
+    // `int func() &`), so the type produced above is the plain, unqualified
+    // signature. Rebuild it applying the method qualifiers, otherwise a
+    // `const`/non-`const` (or `&`/`&&`) overload pair collapses into identical
+    // methods (ambiguous calls) and calling a non-const method on a const
+    // object is wrongly accepted.
+    bool has_ref_qualifier =
+        mf->ref_qualifier != ct::RefQualifier::None;
+    if (!mf->is_static && (mf->is_const || has_ref_qualifier)) {
+      if (const auto *proto = method_qt->getAs<clang::FunctionProtoType>()) {
+        clang::FunctionProtoType::ExtProtoInfo epi = proto->getExtProtoInfo();
+        if (mf->is_const) {
+          clang::Qualifiers quals = epi.TypeQuals;
+          quals.addConst();
+          epi.TypeQuals = quals;
+        }
+        switch (mf->ref_qualifier) {
+        case ct::RefQualifier::None:
+          break;
+        case ct::RefQualifier::LValue:
+          epi.RefQualifier = clang::RQ_LValue;
+          break;
+        case ct::RefQualifier::RValue:
+          epi.RefQualifier = clang::RQ_RValue;
+          break;
+        }
+        method_qt = ast.getFunctionType(proto->getReturnType(),
+                                        proto->getParamTypes(), epi);
+      }
+    }
     auto *method =
         clang::CXXMethodDecl::CreateDeserialized(ast, clang::GlobalDeclID());
     method->setDeclContext(decl);
@@ -493,6 +618,51 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
           clang::AsmLabelAttr::CreateImplicit(ast, mf->asm_label.GetName()));
     BuildParams(method, method_qt);
     decl->addDecl(method);
+  }
+
+  // Static data members. Declaring them as static VarDecls inside the record
+  // lets an expression name `record.s` / `Record::s`. A constant integral
+  // member (`static const`/`constexpr`) gets an initializer so it folds to its
+  // value; a member with storage is resolved at runtime via its mangled name
+  // (clang reconstructs that name from the record's qualified name, or from the
+  // asm label when the declaration carried one).
+  for (uint32_t i = 0; i < rec->GetNumStaticDataMembers(); ++i) {
+    const ct::StaticDataMember *sm = rec->GetStaticDataMemberAtIndex(i);
+    clang::QualType member_qt = GenerateType(ts, sm->type.Get());
+    if (member_qt.isNull())
+      continue;
+
+    auto *vd = clang::VarDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+    vd->setDeclContext(decl);
+    if (!sm->name.GetName().empty())
+      vd->setDeclName(&ast.Idents.get(sm->name.GetName()));
+    vd->setType(member_qt);
+    vd->setStorageClass(clang::SC_Static);
+    vd->setAccess(clang::AS_public);
+    if (!sm->mangled_name.GetName().empty())
+      vd->addAttr(
+          clang::AsmLabelAttr::CreateImplicit(ast, sm->mangled_name.GetName()));
+
+    // For a constant integral member, attach an initializer so `Record::c`
+    // folds to a compile-time constant (usable without a running target).
+    if (sm->HasConstValue() && member_qt->isIntegralOrEnumerationType()) {
+      clang::QualType init_qt = member_qt;
+      if (const auto *et = init_qt->getAs<clang::EnumType>())
+        init_qt = et->getDecl()->getDefinitionOrSelf()->getIntegerType();
+      unsigned width = ast.getIntWidth(init_qt);
+      bool is_signed = init_qt->isSignedIntegerOrEnumerationType();
+      llvm::APInt value(width, *sm->const_value, is_signed);
+      if (init_qt->isSpecificBuiltinType(clang::BuiltinType::Bool))
+        vd->setInit(clang::CXXBoolLiteralExpr::Create(
+            ast, !value.isZero(), init_qt.getUnqualifiedType(),
+            clang::SourceLocation()));
+      else
+        vd->setInit(clang::IntegerLiteral::Create(
+            ast, value, init_qt.getUnqualifiedType(), clang::SourceLocation()));
+      vd->setConstexpr(true);
+    }
+
+    decl->addDecl(vd);
   }
 
   if (!decl->isCompleteDefinition())
