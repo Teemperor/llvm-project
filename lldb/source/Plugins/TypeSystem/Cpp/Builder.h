@@ -116,6 +116,11 @@ public:
   void AddTemplateArgument(RecordType &record,
                            lldb::TemplateArgumentKind kind, Type *type,
                            uint64_t integral_value, bool is_default);
+  /// Add a template-template argument (a template-template parameter such as
+  /// the `T1` in `C<float, T1>`), which is not a modeled type and so is kept by
+  /// name only.
+  void AddTemplateTemplateArgument(RecordType &record, llvm::StringRef name,
+                                   bool is_default);
   void AddNestedType(RecordType &record, Identifier name, Type *type);
   void AddEnumerator(EnumType &enum_type, Identifier name, uint64_t value);
 
