@@ -421,6 +421,12 @@ void SystemRuntimeMacOSX::ReadLibdispatchTSDIndexes() {
 
     TypeSystemClangSP scratch_ts_sp =
         ScratchTypeSystemClang::GetForTarget(m_process->GetTarget());
+    // This builds a synthetic struct using TypeSystemClang-specific APIs; if
+    // the target's scratch type system is not a Clang one (e.g. TypeSystemCpp
+    // is enabled), there is nothing to build it with, so skip rather than
+    // dereference a null type system.
+    if (!scratch_ts_sp)
+      return;
     if (m_dispatch_tsd_indexes_addr != LLDB_INVALID_ADDRESS) {
       CompilerType uint16 =
           scratch_ts_sp->GetBuiltinTypeForEncodingAndBitSize(eEncodingUint, 16);
