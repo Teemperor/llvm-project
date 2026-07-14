@@ -14,4 +14,4 @@ class TestCase(TestBase):
             self, "// break here", lldb.SBFileSpec("main.c")
         )
 
-        self.expect_expr("outer.m.i", value="4")
+        self.expect_expr("outer.m.i", result_value="4")
