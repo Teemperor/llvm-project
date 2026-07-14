@@ -679,6 +679,16 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     cpp_typesystem::Builder ts(m_ts);
     if (record->IsComplete())
       return true;
+    // The record may have been created from a forward-declaration DIE (which
+    // carries no DW_AT_byte_size); the definition DIE we are completing against
+    // has the real size, so record it now. Without this a record defined in a
+    // different compile unit than its forward declaration keeps a null byte
+    // size after completion, which breaks dereferencing pointers to it and the
+    // expression-parser record layout.
+    if (!record->GetByteSize())
+      if (std::optional<uint64_t> byte_size =
+              die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size))
+        record->SetByteSize(byte_size);
     ts.SetRecordComplete(*record);
   }
 
