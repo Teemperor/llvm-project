@@ -581,20 +581,24 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     if (method_qt.isNull())
       continue;
     // The cpp_typesystem FunctionType doesn't carry the method's cv-qualifiers
-    // (the `const` in `int func() const`) or ref-qualifier (the `&`/`&&` in
-    // `int func() &`), so the type produced above is the plain, unqualified
-    // signature. Rebuild it applying the method qualifiers, otherwise a
-    // `const`/non-`const` (or `&`/`&&`) overload pair collapses into identical
-    // methods (ambiguous calls) and calling a non-const method on a const
-    // object is wrongly accepted.
+    // (the `const`/`volatile` in `int func() const`) or ref-qualifier (the
+    // `&`/`&&` in `int func() &`), so the type produced above is the plain,
+    // unqualified signature. Rebuild it applying the method qualifiers,
+    // otherwise a `const`/`volatile`/non-`const` (or `&`/`&&`) overload set
+    // collapses into identical methods (ambiguous calls) and calling a
+    // non-const method on a const object is wrongly accepted.
     bool has_ref_qualifier =
         mf->ref_qualifier != ct::RefQualifier::None;
-    if (!mf->is_static && (mf->is_const || has_ref_qualifier)) {
+    if (!mf->is_static &&
+        (mf->is_const || mf->is_volatile || has_ref_qualifier)) {
       if (const auto *proto = method_qt->getAs<clang::FunctionProtoType>()) {
         clang::FunctionProtoType::ExtProtoInfo epi = proto->getExtProtoInfo();
-        if (mf->is_const) {
+        if (mf->is_const || mf->is_volatile) {
           clang::Qualifiers quals = epi.TypeQuals;
-          quals.addConst();
+          if (mf->is_const)
+            quals.addConst();
+          if (mf->is_volatile)
+            quals.addVolatile();
           epi.TypeQuals = quals;
         }
         switch (mf->ref_qualifier) {

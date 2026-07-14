@@ -105,7 +105,7 @@ void Builder::AddParameter(CompilerType function_type,
 void Builder::AddMemberFunction(cpp_typesystem::RecordType &record,
                                 ConstString name, CompilerType function_type,
                                 ConstString asm_label, bool is_static,
-                                bool is_const, bool is_virtual,
+                                bool is_const, bool is_volatile, bool is_virtual,
                                 RefQualifier ref_qualifier) {
   cpp_typesystem::MemberFunction method;
   method.name = GetIdentifier(name.GetStringRef());
@@ -113,6 +113,7 @@ void Builder::AddMemberFunction(cpp_typesystem::RecordType &record,
   method.asm_label = GetIdentifier(asm_label.GetStringRef());
   method.is_static = is_static;
   method.is_const = is_const;
+  method.is_volatile = is_volatile;
   method.is_virtual = is_virtual;
   method.ref_qualifier = ref_qualifier;
   m_ts.m_context.AddMemberFunction(record, method);

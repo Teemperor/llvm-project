@@ -54,7 +54,8 @@ class CppExpressionDeclMap : public ExpressionDeclMap {
 public:
   CppExpressionDeclMap(bool keep_result_in_memory,
                        Materializer::PersistentVariableDelegate *result_delegate,
-                       const lldb::TargetSP &target, ValueObject *ctx_obj);
+                       const lldb::TargetSP &target, ValueObject *ctx_obj,
+                       bool ignore_context_qualifiers);
   ~CppExpressionDeclMap() override;
 
   // ExpressionDeclMap
@@ -192,6 +193,12 @@ private:
   ValueObject *m_ctx_obj;
   Materializer::PersistentVariableDelegate *m_result_delegate;
   bool m_keep_result_in_memory;
+  /// When set, the `--c++-ignore-context-qualifiers` option is in effect: the
+  /// synthesized `$__lldb_expr` method (and thus its implicit `this`) drops the
+  /// enclosing method's cv-qualifiers, matching the unqualified out-of-line
+  /// definition emitted by ClangExpressionSourceCode. This lets an expression
+  /// mutate members even inside a const method.
+  bool m_ignore_context_qualifiers = false;
 
   clang::ASTContext *m_ast_context = nullptr;
   std::optional<ClangASTGenerator> m_generator;

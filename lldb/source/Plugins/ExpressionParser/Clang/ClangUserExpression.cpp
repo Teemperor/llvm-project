@@ -1064,7 +1064,8 @@ void ClangUserExpression::ClangUserExpressionHelper::ResetDeclMap(
   // synthesizes the parser's clang AST from the cpp_typesystem description.
   if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp()) {
     m_expr_decl_map_up = std::make_unique<CppExpressionDeclMap>(
-        keep_result_in_memory, &delegate, exe_ctx.GetTargetSP(), ctx_obj);
+        keep_result_in_memory, &delegate, exe_ctx.GetTargetSP(), ctx_obj,
+        ignore_context_qualifiers);
     return;
   }
   m_expr_decl_map_up = std::make_unique<ClangExpressionDeclMap>(

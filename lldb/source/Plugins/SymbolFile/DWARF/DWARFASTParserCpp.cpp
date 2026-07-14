@@ -1197,10 +1197,11 @@ void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
       ref_qualifier = cpp_typesystem::RefQualifier::RValue;
     else if (child.GetAttributeValueAsUnsigned(DW_AT_reference, 0))
       ref_qualifier = cpp_typesystem::RefQualifier::LValue;
-    // A non-static method has an artificial `this` parameter; a `const` method
-    // has a `this` whose pointee is const-qualified.
+    // A non-static method has an artificial `this` parameter; a `const` /
+    // `volatile` method has a `this` whose pointee is cv-qualified.
     bool is_static = true;
     bool is_const = false;
+    bool is_volatile = false;
     for (DWARFDIE param : child.children()) {
       if (param.Tag() != DW_TAG_formal_parameter ||
           !param.GetAttributeValueAsUnsigned(DW_AT_artificial, 0))
@@ -1210,7 +1211,10 @@ void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
         if (Type *this_type = die.ResolveTypeUID(this_die)) {
           CompilerType pointee =
               this_type->GetForwardCompilerType().GetPointeeType();
-          is_const = pointee.IsConst();
+          // clang CVR bit layout: Const = 0x1, Volatile = 0x4.
+          unsigned quals = pointee.GetTypeQualifiers();
+          is_const = (quals & 0x1) != 0;
+          is_volatile = (quals & 0x4) != 0;
         }
       break;
     }
@@ -1219,6 +1223,6 @@ void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
     ts.AddMemberFunction(record, ConstString(method_name),
                          func_type->GetForwardCompilerType(),
                          ConstString(asm_label), is_static, is_const,
-                         is_virtual, ref_qualifier);
+                         is_volatile, is_virtual, ref_qualifier);
   }
 }

@@ -146,6 +146,7 @@ struct MemberFunction {
   Identifier asm_label;
   bool is_static = false;
   bool is_const = false;
+  bool is_volatile = false;
   bool is_virtual = false;
   /// The `&`/`&&` ref-qualifier, if any (overloadable, so must be modeled).
   RefQualifier ref_qualifier = RefQualifier::None;
