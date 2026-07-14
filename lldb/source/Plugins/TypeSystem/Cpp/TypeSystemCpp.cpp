@@ -966,6 +966,10 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
     }
     if (idx != 0)
       return CompilerType();
+    // Dereferencing yields the pointee by value, so it must be complete now
+    // (this is the explicit access that is allowed to force completion of an
+    // otherwise-lazy pointee).
+    GetCompleteType(GetCompilerType(pointee).GetOpaqueQualType());
     if (std::optional<uint64_t> byte_size = pointee->GetByteSize())
       child_byte_size = *byte_size;
     child_byte_offset = 0;
@@ -1000,6 +1004,8 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
     }
     if (idx != 0)
       return CompilerType();
+    // As for pointers, materializing the referent forces its completion.
+    GetCompleteType(GetCompilerType(pointee).GetOpaqueQualType());
     if (std::optional<uint64_t> byte_size = pointee->GetByteSize())
       child_byte_size = *byte_size;
     child_byte_offset = 0;
