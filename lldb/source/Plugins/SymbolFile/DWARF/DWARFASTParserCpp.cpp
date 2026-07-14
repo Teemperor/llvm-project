@@ -1170,6 +1170,16 @@ void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
     return;
   DWARFDIE die = die_it->second;
 
+  // The record's unqualified base name (no template arguments), used to detect
+  // constructors: a member subprogram whose unqualified name equals the class
+  // name (and which has no return type) is a constructor. A destructor's name
+  // begins with `~`. This mirrors how DWARFASTParserClang / TypeSystemClang
+  // decide is_constructor / is_destructor.
+  llvm::StringRef record_base_name = record.GetUnqualifiedName().GetName();
+  if (record_base_name.empty())
+    record_base_name = record.GetName().GetName();
+  record_base_name = record_base_name.take_until([](char c) { return c == '<'; });
+
   // Member functions: parse the class's DW_TAG_subprogram children so calls
   // like `obj.method()` / `this->method()` can be resolved and JIT-called.
   for (DWARFDIE child : die.children()) {
@@ -1220,9 +1230,24 @@ void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
     }
 
     const std::string asm_label = MakeFuncAsmLabel(child);
+
+    // Classify constructors/destructors so the expression evaluator can build
+    // the proper C++ declaration name (`Foo(2)` must resolve to a constructor).
+    // A destructor's name begins with `~`; a constructor's unqualified name
+    // equals the class's base name (matching how DWARFASTParserClang /
+    // TypeSystemClang compare the method name against the record decl name).
+    cpp_typesystem::MemberFunctionKind kind =
+        cpp_typesystem::MemberFunctionKind::Method;
+    llvm::StringRef name_ref(method_name);
+    if (name_ref.starts_with("~"))
+      kind = cpp_typesystem::MemberFunctionKind::Destructor;
+    else if (!record_base_name.empty() && name_ref == record_base_name)
+      kind = cpp_typesystem::MemberFunctionKind::Constructor;
+
+
     ts.AddMemberFunction(record, ConstString(method_name),
                          func_type->GetForwardCompilerType(),
                          ConstString(asm_label), is_static, is_const,
-                         is_volatile, is_virtual, ref_qualifier);
+                         is_volatile, is_virtual, ref_qualifier, kind);
   }
 }

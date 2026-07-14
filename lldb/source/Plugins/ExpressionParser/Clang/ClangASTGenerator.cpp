@@ -615,10 +615,39 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
                                         proto->getParamTypes(), epi);
       }
     }
-    auto *method =
-        clang::CXXMethodDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+    // Constructors and destructors must be built as CXXConstructorDecl /
+    // CXXDestructorDecl with the proper C++ declaration name, otherwise clang
+    // won't recognize a functional-style cast like `Foo(2)` (or `new Foo(2)`)
+    // as a constructor call. Ordinary methods are plain CXXMethodDecls named by
+    // their identifier.
+    clang::CXXMethodDecl *method = nullptr;
+    switch (mf->kind) {
+    case ct::MemberFunctionKind::Constructor: {
+      auto *ctor = clang::CXXConstructorDecl::CreateDeserialized(
+          ast, clang::GlobalDeclID(), /*NumCtorInitializers=*/0);
+      ctor->setDeclName(ast.DeclarationNames.getCXXConstructorName(
+          ast.getCanonicalType(ast.getCanonicalTagType(decl))));
+      ctor->setNumCtorInitializers(0);
+      ctor->setExplicitSpecifier(clang::ExplicitSpecifier(
+          nullptr, clang::ExplicitSpecKind::ResolvedFalse));
+      method = ctor;
+      break;
+    }
+    case ct::MemberFunctionKind::Destructor: {
+      auto *dtor = clang::CXXDestructorDecl::CreateDeserialized(
+          ast, clang::GlobalDeclID());
+      dtor->setDeclName(ast.DeclarationNames.getCXXDestructorName(
+          ast.getCanonicalType(ast.getCanonicalTagType(decl))));
+      method = dtor;
+      break;
+    }
+    case ct::MemberFunctionKind::Method:
+      method =
+          clang::CXXMethodDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+      method->setDeclName(&ast.Idents.get(mf->name.GetName()));
+      break;
+    }
     method->setDeclContext(decl);
-    method->setDeclName(&ast.Idents.get(mf->name.GetName()));
     method->setType(method_qt);
     method->setStorageClass(mf->is_static ? clang::SC_Static : clang::SC_None);
     method->setConstexprKind(clang::ConstexprSpecKind::Unspecified);

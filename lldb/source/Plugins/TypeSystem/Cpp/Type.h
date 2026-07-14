@@ -133,6 +133,17 @@ enum class RefQualifier {
   RValue, ///< Rvalue ref-qualifier (`void f() &&`).
 };
 
+/// Whether a member function is an ordinary method or a special member the
+/// expression evaluator must build with a proper C++ declaration name (a
+/// constructor/destructor uses a getCXXConstructorName/getCXXDestructorName,
+/// not an identifier). Detected from DWARF (see
+/// DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF).
+enum class MemberFunctionKind {
+  Method,      ///< An ordinary (possibly static) member function.
+  Constructor, ///< A constructor (`Foo(...)`).
+  Destructor,  ///< A destructor (`~Foo()`).
+};
+
 /// A member function of a record type. Only what an expression needs to build a
 /// clang::CXXMethodDecl and call it: the (non-`this`) signature, the mangled
 /// name (so the JIT can resolve the callee), and the basic C++ flags.
@@ -150,6 +161,10 @@ struct MemberFunction {
   bool is_virtual = false;
   /// The `&`/`&&` ref-qualifier, if any (overloadable, so must be modeled).
   RefQualifier ref_qualifier = RefQualifier::None;
+  /// Whether this is an ordinary method, a constructor or a destructor. A
+  /// constructor/destructor must be built with the proper C++ declaration name
+  /// so clang recognizes `Foo(2)` as a constructor call.
+  MemberFunctionKind kind = MemberFunctionKind::Method;
 };
 
 /// Represents everything needed to understand a type.
