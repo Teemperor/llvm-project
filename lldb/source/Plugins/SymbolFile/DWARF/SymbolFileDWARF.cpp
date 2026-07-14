@@ -4365,10 +4365,11 @@ void SymbolFileDWARF::DumpClangAST(Stream &s, llvm::StringRef filter,
   if (!ts_or_err)
     return;
   auto ts = *ts_or_err;
-  TypeSystemClang *clang = llvm::dyn_cast_or_null<TypeSystemClang>(ts.get());
-  if (!clang)
+  if (!ts)
     return;
-  clang->Dump(s.AsRawOstream(), filter, show_color);
+  // Dispatches virtually: TypeSystemClang dumps its own clang AST;
+  // TypeSystemCpp synthesizes one from its (clang-AST-free) type model.
+  ts->Dump(s.AsRawOstream(), filter, show_color);
 }
 
 lldb_private::ModuleSpecList SymbolFileDWARF::GetSeparateDebugInfoFiles() {

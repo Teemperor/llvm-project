@@ -14,12 +14,16 @@
 
 #include "clang/AST/CharUnits.h"
 #include "clang/AST/Type.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/TargetParser/Triple.h"
 
 #include <memory>
 
 namespace clang {
 class ASTContext;
+class DeclContext;
+class NamespaceDecl;
 class RecordDecl;
 class CXXRecordDecl;
 class FieldDecl;
@@ -34,6 +38,7 @@ class TypeSystemCpp;
 namespace cpp_typesystem {
 class Type;
 class RecordType;
+class Namespace;
 } // namespace cpp_typesystem
 
 /// Translates types from the module-level TypeSystemCpp (see the
@@ -56,6 +61,17 @@ class RecordType;
 class ClangASTGenerator {
 public:
   explicit ClangASTGenerator(clang::ASTContext &ast) : m_ast(ast) {}
+
+  /// Dump a Clang AST of \p records (record CompilerTypes owned by \p ts) to
+  /// \p output, applying \p filter (a name substring; empty means no filter).
+  /// Builds a standalone, throwaway clang::ASTContext for the module's \p
+  /// triple, synthesizes a definition for each record into it, and prints it
+  /// with clang's AST dumper. This backs `target modules dump ast` for
+  /// TypeSystemCpp (the Clang-AST synthesis has to live in this plugin).
+  static void DumpRecords(TypeSystemCpp &ts, const llvm::Triple &triple,
+                          llvm::ArrayRef<CompilerType> records,
+                          llvm::raw_ostream &output, llvm::StringRef filter,
+                          bool show_color);
 
   /// Translate \p cpp_type (a CompilerType owned by a TypeSystemCpp) into a
   /// clang::QualType. Returns a null QualType on failure.
@@ -96,6 +112,19 @@ public:
   /// callers use this to skip expensive global searches while it is set. See
   /// CppExpressionDeclMap::FindExternalVisibleDecls.
   bool IsGenerating() const { return m_generation_depth != 0; }
+
+  /// Register the clang::NamespaceDecl that the decl map created for the
+  /// cpp_typesystem namespace \p cpp_ns. Types whose declaration context is
+  /// \p cpp_ns are then generated inside \p clang_ns (rather than the
+  /// translation unit) so their qualified names mangle correctly for the JIT.
+  void RegisterNamespace(const cpp_typesystem::Namespace *cpp_ns,
+                         clang::NamespaceDecl *clang_ns);
+
+  /// The clang DeclContext a type declared in \p cpp_ns should be placed in:
+  /// the registered clang::NamespaceDecl if one exists, otherwise the
+  /// translation unit (the global namespace, or a namespace not yet mapped).
+  clang::DeclContext *
+  GetDeclContextForNamespace(const cpp_typesystem::Namespace *cpp_ns);
 
 private:
   /// RAII marker for IsGenerating(): held for the duration of each public
@@ -139,6 +168,11 @@ private:
 
   /// cpp_typesystem::Type -> produced clang QualType (opaque pointer).
   llvm::DenseMap<cpp_typesystem::Type *, void *> m_generated;
+
+  /// cpp_typesystem::Namespace -> the clang::NamespaceDecl the decl map created
+  /// for it, so generated types are placed in the matching namespace.
+  llvm::DenseMap<const cpp_typesystem::Namespace *, clang::NamespaceDecl *>
+      m_namespaces;
 
   /// Reverse map: opaque QualType (quals included) -> originating
   /// cpp_typesystem::Type, so cv-qualified variants stay distinct.

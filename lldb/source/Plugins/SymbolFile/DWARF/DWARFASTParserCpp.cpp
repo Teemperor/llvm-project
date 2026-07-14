@@ -26,6 +26,7 @@
 #include "lldb/Expression/Expression.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/CompilerType.h"
+#include "lldb/Symbol/CompilerDeclContext.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/Type.h"
@@ -260,6 +261,21 @@ BuildDeclNamespace(const DWARFDIE &die, cpp_typesystem::Builder &builder) {
   return ns;
 }
 
+/// Build the interned Namespace for a DW_TAG_namespace DIE \p ns_die itself
+/// (i.e. including \p ns_die, not just its parents). Returns null if \p ns_die
+/// is not a namespace.
+static const cpp_typesystem::Namespace *
+BuildNamespaceForDIE(const DWARFDIE &ns_die, cpp_typesystem::Builder &builder) {
+  if (!ns_die || ns_die.Tag() != DW_TAG_namespace)
+    return nullptr;
+  const cpp_typesystem::Namespace *parent =
+      BuildDeclNamespace(ns_die, builder);
+  const char *name = ns_die.GetName();
+  bool is_inline =
+      ns_die.GetAttributeValueAsUnsigned(DW_AT_export_symbols, 0) != 0;
+  return builder.GetNamespace(ConstString(name ? name : ""), parent, is_inline);
+}
+
 /// Record on \p type the namespace it is declared in and its unqualified
 /// DW_AT_name spelling, so TypeSystemCpp can rebuild the display name while
 /// hiding inline namespaces.
@@ -270,7 +286,61 @@ static void SetTypeNameInfo(const DWARFDIE &die, CompilerType type,
     builder.SetUnqualifiedName(type, ConstString(name));
 }
 
-/// Build the asm label (an lldb FunctionCallLabel) for a function/method DIE so
+CompilerDeclContext
+DWARFASTParserCpp::GetDeclContextForUIDFromDWARF(const DWARFDIE &die) {
+  // The decl context *of* a DIE. For a namespace DIE that is the namespace
+  // itself (this backs SymbolFileDWARF::FindNamespace, which the expression
+  // evaluator uses to discover a C++ namespace by name); for any other entity
+  // (e.g. a function, so an expression evaluated in a namespaced frame can
+  // resolve unqualified names in that namespace) it is the enclosing namespace.
+  // The wrapped opaque pointer is the interned cpp_typesystem::Namespace.
+  cpp_typesystem::Builder builder(m_ts);
+  const cpp_typesystem::Namespace *ns =
+      die.Tag() == DW_TAG_namespace ? BuildNamespaceForDIE(die, builder)
+                                    : BuildDeclNamespace(die, builder);
+  if (!ns)
+    return CompilerDeclContext();
+  return CompilerDeclContext(&m_ts,
+                             const_cast<cpp_typesystem::Namespace *>(ns));
+}
+
+CompilerDeclContext
+DWARFASTParserCpp::GetDeclContextContainingUIDFromDWARF(const DWARFDIE &die) {
+  // The containing context of a DIE is the innermost enclosing namespace (used
+  // by DIEInDeclContext to check whether a candidate namespace lives in a given
+  // parent scope). A null chain means the global namespace, which has no valid
+  // CompilerDeclContext.
+  cpp_typesystem::Builder builder(m_ts);
+  const cpp_typesystem::Namespace *ns = BuildDeclNamespace(die, builder);
+  if (!ns)
+    return CompilerDeclContext();
+  return CompilerDeclContext(&m_ts,
+                             const_cast<cpp_typesystem::Namespace *>(ns));
+}
+
+void DWARFASTParserCpp::CollectUsingDirectiveNamespaces(
+    const DWARFDIE &block_die,
+    std::vector<CompilerDeclContext> &namespaces) {
+  cpp_typesystem::Builder builder(m_ts);
+  // Walk the block and its enclosing lexical blocks / function, innermost
+  // first, collecting each `using namespace N;` (DW_TAG_imported_module).
+  for (DWARFDIE scope = block_die; scope; scope = scope.GetParent()) {
+    for (DWARFDIE child : scope.children()) {
+      if (child.Tag() != DW_TAG_imported_module)
+        continue;
+      DWARFDIE imported = child.GetAttributeValueAsReferenceDIE(DW_AT_import);
+      const cpp_typesystem::Namespace *ns =
+          BuildNamespaceForDIE(imported, builder);
+      if (ns)
+        namespaces.emplace_back(&m_ts,
+                                const_cast<cpp_typesystem::Namespace *>(ns));
+    }
+    // Stop once we've processed the function scope; file-scope using-directives
+    // are handled by the ordinary global search.
+    if (scope.Tag() == DW_TAG_subprogram)
+      break;
+  }
+}
 /// the JIT can resolve the call to the right symbol in the inferior. Mirrors
 /// DWARFASTParserClang's MakeLLDBFuncAsmLabel.
 static std::string MakeFuncAsmLabel(const DWARFDIE &die) {
@@ -758,9 +828,10 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
       Base,
       TemplateType,
       TemplateValue,
-      NestedType
+      NestedType,
+      StaticDataMember
     } kind;
-    llvm::StringRef name; // Field/nested-type name; empty otherwise.
+    llvm::StringRef name; // Field/nested-type/static-member name; else empty.
     uint64_t byte_offset = 0;
     uint64_t value = 0; // Value of a non-type template argument.
     DWARFDIE referencing_die;
@@ -770,6 +841,8 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     uint64_t data_bit_offset = UINT64_MAX;
     // For a template argument: true if it was defaulted (DW_AT_default_value).
     bool is_default = false;
+    // For a static data member: its DW_AT_const_value, if present.
+    std::optional<uint64_t> const_value;
   };
   std::vector<MemberInfo> members;
   for (DWARFDIE child : die.children()) {
@@ -798,15 +871,25 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
           child.GetAttributeValueAsOptionalUnsigned(DW_AT_data_member_location);
       std::optional<uint64_t> data_bit_offset =
           child.GetAttributeValueAsOptionalUnsigned(DW_AT_data_bit_offset);
-      // Skip static data members: they occupy no storage in the object, so
-      // they have neither a DW_AT_data_member_location nor a
-      // DW_AT_data_bit_offset and (pre-DWARFv5) are marked DW_AT_declaration.
-      // Adding them as fields would give them a bogus offset of 0 and overlap
-      // the real members. (DWARFv5 emits them as DW_TAG_variable, which we
-      // already ignore.) TypeSystemCpp doesn't model static members.
+      // A static data member occupies no storage in the object, so it has
+      // neither a DW_AT_data_member_location nor a DW_AT_data_bit_offset and
+      // (pre-DWARFv5) is marked DW_AT_declaration. Model it as a static data
+      // member rather than a field (a field would get a bogus offset of 0 and
+      // overlap the real members). DWARFv5 emits static data members as
+      // DW_TAG_variable, handled below.
       if (!data_member_location && !data_bit_offset &&
-          child.GetAttributeValueAsUnsigned(DW_AT_declaration, 0))
+          child.GetAttributeValueAsUnsigned(DW_AT_declaration, 0)) {
+        const char *member_name = child.GetName();
+        if (member_name && member_name[0]) {
+          MemberInfo info{MemberInfo::Kind::StaticDataMember, member_name,
+                          /*byte_offset=*/0, /*value=*/0, child,
+                          child.GetAttributeValueAsReferenceDIE(DW_AT_type)};
+          info.const_value =
+              child.GetAttributeValueAsOptionalUnsigned(DW_AT_const_value);
+          members.push_back(info);
+        }
         continue;
+      }
       members.push_back(
           {MemberInfo::Kind::Field, child.GetName(),
            data_member_location.value_or(0),
@@ -840,6 +923,19 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
       if (nested_name && nested_name[0])
         members.push_back({MemberInfo::Kind::NestedType, nested_name,
                            /*byte_offset=*/0, /*value=*/0, die, child});
+    } else if (tag == DW_TAG_variable) {
+      // A DW_TAG_variable child of a record is a static data member (DWARFv5;
+      // pre-DWARFv5 they appear as declaration-only DW_TAG_member, handled
+      // above). It occupies no storage in the object.
+      const char *member_name = child.GetName();
+      if (member_name && member_name[0]) {
+        MemberInfo info{MemberInfo::Kind::StaticDataMember, member_name,
+                        /*byte_offset=*/0, /*value=*/0, child,
+                        child.GetAttributeValueAsReferenceDIE(DW_AT_type)};
+        info.const_value =
+            child.GetAttributeValueAsOptionalUnsigned(DW_AT_const_value);
+        members.push_back(info);
+      }
     }
   }
 
@@ -979,6 +1075,22 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
       if (member_type)
         ts.AddNestedType(*record, ts.GetIdentifier(member.name), member_type);
       break;
+    case MemberInfo::Kind::StaticDataMember:
+      if (member_type) {
+        // The linkage name used to resolve the member's runtime address. The
+        // declaration DIE usually carries none (the definition, a separate
+        // CU-scope DW_TAG_variable, does), in which case clang's mangler
+        // reconstructs it from the record's qualified name when building the
+        // VarDecl. Pass through any DW_AT_linkage_name the declaration does
+        // have.
+        const char *mangled =
+            member.referencing_die.GetMangledName(
+                /*substitute_name_allowed=*/false);
+        ts.AddStaticDataMember(*record, ConstString(member.name), member_type,
+                               ConstString(mangled ? mangled : ""),
+                               member.const_value);
+      }
+      break;
     }
   }
 
@@ -1021,6 +1133,15 @@ void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
 
     bool is_virtual =
         child.GetAttributeValueAsUnsigned(DW_AT_virtuality, 0) != 0;
+    // Ref-qualifier (`&`/`&&`): DWARF encodes the lvalue one via DW_AT_reference
+    // and the rvalue one via DW_AT_rvalue_reference. A class can overload on it,
+    // so it must be carried through to the synthesized CXXMethodDecl.
+    cpp_typesystem::RefQualifier ref_qualifier =
+        cpp_typesystem::RefQualifier::None;
+    if (child.GetAttributeValueAsUnsigned(DW_AT_rvalue_reference, 0))
+      ref_qualifier = cpp_typesystem::RefQualifier::RValue;
+    else if (child.GetAttributeValueAsUnsigned(DW_AT_reference, 0))
+      ref_qualifier = cpp_typesystem::RefQualifier::LValue;
     // A non-static method has an artificial `this` parameter; a `const` method
     // has a `this` whose pointee is const-qualified.
     bool is_static = true;
@@ -1043,6 +1164,6 @@ void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
     ts.AddMemberFunction(record, ConstString(method_name),
                          func_type->GetForwardCompilerType(),
                          ConstString(asm_label), is_static, is_const,
-                         is_virtual);
+                         is_virtual, ref_qualifier);
   }
 }
