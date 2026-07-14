@@ -519,6 +519,12 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     decl->startDefinition();
     decl->setIntegerType(integer);
 
+    // In C++, an enumerator's type is the enclosing enumeration type (not the
+    // underlying integer type). This is what makes `+E::e` apply the enum's
+    // integral promotion (via EnumDecl::getPromotionType) rather than leaving
+    // the value at the underlying type. Mirror TypeSystemClang here.
+    clang::QualType enum_qt = ast.getCanonicalTagType(decl);
+
     const bool is_signed = en->IsSigned();
     unsigned width = ast.getIntWidth(integer);
     for (const ct::Enumerator &e : en->GetEnumerators()) {
@@ -527,7 +533,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
           ast, clang::GlobalDeclID());
       ecd->setDeclContext(decl);
       ecd->setDeclName(&ast.Idents.get(e.name.GetName()));
-      ecd->setType(clang::QualType(integer));
+      ecd->setType(enum_qt);
       ecd->setInitVal(ast, value);
       ecd->setAccess(clang::AS_public);
       decl->addDecl(ecd);
