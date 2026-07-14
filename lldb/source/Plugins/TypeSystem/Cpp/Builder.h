@@ -102,6 +102,10 @@ public:
 
   // Structural completion of a record type.
   void SetRecordComplete(RecordType &record);
+  /// Mark \p record as a class-template instantiation (see
+  /// RecordType::IsTemplateInstantiation). Set even for a specialization over an
+  /// empty parameter pack, which has no arguments but still prints `<>`.
+  void SetRecordTemplateInstantiation(RecordType &record);
   /// Mark \p record's member functions as parsed (they are filled in lazily,
   /// after completion; see DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF).
   void SetRecordMemberFunctionsParsed(RecordType &record);

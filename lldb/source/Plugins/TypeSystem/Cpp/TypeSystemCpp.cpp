@@ -208,10 +208,13 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t) {
   AppendClassScopePrefix(t->GetName().GetName(), t->GetDeclContext(), result);
 
   // For a class-template instantiation we have modeled args, so reconstruct
-  // "base<non-default args>". Otherwise use the unqualified spelling verbatim
-  // (this also covers not-yet-completed templates, whose args aren't parsed).
+  // "base<non-default args>". This branch is also taken for a specialization
+  // over an empty parameter pack (`TypePack<>`), which has zero arguments but
+  // still prints an (empty) `<>`. Otherwise use the unqualified spelling
+  // verbatim (this also covers not-yet-completed templates, whose args aren't
+  // parsed).
   auto *rec = llvm::dyn_cast<RecordType>(t);
-  if (rec && rec->GetNumTemplateArguments() > 0) {
+  if (rec && rec->IsTemplateInstantiation()) {
     result += unqualified.substr(0, unqualified.find('<')).str();
     std::string args;
     for (uint32_t i = 0; i < rec->GetNumTemplateArguments(); ++i) {
@@ -222,7 +225,11 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t) {
         args += ", ";
       args += BuildTemplateArgName(*arg);
     }
-    if (!args.empty()) {
+    if (args.empty()) {
+      // No (non-default) arguments, e.g. a specialization over an empty pack.
+      // Clang still prints an empty argument list: `TypePack<>`.
+      result += "<>";
+    } else {
       // Match clang's default printing policy (SplitTemplateClosers): put a
       // space between two consecutive closing angle brackets so a nested
       // instantiation prints as `Foo<Foo<int> >`, not `Foo<Foo<int>>`.

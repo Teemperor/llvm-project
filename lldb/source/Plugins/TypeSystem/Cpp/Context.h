@@ -103,6 +103,9 @@ public:
   /// corresponding Type methods are private and befriend this class.
   /// @{
   void SetComplete(RecordType &record) { record.SetIsComplete(true); }
+  void SetTemplateInstantiation(RecordType &record) {
+    record.SetIsTemplateInstantiation(true);
+  }
   void SetMemberFunctionsParsed(RecordType &record) {
     record.SetMemberFunctionsParsed();
   }
