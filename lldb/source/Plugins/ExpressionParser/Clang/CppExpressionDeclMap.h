@@ -136,6 +136,11 @@ private:
   bool LookupType(const clang::DeclContext *dc, ConstString name,
                   llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
+  /// Look up a persistent expression variable (e.g. a prior result \c $0 or a
+  /// user variable \c $foo) and create a reference-typed VarDecl for it.
+  bool LookupPersistentVariable(const clang::DeclContext *dc, ConstString name,
+                                llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
   const lldb::TargetSP m_target;
   ValueObject *m_ctx_obj;
   Materializer::PersistentVariableDelegate *m_result_delegate;
