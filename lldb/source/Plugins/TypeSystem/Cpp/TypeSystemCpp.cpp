@@ -60,6 +60,26 @@ static void AppendNamespacePrefix(const cpp_typesystem::Namespace *ns,
 
 static std::string BuildDisplayName(cpp_typesystem::Type *t);
 
+// Render a function signature in C declarator form, placing `decl` (e.g. "" for
+// a plain function, "(*)" for a function pointer, "(&)" for a reference) between
+// the return type and the parameter list: `int (*)(const char *)`.
+static std::string BuildFunctionName(cpp_typesystem::FunctionType *fn,
+                                     llvm::StringRef decl) {
+  std::string ret = fn->GetReturnType() ? BuildDisplayName(fn->GetReturnType())
+                                        : std::string("void");
+  std::string params;
+  for (uint32_t i = 0, e = fn->GetNumParameters(); i != e; ++i) {
+    if (!params.empty())
+      params += ", ";
+    params += BuildDisplayName(fn->GetParameterAtIndex(i));
+  }
+  if (fn->IsVariadic())
+    params += params.empty() ? "..." : ", ...";
+  else if (params.empty())
+    params = "void";
+  return ret + " " + decl.str() + "(" + params + ")";
+}
+
 // Render a single template argument for the display name.
 static std::string
 BuildTemplateArgName(const cpp_typesystem::TemplateArgument &arg) {
@@ -103,13 +123,19 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t) {
   }
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
     cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+    if (auto *fn = llvm::dyn_cast_or_null<FunctionType>(pointee))
+      return BuildFunctionName(fn, "(*)");
     return (pointee ? BuildDisplayName(pointee) : std::string("void")) + " *";
   }
   if (auto *ref = llvm::dyn_cast<ReferenceType>(t)) {
     cpp_typesystem::Type *pointee = ref->GetPointeeType();
+    if (auto *fn = llvm::dyn_cast_or_null<FunctionType>(pointee))
+      return BuildFunctionName(fn, ref->IsRValue() ? "(&&)" : "(&)");
     return (pointee ? BuildDisplayName(pointee) : std::string("void")) +
            (ref->IsRValue() ? " &&" : " &");
   }
+  if (auto *fn = llvm::dyn_cast<FunctionType>(t))
+    return BuildFunctionName(fn, "");
   if (auto *cv = llvm::dyn_cast<CVQualifiedType>(t)) {
     std::string result;
     if (cv->IsConst())
@@ -347,7 +373,8 @@ bool TypeSystemCpp::IsFloatingPointType(opaque_compiler_type_t type) {
 }
 
 bool TypeSystemCpp::IsFunctionType(opaque_compiler_type_t type) {
-  return false;
+  return type &&
+         llvm::isa<cpp_typesystem::FunctionType>(Desugar(GetCppType(type)));
 }
 
 size_t
@@ -512,9 +539,15 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
     std::string element_name = GetTypeName(cur, BaseOnly).GetStringRef().str();
     return ConstString(element_name + dims);
   }
+  // Function types and pointers/references to them need C declarator syntax
+  // (`int (*)(const char *)`); BuildDisplayName already produces it.
+  if (llvm::isa<cpp_typesystem::FunctionType>(t))
+    return ConstString(BuildDisplayName(t));
   // Pointers have no name of their own either; build "<pointee> *".
   if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
     cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+    if (llvm::isa_and_nonnull<cpp_typesystem::FunctionType>(pointee))
+      return ConstString(BuildDisplayName(t));
     std::string pointee_name =
         pointee ? GetTypeName(pointee, BaseOnly).GetStringRef().str() : "void";
     return ConstString(llvm::formatv("{0} *", pointee_name).str());
@@ -522,6 +555,8 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
   // References likewise: "<pointee> &" or "<pointee> &&".
   if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t)) {
     cpp_typesystem::Type *pointee = ref->GetPointeeType();
+    if (llvm::isa_and_nonnull<cpp_typesystem::FunctionType>(pointee))
+      return ConstString(BuildDisplayName(t));
     std::string pointee_name =
         pointee ? GetTypeName(pointee, BaseOnly).GetStringRef().str() : "void";
     return ConstString(
