@@ -20,6 +20,7 @@
 #include "clang/AST/ASTConsumer.h"
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Attr.h"
+#include "clang/AST/CXXInheritance.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclarationName.h"
@@ -97,6 +98,92 @@ GetOverloadedOperatorKind(llvm::StringRef spelling) {
       .Case("[]", clang::OO_Subscript)
       .Case("co_await", clang::OO_Coawait)
       .Default(clang::OO_None);
+}
+
+/// Checks whether \p m1 is an overload of \p m2 (as opposed to an override).
+/// Two virtual methods that merely share a name but differ in signature are
+/// overloads and need distinct vtable slots; an override shares its base
+/// method's slot. Mirrors TypeSystemClang::isOverload.
+static bool IsOverload(clang::CXXMethodDecl *m1, clang::CXXMethodDecl *m2) {
+  // FIXME: This should detect covariant return types, but currently doesn't
+  // (matching TypeSystemClang).
+  clang::ASTContext &context = m1->getASTContext();
+  const auto *m1Type = llvm::cast<clang::FunctionProtoType>(
+      context.getCanonicalType(m1->getType()));
+  const auto *m2Type = llvm::cast<clang::FunctionProtoType>(
+      context.getCanonicalType(m2->getType()));
+
+  auto compareArgTypes = [&context](const clang::QualType &m1p,
+                                    const clang::QualType &m2p) {
+    return context.hasSameType(m1p.getUnqualifiedType(),
+                               m2p.getUnqualifiedType());
+  };
+
+  return (m1->getNumParams() != m2->getNumParams()) ||
+         !std::equal(m1Type->param_type_begin(), m1Type->param_type_end(),
+                     m2Type->param_type_begin(), compareArgTypes);
+}
+
+/// If \p decl is a virtual method, walk the base classes looking for methods it
+/// overrides and record them via addOverriddenMethod. Clang's IRGen relies on
+/// this override table to compute the vtable layout for decl's parent class: an
+/// overriding method reuses the base method's vtable slot rather than getting a
+/// new one. Without it a call through a derived object dispatches through the
+/// wrong (out-of-range) slot and crashes. Mirrors
+/// TypeSystemClang::addOverridesForMethod, which the DWARF-fed Clang AST relies
+/// on for the same reason.
+static void AddOverridesForMethod(clang::CXXMethodDecl *decl) {
+  if (!decl->isVirtual())
+    return;
+
+  clang::CXXBasePaths paths;
+  llvm::SmallVector<clang::NamedDecl *, 4> decls;
+
+  auto find_overridden_methods =
+      [&decls, decl](const clang::CXXBaseSpecifier *specifier,
+                     clang::CXXBasePath &path) {
+        if (auto *base_record = specifier->getType()->getAsCXXRecordDecl()) {
+          // lookupInBases recurses through the whole base hierarchy, including
+          // bases we haven't populated a definition for yet. Querying members
+          // (getDestructor/lookup) of a class with no definition asserts in
+          // clang, so skip any base that isn't complete. A base that a derived
+          // method actually overrides was completed by PopulateRecord before
+          // this runs, so this only skips unrelated incomplete bases.
+          if (!base_record->hasDefinition())
+            return false;
+
+          clang::DeclarationName name = decl->getDeclName();
+
+          // A destructor overrides the base destructor iff the base one is
+          // virtual (destructors don't match by name/signature otherwise).
+          if (name.getNameKind() == clang::DeclarationName::CXXDestructorName) {
+            if (auto *baseDtorDecl = base_record->getDestructor()) {
+              if (baseDtorDecl->isVirtual()) {
+                decls.push_back(baseDtorDecl);
+                return true;
+              }
+              return false;
+            }
+          }
+
+          // Otherwise, search for the name in the base class.
+          for (path.Decls = base_record->lookup(name).begin();
+               path.Decls != path.Decls.end(); ++path.Decls) {
+            if (auto *method_decl =
+                    llvm::dyn_cast<clang::CXXMethodDecl>(*path.Decls))
+              if (method_decl->isVirtual() && !IsOverload(decl, method_decl)) {
+                decls.push_back(method_decl);
+                return true;
+              }
+          }
+        }
+        return false;
+      };
+
+  if (decl->getParent()->lookupInBases(find_overridden_methods, paths))
+    for (auto *overridden_decl : decls)
+      decl->addOverriddenMethod(
+          llvm::cast<clang::CXXMethodDecl>(overridden_decl));
 }
 
 /// Records a (clang type -> cpp type) mapping so the type can later be mapped
@@ -762,6 +849,19 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     method->setConstexprKind(clang::ConstexprSpecKind::Unspecified);
     method->setAccess(clang::AS_public);
     method->setVirtualAsWritten(mf->is_virtual);
+    // A virtual method with a covariant return type (an override returning a
+    // pointer/reference to a more-derived class than the base method) makes
+    // clang compute a covariant-return thunk when it lays out the vtable, which
+    // queries the layout of the returned class. Complete that record now so the
+    // query doesn't hit a forward declaration (which asserts in clang).
+    if (mf->is_virtual) {
+      if (const auto *proto = method_qt->getAs<clang::FunctionProtoType>()) {
+        clang::QualType ret = proto->getReturnType();
+        if (ret->isPointerType() || ret->isReferenceType())
+          ret = ret->getPointeeType();
+        EnsureComplete(ret);
+      }
+    }
     if (!mf->asm_label.GetName().empty())
       method->addAttr(
           clang::AsmLabelAttr::CreateImplicit(ast, mf->asm_label.GetName()));
@@ -816,6 +916,14 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
 
   if (!decl->isCompleteDefinition())
     decl->completeDefinition();
+
+  // Wire up virtual-method overrides now that the class (and its bases) are
+  // complete. Clang derives the vtable layout from these override links; an
+  // overriding method must share its base method's slot, otherwise a virtual
+  // call dispatches through a wrong/out-of-range slot and crashes.
+  for (clang::CXXMethodDecl *method : decl->methods())
+    AddOverridesForMethod(method);
+
   decl->setHasLoadedFieldsFromExternalStorage(true);
   decl->setHasExternalLexicalStorage(false);
   decl->setHasExternalVisibleStorage(false);
