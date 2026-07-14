@@ -297,8 +297,18 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
     if (nsd->getName() == "$__lldb_local_vars")
       return LookupLocalVariable(dc, ConstString(sname), decls);
     // A member lookup inside a real C++ namespace we created earlier.
-    if (m_namespace_maps.count(nsd))
+    if (m_namespace_maps.count(nsd)) {
+      // Skip the lookup while we are synthesizing decls: placing a
+      // namespace-scoped record into its clang NamespaceDecl (which has
+      // external visible storage) makes clang reconcile that name here, but
+      // such a lookup is internal, not a reference from the expression.
+      // Servicing it would generate another type into the same namespace and
+      // recurse without end. Genuine references resolve while the parser runs
+      // (outside generation).
+      if (IsGeneratingDecls())
+        return false;
       return LookupInNamespace(nsd, ConstString(sname), decls);
+    }
     return false;
   }
 
