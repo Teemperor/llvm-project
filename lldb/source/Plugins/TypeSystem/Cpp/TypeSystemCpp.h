@@ -172,6 +172,7 @@ public:
                            size_t idx) override;
   CompilerType GetPointeeType(lldb::opaque_compiler_type_t type) override;
   CompilerType GetPointerType(lldb::opaque_compiler_type_t type) override;
+  CompilerType GetTypeForFormatters(lldb::opaque_compiler_type_t type) override;
 
   // Exploring the type
   const llvm::fltSemantics &GetFloatTypeSemantics(size_t byte_size,

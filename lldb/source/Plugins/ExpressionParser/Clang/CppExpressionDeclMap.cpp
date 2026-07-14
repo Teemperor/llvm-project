@@ -8,6 +8,9 @@
 
 #include "CppExpressionDeclMap.h"
 
+#include "ClangExpressionUtil.h"
+
+#include "Plugins/TypeSystem/Cpp/Type.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
 #include "lldb/Core/Mangled.h"
@@ -92,9 +95,11 @@ private:
 CppExpressionDeclMap::CppExpressionDeclMap(
     bool keep_result_in_memory,
     Materializer::PersistentVariableDelegate *result_delegate,
-    const lldb::TargetSP &target, ValueObject *ctx_obj)
+    const lldb::TargetSP &target, ValueObject *ctx_obj,
+    bool ignore_context_qualifiers)
     : m_target(target), m_ctx_obj(ctx_obj), m_result_delegate(result_delegate),
-      m_keep_result_in_memory(keep_result_in_memory) {}
+      m_keep_result_in_memory(keep_result_in_memory),
+      m_ignore_context_qualifiers(ignore_context_qualifiers) {}
 
 CppExpressionDeclMap::~CppExpressionDeclMap() = default;
 
@@ -362,7 +367,58 @@ void CppExpressionDeclMap::LookUpLldbClass(
     return;
   CompilerType class_cpp_type =
       this_type->GetForwardCompilerType().GetPointeeType();
+
+  // Inside a lambda that captured `this`, the frame's `this` is the (unnamed)
+  // lambda closure object, whose captured `this` is a member named `this`
+  // (DWARF) / `__this` (CodeView). Use the captured object's class as
+  // `$__lldb_class` so unqualified member lookups resolve against the enclosing
+  // class, mirroring ClangExpressionDeclMap::LookUpLldbClass and the captured-
+  // `this` handling in ClangExpressionSourceCode.
+  if (ValueObjectSP this_valobj = ValueObjectVariable::Create(frame, this_var)) {
+    ValueObjectSP captured = this_valobj->GetChildMemberWithName("this");
+    if (!captured)
+      captured = this_valobj->GetChildMemberWithName("__this");
+    if (captured) {
+      CompilerType captured_pointee =
+          captured->GetCompilerType().GetPointeeType();
+      if (captured_pointee)
+        class_cpp_type = captured_pointee;
+    }
+  }
+
   if (!class_cpp_type || !class_cpp_type.GetTypeSystem<TypeSystemCpp>())
+    return;
+
+  // A cv-qualified method (e.g. `int f() const`) has a `this` whose pointee is
+  // a `const`/`volatile` cpp type. The injected `$__lldb_expr` method below
+  // must carry the same cv-qualifiers, otherwise its implicit `this` is a
+  // plain `T*` and member reads pick the wrong (non-const) overload / writes to
+  // const members are wrongly allowed. Read the cv-qualifiers off the pointee
+  // and strip them so the class record itself is generated unqualified.
+  bool this_is_const = false;
+  bool this_is_volatile = false;
+  {
+    // DWARF nests one qualifier per node, so `const volatile T` is a stack of
+    // CVQualifiedType nodes; walk the whole chain to collect the flags and to
+    // reach the unqualified record used for the class type itself.
+    unsigned quals = class_cpp_type.GetTypeQualifiers();
+    // `--c++-ignore-context-qualifiers` drops the method's cv-qualifiers so
+    // members can be mutated; the wrapper's out-of-line definition is then
+    // emitted unqualified too (see ClangExpressionSourceCode), so keep them in
+    // sync here.
+    if (!m_ignore_context_qualifiers) {
+      this_is_const = (quals & 0x1) != 0;
+      this_is_volatile = (quals & 0x4) != 0;
+    }
+    auto ts = class_cpp_type.GetTypeSystem<TypeSystemCpp>();
+    while (auto *cv = llvm::dyn_cast<cpp_typesystem::CVQualifiedType>(
+               TypeSystemCpp::GetCppType(class_cpp_type.GetOpaqueQualType()))) {
+      if (!ts)
+        break;
+      class_cpp_type = ts->GetCompilerType(cv->GetUnderlyingType());
+    }
+  }
+  if (!class_cpp_type)
     return;
 
   clang::QualType class_qt = GetGenerator().Generate(class_cpp_type);
@@ -378,8 +434,17 @@ void CppExpressionDeclMap::LookUpLldbClass(
 
   // Declare `void $__lldb_expr(void *)` in the class so the wrapper's
   // out-of-line `$__lldb_class::$__lldb_expr` definition has a matching
-  // declaration (and thus an implicit `this`).
+  // declaration (and thus an implicit `this`). Mirror the cv-qualifiers of the
+  // frame's actual method so the implicit `this` is `const`/`volatile` too.
   clang::FunctionProtoType::ExtProtoInfo epi;
+  if (this_is_const || this_is_volatile) {
+    clang::Qualifiers quals = epi.TypeQuals;
+    if (this_is_const)
+      quals.addConst();
+    if (this_is_volatile)
+      quals.addVolatile();
+    epi.TypeQuals = quals;
+  }
   clang::QualType param_types[] = {ast.VoidPtrTy};
   clang::QualType method_qt = ast.getFunctionType(ast.VoidTy, param_types, epi);
   auto *method =
@@ -459,6 +524,49 @@ bool CppExpressionDeclMap::LookupLocalVariable(
     pv->m_named_decl = vd;
     pv->m_llvm_value = nullptr;
     pv->m_lldb_var = var;
+    if (var_qt->isReferenceType())
+      entity->m_flags |= ClangExpressionVariable::EVTypeIsReference;
+    return true;
+  }
+
+  // No real local variable matched. When evaluating inside a lambda, its
+  // captures are surfaced as local variables too (the wrapper emits
+  // `using $__lldb_local_vars::<capture>;`). A capture is a member of the
+  // lambda closure object, so look it up there and bind the decl to a
+  // ValueObject provider that re-fetches the capture for the current frame
+  // (mirroring ClangExpressionDeclMap::LookupLocalVariable).
+  auto find_capture = [](ConstString varname, StackFrame *f) -> ValueObjectSP {
+    if (auto lambda = ClangExpressionUtil::GetLambdaValueObject(f))
+      return lambda->GetChildMemberWithName(varname);
+    return nullptr;
+  };
+  if (ValueObjectSP capture = find_capture(name, frame)) {
+    CompilerType capture_type = capture->GetCompilerType();
+    if (!capture_type || !capture_type.GetTypeSystem<TypeSystemCpp>())
+      return false;
+    clang::QualType qt = GetGenerator().Generate(capture_type);
+    if (qt.isNull()) {
+      LLDB_LOG(log, "CppEDM: couldn't generate a parser type for capture {0}",
+               name);
+      return false;
+    }
+    clang::QualType var_qt =
+        qt->isReferenceType() ? qt : m_ast_context->getLValueReferenceType(qt);
+    auto *vd = clang::VarDecl::Create(
+        *m_ast_context, const_cast<clang::DeclContext *>(dc),
+        clang::SourceLocation(), clang::SourceLocation(),
+        &m_ast_context->Idents.get(name.GetStringRef()), var_qt, nullptr,
+        clang::SC_Static);
+    decls.push_back(vd);
+
+    auto *entity = new ClangExpressionVariable(capture);
+    m_found_entities.AddNewlyConstructedVariable(entity);
+    entity->EnableParserVars(GetParserID());
+    ClangExpressionVariable::ParserVars *pv =
+        entity->GetParserVars(GetParserID());
+    pv->m_named_decl = vd;
+    pv->m_llvm_value = nullptr;
+    pv->m_lldb_valobj_provider = std::move(find_capture);
     if (var_qt->isReferenceType())
       entity->m_flags |= ClangExpressionVariable::EVTypeIsReference;
     return true;

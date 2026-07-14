@@ -1101,6 +1101,37 @@ CompilerType TypeSystemCpp::GetPointerType(opaque_compiler_type_t type) {
       GetCompilerType(GetCppType(type)));
 }
 
+CompilerType
+TypeSystemCpp::GetTypeForFormatters(opaque_compiler_type_t type) {
+  if (!type)
+    return CompilerType();
+  // Data formatters match on type name and are meant to be cv-agnostic (e.g.
+  // the C-string summary is registered for `char *`, and clang strips the
+  // cv-qualifiers so `const char *` matches too). Peel any top-level
+  // cv-qualifier sugar, and -- because a `char *` summary keys off the pointer
+  // type's spelling -- also rebuild a pointer whose pointee is cv-qualified as
+  // a pointer to the unqualified pointee. Typedefs are preserved (they are
+  // meaningful to formatters).
+  auto strip_cv = [](cpp_typesystem::Type *t) -> cpp_typesystem::Type * {
+    while (auto *cv = llvm::dyn_cast_or_null<cpp_typesystem::CVQualifiedType>(t))
+      t = cv->GetUnderlyingType();
+    return t;
+  };
+
+  cpp_typesystem::Type *t = strip_cv(GetCppType(type));
+  if (!t)
+    return CompilerType();
+
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
+    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+    cpp_typesystem::Type *stripped = strip_cv(pointee);
+    if (stripped != pointee && stripped)
+      return cpp_typesystem::Builder(*this).CreatePointerType(
+          GetCompilerType(stripped));
+  }
+  return GetCompilerType(t);
+}
+
 const llvm::fltSemantics &TypeSystemCpp::GetFloatTypeSemantics(size_t byte_size,
                                                                Format format) {
   return m_context.GetLanguageOpts().GetFloatTypeSemantics(byte_size, format);
@@ -1732,7 +1763,26 @@ bool TypeSystemCpp::IsPointerOrReferenceType(opaque_compiler_type_t type,
 }
 
 unsigned TypeSystemCpp::GetTypeQualifiers(opaque_compiler_type_t type) {
-  return 0;
+  if (!type)
+    return 0;
+  // Return the CVR qualifier mask using clang's bit layout
+  // (Const = 0x1, Restrict = 0x2, Volatile = 0x4), which is what the callers
+  // (e.g. clang::Qualifiers::fromCVRMask) expect. DWARF nests one qualifier per
+  // DIE, so `const volatile T` is modeled as two stacked CVQualifiedType nodes;
+  // walk the whole cv-sugar chain and OR the flags so both are reported (as a
+  // single clang `const volatile T` would).
+  unsigned quals = 0;
+  for (cpp_typesystem::Type *t = GetCppType(type); t;) {
+    auto *cv = llvm::dyn_cast<cpp_typesystem::CVQualifiedType>(t);
+    if (!cv)
+      break;
+    if (cv->IsConst())
+      quals |= 0x1;
+    if (cv->IsVolatile())
+      quals |= 0x4;
+    t = cv->GetUnderlyingType();
+  }
+  return quals;
 }
 
 std::optional<size_t>

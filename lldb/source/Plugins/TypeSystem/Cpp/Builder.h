@@ -80,8 +80,8 @@ public:
   /// Add a member function to \p record.
   void AddMemberFunction(RecordType &record, ConstString name,
                          CompilerType function_type, ConstString asm_label,
-                         bool is_static, bool is_const, bool is_virtual,
-                         RefQualifier ref_qualifier);
+                         bool is_static, bool is_const, bool is_volatile,
+                         bool is_virtual, RefQualifier ref_qualifier);
   /// Add a static data member to \p record. \p mangled_name is the linkage name
   /// used to resolve the member's runtime storage (empty for a constant-only
   /// member); \p const_value is its compile-time constant, if any.
