@@ -783,8 +783,19 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
     return 0;
   cpp_typesystem::Type *t = Desugar(GetCppType(type));
   // An array's children are its elements.
-  if (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(t))
-    return array->GetNumElements().value_or(0);
+  if (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(t)) {
+    if (std::optional<uint64_t> n = array->GetNumElements())
+      return *n;
+    // No static bound: this may be a variable-length array whose length is only
+    // known at runtime. Ask the symbol file to resolve it for this frame.
+    if (exe_ctx && array->GetDIEUID() != LLDB_INVALID_UID)
+      if (SymbolFile *sym_file = GetSymbolFile())
+        if (std::optional<SymbolFile::ArrayInfo> info =
+                sym_file->GetDynamicArrayInfoForUID(array->GetDIEUID(), exe_ctx))
+          if (!info->element_orders.empty())
+            return info->element_orders.back().value_or(0);
+    return 0;
+  }
   // A pointer's children are those of its pointee: expanding a pointer to an
   // aggregate shows the aggregate's members directly, while a pointer to a
   // scalar has a single child (the dereferenced value). `void *` has none.
