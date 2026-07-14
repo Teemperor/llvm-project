@@ -1071,7 +1071,8 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
     return {};
 
   // Types we generated (including cv-qualified variants) map back directly.
-  auto find = m_reverse.find(qt.getAsOpaquePtr());
+  auto direct = m_reverse.find(qt.getAsOpaquePtr());
+  auto find = direct;
   if (find == m_reverse.end())
     find = m_reverse.find(qt.getCanonicalType().getAsOpaquePtr());
   if (find != m_reverse.end()) {
@@ -1080,12 +1081,30 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
     // can only be filled in on demand through that owning TypeSystem's
     // SymbolFile, so wrap it there. Non-record types don't require completion
     // and are fine in result_ts.
+    CompilerType mapped;
     if (auto *rd = qt->getAsCXXRecordDecl()) {
       auto rec_it = m_records.find(rd);
       if (rec_it != m_records.end() && rec_it->second->ts)
-        return rec_it->second->ts->GetCompilerType(find->second);
+        mapped = rec_it->second->ts->GetCompilerType(find->second);
     }
-    return result_ts.GetCompilerType(find->second);
+    if (!mapped)
+      mapped = result_ts.GetCompilerType(find->second);
+
+    // The parser may have kept elaborated/spelling sugar around the type the
+    // user wrote (e.g. `::Struct`, `$V< ::Struct>`). It only reached us via the
+    // canonical fallback (its own opaque pointer wasn't in the map), which means
+    // the spelling differs from the canonical type. Preserve that spelling as
+    // pure display sugar, mirroring TypeSystemClang: the display name shows
+    // `::Struct` while the canonical type name stays `Struct` so name-based
+    // formatters still match.
+    if (mapped && direct == m_reverse.end() &&
+        qt.getAsOpaquePtr() != qt.getCanonicalType().getAsOpaquePtr()) {
+      std::string spelling = qt.getAsString(m_ast.getPrintingPolicy());
+      if (!spelling.empty())
+        return cpp_typesystem::Builder(result_ts).CreateElaboratedType(
+            ConstString(spelling), mapped);
+    }
+    return mapped;
   }
 
   // Preserve cv-qualifiers the parser applied but that we didn't generate

@@ -573,6 +573,24 @@ private:
   bool m_is_volatile = false;
 };
 
+/// Pure display sugar preserving how a type was spelled in the source (e.g.
+/// `::Struct`, `$V< ::Struct>`), like clang's elaborated-type / template-type
+/// sugar. It is fully transparent: the *display* name uses the stored spelling
+/// (so a user's `::Struct` shows as `::Struct`), but the canonical type name
+/// desugars past it (so formatters keyed on `Struct` still match), mirroring
+/// TypeSystemClang's RemoveWrappingTypes.
+class ElaboratedType : public llvm::RTTIExtends<ElaboratedType, SugarType> {
+public:
+  static char ID;
+
+  /// The source spelling to use for the display name (e.g. `::Struct`).
+  Identifier GetSpelling() const { return m_spelling; }
+  void SetSpelling(Identifier spelling) { m_spelling = spelling; }
+
+private:
+  Identifier m_spelling;
+};
+
 /// A single (name, value) constant of an enumeration.
 struct Enumerator {
   Identifier name;

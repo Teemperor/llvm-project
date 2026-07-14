@@ -66,6 +66,10 @@ public:
   /// Create a const- and/or volatile-qualified version of \p underlying_type.
   CompilerType CreateCVQualifiedType(CompilerType underlying_type,
                                      bool is_const, bool is_volatile);
+  /// Create display sugar preserving the source \p spelling (e.g. `::Struct`)
+  /// over \p underlying_type. Transparent apart from the display name.
+  CompilerType CreateElaboratedType(ConstString spelling,
+                                     CompilerType underlying_type);
   /// Create an enumeration type. Enumerators are added afterwards via
   /// AddEnumerator.
   CompilerType CreateEnumType(ConstString name,

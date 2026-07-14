@@ -24,6 +24,12 @@ public:
   /// The enclosing namespace, or null if this is a top-level namespace.
   const Namespace *GetParent() const { return m_parent; }
   bool IsInline() const { return m_is_inline; }
+  /// True for an unnamed namespace (`namespace { ... }`). Like clang, its
+  /// `(anonymous namespace)` scope is elided from a type's display name, so a
+  /// type declared directly in one prints unqualified (e.g. `Bar`, not
+  /// `::Bar`). DWARF gives such a namespace no DW_AT_name, so it is interned
+  /// with an empty name.
+  bool IsAnonymous() const { return m_name.GetName().empty(); }
 
 private:
   // Only Context creates and owns Namespaces (see Context::GetNamespace).
