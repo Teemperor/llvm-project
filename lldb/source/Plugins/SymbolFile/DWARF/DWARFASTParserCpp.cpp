@@ -148,6 +148,12 @@ static lldb::Format GetFormatFromDWARF(uint64_t dw_ate) {
 TypeSP DWARFASTParserCpp::ParseBaseType(const DWARFDIE &die) {
   SymbolFileDWARF *dwarf = die.GetDWARF();
   ConstString name(die.GetName());
+  // Mirror DWARFASTParserClang, which maps the DWARF `_Float16` base type onto
+  // clang's half type, whose canonical spelling is `__fp16`. This keeps both
+  // the type name and reconstructed template-argument display names consistent
+  // with TypeSystemClang.
+  if (name.GetStringRef() == "_Float16")
+    name = ConstString("__fp16");
   std::optional<uint64_t> byte_size =
       die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size);
   uint64_t dw_ate = die.GetAttributeValueAsUnsigned(DW_AT_encoding, 0);
