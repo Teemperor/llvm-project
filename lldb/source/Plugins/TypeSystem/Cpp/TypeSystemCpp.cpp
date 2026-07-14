@@ -55,13 +55,15 @@ static cpp_typesystem::Type *Desugar(cpp_typesystem::Type *t) {
 }
 
 // Append the namespace qualification for `ns` (outermost first), skipping
-// inline namespaces so that e.g. `std::__1` prints as `std::`.
+// inline namespaces so that e.g. `std::__1` prints as `std::`, and anonymous
+// namespaces so that a type in one prints unqualified (e.g. `Bar`, matching
+// clang, which elides its `(anonymous namespace)` scope).
 static void AppendNamespacePrefix(const cpp_typesystem::Namespace *ns,
                                   std::string &out) {
   if (!ns)
     return;
   AppendNamespacePrefix(ns->GetParent(), out);
-  if (!ns->IsInline()) {
+  if (!ns->IsInline() && !ns->IsAnonymous()) {
     out += ns->GetName().GetName().str();
     out += "::";
   }
@@ -369,6 +371,10 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
                                             hide_default_args)
                          : "");
   }
+  // Elaborated display sugar: show the source spelling (e.g. `::Struct`) rather
+  // than the wrapped type's own name.
+  if (auto *el = llvm::dyn_cast<ElaboratedType>(t))
+    return el->GetSpelling().GetName().str();
 
   // Named leaf type (record/typedef/enum/builtin). Builtins carry no
   // unqualified name; fall back to their stored name.
@@ -837,6 +843,13 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
   if (!type)
     return ConstString();
   cpp_typesystem::Type *t = GetCppType(type);
+  // Strip elaborated display sugar (e.g. the `::` of `::Struct`, or template
+  // spelling sugar) from the canonical name: like clang's RemoveWrappingTypes,
+  // the source spelling only affects the *display* name, so a formatter keyed on
+  // `Struct` still matches a `::Struct`-spelled value. Typedefs are kept (they
+  // are meaningful, distinct names).
+  while (auto *el = llvm::dyn_cast<cpp_typesystem::ElaboratedType>(t))
+    t = el->GetUnderlyingType();
   // A class-template instantiation's display name is reconstructed from its
   // modeled template arguments (so an enum-typed non-type argument prints as
   // `EnumType::Member` rather than the DWARF producer's `(EnumType)0`). Those

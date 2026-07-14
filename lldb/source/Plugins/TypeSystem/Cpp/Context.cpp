@@ -127,6 +127,17 @@ CVQualifiedType *Context::CreateCVQualifiedType(TypeRef underlying_type,
   return Track(std::move(type));
 }
 
+ElaboratedType *Context::CreateElaboratedType(llvm::StringRef spelling,
+                                              TypeRef underlying_type) {
+  assert(underlying_type && "elaborated sugar must wrap a type");
+  auto type = std::make_unique<ElaboratedType>();
+  type->SetSpelling(GetIdentifier(spelling));
+  type->SetUnderlyingType(underlying_type);
+  // Pure display sugar: same storage as the type it wraps.
+  type->SetByteSize(underlying_type.Get()->GetByteSize());
+  return Track(std::move(type));
+}
+
 EnumType *Context::CreateEnumType(llvm::StringRef name,
                                   std::optional<uint64_t> byte_size,
                                   TypeRef underlying_type, bool is_scoped) {

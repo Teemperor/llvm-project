@@ -454,6 +454,13 @@ void ASTResultSynthesizer::CommitPersistentDecls() {
 
   lldb::TypeSystemClangSP scratch_ts_sp = ScratchTypeSystemClang::GetForTarget(
       m_target, m_ast_context->getLangOpts());
+  // With TypeSystemCpp enabled the target has no scratch TypeSystemClang to
+  // deport the persistent decls into (its persistent state is owned by a
+  // ScratchTypeSystemCpp). Committing top-level decls into a Clang scratch AST
+  // isn't supported on that path, so bail out rather than dereference a null
+  // scratch typesystem.
+  if (!scratch_ts_sp)
+    return;
 
   for (clang::NamedDecl *decl : m_decls) {
     StringRef name = decl->getName();

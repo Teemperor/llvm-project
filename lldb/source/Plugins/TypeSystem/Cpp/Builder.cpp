@@ -75,6 +75,12 @@ CompilerType Builder::CreateCVQualifiedType(CompilerType underlying_type,
       ToTypeRef(underlying_type), is_const, is_volatile));
 }
 
+CompilerType Builder::CreateElaboratedType(ConstString spelling,
+                                           CompilerType underlying_type) {
+  return m_ts.GetCompilerType(m_ts.m_context.CreateElaboratedType(
+      spelling.GetStringRef(), ToTypeRef(underlying_type)));
+}
+
 CompilerType Builder::CreateEnumType(ConstString name,
                                      std::optional<uint64_t> byte_size,
                                      CompilerType underlying_type,

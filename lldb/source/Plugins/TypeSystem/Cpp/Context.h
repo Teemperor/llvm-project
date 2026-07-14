@@ -83,6 +83,12 @@ public:
   CVQualifiedType *CreateCVQualifiedType(TypeRef underlying_type, bool is_const,
                                          bool is_volatile);
 
+  /// Create display sugar over \p underlying_type that preserves the source
+  /// \p spelling (e.g. `::Struct`) for the display name while remaining
+  /// transparent for the canonical type name.
+  ElaboratedType *CreateElaboratedType(llvm::StringRef spelling,
+                                       TypeRef underlying_type);
+
   /// Create an enumeration type. \p underlying_type is the integer type backing
   /// the enum (may be empty when unknown). Enumerators are added afterwards via
   /// AddEnumerator during completion.
