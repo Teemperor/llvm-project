@@ -40,6 +40,7 @@
 #include "clang/AST/DeclarationName.h"
 #include "clang/Basic/OperatorKinds.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/Twine.h"
 
 using namespace lldb_private;
@@ -346,6 +347,14 @@ bool CppExpressionDeclMap::LookupFunctions(
 
   clang::ASTContext &ast = *m_ast_context;
   bool added = false;
+  // FindFunctions can return the same underlying function more than once (e.g.
+  // matched both by base and full name, or once per module), and a name can
+  // resolve to several distinct functions that share an identical signature
+  // (e.g. a file-local `static` function defined in several translation units).
+  // Both cases would synthesize identical-signature FunctionDecls, which clang
+  // then reports as an ambiguous call. Genuine overloads differ in signature
+  // and must remain distinct, so dedup by the function's type signature.
+  llvm::StringSet<> seen_signatures;
   for (const SymbolContext &sc : sc_list) {
     Function *function = sc.function;
     if (!function)
@@ -355,6 +364,10 @@ bool CppExpressionDeclMap::LookupFunctions(
       continue;
     CompilerType func_cpp_type = func_type->GetFullCompilerType();
     if (!func_cpp_type || !func_cpp_type.GetTypeSystem<TypeSystemCpp>())
+      continue;
+
+    if (!seen_signatures.insert(func_cpp_type.GetTypeName().GetStringRef())
+             .second)
       continue;
 
     // Build the asm label the JIT resolves the call through.
