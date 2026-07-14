@@ -493,6 +493,17 @@ TypeSP DWARFASTParserCpp::ParseEnum(const DWARFDIE &die) {
       underlying_type = underlying->GetForwardCompilerType();
   }
 
+  // An opaque/forward-declared enum carries neither a DW_AT_byte_size nor an
+  // underlying type. C enums default to `int`, so fall back to that (mirroring
+  // TypeSystemClang) -- otherwise a pointer to such an enum has an unknown-size
+  // pointee and can't be dereferenced (e.g. to report "<parent is NULL>").
+  if (!byte_size) {
+    if (underlying_type)
+      byte_size = llvm::expectedToOptional(underlying_type.GetByteSize(nullptr));
+    if (!byte_size)
+      byte_size = 4;
+  }
+
   CompilerType enum_type;
   {
     cpp_typesystem::Builder ts(m_ts);
