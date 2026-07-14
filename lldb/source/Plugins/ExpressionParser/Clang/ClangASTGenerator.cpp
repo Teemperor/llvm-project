@@ -10,6 +10,7 @@
 
 #include "Plugins/TypeSystem/Cpp/Builder.h"
 #include "Plugins/TypeSystem/Cpp/Context.h"
+#include "Plugins/TypeSystem/Cpp/Namespace.h"
 #include "Plugins/TypeSystem/Cpp/Type.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
@@ -213,12 +214,30 @@ void ClangASTGenerator::RegisterNamespace(const ct::Namespace *cpp_ns,
 
 clang::DeclContext *
 ClangASTGenerator::GetDeclContextForNamespace(const ct::Namespace *cpp_ns) {
-  if (cpp_ns) {
-    auto it = m_namespaces.find(cpp_ns);
-    if (it != m_namespaces.end())
-      return clang::Decl::castToDeclContext(it->second);
-  }
-  return m_ast.getTranslationUnitDecl();
+  if (!cpp_ns)
+    return m_ast.getTranslationUnitDecl();
+
+  auto it = m_namespaces.find(cpp_ns);
+  if (it != m_namespaces.end())
+    return clang::Decl::castToDeclContext(it->second);
+
+  // No clang::NamespaceDecl exists yet for this cpp namespace. Materialize the
+  // whole enclosing chain (parent-first) so that a type declared in `A::B` is
+  // nested inside real NamespaceDecls rather than dumped into the translation
+  // unit. Nesting matters for name lookup: it keeps a namespace-scoped type
+  // (e.g. `ns::Foo`) out of the global scope, so a global-qualified lookup
+  // (`::Foo`) does not spuriously find it, and clang's own unqualified lookup
+  // walks the enclosing namespaces itself.
+  clang::DeclContext *parent = GetDeclContextForNamespace(cpp_ns->GetParent());
+  clang::IdentifierInfo *ident = nullptr;
+  if (!cpp_ns->IsAnonymous())
+    ident = &m_ast.Idents.get(cpp_ns->GetName().GetName());
+  auto *nsd = clang::NamespaceDecl::Create(
+      m_ast, parent, cpp_ns->IsInline(), clang::SourceLocation(),
+      clang::SourceLocation(), ident, /*PrevDecl=*/nullptr, /*Nested=*/false);
+  parent->addDecl(nsd);
+  RegisterNamespace(cpp_ns, nsd);
+  return clang::Decl::castToDeclContext(nsd);
 }
 
 clang::QualType ClangASTGenerator::Generate(const CompilerType &cpp_type) {
