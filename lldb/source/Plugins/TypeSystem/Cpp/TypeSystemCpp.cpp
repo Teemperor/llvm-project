@@ -32,11 +32,13 @@
 #include "lldb/Utility/Stream.h"
 #include "lldb/ValueObject/ValueObject.h"
 
+#include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/MathExtras.h"
 
 #include <algorithm>
+#include <cstdio>
 
 using namespace lldb_private;
 using namespace lldb;
@@ -124,14 +126,111 @@ static std::string BuildFunctionName(cpp_typesystem::FunctionType *fn,
   return ret + " " + decl.str() + "(" + params + ")";
 }
 
+// Render a character constant as a C++ character literal (e.g. `'v'`),
+// escaping non-printable characters like clang's CharacterLiteral printer.
+static std::string BuildCharLiteral(unsigned char c) {
+  std::string out = "'";
+  switch (c) {
+  case '\\':
+    out += "\\\\";
+    break;
+  case '\'':
+    out += "\\'";
+    break;
+  case '\a':
+    out += "\\a";
+    break;
+  case '\b':
+    out += "\\b";
+    break;
+  case '\f':
+    out += "\\f";
+    break;
+  case '\n':
+    out += "\\n";
+    break;
+  case '\r':
+    out += "\\r";
+    break;
+  case '\t':
+    out += "\\t";
+    break;
+  case '\v':
+    out += "\\v";
+    break;
+  default:
+    if (c >= 0x20 && c <= 0x7e) {
+      out += static_cast<char>(c);
+    } else {
+      // Print as a hex escape, matching clang's `\xNN` form.
+      out += llvm::formatv("\\x{0:x-}", c).str();
+    }
+    break;
+  }
+  out += "'";
+  return out;
+}
+
+// Render a floating-point non-type template argument from its raw value bits,
+// matching clang's scientific `%e` formatting (e.g. `2.000000e+00`). The
+// argument type's byte size selects the IEEE semantics.
+static std::string
+BuildFloatArgName(const cpp_typesystem::TemplateArgument &arg,
+                  cpp_typesystem::Type *value_type) {
+  std::optional<uint64_t> byte_size = value_type->GetByteSize();
+  // Decode the raw bits into a double, then format with C's `%e`.
+  double d = 0.0;
+  if (byte_size == 8) {
+    d = llvm::bit_cast<double>(arg.integral_value);
+  } else if (byte_size == 4) {
+    d = llvm::bit_cast<float>(static_cast<uint32_t>(arg.integral_value));
+  } else if (byte_size == 2) {
+    // Half (__fp16/_Float16) and bfloat (__bf16) share a 16-bit width but use
+    // different semantics; distinguish by the type's spelling.
+    const llvm::fltSemantics &sem =
+        value_type->GetName().GetName().contains("bf16")
+            ? llvm::APFloat::BFloat()
+            : llvm::APFloat::IEEEhalf();
+    llvm::APFloat f(sem, llvm::APInt(16, arg.integral_value));
+    d = f.convertToDouble();
+  } else {
+    return std::to_string(arg.integral_value);
+  }
+  char buf[64];
+  ::snprintf(buf, sizeof(buf), "%e", d);
+  return buf;
+}
+
 // Render a single template argument for the display name.
 static std::string
 BuildTemplateArgName(const cpp_typesystem::TemplateArgument &arg) {
   if (arg.kind == lldb::eTemplateArgumentKindType)
     return arg.type.Get() ? BuildDisplayName(arg.type.Get())
                           : std::string("void");
-  // Integral (non-type) argument: print its value, honoring signedness.
+  // Integral (non-type) argument: render according to the argument's type,
+  // mirroring clang's TemplateArgument::print.
   cpp_typesystem::Type *value_type = arg.type.Get();
+  if (value_type) {
+    // A `char`-family argument prints as a character literal ('v'), a `bool`
+    // argument prints as true/false, and a floating-point argument prints in
+    // scientific form.
+    switch (value_type->GetFormat()) {
+    case lldb::eFormatChar:
+      return BuildCharLiteral(static_cast<unsigned char>(arg.integral_value));
+    case lldb::eFormatBoolean:
+      return arg.integral_value ? "true" : "false";
+    default:
+      break;
+    }
+    if (value_type->GetEncoding() == lldb::eEncodingIEEE754)
+      return BuildFloatArgName(arg, value_type);
+    // A pointer/reference-typed argument (e.g. `&temp1.member`) has no integral
+    // value to print; clang falls back to printing the argument's type name.
+    if (llvm::isa<cpp_typesystem::PointerType>(value_type) ||
+        llvm::isa<cpp_typesystem::ReferenceType>(value_type))
+      return BuildDisplayName(value_type);
+  }
+  // Other integral arguments: print the numeric value, honoring signedness.
   bool is_signed =
       !value_type || value_type->GetEncoding() == lldb::eEncodingSint;
   if (is_signed)
@@ -1827,6 +1926,12 @@ TypeSystemCpp::GetIntegralTemplateArgument(opaque_compiler_type_t type,
       record->GetTemplateArgumentAtIndex(idx);
   if (!arg || arg->kind != eTemplateArgumentKindIntegral)
     return std::nullopt;
+  // A pointer/reference-typed argument (e.g. `&temp1.member`) has no integral
+  // value; report it as absent rather than a bogus scalar.
+  if (cpp_typesystem::Type *arg_type = arg->type.Get())
+    if (llvm::isa<cpp_typesystem::PointerType>(arg_type) ||
+        llvm::isa<cpp_typesystem::ReferenceType>(arg_type))
+      return std::nullopt;
 
   // Reconstruct the value with the argument type's signedness.
   Scalar value;
