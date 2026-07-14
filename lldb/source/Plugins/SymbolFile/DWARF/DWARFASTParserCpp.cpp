@@ -371,6 +371,11 @@ TypeSP DWARFASTParserCpp::ParseArrayType(const DWARFDIE &die) {
       // No bound information; model it as an array of unknown length.
       array_type = ts.CreateArrayType(array_type, std::nullopt);
     }
+    // Remember the backing DIE on the outermost array so a runtime
+    // (variable-length) bound can be re-resolved later (see GetNumChildren).
+    if (auto *arr = llvm::dyn_cast_or_null<cpp_typesystem::ArrayType>(
+            TypeSystemCpp::GetCppType(array_type.GetOpaqueQualType())))
+      arr->SetDIEUID(die.GetID());
   }
 
   std::optional<uint64_t> byte_size =

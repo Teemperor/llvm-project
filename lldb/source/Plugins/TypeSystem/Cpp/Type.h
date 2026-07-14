@@ -17,6 +17,8 @@
 #include "llvm/Support/ExtensibleRTTI.h"
 
 #include "lldb/lldb-enumerations.h"
+#include "lldb/lldb-defines.h"
+#include "lldb/lldb-types.h"
 
 #include "Identifier.h"
 
@@ -330,6 +332,12 @@ public:
     m_num_elements = num_elements;
   }
 
+  /// The UID of the DWARF DIE that produced this array, or LLDB_INVALID_UID.
+  /// Lets the symbol file re-resolve a runtime (variable-length) bound for an
+  /// otherwise-unbounded array.
+  lldb::user_id_t GetDIEUID() const { return m_die_uid; }
+  void SetDIEUID(lldb::user_id_t uid) { m_die_uid = uid; }
+
   // An array is an aggregate whose children are its elements.
   bool IsAggregate() const override { return true; }
   lldb::TypeClass GetTypeClass() const override {
@@ -342,6 +350,7 @@ public:
 private:
   TypeRef m_element_type;
   std::optional<uint64_t> m_num_elements;
+  lldb::user_id_t m_die_uid = LLDB_INVALID_UID;
 };
 
 /// A simple pointer type.
