@@ -23,6 +23,7 @@
 namespace clang {
 class ASTContext;
 class DeclContext;
+class DeclarationName;
 class NamespaceDecl;
 class RecordDecl;
 class CXXRecordDecl;
@@ -105,6 +106,13 @@ public:
                                         const CompilerType &function_cpp_type,
                                         llvm::StringRef asm_label);
 
+  /// As above, but names the function with an explicit clang::DeclarationName
+  /// (e.g. a CXXOperatorName for a free `operator==`) so operator syntax /
+  /// overload resolution binds to it. Returns null on failure.
+  clang::FunctionDecl *GenerateFunction(clang::DeclarationName name,
+                                        const CompilerType &function_cpp_type,
+                                        llvm::StringRef asm_label);
+
   /// True while this generator is actively synthesizing clang decls. Adding a
   /// named decl to the (external-visible) translation unit makes clang
   /// reconcile that name against the external source; those reentrant lookups
@@ -159,6 +167,13 @@ private:
   /// Create ParmVarDecls for \p func from the parameter types of \p function_qt
   /// (a FunctionProtoType).
   void BuildParams(clang::FunctionDecl *func, clang::QualType function_qt);
+
+  /// Shared implementation for the GenerateFunction overloads: build a
+  /// clang::FunctionDecl in the translation unit with the given name, signature
+  /// and (optional) asm label.
+  clang::FunctionDecl *BuildFunction(clang::DeclarationName name,
+                                     clang::QualType function_qt,
+                                     llvm::StringRef asm_label);
 
   clang::ASTContext &m_ast;
 

@@ -22,6 +22,7 @@
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclarationName.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/Basic/Builtins.h"
@@ -30,16 +31,73 @@
 #include "clang/Basic/FileManager.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/LangOptions.h"
+#include "clang/Basic/OperatorKinds.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Basic/Specifiers.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/TargetOptions.h"
 #include "clang/Frontend/ASTConsumers.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSwitch.h"
 
 using namespace lldb_private;
 using namespace lldb;
 namespace ct = cpp_typesystem;
+
+/// Map the spelling after `operator` (e.g. `+`, `==`, `[]`, `new`) to the
+/// matching clang::OverloadedOperatorKind. Returns OO_None if \p spelling is
+/// not an overloadable operator token (e.g. a conversion operator like
+/// `operator int`, or a plain method that merely starts with "operator"). The
+/// token strings mirror clang/Basic/OperatorKinds.def.
+static clang::OverloadedOperatorKind
+GetOverloadedOperatorKind(llvm::StringRef spelling) {
+  return llvm::StringSwitch<clang::OverloadedOperatorKind>(spelling)
+      .Case("new", clang::OO_New)
+      .Case("delete", clang::OO_Delete)
+      .Case("new[]", clang::OO_Array_New)
+      .Case("delete[]", clang::OO_Array_Delete)
+      .Case("+", clang::OO_Plus)
+      .Case("-", clang::OO_Minus)
+      .Case("*", clang::OO_Star)
+      .Case("/", clang::OO_Slash)
+      .Case("%", clang::OO_Percent)
+      .Case("^", clang::OO_Caret)
+      .Case("&", clang::OO_Amp)
+      .Case("|", clang::OO_Pipe)
+      .Case("~", clang::OO_Tilde)
+      .Case("!", clang::OO_Exclaim)
+      .Case("=", clang::OO_Equal)
+      .Case("<", clang::OO_Less)
+      .Case(">", clang::OO_Greater)
+      .Case("+=", clang::OO_PlusEqual)
+      .Case("-=", clang::OO_MinusEqual)
+      .Case("*=", clang::OO_StarEqual)
+      .Case("/=", clang::OO_SlashEqual)
+      .Case("%=", clang::OO_PercentEqual)
+      .Case("^=", clang::OO_CaretEqual)
+      .Case("&=", clang::OO_AmpEqual)
+      .Case("|=", clang::OO_PipeEqual)
+      .Case("<<", clang::OO_LessLess)
+      .Case(">>", clang::OO_GreaterGreater)
+      .Case("<<=", clang::OO_LessLessEqual)
+      .Case(">>=", clang::OO_GreaterGreaterEqual)
+      .Case("==", clang::OO_EqualEqual)
+      .Case("!=", clang::OO_ExclaimEqual)
+      .Case("<=", clang::OO_LessEqual)
+      .Case(">=", clang::OO_GreaterEqual)
+      .Case("<=>", clang::OO_Spaceship)
+      .Case("&&", clang::OO_AmpAmp)
+      .Case("||", clang::OO_PipePipe)
+      .Case("++", clang::OO_PlusPlus)
+      .Case("--", clang::OO_MinusMinus)
+      .Case(",", clang::OO_Comma)
+      .Case("->*", clang::OO_ArrowStar)
+      .Case("->", clang::OO_Arrow)
+      .Case("()", clang::OO_Call)
+      .Case("[]", clang::OO_Subscript)
+      .Case("co_await", clang::OO_Coawait)
+      .Default(clang::OO_None);
+}
 
 /// Records a (clang type -> cpp type) mapping so the type can later be mapped
 /// back onto a TypeSystemCpp type (e.g. an expression result type). The key is
@@ -641,11 +699,62 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
       method = dtor;
       break;
     }
-    case ct::MemberFunctionKind::Method:
-      method =
-          clang::CXXMethodDecl::CreateDeserialized(ast, clang::GlobalDeclID());
-      method->setDeclName(&ast.Idents.get(mf->name.GetName()));
+    case ct::MemberFunctionKind::Method: {
+      // An overloaded operator (`operator==`, `operator->`, `operator[]`, ...)
+      // or a conversion operator (`operator int`) must be built with the proper
+      // C++ declaration name (and, for a conversion, as a CXXConversionDecl),
+      // otherwise clang won't resolve operator syntax (`a == b`, `*a`, `a->m`,
+      // `a[i]`) or a cast (`static_cast<int>(a)`) to it -- a plain identifier
+      // decl name would only match a call spelled with the literal `operator...`
+      // name. A method whose name merely starts with "operator" but isn't one
+      // of these (e.g. `operatorint`) stays a plain identifier.
+      llvm::StringRef mf_name = mf->name.GetName();
+      clang::OverloadedOperatorKind oo = clang::OO_None;
+      bool is_conversion = false;
+      {
+        llvm::StringRef rest = mf_name;
+        if (rest.consume_front("operator")) {
+          // clang spells single-token operators without a space
+          // (`operator==`), but `new`/`delete` and conversion operators with
+          // one (`operator new`, `operator int`).
+          llvm::StringRef token = rest.ltrim();
+          bool had_space = rest.size() != token.size();
+          oo = GetOverloadedOperatorKind(token);
+          // A word-spelled operator (`operator new`, `operator co_await`) is
+          // only an operator when spelled with a space; without one it is an
+          // ordinary method whose name happens to start with "operator" (e.g.
+          // `operatornew`).
+          bool token_is_word = !token.empty() && llvm::isAlpha(token.front());
+          if (oo != clang::OO_None && token_is_word && !had_space)
+            oo = clang::OO_None;
+          // A conversion operator: the name after `operator` is a type spelling
+          // (`int`, `long`, ...) rather than an operator token.
+          if (oo == clang::OO_None && had_space && !token.empty())
+            is_conversion = true;
+        }
+      }
+
+      if (is_conversion) {
+        auto *conv = clang::CXXConversionDecl::CreateDeserialized(
+            ast, clang::GlobalDeclID());
+        const auto *proto = method_qt->getAs<clang::FunctionProtoType>();
+        clang::QualType conv_ty =
+            proto ? proto->getReturnType() : clang::QualType();
+        conv->setDeclName(ast.DeclarationNames.getCXXConversionFunctionName(
+            ast.getCanonicalType(conv_ty)));
+        conv->setExplicitSpecifier(clang::ExplicitSpecifier(
+            nullptr, clang::ExplicitSpecKind::ResolvedFalse));
+        method = conv;
+      } else {
+        method =
+            clang::CXXMethodDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+        if (oo != clang::OO_None)
+          method->setDeclName(ast.DeclarationNames.getCXXOperatorName(oo));
+        else
+          method->setDeclName(&ast.Idents.get(mf->name.GetName()));
+      }
       break;
+    }
     }
     method->setDeclContext(decl);
     method->setType(method_qt);
@@ -738,9 +847,29 @@ ClangASTGenerator::GenerateFunction(llvm::StringRef name,
   if (function_qt.isNull() || !function_qt->getAs<clang::FunctionProtoType>())
     return nullptr;
   clang::ASTContext &ast = m_ast;
+  return BuildFunction(clang::DeclarationName(&ast.Idents.get(name)),
+                       function_qt, asm_label);
+}
+
+clang::FunctionDecl *
+ClangASTGenerator::GenerateFunction(clang::DeclarationName name,
+                                    const CompilerType &function_cpp_type,
+                                    llvm::StringRef asm_label) {
+  GenerationGuard guard(*this);
+  clang::QualType function_qt = Generate(function_cpp_type);
+  if (function_qt.isNull() || !function_qt->getAs<clang::FunctionProtoType>())
+    return nullptr;
+  return BuildFunction(name, function_qt, asm_label);
+}
+
+clang::FunctionDecl *
+ClangASTGenerator::BuildFunction(clang::DeclarationName name,
+                                 clang::QualType function_qt,
+                                 llvm::StringRef asm_label) {
+  clang::ASTContext &ast = m_ast;
   auto *fd = clang::FunctionDecl::CreateDeserialized(ast, clang::GlobalDeclID());
   fd->setDeclContext(ast.getTranslationUnitDecl());
-  fd->setDeclName(&ast.Idents.get(name));
+  fd->setDeclName(name);
   fd->setType(function_qt);
   fd->setStorageClass(clang::SC_Extern);
   fd->setConstexprKind(clang::ConstexprSpecKind::Unspecified);
