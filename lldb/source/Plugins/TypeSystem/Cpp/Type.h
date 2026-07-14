@@ -235,6 +235,13 @@ public:
     return nullptr;
   }
 
+  /// True if this record is a class-template instantiation, regardless of how
+  /// many template arguments it has. This is distinct from
+  /// `GetNumTemplateArguments() > 0`: a specialization of a variadic template
+  /// over an *empty* pack (e.g. `TypePack<>`) has zero arguments yet is still a
+  /// template instantiation and must print an (empty) `<>` argument list.
+  bool IsTemplateInstantiation() const { return m_is_template; }
+
   /// Template arguments, if this record is a class-template instantiation.
   uint32_t GetNumTemplateArguments() const { return m_template_args.size(); }
   const TemplateArgument *GetTemplateArgumentAtIndex(uint32_t idx) const {
@@ -290,6 +297,9 @@ private:
   // and Context is only reachable through TypeSystemCpp's locked Builder.
   friend class Context;
   void SetIsComplete(bool complete) { m_complete = complete; }
+  void SetIsTemplateInstantiation(bool is_template) {
+    m_is_template = is_template;
+  }
   void SetMemberFunctionsParsed() { m_member_functions_parsed = true; }
   void AddField(Identifier name, TypeRef type, uint64_t byte_offset,
                 uint32_t bitfield_bit_size = 0,
@@ -317,6 +327,7 @@ private:
 
   bool m_complete = false;
   bool m_is_union = false;
+  bool m_is_template = false;
   bool m_member_functions_parsed = false;
   std::vector<Field> m_fields;
   std::vector<TemplateArgument> m_template_args;

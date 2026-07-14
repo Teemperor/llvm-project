@@ -846,6 +846,14 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   };
   std::vector<MemberInfo> members;
 
+  // True once we see any template-parameter DIE (type/value parameter or a
+  // GNU parameter pack), i.e. this record is a class-template instantiation.
+  // An instantiation over an *empty* pack (e.g. `TypePack<>`) emits an empty
+  // DW_TAG_GNU_template_parameter_pack and no argument DIEs, so it has zero
+  // modeled arguments yet must still be recognised as a template so it prints
+  // an (empty) `<>` argument list.
+  bool is_template = false;
+
   // Add the template argument described by a DW_TAG_template_{type,value}_-
   // parameter DIE. Shared so it can also be applied to the parameters nested
   // inside a DW_TAG_GNU_template_parameter_pack (a variadic `Ss...`), which the
@@ -922,11 +930,14 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
            data_bit_offset.value_or(UINT64_MAX)});
     } else if (tag == DW_TAG_template_type_parameter ||
                tag == DW_TAG_template_value_parameter) {
+      is_template = true;
       add_template_param(child);
     } else if (tag == DW_TAG_GNU_template_parameter_pack) {
       // A variadic template parameter pack (`Ss...`): each expanded argument is
       // a child DW_TAG_template_{type,value}_parameter. Add them individually so
-      // they appear in the reconstructed name (e.g. "FooPack<char, int>").
+      // they appear in the reconstructed name (e.g. "FooPack<char, int>"). The
+      // pack itself (even when empty) marks this as a template instantiation.
+      is_template = true;
       for (DWARFDIE pack_param : child.children())
         if (pack_param.Tag() == DW_TAG_template_type_parameter ||
             pack_param.Tag() == DW_TAG_template_value_parameter)
@@ -980,6 +991,10 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   // Integrate the resolved base classes, members and template arguments into
   // the record, in declaration order, under a single lock.
   cpp_typesystem::Builder ts(m_ts);
+
+  // Record whether this is a class-template instantiation (see `is_template`).
+  if (is_template)
+    ts.SetRecordTemplateInstantiation(*record);
 
   // Compilers omit unnamed bitfields (padding) from DWARF, but LLDB
   // reconstructs them so the gaps between named bitfields are visible when

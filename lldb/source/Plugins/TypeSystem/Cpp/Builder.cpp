@@ -138,6 +138,11 @@ void Builder::SetRecordComplete(cpp_typesystem::RecordType &record) {
   m_ts.m_context.SetComplete(record);
 }
 
+void Builder::SetRecordTemplateInstantiation(
+    cpp_typesystem::RecordType &record) {
+  m_ts.m_context.SetTemplateInstantiation(record);
+}
+
 void Builder::SetRecordMemberFunctionsParsed(
     cpp_typesystem::RecordType &record) {
   m_ts.m_context.SetMemberFunctionsParsed(record);
