@@ -845,6 +845,27 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     std::optional<uint64_t> const_value;
   };
   std::vector<MemberInfo> members;
+
+  // Add the template argument described by a DW_TAG_template_{type,value}_-
+  // parameter DIE. Shared so it can also be applied to the parameters nested
+  // inside a DW_TAG_GNU_template_parameter_pack (a variadic `Ss...`), which the
+  // compiler emits as a wrapper DIE around one child per expanded argument.
+  auto add_template_param = [&members](DWARFDIE param) {
+    if (param.Tag() == DW_TAG_template_type_parameter) {
+      members.push_back({MemberInfo::Kind::TemplateType, param.GetName(),
+                         /*byte_offset=*/0,
+                         /*value=*/0, param,
+                         param.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+    } else {
+      members.push_back(
+          {MemberInfo::Kind::TemplateValue, param.GetName(), /*byte_offset=*/0,
+           param.GetAttributeValueAsUnsigned(DW_AT_const_value, 0), param,
+           param.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+    }
+    members.back().is_default =
+        param.GetAttributeValueAsUnsigned(DW_AT_default_value, 0) != 0;
+  };
+
   for (DWARFDIE child : die.children()) {
     const dw_tag_t tag = child.Tag();
     if (tag == DW_TAG_inheritance) {
@@ -899,20 +920,17 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
            static_cast<uint32_t>(
                child.GetAttributeValueAsUnsigned(DW_AT_bit_size, 0)),
            data_bit_offset.value_or(UINT64_MAX)});
-    } else if (tag == DW_TAG_template_type_parameter) {
-      members.push_back({MemberInfo::Kind::TemplateType, child.GetName(),
-                         /*byte_offset=*/0,
-                         /*value=*/0, child,
-                         child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
-      members.back().is_default =
-          child.GetAttributeValueAsUnsigned(DW_AT_default_value, 0) != 0;
-    } else if (tag == DW_TAG_template_value_parameter) {
-      members.push_back(
-          {MemberInfo::Kind::TemplateValue, child.GetName(), /*byte_offset=*/0,
-           child.GetAttributeValueAsUnsigned(DW_AT_const_value, 0), child,
-           child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
-      members.back().is_default =
-          child.GetAttributeValueAsUnsigned(DW_AT_default_value, 0) != 0;
+    } else if (tag == DW_TAG_template_type_parameter ||
+               tag == DW_TAG_template_value_parameter) {
+      add_template_param(child);
+    } else if (tag == DW_TAG_GNU_template_parameter_pack) {
+      // A variadic template parameter pack (`Ss...`): each expanded argument is
+      // a child DW_TAG_template_{type,value}_parameter. Add them individually so
+      // they appear in the reconstructed name (e.g. "FooPack<char, int>").
+      for (DWARFDIE pack_param : child.children())
+        if (pack_param.Tag() == DW_TAG_template_type_parameter ||
+            pack_param.Tag() == DW_TAG_template_value_parameter)
+          add_template_param(pack_param);
     } else if (tag == DW_TAG_typedef || tag == DW_TAG_structure_type ||
                tag == DW_TAG_class_type || tag == DW_TAG_union_type ||
                tag == DW_TAG_enumeration_type) {

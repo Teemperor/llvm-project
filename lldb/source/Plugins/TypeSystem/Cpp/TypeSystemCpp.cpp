@@ -65,6 +65,43 @@ static void AppendNamespacePrefix(const cpp_typesystem::Namespace *ns,
   }
 }
 
+// Count the enclosing namespaces of `ns` (including inline ones), i.e. how many
+// leading scope components of a qualified name are namespaces rather than
+// enclosing classes.
+static unsigned CountNamespaceDepth(const cpp_typesystem::Namespace *ns) {
+  unsigned depth = 0;
+  for (; ns; ns = ns->GetParent())
+    ++depth;
+  return depth;
+}
+
+// A type nested inside a class (e.g. `Foo<int>::Nested<char>`) is only modeled
+// with its enclosing *namespaces*; the enclosing class scopes are not. Recover
+// them from the type's fully-qualified DWARF spelling: parse it into scope
+// components, drop the leading ones that correspond to the modeled namespaces,
+// and append whatever class scopes remain (e.g. `Foo<int>::`).
+static void AppendClassScopePrefix(llvm::StringRef qualified_name,
+                                   const cpp_typesystem::Namespace *ns,
+                                   std::string &out) {
+  std::optional<lldb_private::Type::ParsedName> parsed =
+      lldb_private::Type::GetTypeScopeAndBasename(qualified_name);
+  if (!parsed)
+    return;
+  llvm::ArrayRef<llvm::StringRef> scope = parsed->scope;
+  // Skip a leading "::" (global-scope marker) and the namespace components,
+  // which the caller has already emitted (with inline namespaces hidden).
+  if (!scope.empty() && scope.front() == "::")
+    scope = scope.drop_front();
+  unsigned ns_depth = CountNamespaceDepth(ns);
+  if (scope.size() <= ns_depth)
+    return;
+  for (llvm::StringRef component : scope.drop_front(ns_depth)) {
+    out += component.str();
+    out += "::";
+  }
+}
+
+
 static std::string BuildDisplayName(cpp_typesystem::Type *t);
 
 // Render a function signature in C declarator form, placing `decl` (e.g. "" for
@@ -168,6 +205,7 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t) {
 
   std::string result;
   AppendNamespacePrefix(t->GetDeclContext(), result);
+  AppendClassScopePrefix(t->GetName().GetName(), t->GetDeclContext(), result);
 
   // For a class-template instantiation we have modeled args, so reconstruct
   // "base<non-default args>". Otherwise use the unqualified spelling verbatim
@@ -184,8 +222,13 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t) {
         args += ", ";
       args += BuildTemplateArgName(*arg);
     }
-    if (!args.empty())
-      result += "<" + args + ">";
+    if (!args.empty()) {
+      // Match clang's default printing policy (SplitTemplateClosers): put a
+      // space between two consecutive closing angle brackets so a nested
+      // instantiation prints as `Foo<Foo<int> >`, not `Foo<Foo<int>>`.
+      std::string closer = args.back() == '>' ? " >" : ">";
+      result += "<" + args + closer;
+    }
   } else {
     result += unqualified.str();
   }
@@ -676,6 +719,17 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
       result += "volatile ";
     result += underlying_name;
     return ConstString(result);
+  }
+  // Named leaf type (record/typedef/enum/builtin). `BaseOnly` asks for the
+  // unqualified spelling (no enclosing scopes), matching clang's
+  // GetTypeNameForDecl(qualified=false); this is what SymbolFileDWARF::FindTypes
+  // compares against a template query's basename (e.g. "Nested<char>", not the
+  // scoped "Foo<int>::Nested<char>"). Builtins carry no unqualified name, so
+  // fall back to the full name for them.
+  if (BaseOnly) {
+    llvm::StringRef unqualified = t->GetUnqualifiedName().GetName();
+    if (!unqualified.empty())
+      return ConstString(unqualified);
   }
   return ConstString(t->GetName().GetName());
 }
