@@ -1109,6 +1109,25 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
   if (qt.isNull())
     return {};
 
+  // `typeof`/`decltype` sugar (`typeof (i)`, `__typeof__(i)`, `decltype(i)`)
+  // wraps a resolved underlying type. None of these sugar nodes are in the
+  // reverse map (we never generate them), so map the underlying type and wrap
+  // it in display sugar preserving the source spelling -- mirroring
+  // TypeSystemClang, whose display name for `decltype(i) j` stays `decltype(i)`
+  // while the canonical type desugars to `int`.
+  if (llvm::isa<clang::TypeOfExprType, clang::TypeOfType, clang::DecltypeType>(
+          qt.getTypePtr())) {
+    if (CompilerType inner =
+            MapClangTypeToCpp(qt.getCanonicalType(), result_ts)) {
+      std::string spelling = qt.getAsString(m_ast.getPrintingPolicy());
+      if (!spelling.empty())
+        return cpp_typesystem::Builder(result_ts).CreateElaboratedType(
+            ConstString(spelling), inner);
+      return inner;
+    }
+    return {};
+  }
+
   // Types we generated (including cv-qualified variants) map back directly.
   auto direct = m_reverse.find(qt.getAsOpaquePtr());
   auto find = direct;
