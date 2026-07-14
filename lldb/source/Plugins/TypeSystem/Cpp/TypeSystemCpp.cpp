@@ -321,7 +321,20 @@ bool TypeSystemCpp::IsAggregateType(opaque_compiler_type_t type) {
   return type && GetCppType(type)->IsAggregate();
 }
 
-bool TypeSystemCpp::IsCharType(opaque_compiler_type_t type) { return false; }
+bool TypeSystemCpp::IsCharType(opaque_compiler_type_t type) {
+  if (!type)
+    return false;
+  // Strip typedef/cv sugar so `const char` (e.g. the pointee of `const char *`)
+  // is recognized. Match clang's narrow-char set: char/signed char/unsigned
+  // char (not wchar_t). Identify them by their canonical display format and
+  // size rather than pointer identity, so this also works for a type reached
+  // through another Context (e.g. an expression result mapped into the scratch
+  // TypeSystemCpp).
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+  auto *builtin = llvm::dyn_cast<cpp_typesystem::BuiltinType>(t);
+  return builtin && builtin->GetFormat() == lldb::eFormatChar &&
+         builtin->GetByteSize().value_or(0) == 1;
+}
 
 bool TypeSystemCpp::IsCompleteType(opaque_compiler_type_t type) {
   return false;
