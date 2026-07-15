@@ -78,6 +78,14 @@ CompilerType Builder::CreateCVQualifiedType(CompilerType underlying_type,
       ToTypeRef(underlying_type), is_const, is_volatile));
 }
 
+CompilerType Builder::CreatePtrAuthType(CompilerType underlying_type,
+                                        unsigned key, bool addr_discriminated,
+                                        unsigned extra_discriminator) {
+  return m_ts.GetCompilerType(m_ts.m_context.CreatePtrAuthType(
+      ToTypeRef(underlying_type), key, addr_discriminated,
+      extra_discriminator));
+}
+
 CompilerType Builder::CreateElaboratedType(ConstString spelling,
                                            CompilerType underlying_type) {
   return m_ts.GetCompilerType(m_ts.m_context.CreateElaboratedType(

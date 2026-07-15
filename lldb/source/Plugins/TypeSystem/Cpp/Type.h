@@ -596,6 +596,34 @@ private:
   bool m_is_volatile = false;
 };
 
+/// A pointer carrying an ARMv8.3 pointer-authentication qualifier
+/// (`T *__ptrauth(key, address_discriminated, extra_discriminator)`). It is
+/// transparent sugar over the signed type (a pointer or a typedef thereof) for
+/// layout/value purposes, but carries the signing schema so LLDB can strip the
+/// authentication bits off the raw pointer value and print `__ptrauth(...)`.
+class PtrAuthType : public llvm::RTTIExtends<PtrAuthType, SugarType> {
+public:
+  static char ID;
+
+  /// The pointer-authentication key (a small integer, e.g. 2 for the data key).
+  unsigned GetKey() const { return m_key; }
+  void SetKey(unsigned key) { m_key = key; }
+
+  /// True if the pointer is signed with address diversity (the storage address
+  /// participates in the discriminator).
+  bool IsAddressDiscriminated() const { return m_addr_discriminated; }
+  void SetAddressDiscriminated(bool v) { m_addr_discriminated = v; }
+
+  /// The extra (constant) discriminator blended into the signature.
+  unsigned GetExtraDiscriminator() const { return m_extra_discriminator; }
+  void SetExtraDiscriminator(unsigned v) { m_extra_discriminator = v; }
+
+private:
+  unsigned m_key = 0;
+  bool m_addr_discriminated = false;
+  unsigned m_extra_discriminator = 0;
+};
+
 /// Pure display sugar preserving how a type was spelled in the source (e.g.
 /// `::Struct`, `$V< ::Struct>`), like clang's elaborated-type / template-type
 /// sugar. It is fully transparent: the *display* name uses the stored spelling

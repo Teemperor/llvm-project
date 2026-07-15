@@ -154,6 +154,33 @@ static std::string BuildUnnamedTagName(cpp_typesystem::Type *t) {
 static std::string BuildDisplayName(cpp_typesystem::Type *t,
                                     bool hide_default_args = true);
 
+// Render an ARMv8.3 pointer-auth qualifier as `__ptrauth(key,addr_disc,extra)`,
+// matching clang's TypePrinter / TypeSystemClang spelling.
+static std::string BuildPtrAuthQualifier(const cpp_typesystem::PtrAuthType *pa) {
+  return llvm::formatv("__ptrauth({0},{1},{2})", pa->GetKey(),
+                       pa->IsAddressDiscriminated() ? 1 : 0,
+                       pa->GetExtraDiscriminator())
+      .str();
+}
+
+// Look through transparent sugar (typedef/cv/elaborated) for the pointer-auth
+// qualifier that applies to \p type, or null if none. The `__ptrauth` qualifier
+// sits on the outermost declarator, so only see-through sugar is peeled.
+static const cpp_typesystem::PtrAuthType *
+FindPtrAuthType(lldb::opaque_compiler_type_t type) {
+  cpp_typesystem::Type *t = TypeSystemCpp::GetCppType(type);
+  while (t) {
+    if (auto *pa = llvm::dyn_cast<cpp_typesystem::PtrAuthType>(t))
+      return pa;
+    if (auto *sugar = llvm::dyn_cast<cpp_typesystem::SugarType>(t)) {
+      t = sugar->GetUnderlyingType();
+      continue;
+    }
+    break;
+  }
+  return nullptr;
+}
+
 // Render a function signature in C declarator form, placing `decl` (e.g. "" for
 // a plain function, "(*)" for a function pointer, "(&)" for a reference) between
 // the return type and the parameter list: `int (*)(const char *)`.
@@ -417,6 +444,16 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
                          ? BuildDisplayName(cv->GetUnderlyingType(),
                                             hide_default_args)
                          : "");
+  }
+  if (auto *pa = llvm::dyn_cast<PtrAuthType>(t)) {
+    std::string underlying =
+        BuildDisplayName(pa->GetUnderlyingType(), hide_default_args);
+    std::string qualifier = BuildPtrAuthQualifier(pa);
+    // Clang spells the qualifier as a declarator suffix on a pointer
+    // (`int *__ptrauth(...)`) but as a prefix otherwise (`__ptrauth(...) intp`).
+    if (llvm::isa_and_nonnull<PointerType>(pa->GetUnderlyingType()))
+      return underlying + qualifier;
+    return qualifier + " " + underlying;
   }
   // Elaborated display sugar: show the source spelling (e.g. `::Struct`) rather
   // than the wrapped type's own name.
@@ -925,14 +962,26 @@ CompilerType TypeSystemCpp::GetPointerDiffType(bool is_signed) {
   return CompilerType();
 }
 
-unsigned TypeSystemCpp::GetPtrAuthKey(opaque_compiler_type_t type) { return 0; }
+unsigned TypeSystemCpp::GetPtrAuthKey(opaque_compiler_type_t type) {
+  if (auto *pa = FindPtrAuthType(type))
+    return pa->GetKey();
+  return 0;
+}
 
 unsigned TypeSystemCpp::GetPtrAuthDiscriminator(opaque_compiler_type_t type) {
+  if (auto *pa = FindPtrAuthType(type))
+    return pa->GetExtraDiscriminator();
   return 0;
 }
 
 bool TypeSystemCpp::GetPtrAuthAddressDiversity(opaque_compiler_type_t type) {
+  if (auto *pa = FindPtrAuthType(type))
+    return pa->IsAddressDiscriminated();
   return false;
+}
+
+bool TypeSystemCpp::HasPointerAuthQualifier(opaque_compiler_type_t type) {
+  return FindPtrAuthType(type) != nullptr;
 }
 
 // If `t` is an incomplete record whose spelling carries template arguments
@@ -1047,6 +1096,17 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
       result += "volatile ";
     result += underlying_name;
     return ConstString(result);
+  }
+  if (auto *pa = llvm::dyn_cast<cpp_typesystem::PtrAuthType>(t)) {
+    std::string underlying =
+        GetTypeName(pa->GetUnderlyingType(), BaseOnly).GetStringRef().str();
+    std::string qualifier = BuildPtrAuthQualifier(pa);
+    // Suffix on a pointer (`int *__ptrauth(...)`), prefix otherwise
+    // (`__ptrauth(...) intp`), matching clang's spelling.
+    if (llvm::isa_and_nonnull<cpp_typesystem::PointerType>(
+            pa->GetUnderlyingType()))
+      return ConstString(underlying + qualifier);
+    return ConstString(qualifier + " " + underlying);
   }
   // Named leaf type (record/typedef/enum/builtin). `BaseOnly` asks for the
   // unqualified spelling (no enclosing scopes), matching clang's

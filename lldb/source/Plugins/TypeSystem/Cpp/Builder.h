@@ -68,6 +68,11 @@ public:
   /// Create a const- and/or volatile-qualified version of \p underlying_type.
   CompilerType CreateCVQualifiedType(CompilerType underlying_type,
                                      bool is_const, bool is_volatile);
+  /// Create a `__ptrauth`-qualified version of \p underlying_type (a signed
+  /// pointer, or a typedef thereof).
+  CompilerType CreatePtrAuthType(CompilerType underlying_type, unsigned key,
+                                 bool addr_discriminated,
+                                 unsigned extra_discriminator);
   /// Create display sugar preserving the source \p spelling (e.g. `::Struct`)
   /// over \p underlying_type. Transparent apart from the display name.
   CompilerType CreateElaboratedType(ConstString spelling,
