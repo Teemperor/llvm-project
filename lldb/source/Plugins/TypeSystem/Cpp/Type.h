@@ -312,6 +312,13 @@ public:
     return nullptr;
   }
 
+  /// Number of types declared directly inside this record (nested typedefs,
+  /// classes, unions or enums). Used by the expression evaluator to decide
+  /// whether a generated record needs a name-lookup callback for
+  /// `Record::Nested`; the types themselves are looked up by name via
+  /// GetNestedTypeWithName.
+  uint32_t GetNumNestedTypes() const { return m_nested_types.size(); }
+
 private:
   // Structural mutation happens after creation (during lazy completion, which
   // may run on worker threads), so it is gated: only Context can perform it,

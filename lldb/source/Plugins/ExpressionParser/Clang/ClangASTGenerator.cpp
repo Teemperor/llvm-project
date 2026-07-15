@@ -964,7 +964,14 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   // `target modules dump ast` path) does not have.
   decl->setHasLoadedFieldsFromExternalStorage(true);
   decl->setHasExternalLexicalStorage(false);
-  decl->setHasExternalVisibleStorage(false);
+  // Keep visible (name-lookup) storage on when the record declares nested
+  // types, so a qualified reference like `Record::Nested` calls back through
+  // the external source (CppExpressionDeclMap::FindExternalVisibleDecls, which
+  // resolves it via LookupNestedType). Nested types are resolved lazily rather
+  // than emitted here to avoid driving completion into infinite recursion for a
+  // self-referential nested type (common in libc++ containers). A record with
+  // no nested types needs no such callback.
+  decl->setHasExternalVisibleStorage(rec->GetNumNestedTypes() != 0);
 
   // Wire up virtual-method overrides now that the class (and its bases) are
   // complete. Clang derives the vtable layout from these override links; an
@@ -1054,6 +1061,61 @@ bool ClangASTGenerator::CompleteRecord(clang::TagDecl *tag_decl) {
     return false;
   PopulateRecord(record_decl);
   return true;
+}
+
+clang::NamedDecl *
+ClangASTGenerator::LookupNestedType(const clang::RecordDecl *record_decl,
+                                    llvm::StringRef name) {
+  GenerationGuard guard(*this);
+  auto it = m_records.find(record_decl);
+  if (it == m_records.end())
+    return nullptr;
+  RecordInfo &info = *it->second;
+
+  // Reuse a nested type we already resolved and parented into this record.
+  if (auto cached = info.nested_types.find(name);
+      cached != info.nested_types.end())
+    return cached->second;
+
+  ct::RecordType *rec = info.cpp_record;
+  TypeSystemCpp &ts = *info.ts;
+  // Make sure the record's members (including nested types) have been parsed
+  // from debug info.
+  ts.GetCompilerType(rec).GetCompleteType();
+
+  ct::Type *nested = rec->GetNestedTypeWithName(name);
+  if (!nested)
+    return nullptr;
+
+  // Generating the nested type places its clang decl in the DeclContext of its
+  // cpp declaration context, which -- because a record is not modelled as a cpp
+  // Namespace -- is the enclosing namespace (or the translation unit), not this
+  // record. Re-parent it into this record so a qualified reference like
+  // `Record::Nested` resolves to a member of the record. Generation only hands
+  // out a forward declaration, so this does not complete the nested type (and
+  // thus can't recurse through a self-referential nested type).
+  clang::QualType nested_qt = GenerateType(ts, nested);
+  if (nested_qt.isNull())
+    return nullptr;
+  clang::NamedDecl *nested_decl = nullptr;
+  if (const auto *tt = nested_qt->getAs<clang::TagType>())
+    nested_decl = tt->getDecl();
+  else if (const auto *tdt = nested_qt->getAs<clang::TypedefType>())
+    nested_decl = tdt->getDecl();
+  if (!nested_decl)
+    return nullptr;
+
+  auto *decl = const_cast<clang::CXXRecordDecl *>(info.clang_decl);
+  if (nested_decl->getDeclContext() != decl) {
+    if (auto *old_ctx = nested_decl->getDeclContext())
+      old_ctx->removeDecl(nested_decl);
+    nested_decl->setDeclContext(decl);
+    nested_decl->setLexicalDeclContext(decl);
+    nested_decl->setAccess(clang::AS_public);
+    decl->addDecl(nested_decl);
+  }
+  info.nested_types[name] = nested_decl;
+  return nested_decl;
 }
 
 bool ClangASTGenerator::LayoutRecord(
