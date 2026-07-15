@@ -492,13 +492,46 @@ bool CppExpressionDeclMap::LookupOperatorFunctions(
     // Name the generated decl with the operator DeclarationName so operator
     // syntax (`a == b`) and the explicit `operator==(a, b)` spelling both bind
     // to it during overload resolution.
-    if (clang::FunctionDecl *fd =
-            GetGenerator().GenerateFunction(name, func_cpp_type, label)) {
-      decls.push_back(fd);
-      added = true;
+    clang::FunctionDecl *fd =
+        GetGenerator().GenerateFunction(name, func_cpp_type, label);
+    if (!fd)
+      continue;
+
+    // A namespace-scoped free operator (e.g. `A::operator<`) is found during
+    // operator-syntax overload resolution (`b < b` for an `A::B`) only through
+    // argument-dependent lookup, which searches the operands' associated
+    // namespaces -- here namespace `A`. Unqualified operator lookup alone (which
+    // is what a translation-unit-scoped decl would satisfy) does not find it, so
+    // place the generated decl in the clang NamespaceDecl matching the
+    // operator's own namespace. This both enables ADL and gives the decl the
+    // correct qualified/mangled name. A global operator stays at TU scope.
+    clang::DeclContext *op_dc = GetOperatorDeclContext(function);
+    if (op_dc && op_dc != m_ast_context->getTranslationUnitDecl()) {
+      m_ast_context->getTranslationUnitDecl()->removeDecl(fd);
+      fd->setDeclContext(op_dc);
+      fd->setLexicalDeclContext(op_dc);
+      op_dc->addDecl(fd);
     }
+    decls.push_back(fd);
+    added = true;
   }
   return added;
+}
+
+clang::DeclContext *
+CppExpressionDeclMap::GetOperatorDeclContext(Function *function) {
+  if (!function)
+    return nullptr;
+  CompilerDeclContext ctx = function->GetDeclContext();
+  if (!ctx || !llvm::isa_and_nonnull<TypeSystemCpp>(ctx.GetTypeSystem()))
+    return nullptr;
+  // A free operator declared directly at global scope has no enclosing
+  // TypeSystemCpp namespace; keep it at translation-unit scope.
+  auto *cpp_ns = static_cast<const cpp_typesystem::Namespace *>(
+      ctx.GetOpaqueDeclContext());
+  if (!cpp_ns)
+    return nullptr;
+  return GetGenerator().GetDeclContextForNamespace(cpp_ns);
 }
 
 void CppExpressionDeclMap::LookUpLldbClass(

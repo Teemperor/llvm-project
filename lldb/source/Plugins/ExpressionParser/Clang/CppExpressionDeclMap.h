@@ -139,6 +139,13 @@ private:
                           clang::DeclarationName name,
                           llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
+  /// The clang DeclContext a generated free-operator FunctionDecl for
+  /// \p function should be placed in: the clang::NamespaceDecl matching the
+  /// operator's own TypeSystemCpp namespace (so argument-dependent lookup finds
+  /// it for operator syntax like `a < b`), or null for an operator at global
+  /// scope (which stays at translation-unit scope).
+  clang::DeclContext *GetOperatorDeclContext(Function *function);
+
   /// Resolve free functions named \p name and generate FunctionDecls (with asm
   /// labels) for them so an expression can call them. When \p scope is a valid
   /// namespace CompilerDeclContext the search is restricted to that namespace
