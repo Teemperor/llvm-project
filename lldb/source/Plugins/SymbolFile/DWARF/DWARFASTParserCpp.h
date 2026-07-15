@@ -160,6 +160,8 @@ private:
   ParseTypedef(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParseCVQualifiedType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  lldb::TypeSP
+  ParsePtrAuthType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP ParseEnum(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParseFunctionType(const lldb_private::plugin::dwarf::DWARFDIE &die);

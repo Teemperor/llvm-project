@@ -87,6 +87,13 @@ public:
   CVQualifiedType *CreateCVQualifiedType(TypeRef underlying_type, bool is_const,
                                          bool is_volatile);
 
+  /// Create a pointer-authentication-qualified version of \p underlying_type
+  /// (a `T *__ptrauth(key, addr_disc, extra)` type). \p underlying_type is the
+  /// signed pointer (or a typedef thereof).
+  PtrAuthType *CreatePtrAuthType(TypeRef underlying_type, unsigned key,
+                                 bool addr_discriminated,
+                                 unsigned extra_discriminator);
+
   /// Create display sugar over \p underlying_type that preserves the source
   /// \p spelling (e.g. `::Struct`) for the display name while remaining
   /// transparent for the canonical type name.

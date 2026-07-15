@@ -130,6 +130,22 @@ CVQualifiedType *Context::CreateCVQualifiedType(TypeRef underlying_type,
   return Track(std::move(type));
 }
 
+PtrAuthType *Context::CreatePtrAuthType(TypeRef underlying_type, unsigned key,
+                                        bool addr_discriminated,
+                                        unsigned extra_discriminator) {
+  // The pointer-auth qualifier always qualifies a pointer (or a typedef of
+  // one), so it always has an underlying type.
+  assert(underlying_type && "a __ptrauth type must qualify a type");
+  auto type = std::make_unique<PtrAuthType>();
+  type->SetUnderlyingType(underlying_type);
+  type->SetKey(key);
+  type->SetAddressDiscriminated(addr_discriminated);
+  type->SetExtraDiscriminator(extra_discriminator);
+  // Pure sugar over a pointer: same storage as the type it qualifies.
+  type->SetByteSize(underlying_type.Get()->GetByteSize());
+  return Track(std::move(type));
+}
+
 ElaboratedType *Context::CreateElaboratedType(llvm::StringRef spelling,
                                               TypeRef underlying_type) {
   assert(underlying_type && "elaborated sugar must wrap a type");
