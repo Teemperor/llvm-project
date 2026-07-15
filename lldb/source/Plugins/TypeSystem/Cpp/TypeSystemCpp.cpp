@@ -1255,19 +1255,18 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
             return info->element_orders.back().value_or(0);
     return 0;
   }
-  // A pointer's children are those of its pointee: expanding a pointer to an
-  // aggregate shows the aggregate's members directly, while a pointer to a
-  // scalar has a single child (the dereferenced value). `void *` has none.
-  // Looking through to the pointee's members must not *complete* it, though: a
-  // type reachable only through a pointer stays a forward declaration until it
-  // is explicitly dereferenced/accessed (see the note in
-  // GetChildCompilerTypeAtIndex). So only expand an already-complete pointee.
+  // A pointer's single child is the dereferenced value. Unlike a reference, a
+  // pointer is NOT transparent: expanding `ptr` does not splice in the pointee's
+  // members. Keeping this fixed (rather than forwarding to the pointee's members
+  // once the pointee happens to be complete) makes the child layout stable
+  // regardless of when the pointee is lazily completed -- otherwise a pointer
+  // whose child count was computed while its pointee was still a forward
+  // declaration (1 deref child) would silently disagree with a later member
+  // lookup that completes the pointee. `void *` has no children.
   if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
     cpp_typesystem::Type *pointee = ptr->GetPointeeType();
     if (!pointee)
       return 0;
-    if (pointee->IsAggregate() && pointee->IsComplete())
-      return GetNumChildren(pointee, omit_empty_base_classes, exe_ctx);
     return 1;
   }
   // A reference is transparent: its children are those of the referenced type.
@@ -1426,30 +1425,14 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
     return GetCompilerType(element_type);
   }
 
-  // A pointer's children are those of its pointee. Expanding a pointer to an
-  // aggregate transparently shows the pointee's members; otherwise the single
-  // child is the dereferenced value.
+  // A pointer's single child is the dereferenced value. A pointer is NOT
+  // transparent (unlike a reference, below): its members are reached by first
+  // dereferencing it. Keeping this fixed makes the child layout independent of
+  // when the pointee is lazily completed (see GetNumChildren).
   if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
     cpp_typesystem::Type *pointee = ptr->GetPointeeType();
     if (!pointee)
       return CompilerType(); // Can't dereference `void *`.
-
-    // Only look through to the pointee's members if it is already complete.
-    // Doing so must never *cause* completion: a type reachable only through a
-    // pointer stays a forward declaration until it is explicitly dereferenced
-    // or a member is accessed. An incomplete pointee is treated like a scalar
-    // one -- its single child is the dereferenced value (which, when actually
-    // materialized, completes it), matching GetNumChildren.
-    if (transparent_pointers && pointee->IsAggregate() &&
-        pointee->IsComplete()) {
-      bool tmp_child_is_deref_of_parent = false;
-      return GetCompilerType(pointee).GetChildCompilerTypeAtIndex(
-          exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
-          ignore_array_bounds, child_name, child_byte_size, child_byte_offset,
-          child_bitfield_bit_size, child_bitfield_bit_offset,
-          child_is_base_class, tmp_child_is_deref_of_parent, valobj,
-          language_flags);
-    }
 
     child_is_deref_of_parent = true;
     if (const char *parent_name =
@@ -1555,11 +1538,14 @@ TypeSystemCpp::GetIndexOfChildWithName(opaque_compiler_type_t type,
     return llvm::createStringError("invalid type");
   GetCompleteType(type);
   cpp_typesystem::Type *t = Desugar(GetCppType(type));
-  // A pointer or reference forwards child lookup to its (aggregate) pointee.
+  // A pointer is not transparent: its only child is the (unnamed) dereferenced
+  // value, so no named member is directly addressable on the pointer. A
+  // reference forwards to its aggregate referent.
+  if (llvm::isa<cpp_typesystem::PointerType>(t))
+    return llvm::createStringError(
+        "TypeSystemCpp::GetIndexOfChildWithName: no such child");
   cpp_typesystem::Type *pointee = nullptr;
-  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t))
-    pointee = ptr->GetPointeeType();
-  else if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t))
+  if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t))
     pointee = ref->GetPointeeType();
   if (pointee) {
     if (pointee->IsAggregate())
@@ -1604,14 +1590,24 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
   cpp_typesystem::Type *t = Desugar(GetCppType(type));
   // A pointer or reference forwards member lookup to its (aggregate) pointee,
   // so that e.g. `ptr->member` / `ref.member` resolves against the pointed-to
-  // record.
-  cpp_typesystem::Type *pointee = nullptr;
-  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t))
-    pointee = ptr->GetPointeeType();
-  else if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t))
-    pointee = ref->GetPointeeType();
-  if (pointee) {
-    if (pointee->IsAggregate())
+  // record. A pointer is not transparent (see GetNumChildren): its single child
+  // (index 0) is the dereferenced value, so the member is reached by stepping
+  // through that deref child. This keeps the returned indices consistent with
+  // GetNumChildren / GetChildCompilerTypeAtIndex regardless of whether the
+  // pointee has been completed yet (completion is triggered lazily and must not
+  // retroactively change the pointer's child layout). A reference stays
+  // transparent, mirroring GetNumChildren.
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
+    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+    if (!pointee || !pointee->IsAggregate())
+      return 0;
+    child_indexes.push_back(0);
+    return GetCompilerType(pointee).GetIndexOfChildMemberWithName(
+        name, omit_empty_base_classes, child_indexes);
+  }
+  if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t)) {
+    cpp_typesystem::Type *pointee = ref->GetPointeeType();
+    if (pointee && pointee->IsAggregate())
       return GetCompilerType(pointee).GetIndexOfChildMemberWithName(
           name, omit_empty_base_classes, child_indexes);
     return 0;
