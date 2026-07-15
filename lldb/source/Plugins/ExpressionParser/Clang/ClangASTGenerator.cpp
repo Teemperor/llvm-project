@@ -28,6 +28,7 @@
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
+#include "clang/AST/RecordLayout.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticOptions.h"
@@ -1340,6 +1341,18 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
   if (qt.isNull())
     return {};
 
+  // A deduced `auto`/`decltype(auto)` type (once deduction has run) wraps the
+  // real deduced type. We never generate `AutoType`/`DeducedType` nodes, so they
+  // aren't in the reverse map; map the deduced type instead so the result can be
+  // sized. Unlike `typeof`/`decltype` below we don't preserve `auto` as display
+  // sugar -- the deduced type (e.g. `int`, `long`, a record) is the result type.
+  if (const auto *deduced = qt->getContainedDeducedType()) {
+    clang::QualType resolved = deduced->getDeducedType();
+    if (resolved.isNull())
+      return {};
+    return MapClangTypeToCpp(resolved, result_ts);
+  }
+
   // `typeof`/`decltype` sugar (`typeof (i)`, `__typeof__(i)`, `decltype(i)`)
   // wraps a resolved underlying type. None of these sugar nodes are in the
   // reverse map (we never generate them), so map the underlying type and wrap
@@ -1481,6 +1494,39 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
     }
     if (basic != lldb::eBasicTypeInvalid)
       return result_ts.GetBasicTypeFromAST(basic);
+  }
+
+  // A record type the parser defined itself (e.g. a `struct Test { ... };`
+  // written directly in the expression source) has no cpp counterpart and so
+  // isn't in the reverse map. Rebuild an equivalent cpp record in result_ts from
+  // the clang record's layout so the expression result can be sized and its
+  // members read.
+  if (const auto *rt = qt->getAs<clang::RecordType>()) {
+    clang::RecordDecl *rd = rt->getDecl()->getDefinition();
+    if (rd && rd->isCompleteDefinition()) {
+      const clang::ASTRecordLayout &layout = m_ast.getASTRecordLayout(rd);
+      std::string name = rd->getNameAsString();
+      cpp_typesystem::Builder builder(result_ts);
+      CompilerType record = builder.CreateRecordType(
+          ConstString(name), m_ast.getTypeSizeInChars(qt).getQuantity(),
+          /*is_cpp_class=*/llvm::isa<clang::CXXRecordDecl>(rd),
+          /*is_union=*/rd->isUnion());
+      auto *cpp_record = llvm::cast<ct::RecordType>(
+          static_cast<ct::Type *>(record.GetOpaqueQualType()));
+      unsigned field_idx = 0;
+      for (const clang::FieldDecl *fd : rd->fields()) {
+        CompilerType field_type = MapClangTypeToCpp(fd->getType(), result_ts);
+        if (!field_type)
+          return {};
+        uint64_t bit_offset = layout.getFieldOffset(field_idx++);
+        builder.AddField(
+            *cpp_record, builder.GetIdentifier(fd->getNameAsString()),
+            static_cast<ct::Type *>(field_type.GetOpaqueQualType()),
+            bit_offset / 8);
+      }
+      builder.SetRecordComplete(*cpp_record);
+      return record;
+    }
   }
 
   // Simple derived types (a reference or pointer created by the parser itself,
