@@ -347,6 +347,40 @@ void DWARFASTParserCpp::CollectUsingDirectiveNamespaces(
       break;
   }
 }
+
+void DWARFASTParserCpp::CollectUsingDeclarations(
+    const DWARFDIE &block_die,
+    std::vector<std::pair<ConstString, CompilerDeclContext>> &decls) {
+  cpp_typesystem::Builder builder(m_ts);
+  // Walk the block and its enclosing lexical blocks / function, innermost
+  // first, collecting each `using ns::name;` (DW_TAG_imported_declaration).
+  for (DWARFDIE scope = block_die; scope; scope = scope.GetParent()) {
+    for (DWARFDIE child : scope.children()) {
+      if (child.Tag() != DW_TAG_imported_declaration)
+        continue;
+      DWARFDIE imported = child.GetAttributeValueAsReferenceDIE(DW_AT_import);
+      if (!imported)
+        continue;
+      const char *name = imported.GetName();
+      if (!name || !name[0])
+        continue;
+      // The namespace the imported entity lives in is the innermost enclosing
+      // namespace of the imported DIE (e.g. `Single` for `Single::single`).
+      const cpp_typesystem::Namespace *ns =
+          BuildDeclNamespace(imported, builder);
+      if (!ns)
+        continue;
+      decls.emplace_back(
+          ConstString(name),
+          CompilerDeclContext(&m_ts,
+                              const_cast<cpp_typesystem::Namespace *>(ns)));
+    }
+    // Stop once we've processed the function scope; file-scope using-declarations
+    // are handled by the ordinary global search.
+    if (scope.Tag() == DW_TAG_subprogram)
+      break;
+  }
+}
 /// the JIT can resolve the call to the right symbol in the inferior. Mirrors
 /// DWARFASTParserClang's MakeLLDBFuncAsmLabel.
 static std::string MakeFuncAsmLabel(const DWARFDIE &die) {

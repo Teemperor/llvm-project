@@ -12,8 +12,11 @@
 #include "DWARFASTParser.h"
 #include "DWARFDIE.h"
 
+#include "lldb/Utility/ConstString.h"
+
 #include "llvm/ADT/DenseMap.h"
 
+#include <utility>
 #include <vector>
 
 namespace lldb_private {
@@ -87,6 +90,17 @@ public:
   void CollectUsingDirectiveNamespaces(
       const lldb_private::plugin::dwarf::DWARFDIE &block_die,
       std::vector<lldb_private::CompilerDeclContext> &namespaces);
+
+  /// Collect the `using` *declarations* (DW_TAG_imported_declaration, e.g.
+  /// `using Single::single;`) lexically in scope at \p block_die and its
+  /// enclosing blocks, innermost-first. Each is reported as the imported
+  /// unqualified name paired with the namespace it names the entity in, so an
+  /// expression evaluated in that scope resolves the imported name through that
+  /// namespace.
+  void CollectUsingDeclarations(
+      const lldb_private::plugin::dwarf::DWARFDIE &block_die,
+      std::vector<std::pair<lldb_private::ConstString,
+                            lldb_private::CompilerDeclContext>> &decls);
 
   void EnsureAllDIEsInDeclContextHaveBeenParsed(
       lldb_private::CompilerDeclContext decl_context) override {}

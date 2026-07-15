@@ -43,6 +43,15 @@ public:
   std::vector<CompilerDeclContext>
   GetUsingDirectiveNamespaces(Block &block);
 
+  /// The `using` declarations (e.g. `using Single::single;`) lexically in scope
+  /// at \p block (innermost first), each reported as the imported unqualified
+  /// name paired with the namespace it names the entity in. Used by the
+  /// expression evaluator so an unqualified name brought in by a using
+  /// declaration resolves to that namespace's entity. Empty unless this type
+  /// system was populated from DWARF.
+  std::vector<std::pair<ConstString, CompilerDeclContext>>
+  GetUsingDeclarations(Block &block);
+
   /// Wrap one of our own Type nodes into a CompilerType owned by this system.
   CompilerType GetCompilerType(cpp_typesystem::Type *type);
   /// Recover the Type node backing a CompilerType created by this system.

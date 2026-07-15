@@ -16,6 +16,7 @@
 #include "clang/AST/Type.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/TargetParser/Triple.h"
 
 #include <memory>
@@ -82,6 +83,17 @@ public:
   /// external source when Clang requires the full definition. Returns true if
   /// \p tag_decl was created by this generator (and is now complete).
   bool CompleteRecord(clang::TagDecl *tag_decl);
+
+  /// Resolve a type declared inside a record created by this generator (a
+  /// nested class/union/enum/typedef) by its unqualified \p name, so a
+  /// qualified reference like `Record::Nested` resolves. Returns the generated
+  /// clang decl (a TagDecl or TypedefNameDecl) parented to \p record_decl, or
+  /// null if the record is unknown or has no such nested type. The nested type
+  /// is generated lazily (on first lookup) rather than while completing the
+  /// record, so a self-referential nested type (common in libc++ containers)
+  /// does not drive completion into an infinite recursion.
+  clang::NamedDecl *LookupNestedType(const clang::RecordDecl *record_decl,
+                                     llvm::StringRef name);
 
   /// Provide the debug-info layout for a record created by this generator.
   /// Returns false when the record is unknown (letting Clang lay it out).
@@ -205,6 +217,9 @@ private:
     /// Clang (a plain parallel walk of the cpp fields wouldn't account for the
     /// synthetic ones).
     llvm::DenseMap<const clang::FieldDecl *, uint64_t> field_bit_offsets;
+    /// Nested types (by unqualified name) already resolved and parented into
+    /// this record via LookupNestedType, so a repeated lookup reuses the decl.
+    llvm::StringMap<clang::NamedDecl *> nested_types;
   };
   // Values are held behind unique_ptr so a RecordInfo& stays valid across the
   // recursive GenerateType/completion calls that insert new entries here (a

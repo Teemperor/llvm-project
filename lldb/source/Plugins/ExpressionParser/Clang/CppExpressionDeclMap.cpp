@@ -272,6 +272,30 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
     return false;
   }
 
+  // A lookup into a record we generated. The record keeps external visible
+  // storage on so clang asks us to resolve names in it. We resolve a nested
+  // type (`Record::Nested`) lazily via the generator; a nested type is not
+  // emitted while completing the record (that would recurse for the
+  // self-referential nested types common in libc++ containers). Because
+  // turning on external visible storage routes *all* of the record's
+  // name lookups through us, we must also surface its ordinary members
+  // (fields, methods, static data members) that were added directly while
+  // completing it -- otherwise `obj.member` / `this->member` would no longer
+  // resolve.
+  if (const auto *rd = llvm::dyn_cast<clang::RecordDecl>(dc)) {
+    if (clang::NamedDecl *nested =
+            GetGenerator().LookupNestedType(rd, sname)) {
+      decls.push_back(nested);
+      return true;
+    }
+    for (clang::Decl *d : rd->decls()) {
+      auto *nd = llvm::dyn_cast<clang::NamedDecl>(d);
+      if (nd && nd->getDeclName() == name)
+        decls.push_back(nd);
+    }
+    return !decls.empty();
+  }
+
   if (llvm::isa<clang::TranslationUnitDecl>(dc)) {
     if (sname == "$__lldb_class") {
       LookUpLldbClass(name, decls);
@@ -297,6 +321,14 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
       // parser runs (outside generation) and still resolve.
       if (IsGeneratingDecls())
         return false;
+      // A bare name at TU scope can refer to a local variable in the current
+      // frame even when local variables are not injected as members of the
+      // synthetic `$__lldb_local_vars` namespace (i.e. when the
+      // `target.experimental.inject-local-vars` setting is off). This mirrors
+      // ClangExpressionDeclMap, which always performs a local-variable lookup
+      // for unqualified names before falling back to globals.
+      if (LookupLocalVariable(dc, ConstString(sname), decls))
+        return true;
       // Unqualified name: first honor the frame's enclosing namespace scope
       // (an expression in `A::B::f` should see names in `A::B`, then `A`), then
       // fall through to a global-scope search.
@@ -1012,11 +1044,27 @@ bool CppExpressionDeclMap::LookupInFrameNamespaces(
   if (!ts)
     return false;
 
-  // First honor the `using namespace` directives lexically in scope at the
+  // First honor any `using` declaration (e.g. `using Single::single;`) lexically
+  // in scope at the current PC: it names a specific entity from another
+  // namespace, so an unqualified reference to that name resolves there. A
+  // using-declaration acts like a declaration in its scope and so takes
+  // precedence over using-directives.
+  Block *pc_block = sc.block ? sc.block : function_block;
+  for (const auto &decl : ts->GetUsingDeclarations(*pc_block)) {
+    if (decl.first != name || !decl.second.IsValid())
+      continue;
+    if (LookupGlobalVariable(dc, name, module, decl.second, decls))
+      return true;
+    if (LookupFunctions(dc, name, module, decl.second, decls))
+      return true;
+    if (LookupType(dc, name, module, decl.second, decls))
+      return true;
+  }
+
+  // Then honor the `using namespace` directives lexically in scope at the
   // current PC: a `using namespace ns2;` makes an unqualified `value` resolve
   // to `ns2::value`. Search the innermost block containing the PC (falling back
   // to the function block).
-  Block *pc_block = sc.block ? sc.block : function_block;
   for (const CompilerDeclContext &used :
        ts->GetUsingDirectiveNamespaces(*pc_block)) {
     if (!used.IsValid())

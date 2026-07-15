@@ -805,6 +805,23 @@ TypeSystemCpp::GetUsingDirectiveNamespaces(Block &block) {
   return namespaces;
 }
 
+std::vector<std::pair<ConstString, CompilerDeclContext>>
+TypeSystemCpp::GetUsingDeclarations(Block &block) {
+  std::vector<std::pair<ConstString, CompilerDeclContext>> decls;
+  auto *parser = llvm::dyn_cast_or_null<DWARFASTParserCpp>(GetDWARFParser());
+  if (!parser)
+    return decls;
+  auto *dwarf = llvm::dyn_cast_or_null<plugin::dwarf::SymbolFileDWARF>(
+      block.GetSymbolFile());
+  if (!dwarf)
+    return decls;
+  plugin::dwarf::DWARFDIE block_die = dwarf->GetDIE(block.GetID());
+  if (!block_die)
+    return decls;
+  parser->CollectUsingDeclarations(block_die, decls);
+  return decls;
+}
+
 uint32_t TypeSystemCpp::GetPointerByteSize() {
   return m_context.GetLanguageOpts().GetBuiltinSizes().pointer_size;
 }
