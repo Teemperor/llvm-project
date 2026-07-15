@@ -336,19 +336,27 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
         return true;
       // A name at file scope can refer to a global variable or a function.
       // Prefer the variable (an object shadows a function of the same name in
-      // C/C++ unqualified lookup), then fall back to functions, then to types,
-      // and finally to a namespace (so a qualified `A::B::x` can start
-      // resolving from the leftmost namespace name).
-      if (LookupGlobalVariable(dc, ConstString(sname), /*module=*/nullptr,
-                               CompilerDeclContext(), decls))
-        return true;
-      if (LookupFunctions(dc, ConstString(sname), /*module=*/nullptr,
-                          CompilerDeclContext(), decls))
-        return true;
-      if (LookupType(dc, ConstString(sname), /*module=*/nullptr,
-                     CompilerDeclContext(), decls))
-        return true;
-      return LookupNamespace(dc, ConstString(sname), decls);
+      // C/C++ unqualified lookup), then fall back to functions.
+      bool found = LookupGlobalVariable(dc, ConstString(sname),
+                                        /*module=*/nullptr,
+                                        CompilerDeclContext(), decls);
+      if (!found)
+        found = LookupFunctions(dc, ConstString(sname), /*module=*/nullptr,
+                                CompilerDeclContext(), decls);
+      // A single name can denote both an ordinary entity (a variable or
+      // function) and a type/namespace of the same name -- e.g. a class `D`
+      // and a global `void *D`, or a namespace and a variable. C++ ordinary
+      // lookup hides the type behind the variable for a bare reference (`D`),
+      // but a nested-name-specifier (`D::i`) or an elaborated type still finds
+      // the class/namespace. Hand clang every candidate so it can pick the
+      // right one for the syntactic context. If a variable/function was
+      // already found above we still add the type/namespace here rather than
+      // returning, so `D::i` resolves the class even though `void *D` shadows
+      // it for `D` alone.
+      found |= LookupType(dc, ConstString(sname), /*module=*/nullptr,
+                          CompilerDeclContext(), decls);
+      found |= LookupNamespace(dc, ConstString(sname), decls);
+      return found;
     }
   }
   return false;
