@@ -146,6 +146,22 @@ public:
   clang::DeclContext *
   GetDeclContextForNamespace(const cpp_typesystem::Namespace *cpp_ns);
 
+  /// The clang::NamespaceDecl already registered for \p cpp_ns, or null if none
+  /// exists yet. Unlike GetDeclContextForNamespace this never materializes a new
+  /// decl, so the decl map can reuse an existing one rather than create a
+  /// duplicate NamespaceDecl (which would become a redeclaration whose primary
+  /// context lacks the map's external visible storage).
+  clang::NamespaceDecl *
+  GetRegisteredNamespace(const cpp_typesystem::Namespace *cpp_ns) const;
+
+  /// The cpp_typesystem::Namespace a generator-created clang::NamespaceDecl
+  /// stands for, or null if \p clang_ns was not produced here. Lets the decl
+  /// map build the namespace's lookup map on demand so member lookups (types,
+  /// functions, operators) inside a namespace the generator materialized still
+  /// route back to it.
+  const cpp_typesystem::Namespace *
+  GetNamespaceForDecl(const clang::NamespaceDecl *clang_ns) const;
+
 private:
   /// RAII marker for IsGenerating(): held for the duration of each public
   /// AST-synthesizing entry point (so nested/recursive generation stays
@@ -200,6 +216,12 @@ private:
   /// for it, so generated types are placed in the matching namespace.
   llvm::DenseMap<const cpp_typesystem::Namespace *, clang::NamespaceDecl *>
       m_namespaces;
+
+  /// Reverse of m_namespaces for decls this generator created itself, so the
+  /// decl map can recover the cpp namespace behind a clang::NamespaceDecl it
+  /// finds during a qualified lookup.
+  llvm::DenseMap<const clang::NamespaceDecl *, const cpp_typesystem::Namespace *>
+      m_namespace_decls;
 
   /// Reverse map: opaque QualType (quals included) -> originating
   /// cpp_typesystem::Type, so cv-qualified variants stay distinct.

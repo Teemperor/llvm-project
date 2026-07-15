@@ -42,6 +42,9 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/SaveAndRestore.h"
+
+#include <functional>
 
 using namespace lldb_private;
 using namespace lldb;
@@ -243,8 +246,22 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
     // whole-module function search; see the note below.
     if (IsGeneratingDecls())
       return false;
+    // Placing a generated operator decl into its (external-visible) namespace
+    // makes clang reconcile the operator name there, routing an operator lookup
+    // back into this function; don't re-resolve while that is in flight.
+    if (m_resolving_operators)
+      return false;
     if (llvm::isa<clang::TranslationUnitDecl>(dc))
       return LookupOperatorFunctions(dc, name, decls);
+    // A qualified operator reference (`A::operator<`): clang looks the operator
+    // name up directly in the namespace decl. Search the target for the
+    // operator and surface only the overloads that actually live in this
+    // namespace. The namespace decl may be one the generator created while
+    // placing a namespace-scoped type, so build its routing map on demand.
+    if (const auto *nsd = llvm::dyn_cast<clang::NamespaceDecl>(dc)) {
+      if (m_namespace_maps.count(nsd) || EnsureGeneratorNamespaceMap(nsd))
+        return LookupOperatorFunctions(dc, name, decls, nsd);
+    }
     return false;
   }
 
@@ -256,8 +273,11 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
   if (const auto *nsd = llvm::dyn_cast<clang::NamespaceDecl>(dc)) {
     if (nsd->getName() == "$__lldb_local_vars")
       return LookupLocalVariable(dc, ConstString(sname), decls);
-    // A member lookup inside a real C++ namespace we created earlier.
-    if (m_namespace_maps.count(nsd)) {
+    // A member lookup inside a real C++ namespace. The decl may be one we
+    // created for an identifier reference (already registered) or one the
+    // generator created while placing a namespace-scoped type; build the
+    // routing map on demand for the latter.
+    if (m_namespace_maps.count(nsd) || EnsureGeneratorNamespaceMap(nsd)) {
       // Skip the lookup while we are synthesizing decls: placing a
       // namespace-scoped record into its clang NamespaceDecl (which has
       // external visible storage) makes clang reconcile that name here, but
@@ -410,6 +430,17 @@ bool CppExpressionDeclMap::LookupFunctions(
              .second)
       continue;
 
+    // The same target function can be reached by more than one lookup for a
+    // single call (ordinary unqualified lookup plus argument-dependent lookup);
+    // reuse the FunctionDecl generated the first time so the two lookups do not
+    // produce two identical-signature decls (which clang reports as ambiguous).
+    if (clang::FunctionDecl *cached =
+            m_generated_functions.lookup(function->GetID())) {
+      decls.push_back(cached);
+      added = true;
+      continue;
+    }
+
     // Build the asm label the JIT resolves the call through.
     ConstString mangled = function->GetMangled().GetMangledName();
     if (!mangled)
@@ -429,6 +460,7 @@ bool CppExpressionDeclMap::LookupFunctions(
         fd->setDeclContext(const_cast<clang::DeclContext *>(dc));
         const_cast<clang::DeclContext *>(dc)->addDecl(fd);
       }
+      m_generated_functions[function->GetID()] = fd;
       decls.push_back(fd);
       added = true;
     }
@@ -438,10 +470,15 @@ bool CppExpressionDeclMap::LookupFunctions(
 
 bool CppExpressionDeclMap::LookupOperatorFunctions(
     const clang::DeclContext *dc, clang::DeclarationName name,
-    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls,
+    const clang::NamespaceDecl *scope_ns) {
   Target *target = m_exe_ctx.GetTargetPtr();
   if (!target)
     return false;
+
+  // Guard against the reentrant operator lookup clang runs while we add a
+  // generated operator decl into its external-visible namespace below.
+  llvm::SaveAndRestore<bool> resolving(m_resolving_operators, true);
 
   // The debug info / symbol table spells a free operator function as
   // `operator<X>` (e.g. `operator==`), so reconstruct that spelling from the
@@ -478,6 +515,13 @@ bool CppExpressionDeclMap::LookupOperatorFunctions(
     if (!func_cpp_type || !func_cpp_type.GetTypeSystem<TypeSystemCpp>())
       continue;
 
+    // A qualified lookup (`A::operator<`) must only surface operators that
+    // actually live in the requested namespace; skip any operator declared
+    // elsewhere (including global scope).
+    clang::DeclContext *op_dc = GetOperatorDeclContext(function);
+    if (scope_ns && op_dc != static_cast<const clang::DeclContext *>(scope_ns))
+      continue;
+
     // Build the asm label the JIT resolves the call through.
     ConstString mangled = function->GetMangled().GetMangledName();
     if (!mangled)
@@ -505,7 +549,6 @@ bool CppExpressionDeclMap::LookupOperatorFunctions(
     // place the generated decl in the clang NamespaceDecl matching the
     // operator's own namespace. This both enables ADL and gives the decl the
     // correct qualified/mangled name. A global operator stays at TU scope.
-    clang::DeclContext *op_dc = GetOperatorDeclContext(function);
     if (op_dc && op_dc != m_ast_context->getTranslationUnitDecl()) {
       m_ast_context->getTranslationUnitDecl()->removeDecl(fd);
       fd->setDeclContext(op_dc);
@@ -998,27 +1041,106 @@ bool CppExpressionDeclMap::LookupNamespace(
   if (map.empty())
     return false;
 
-  // Create the parser-side namespace decl (once) and cache its map. The decl is
-  // given external visible storage so clang calls back into us for member
-  // lookups (LookupInNamespace).
+  // The representative cpp namespace (first module's decl context) this clang
+  // NamespaceDecl stands for. Used both to reuse a decl the generator already
+  // made and to register the mapping for future type generation.
+  auto *cpp_ns = static_cast<const cpp_typesystem::Namespace *>(
+      map.front().second.GetOpaqueDeclContext());
+
+  // The generator may already have materialized a clang::NamespaceDecl for this
+  // cpp namespace (e.g. while generating a namespace-scoped type such as
+  // `A::B`). Reuse it rather than create a second NamespaceDecl for the same
+  // name: two decls become a redeclaration chain whose primary context is the
+  // generator's (which lacks external visible storage), so a later lookup in
+  // the namespace -- notably a qualified operator like `A::operator<` -- would
+  // never call back into us. Turn on external visible storage on the existing
+  // decl so member lookups route here.
   clang::ASTContext &ast = *m_ast_context;
+  if (clang::NamespaceDecl *nsd = GetGenerator().GetRegisteredNamespace(cpp_ns)) {
+    clang::Decl::castToDeclContext(nsd)->setHasExternalVisibleStorage(true);
+    m_namespace_maps.try_emplace(nsd, std::move(map));
+    decls.push_back(nsd);
+    return true;
+  }
+
+  // Create the parser-side namespace decl and cache its map. The decl is given
+  // external visible storage so clang calls back into us for member lookups
+  // (LookupInNamespace). Register it -- both with the generator and in the
+  // routing map -- *before* adding it to its (external-visible) parent: doing
+  // so makes clang reconcile the namespace's name, which routes a lookup for it
+  // straight back here; having it registered first lets that reentrant lookup
+  // reuse this decl (above) instead of recursing without end.
   auto *nsd = clang::NamespaceDecl::Create(
       ast, const_cast<clang::DeclContext *>(parent_dc), /*Inline=*/false,
       clang::SourceLocation(), clang::SourceLocation(),
       &ast.Idents.get(name.GetStringRef()), /*PrevDecl=*/nullptr,
       /*Nested=*/false);
   clang::Decl::castToDeclContext(nsd)->setHasExternalVisibleStorage(true);
+  GetGenerator().RegisterNamespace(cpp_ns, nsd);
+  m_namespace_maps.insert({nsd, std::move(map)});
   const_cast<clang::DeclContext *>(parent_dc)->addDecl(nsd);
 
-  // Register the cpp namespace -> clang namespace mapping so types declared in
-  // this namespace are generated inside it (correct qualified mangling). Use
-  // the first module's decl context as the representative cpp namespace.
-  auto *cpp_ns = static_cast<const cpp_typesystem::Namespace *>(
-      map.front().second.GetOpaqueDeclContext());
-  GetGenerator().RegisterNamespace(cpp_ns, nsd);
+  decls.push_back(nsd);
+  return true;
+}
+
+bool CppExpressionDeclMap::EnsureGeneratorNamespaceMap(
+    const clang::NamespaceDecl *nsd) {
+  if (m_namespace_maps.count(nsd))
+    return true;
+
+  // Only a namespace decl the generator materialized itself (while placing a
+  // namespace-scoped type) can be recovered this way; a decl the identifier
+  // path created is already registered.
+  const cpp_typesystem::Namespace *cpp_ns =
+      GetGenerator().GetNamespaceForDecl(nsd);
+  if (!cpp_ns)
+    return false;
+
+  Target *target = m_exe_ctx.GetTargetPtr();
+  if (!target)
+    return false;
+
+  // Resolve, per module, the CompilerDeclContext whose cpp namespace is exactly
+  // `cpp_ns`. FindNamespace matches by name within a parent scope, so walk the
+  // parent chain (outermost-first) to build that scope, and confirm identity by
+  // comparing the opaque cpp namespace pointer.
+  std::function<CompilerDeclContext(SymbolFile *,
+                                    const cpp_typesystem::Namespace *)>
+      resolve = [&](SymbolFile *sf,
+                    const cpp_typesystem::Namespace *ns) -> CompilerDeclContext {
+    if (!ns)
+      return CompilerDeclContext();
+    CompilerDeclContext parent = resolve(sf, ns->GetParent());
+    // A parent that exists but couldn't be resolved means this chain isn't in
+    // this module.
+    if (ns->GetParent() && !parent.IsValid())
+      return CompilerDeclContext();
+    ConstString name(ns->GetName().GetName());
+    CompilerDeclContext found = sf->FindNamespace(name, parent);
+    if (found.IsValid() &&
+        llvm::isa_and_nonnull<TypeSystemCpp>(found.GetTypeSystem()) &&
+        found.GetOpaqueDeclContext() == ns)
+      return found;
+    return CompilerDeclContext();
+  };
+
+  NamespaceMap map;
+  for (const lldb::ModuleSP &module_sp : target->GetImages().Modules()) {
+    if (!module_sp)
+      continue;
+    SymbolFile *sf = module_sp->GetSymbolFile();
+    if (!sf)
+      continue;
+    CompilerDeclContext found = resolve(sf, cpp_ns);
+    if (found.IsValid())
+      map.emplace_back(module_sp, found);
+  }
+
+  if (map.empty())
+    return false;
 
   m_namespace_maps.insert({nsd, std::move(map)});
-  decls.push_back(nsd);
   return true;
 }
 
@@ -1027,8 +1149,7 @@ bool CppExpressionDeclMap::LookupInNamespace(
     llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
   auto it = m_namespace_maps.find(nsd);
   if (it == m_namespace_maps.end())
-    return false;
-  const NamespaceMap &map = it->second;
+    return false;  const NamespaceMap &map = it->second;
   auto *dc = const_cast<clang::NamespaceDecl *>(nsd);
 
   // A name inside a namespace can be a nested namespace, a type, a variable or
