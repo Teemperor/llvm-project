@@ -64,6 +64,15 @@ class ClangASTGenerator {
 public:
   explicit ClangASTGenerator(clang::ASTContext &ast) : m_ast(ast) {}
 
+  /// Provide the target whose module list is searched when a record can only
+  /// be completed from a *different* module than the one it was parsed from
+  /// (e.g. a type forward-declared in a shared library but fully defined in the
+  /// main executable). TypeSystemCpp has no cross-module ASTImporter, so this
+  /// generator resolves such records by finding the complete definition among
+  /// the target's other modules. Optional: without it, cross-module completion
+  /// is simply skipped (the record stays a forward declaration).
+  void SetTarget(const lldb::TargetSP &target) { m_target = target; }
+
   /// Dump a Clang AST of \p records (record CompilerTypes owned by \p ts) to
   /// \p output, applying \p filter (a name substring; empty means no filter).
   /// Builds a standalone, throwaway clang::ASTContext for the module's \p
@@ -125,6 +134,13 @@ public:
                                         const CompilerType &function_cpp_type,
                                         llvm::StringRef asm_label);
 
+  /// Build a generic variadic `__unknown_anytype ()` FunctionDecl (in the
+  /// translation unit) for a code symbol with no debug info (e.g. a libc
+  /// function like `strlen`). The expression must cast the call to a concrete
+  /// type; the JIT resolves the callee through the symbol's materialized load
+  /// address rather than an asm label. Returns null on failure.
+  clang::FunctionDecl *GenerateGenericFunction(llvm::StringRef name);
+
   /// True while this generator is actively synthesizing clang decls. Adding a
   /// named decl to the (external-visible) translation unit makes clang
   /// reconcile that name against the external source; those reentrant lookups
@@ -185,6 +201,17 @@ private:
   /// Complete a record's fields/bases from its cpp_typesystem description.
   void PopulateRecord(clang::RecordDecl *record_decl);
 
+  /// If \p rec (owned by \p ts) is an incomplete record whose complete
+  /// definition lives in a *different* module of the target, find that complete
+  /// record and rebind \p ts / \p rec to it. Returns true if a cross-module
+  /// complete definition was found and \p ts / \p rec now refer to it. This is
+  /// how TypeSystemCpp completes a type that is only forward-declared in the
+  /// module it was parsed from (no ASTImporter is involved). Only called from
+  /// the by-value completion path (PopulateRecord), never for a type reached
+  /// solely through a pointer/reference, so it preserves lazy completion.
+  bool RedirectToCrossModuleDefinition(TypeSystemCpp *&ts,
+                                       cpp_typesystem::RecordType *&rec);
+
   /// Build a clang::ClassTemplateSpecializationDecl (backed by a synthesized
   /// ClassTemplateDecl) for the class-template instantiation \p rec, so a
   /// template-id such as `TestObj<int>` written in an expression resolves: the
@@ -219,12 +246,30 @@ private:
 
   clang::ASTContext &m_ast;
 
+  /// Target whose modules are searched for a cross-module complete definition
+  /// (see SetTarget / RedirectToCrossModuleDefinition). May be null.
+  lldb::TargetSP m_target;
+
   /// Nonzero while inside a public AST-synthesizing entry point. See
   /// IsGenerating() / GenerationGuard.
   unsigned m_generation_depth = 0;
 
   /// cpp_typesystem::Type -> produced clang QualType (opaque pointer).
   llvm::DenseMap<cpp_typesystem::Type *, void *> m_generated;
+
+  /// Named records generated so far, keyed by fully-qualified name. The same
+  /// C/C++ record can be described by distinct cpp_typesystem::RecordType
+  /// instances in different modules (e.g. a type forward-declared in the main
+  /// executable but fully defined in a shared library). Each module has its own
+  /// TypeSystemCpp, so those are different cpp types and m_generated (keyed by
+  /// cpp type) would materialize a *separate* clang::RecordDecl for each --
+  /// making them distinct, incompatible types to Clang's overload resolution
+  /// ("no known conversion from 'foo *' to 'foo *'"). There is no ASTImporter
+  /// to unify them, so unify by name here: a record whose fully-qualified name
+  /// was already generated reuses that first clang decl (ODR: one C/C++ record
+  /// per name in a program). Records with an empty name (unnamed /
+  /// expression-local) are never entered here.
+  llvm::StringMap<void *> m_records_by_name;
 
   /// cpp_typesystem::Namespace -> the clang::NamespaceDecl the decl map created
   /// for it, so generated types are placed in the matching namespace.
@@ -241,12 +286,28 @@ private:
   /// cpp_typesystem::Type, so cv-qualified variants stay distinct.
   llvm::DenseMap<void *, cpp_typesystem::Type *> m_reverse;
 
+  /// For a record that was only forward-declared in the module it was parsed
+  /// from but completed from a *different* module (see
+  /// RedirectToCrossModuleDefinition), maps that incomplete cpp record to the
+  /// complete definition (as a CompilerType carrying the defining module's
+  /// TypeSystemCpp). Used by MapClangTypeToCpp so an expression whose result
+  /// type is such a record is sized from the complete definition rather than
+  /// the incomplete forward declaration.
+  llvm::DenseMap<cpp_typesystem::Type *, CompilerType> m_cross_module_complete;
+
   /// Per-record bookkeeping for lazy completion and layout.
   struct RecordInfo {
     TypeSystemCpp *ts = nullptr;
     cpp_typesystem::RecordType *cpp_record = nullptr;
     clang::CXXRecordDecl *clang_decl = nullptr;
     bool completed = false;
+    /// The record the layout (size, field/base offsets) was actually read
+    /// from. Normally the same as cpp_record, but for a record only
+    /// forward-declared in its own module it is the complete definition found
+    /// in another module (see RedirectToCrossModuleDefinition). LayoutRecord
+    /// must read the size/base offsets from the same record PopulateRecord read
+    /// the fields from, or Clang's record layout asserts on a size mismatch.
+    cpp_typesystem::RecordType *layout_record = nullptr;
     /// Bit offset of every field decl we added while populating this record,
     /// including the synthetic unnamed bitfields inserted to fill the gaps left
     /// by DWARF's omitted padding bitfields. LayoutRecord reports these to

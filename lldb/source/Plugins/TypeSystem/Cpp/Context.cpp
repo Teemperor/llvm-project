@@ -53,7 +53,8 @@ BuiltinType *Context::GetBuiltinType(llvm::StringRef name,
 
 RecordType *Context::CreateRecordType(llvm::StringRef name,
                                       std::optional<uint64_t> byte_size,
-                                      bool is_cpp_class, bool is_union) {
+                                      bool is_cpp_class, bool is_union,
+                                      bool is_class_keyword) {
   std::unique_ptr<RecordType> type;
   if (is_cpp_class)
     type = std::make_unique<ClassType>();
@@ -62,6 +63,7 @@ RecordType *Context::CreateRecordType(llvm::StringRef name,
   type->SetName(GetIdentifier(name));
   type->SetByteSize(byte_size);
   type->m_is_union = is_union;
+  type->m_is_class_keyword = is_class_keyword;
   return Track(std::move(type));
 }
 
@@ -79,9 +81,10 @@ ArrayType *Context::CreateArrayType(TypeRef element_type,
   return Track(std::move(type));
 }
 
-PointerType *Context::CreatePointerType(TypeRef pointee_type) {
+PointerType *Context::CreatePointerType(TypeRef pointee_type, bool is_block) {
   auto type = std::make_unique<PointerType>();
   type->SetPointeeType(pointee_type);
+  type->SetIsBlockPointer(is_block);
   type->SetByteSize(m_opts.GetBuiltinSizes().pointer_size);
   return Track(std::move(type));
 }

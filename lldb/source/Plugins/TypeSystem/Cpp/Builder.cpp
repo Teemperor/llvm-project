@@ -41,9 +41,11 @@ CompilerType Builder::GetVoidType() {
 
 CompilerType Builder::CreateRecordType(ConstString name,
                                        std::optional<uint64_t> byte_size,
-                                       bool is_cpp_class, bool is_union) {
+                                       bool is_cpp_class, bool is_union,
+                                       bool is_class_keyword) {
   return m_ts.GetCompilerType(m_ts.m_context.CreateRecordType(
-      name.GetStringRef(), byte_size, is_cpp_class, is_union));
+      name.GetStringRef(), byte_size, is_cpp_class, is_union,
+      is_class_keyword));
 }
 
 CompilerType Builder::CreateArrayType(CompilerType element_type,
@@ -52,9 +54,10 @@ CompilerType Builder::CreateArrayType(CompilerType element_type,
       m_ts.m_context.CreateArrayType(ToTypeRef(element_type), num_elements));
 }
 
-CompilerType Builder::CreatePointerType(CompilerType pointee_type) {
+CompilerType Builder::CreatePointerType(CompilerType pointee_type,
+                                        bool is_block) {
   return m_ts.GetCompilerType(
-      m_ts.m_context.CreatePointerType(ToTypeRef(pointee_type)));
+      m_ts.m_context.CreatePointerType(ToTypeRef(pointee_type), is_block));
 }
 
 CompilerType Builder::CreateReferenceType(CompilerType pointee_type,

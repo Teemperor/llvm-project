@@ -52,6 +52,14 @@ public:
   std::vector<std::pair<ConstString, CompilerDeclContext>>
   GetUsingDeclarations(Block &block);
 
+  /// If \p function_block is the block of a C++ member function (including a
+  /// static member function, which has no `this`), return the owning class'
+  /// CompilerType; otherwise an invalid CompilerType. Used by the expression
+  /// evaluator to establish the `$__lldb_class` context for unqualified member
+  /// lookups even when there is no `this` pointer. Empty unless this type
+  /// system was populated from DWARF.
+  CompilerType GetOwningClassForFunction(Block &function_block);
+
   /// Wrap one of our own Type nodes into a CompilerType owned by this system.
   CompilerType GetCompilerType(cpp_typesystem::Type *type);
   /// Recover the Type node backing a CompilerType created by this system.
@@ -181,6 +189,10 @@ public:
                            size_t idx) override;
   CompilerType GetPointeeType(lldb::opaque_compiler_type_t type) override;
   CompilerType GetPointerType(lldb::opaque_compiler_type_t type) override;
+  CompilerType
+  GetLValueReferenceType(lldb::opaque_compiler_type_t type) override;
+  CompilerType
+  GetRValueReferenceType(lldb::opaque_compiler_type_t type) override;
   CompilerType GetTypeForFormatters(lldb::opaque_compiler_type_t type) override;
 
   // Exploring the type
@@ -297,6 +309,19 @@ public:
 
 private:
   friend class cpp_typesystem::Builder;
+
+  // Recursive worker for GetIndexOfChildMemberWithName. `descend_anon_fields`
+  // controls whether an unnamed (anonymous union/struct) field is transparently
+  // searched: it is true only for the record the lookup starts from, and false
+  // when recursing into a base class. This mirrors C++ name lookup (and
+  // TypeSystemClang): an anonymous field injects its members into its immediately
+  // enclosing record, so they are reachable directly, but that injection does not
+  // propagate through a further base class -- i.e. `derived.member` does not find
+  // a member that lives in an anonymous field of one of `derived`'s bases.
+  size_t GetIndexOfChildMemberWithNameImpl(
+      lldb::opaque_compiler_type_t type, llvm::StringRef name,
+      bool omit_empty_base_classes, bool descend_anon_fields,
+      std::vector<uint32_t> &child_indexes);
 
   std::string m_display_name;
   llvm::Triple m_triple;

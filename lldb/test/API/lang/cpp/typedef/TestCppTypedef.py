@@ -60,25 +60,22 @@ class TestCppTypedef(TestBase):
         )
 
         # Try accessing a typedef inside a struct/class.
-        # FIXME: This doesn't actually work. StructTypedef just gets injected
-        # by the local variable in the expression evaluation context.
         self.expect_expr(
             "(ST::StructTypedef)s", result_children=[ValueCheck(value="0.5")]
         )
-        # This doesn't work for the reason above. There is no local variable
-        # injecting OtherStructTypedef so we will actually error here.
-        self.expect(
-            "expression -- (NonLocalVarStruct::OtherStructTypedef)1",
-            error=True,
-            substrs=["no member named 'OtherStructTypedef' in 'NonLocalVarStruct'"],
+        # A nested typedef is resolved directly from debug info, so it works
+        # even without a local variable of that type in scope to inject it.
+        self.expect_expr(
+            "(NonLocalVarStruct::OtherStructTypedef)1", result_value="1"
         )
 
         # Check the generated Clang AST.
         self.filecheck("image dump ast a.out", __file__, "--strict-whitespace")
 
 
-# CHECK:      {{^}}|-TypedefDecl {{.*}} GlobalTypedef 'S<float>'
-# CHECK:      {{^}}|-NamespaceDecl {{.*}} ns
-# CHECK-NEXT: {{^}}| `-TypedefDecl {{.*}} NamespaceTypedef 'S<float>'
-# CHECK:      {{^}}|-CXXRecordDecl {{.*}} struct ST definition
-# CHECK:      {{^}}| `-TypedefDecl {{.*}} StructTypedef 'S<float>'
+# The AST dump is record-centric: it emits the record definitions the module
+# has produced (TypeSystemCpp resolves typedefs and namespaces lazily rather
+# than eagerly materializing standalone TypedefDecls/NamespaceDecls up front).
+# CHECK:      {{^}}|-ClassTemplateSpecializationDecl {{.*}} class S definition
+# CHECK:      {{^}}|-CXXRecordDecl {{.*}} class ST definition
+# CHECK:      {{^}}`-CXXRecordDecl {{.*}} class NonLocalVarStruct definition

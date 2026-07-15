@@ -15,6 +15,11 @@
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
 #include "lldb/Host/FileSystem.h"
+#include "lldb/Core/Module.h"
+#include "lldb/Core/ModuleList.h"
+#include "lldb/Symbol/Type.h"
+#include "lldb/Symbol/TypeMap.h"
+#include "lldb/Target/Target.h"
 #include "lldb/Utility/LLDBLog.h"
 #include "lldb/Utility/Log.h"
 
@@ -326,15 +331,17 @@ void ClangASTGenerator::DumpRecords(TypeSystemCpp &ts,
   // pointer/reference member needs no definition). Those still-incomplete
   // decls kept the external-storage flags set in GenerateType, but this
   // standalone context has no external source to satisfy them -- the AST
-  // dumper would assert when it tried to load their lexical decls. Clear the
-  // flags on every generated record so the dumper treats an uncompleted one as
-  // a plain forward declaration.
+  // dumper would assert when it tried to load their lexical decls. A *completed*
+  // record with nested types also keeps external visible storage on (so the
+  // expression path can route `Record::Nested` lookups back through the decl
+  // map), but here every member is already materialized and there is no
+  // external source, so a lookup into it (e.g. the dumper's implicit
+  // getDestructor()) would likewise assert. Clear both flags on every generated
+  // record so the dumper treats each as fully self-contained.
   for (auto &entry : generator.m_records) {
     clang::CXXRecordDecl *decl = entry.second->clang_decl;
-    if (!decl->isCompleteDefinition()) {
-      decl->setHasExternalLexicalStorage(false);
-      decl->setHasExternalVisibleStorage(false);
-    }
+    decl->setHasExternalLexicalStorage(false);
+    decl->setHasExternalVisibleStorage(false);
   }
 
   std::unique_ptr<clang::ASTConsumer> consumer = clang::CreateASTDumper(
@@ -599,6 +606,25 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
         }
       }
     }
+    // A named record is unified by its fully-qualified name: if we already
+    // generated a clang decl for a record of this name (from any module's
+    // TypeSystemCpp), reuse it rather than create a second, distinct decl. This
+    // keeps a type that is forward-declared in one module and defined in
+    // another (a shared-library type used in the main executable) a single
+    // clang type, so overload resolution binds `foo *` from a variable and
+    // `foo *` from a function parameter to the same type. Only named records
+    // participate (an unnamed / expression-local record can't collide).
+    if (!full_name.empty()) {
+      auto by_name = m_records_by_name.find(full_name);
+      if (by_name != m_records_by_name.end()) {
+        result = clang::QualType::getFromOpaquePtr(by_name->second);
+        m_generated[cpp_type] = result.getAsOpaquePtr();
+        // Do not overwrite m_reverse: leave it pointing at the cpp type the
+        // decl was first generated for (its RecordInfo drives completion).
+        return result;
+      }
+    }
+
     auto *decl =
         clang::CXXRecordDecl::CreateDeserialized(ast, clang::GlobalDeclID());
     decl->setTagKind(kind);
@@ -618,14 +644,23 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     info->cpp_record = rec;
     info->clang_decl = decl;
     m_records[decl] = std::move(info);
+    if (!full_name.empty())
+      m_records_by_name[full_name] = result.getAsOpaquePtr();
   } else if (auto *ptr = llvm::dyn_cast<ct::PointerType>(cpp_type)) {
     clang::QualType pointee;
     if (ct::Type *p = ptr->GetPointeeType())
       pointee = GenerateType(ts, p);
     else
       pointee = ast.VoidTy;
-    if (!pointee.isNull())
-      result = ast.getPointerType(pointee);
+    if (!pointee.isNull()) {
+      // An Apple "blocks" pointer (`int (^)(int)`) wraps a function type but
+      // must be a real clang BlockPointerType so it stays callable and prints
+      // with `^` rather than `*`.
+      if (ptr->IsBlockPointer())
+        result = ast.getBlockPointerType(pointee);
+      else
+        result = ast.getPointerType(pointee);
+    }
   } else if (auto *ref = llvm::dyn_cast<ct::ReferenceType>(cpp_type)) {
     clang::QualType pointee = GenerateType(ts, ref->GetPointeeType());
     if (!pointee.isNull())
@@ -663,6 +698,14 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
         underlying.addVolatile();
       result = underlying;
     }
+  } else if (auto *elab = llvm::dyn_cast<ct::ElaboratedType>(cpp_type)) {
+    // ElaboratedType is pure display sugar (a preserved source spelling like
+    // `::Struct` or the elaborated `A` a result/persistent type kept). It is
+    // fully transparent for codegen, so generate the underlying type. Without
+    // this case the sugar falls through to GenerateBuiltin and fails to
+    // translate (e.g. a persistent variable `$p` whose stored type is an
+    // elaborated record couldn't be referenced).
+    result = GenerateType(ts, elab->GetUnderlyingType());
   } else if (auto *en = llvm::dyn_cast<ct::EnumType>(cpp_type)) {
     clang::QualType integer;
     if (ct::Type *ut = en->GetUnderlyingType())
@@ -750,6 +793,57 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
   return result;
 }
 
+bool ClangASTGenerator::RedirectToCrossModuleDefinition(
+    TypeSystemCpp *&ts, ct::RecordType *&rec) {
+  if (!m_target || !rec)
+    return false;
+  // Only records with a name can be looked up in another module; an unnamed /
+  // expression-local record can't have a matching definition elsewhere.
+  llvm::StringRef name = rec->GetName().GetName();
+  if (name.empty())
+    return false;
+
+  Log *log = GetLog(LLDBLog::Expressions);
+
+  // Search every module of the target for a type with this fully-qualified
+  // name. The complete definition may live in a different module than the one
+  // this (forward-declared) record was parsed from (e.g. a type declared in a
+  // shared library but defined in the main executable).
+  TypeResults results;
+  TypeQuery query(name, TypeQueryOptions::e_exact_match);
+  m_target->GetImages().FindTypes(nullptr, query, results);
+
+  for (const lldb::TypeSP &type_sp : results.GetTypeMap().Types()) {
+    if (!type_sp)
+      continue;
+    CompilerType candidate = type_sp->GetFullCompilerType();
+    auto candidate_ts = candidate.GetTypeSystem<TypeSystemCpp>();
+    if (!candidate_ts)
+      continue;
+    ct::Type *cand = TypeSystemCpp::GetCppType(candidate.GetOpaqueQualType());
+    auto *cand_rec = llvm::dyn_cast_or_null<ct::RecordType>(cand);
+    if (!cand_rec || cand_rec == rec)
+      continue;
+    // Ask this candidate's own module to complete it; if it succeeds we have a
+    // usable, fully-defined record to read the layout from.
+    candidate.GetCompleteType();
+    if (!cand_rec->IsComplete())
+      continue;
+    LLDB_LOG(log,
+             "ClangASTGenerator: completing forward-declared record '{0}' "
+             "from a cross-module definition",
+             name);
+    // Remember the complete definition (carrying its own module's TypeSystem)
+    // so a result type that maps back to the incomplete record can be sized
+    // from it (see MapClangTypeToCpp).
+    m_cross_module_complete[rec] = candidate;
+    ts = candidate_ts.get();
+    rec = cand_rec;
+    return true;
+  }
+  return false;
+}
+
 void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   auto it = m_records.find(record_decl);
   if (it == m_records.end())
@@ -759,15 +853,43 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     return;
   info.completed = true;
 
-  TypeSystemCpp &ts = *info.ts;
+  TypeSystemCpp &ts_ref = *info.ts;
+  TypeSystemCpp *ts = &ts_ref;
   ct::RecordType *rec = info.cpp_record;
   clang::CXXRecordDecl *decl = info.clang_decl;
   clang::ASTContext &ast = m_ast;
 
   // Make sure the record's members are parsed from debug info before we read
   // them out.
-  CompilerType cpp_ct = ts.GetCompilerType(rec);
+  CompilerType cpp_ct = ts->GetCompilerType(rec);
   cpp_ct.GetCompleteType();
+
+  // The record may only be forward-declared in the module it was parsed from
+  // (its complete definition living in another module of the target). We are on
+  // the by-value completion path -- Clang genuinely needs this record's size
+  // and members here -- so it is safe to pull in the complete definition from
+  // wherever it lives. Reading the layout from the other module's (complete)
+  // record leaves this record's clang decl / reverse mapping untouched.
+  if (!rec->IsComplete())
+    RedirectToCrossModuleDefinition(ts, rec);
+
+  // The record was only ever forward-declared in the debug info (no definition
+  // exists in any module). Leave the clang decl as an incomplete forward
+  // declaration -- do NOT startDefinition()/completeDefinition() it, or Clang
+  // would treat it as a complete empty struct and, e.g., diagnose `fwd->i` as
+  // "no member named 'i'" instead of the correct "member access into incomplete
+  // type 'Forward'". Clear the external-storage flags so Clang does not keep
+  // asking us to complete a record we cannot complete.
+  if (!rec->IsComplete()) {
+    decl->setHasExternalLexicalStorage(false);
+    decl->setHasExternalVisibleStorage(false);
+    return;
+  }
+
+  // Record which cpp record the layout is actually derived from, so
+  // LayoutRecord reports a size/base offsets consistent with the fields added
+  // below (they may come from a cross-module definition).
+  info.layout_record = rec;
 
   decl->startDefinition();
 
@@ -778,7 +900,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     std::vector<clang::CXXBaseSpecifier *> bases;
     for (uint32_t i = 0; i < rec->GetNumBaseClasses(); ++i) {
       const ct::BaseClass *base = rec->GetBaseClassAtIndex(i);
-      clang::QualType base_qt = GenerateType(ts, base->type.Get());
+      clang::QualType base_qt = GenerateType(*ts, base->type.Get());
       if (base_qt.isNull())
         continue;
       EnsureComplete(base_qt);
@@ -813,7 +935,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
 
   for (uint32_t i = 0; i < rec->GetNumFields(); ++i) {
     const ct::Field *field = rec->GetFieldAtIndex(i);
-    clang::QualType field_qt = GenerateType(ts, field->type.Get());
+    clang::QualType field_qt = GenerateType(*ts, field->type.Get());
     if (field_qt.isNull())
       continue;
     // A field held by value (directly or as an array element) is embedded in
@@ -923,10 +1045,10 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   // lets an expression call `obj.method()` / `this->method()`. They are parsed
   // lazily -- separately from the record's fields/bases -- so make sure they've
   // been filled in now that we're building the clang decl.
-  ts.CompleteMemberFunctions(rec);
+  ts->CompleteMemberFunctions(rec);
   for (uint32_t i = 0; i < rec->GetNumMemberFunctions(); ++i) {
     const ct::MemberFunction *mf = rec->GetMemberFunctionAtIndex(i);
-    clang::QualType method_qt = GenerateType(ts, mf->type.Get());
+    clang::QualType method_qt = GenerateType(*ts, mf->type.Get());
     if (method_qt.isNull())
       continue;
     // The cpp_typesystem FunctionType doesn't carry the method's cv-qualifiers
@@ -1081,7 +1203,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   // asm label when the declaration carried one).
   for (uint32_t i = 0; i < rec->GetNumStaticDataMembers(); ++i) {
     const ct::StaticDataMember *sm = rec->GetStaticDataMemberAtIndex(i);
-    clang::QualType member_qt = GenerateType(ts, sm->type.Get());
+    clang::QualType member_qt = GenerateType(*ts, sm->type.Get());
     if (member_qt.isNull())
       continue;
 
@@ -1187,6 +1309,22 @@ ClangASTGenerator::GenerateFunction(clang::DeclarationName name,
 }
 
 clang::FunctionDecl *
+ClangASTGenerator::GenerateGenericFunction(llvm::StringRef name) {
+  clang::ASTContext &ast = m_ast;
+  // A variadic function returning `__unknown_anytype`, mirroring
+  // NameSearchContext::AddGenericFunDecl for symbol-only callees. The
+  // expression must cast the result to a concrete type; the JIT binds the
+  // callee to the symbol's materialized address (no asm label).
+  clang::FunctionProtoType::ExtProtoInfo epi;
+  epi.Variadic = true;
+  clang::QualType func_qt =
+      ast.getFunctionType(ast.UnknownAnyTy, llvm::ArrayRef<clang::QualType>(),
+                          epi);
+  return BuildFunction(clang::DeclarationName(&ast.Idents.get(name)), func_qt,
+                       /*asm_label=*/{});
+}
+
+clang::FunctionDecl *
 ClangASTGenerator::BuildFunction(clang::DeclarationName name,
                                  clang::QualType function_qt,
                                  llvm::StringRef asm_label) {
@@ -1262,10 +1400,15 @@ ClangASTGenerator::LookupNestedType(const clang::RecordDecl *record_decl,
   if (nested_qt.isNull())
     return nullptr;
   clang::NamedDecl *nested_decl = nullptr;
-  if (const auto *tt = nested_qt->getAs<clang::TagType>())
-    nested_decl = tt->getDecl();
-  else if (const auto *tdt = nested_qt->getAs<clang::TypedefType>())
+  // Check for a typedef before a tag: a nested typedef aliasing a record (e.g.
+  // `StructTypedef = S<float>`) generates a TypedefType, but getAs<TagType>()
+  // sees through the alias to the underlying record's tag. We must re-parent
+  // (and hand clang) the TypedefDecl named by the alias, not the aliased tag --
+  // otherwise the qualified lookup returns a decl whose name mismatches.
+  if (const auto *tdt = nested_qt->getAs<clang::TypedefType>())
     nested_decl = tdt->getDecl();
+  else if (const auto *tt = nested_qt->getAs<clang::TagType>())
+    nested_decl = tt->getDecl();
   if (!nested_decl)
     return nullptr;
 
@@ -1297,6 +1440,12 @@ bool ClangASTGenerator::LayoutRecord(
 
   // Make sure the record is populated so we can iterate its clang fields.
   PopulateRecord(const_cast<clang::RecordDecl *>(record_decl));
+
+  // PopulateRecord may have read the layout from a cross-module complete
+  // definition rather than info.cpp_record (which can be a forward declaration
+  // in its own module); use that same record for the size/base offsets.
+  if (info.layout_record)
+    rec = info.layout_record;
 
   uint64_t byte_size = rec->GetByteSize().value_or(0);
   size = byte_size * 8;
@@ -1375,9 +1524,33 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
   // Types we generated (including cv-qualified variants) map back directly.
   auto direct = m_reverse.find(qt.getAsOpaquePtr());
   auto find = direct;
+  // A typedef the user named through a qualifier (e.g. `GlobalTypedef::V`) is
+  // sugared with a nested-name-specifier, so its own opaque pointer isn't the
+  // bare `TypedefType` we registered. Before falling back to the canonical type
+  // (which would lose the typedef and report the aliased type, e.g. `float`),
+  // rebuild the bare typedef from the same decl -- the context uniques it, so we
+  // get back the exact node we registered -- and look that up.
+  if (find == m_reverse.end()) {
+    if (const auto *tdt = qt->getAs<clang::TypedefType>()) {
+      clang::QualType bare = m_ast.getTypedefType(
+          clang::ElaboratedTypeKeyword::None, /*Qualifier=*/std::nullopt,
+          tdt->getDecl());
+      find = m_reverse.find(bare.getAsOpaquePtr());
+    }
+  }
   if (find == m_reverse.end())
     find = m_reverse.find(qt.getCanonicalType().getAsOpaquePtr());
   if (find != m_reverse.end()) {
+    // If this record was only forward-declared in its own module but we
+    // completed it from another module's definition, return that complete
+    // definition (carrying its defining module's TypeSystemCpp) so the result
+    // can be sized. This only fires for a record used by value (the one whose
+    // layout was needed and thus populated the map), never for a type reached
+    // solely through a pointer -- preserving lazy completion.
+    if (auto redirect = m_cross_module_complete.find(find->second);
+        redirect != m_cross_module_complete.end())
+      return redirect->second;
+
     // Map the recovered type into result_ts (the scratch TypeSystemCpp that
     // owns expression result/persistent types). Keeping result types in the
     // scratch TS -- rather than their parsing module's TS -- means a type
@@ -1502,7 +1675,8 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
   // the clang record's layout so the expression result can be sized and its
   // members read.
   if (const auto *rt = qt->getAs<clang::RecordType>()) {
-    clang::RecordDecl *rd = rt->getDecl()->getDefinition();
+    clang::RecordDecl *decl = rt->getDecl();
+    clang::RecordDecl *rd = decl->getDefinition();
     if (rd && rd->isCompleteDefinition()) {
       const clang::ASTRecordLayout &layout = m_ast.getASTRecordLayout(rd);
       std::string name = rd->getNameAsString();
@@ -1527,6 +1701,16 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
       builder.SetRecordComplete(*cpp_record);
       return record;
     }
+    // A record the parser only forward-declared (e.g. `struct S;` written in
+    // the expression, then used through a pointer such as `S *`). It has no
+    // definition and thus no layout/size, but we still need a cpp record to
+    // build a `S *` pointee out of. Rebuild it as an incomplete record (no
+    // byte size, no SetRecordComplete) so the pointer can be sized/stored.
+    std::string name = decl->getNameAsString();
+    return cpp_typesystem::Builder(result_ts).CreateRecordType(
+        ConstString(name), /*byte_size=*/std::nullopt,
+        /*is_cpp_class=*/llvm::isa<clang::CXXRecordDecl>(decl),
+        /*is_union=*/decl->isUnion());
   }
 
   // Simple derived types (a reference or pointer created by the parser itself,
@@ -1540,6 +1724,14 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
   } else if (qt->isPointerType()) {
     if (CompilerType pointee = MapClangTypeToCpp(qt->getPointeeType(), result_ts))
       return cpp_typesystem::Builder(result_ts).CreatePointerType(pointee);
+  } else if (const auto *bpt = qt->getAs<clang::BlockPointerType>()) {
+    // A block-literal expression (`^int(int){...}`) has a block-pointer type
+    // (`int (^)(int)`). Rebuild it as a block pointer over its (function)
+    // pointee so the result can be sized and stored.
+    if (CompilerType pointee =
+            MapClangTypeToCpp(bpt->getPointeeType(), result_ts))
+      return cpp_typesystem::Builder(result_ts).CreatePointerType(
+          pointee, /*is_block=*/true);
   } else if (const auto *cx = qt->getAs<clang::ComplexType>()) {
     // A complex value produced by the expression (e.g. `a + (1.0f + 2.0fi)`)
     // maps back to a TypeSystemCpp ComplexType over its mapped element.
