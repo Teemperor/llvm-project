@@ -11,6 +11,7 @@
 #include "DWARFASTParser.h"
 #include "DWARFDIE.h"
 #include "DWARFDefines.h"
+#include "DWARFUnit.h"
 #include "SymbolFileDWARF.h"
 #include "SymbolFileDWARFDebugMap.h"
 
@@ -887,6 +888,13 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   };
   std::vector<MemberInfo> members;
 
+  // If the record starts with an artificial vtable pointer (which we skip as a
+  // field below, since Clang re-creates it), this holds the bit offset just
+  // past it. The unnamed-bitfield gap detection uses it to avoid synthesizing a
+  // spurious padding field between the vtable pointer and the first bitfield
+  // (mirroring DWARFASTParserClang, where the vptr advances last_field_end).
+  uint64_t vtable_ptr_end_bits = 0;
+
   // True once we see any template-parameter DIE (type/value parameter or a
   // GNU parameter pack), i.e. this record is a class-template instantiation.
   // An instantiation over an *empty* pack (e.g. `TypePack<>`) emits an empty
@@ -943,8 +951,15 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
         const char *member_name = child.GetName();
         llvm::StringRef member_name_ref(member_name ? member_name : "");
         if (member_name_ref.starts_with("_vptr$") ||
-            member_name_ref.starts_with("_vptr."))
+            member_name_ref.starts_with("_vptr.")) {
+          // Record where the vtable pointer ends so gap detection below does
+          // not treat the space it occupies as an unnamed bitfield.
+          uint64_t vptr_offset = child.GetAttributeValueAsUnsigned(
+              DW_AT_data_member_location, 0);
+          vtable_ptr_end_bits =
+              vptr_offset * 8 + child.GetCU()->GetAddressByteSize() * 8;
           continue;
+        }
       }
       std::optional<uint64_t> data_member_location =
           child.GetAttributeValueAsOptionalUnsigned(DW_AT_data_member_location);
@@ -1068,7 +1083,10 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
                         lldb::eFormatDecimal)
           .GetOpaqueQualType());
   // State of the previous field, in absolute bits from the start of the record.
-  uint64_t last_field_end = 0;
+  // If a vtable pointer was skipped above, treat it as the previous (non-
+  // bitfield) field so the space it occupies is not mistaken for a gap that
+  // needs a synthetic unnamed bitfield.
+  uint64_t last_field_end = vtable_ptr_end_bits;
   bool last_field_is_bitfield = false;
   bool seen_field = false;
 

@@ -54,6 +54,29 @@ static cpp_typesystem::Type *Desugar(cpp_typesystem::Type *t) {
   return t;
 }
 
+// Whether a record type has any data members, considering base classes
+// recursively. A vtable pointer is not a field, so a polymorphic-but-otherwise-
+// empty class returns false here. This mirrors TypeSystemClang::RecordHasFields
+// and drives whether an empty base class is omitted from a value's children
+// (see the omit_empty_base_classes handling below). `complete` completes each
+// (lazily-parsed) base before inspecting it so its field count is known.
+static bool RecordHasFields(cpp_typesystem::Type *t,
+                            llvm::function_ref<void(cpp_typesystem::Type *)>
+                                complete) {
+  t = Desugar(t);
+  if (!t)
+    return false;
+  complete(t);
+  if (t->GetNumFields() != 0)
+    return true;
+  for (uint32_t i = 0, n = t->GetNumBaseClasses(); i < n; ++i) {
+    const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
+    if (base && RecordHasFields(base->type.Get(), complete))
+      return true;
+  }
+  return false;
+}
+
 // Append the namespace qualification for `ns` (outermost first), skipping
 // inline namespaces so that e.g. `std::__1` prints as `std::`, and anonymous
 // namespaces so that a type in one prints unqualified (e.g. `Bar`, matching
@@ -1261,7 +1284,22 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
     return 0;
   GetCompleteType(type);
   // Children of a record are its direct base classes followed by its fields.
-  return t->GetNumBaseClasses() + t->GetNumFields();
+  // Empty base classes (no data members, recursively) are omitted when
+  // requested, matching TypeSystemClang.
+  uint32_t num_bases = t->GetNumBaseClasses();
+  if (omit_empty_base_classes) {
+    auto complete = [this](cpp_typesystem::Type *bt) {
+      GetCompleteType(static_cast<opaque_compiler_type_t>(bt));
+    };
+    uint32_t non_empty_bases = 0;
+    for (uint32_t i = 0; i < num_bases; ++i) {
+      const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
+      if (base && RecordHasFields(base->type.Get(), complete))
+        ++non_empty_bases;
+    }
+    num_bases = non_empty_bases;
+  }
+  return num_bases + t->GetNumFields();
 }
 
 BasicType TypeSystemCpp::GetBasicTypeEnumeration(opaque_compiler_type_t type) {
@@ -1468,20 +1506,33 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
   }
 
   // Children are laid out as the direct base classes followed by the fields.
-  uint32_t num_bases = t->GetNumBaseClasses();
-  if (idx < num_bases) {
-    const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(idx);
+  // When omit_empty_base_classes is set, empty base classes (no data members,
+  // recursively) are skipped and do not consume a child index, matching
+  // TypeSystemClang.
+  auto complete = [this](cpp_typesystem::Type *bt) {
+    GetCompleteType(static_cast<opaque_compiler_type_t>(bt));
+  };
+  uint32_t total_bases = t->GetNumBaseClasses();
+  uint32_t visible_base_idx = 0;
+  for (uint32_t i = 0; i < total_bases; ++i) {
+    const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
     if (!base)
-      return CompilerType();
-    child_name = base->type.Get()->GetName().GetName().str();
-    child_byte_offset = base->byte_offset;
-    if (std::optional<uint64_t> byte_size = base->type.Get()->GetByteSize())
-      child_byte_size = *byte_size;
-    child_is_base_class = true;
-    return GetCompilerType(base->type.Get());
+      continue;
+    if (omit_empty_base_classes &&
+        !RecordHasFields(base->type.Get(), complete))
+      continue;
+    if (visible_base_idx == idx) {
+      child_name = base->type.Get()->GetName().GetName().str();
+      child_byte_offset = base->byte_offset;
+      if (std::optional<uint64_t> byte_size = base->type.Get()->GetByteSize())
+        child_byte_size = *byte_size;
+      child_is_base_class = true;
+      return GetCompilerType(base->type.Get());
+    }
+    ++visible_base_idx;
   }
 
-  const Field *field = t->GetFieldAtIndex(idx - num_bases);
+  const Field *field = t->GetFieldAtIndex(idx - visible_base_idx);
   if (!field)
     return CompilerType();
 
@@ -1517,17 +1568,28 @@ TypeSystemCpp::GetIndexOfChildWithName(opaque_compiler_type_t type,
     return llvm::createStringError(
         "TypeSystemCpp::GetIndexOfChildWithName: no such child");
   }
-  uint32_t num_bases = t->GetNumBaseClasses();
-  // Base classes are the first children; match them by their type name.
-  for (uint32_t i = 0; i < num_bases; ++i) {
+  // Base classes are the first children (empty ones omitted when requested,
+  // matching GetChildCompilerTypeAtIndex); match them by their type name.
+  auto complete = [this](cpp_typesystem::Type *bt) {
+    GetCompleteType(static_cast<opaque_compiler_type_t>(bt));
+  };
+  uint32_t total_bases = t->GetNumBaseClasses();
+  uint32_t visible_base_idx = 0;
+  for (uint32_t i = 0; i < total_bases; ++i) {
     const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
+    if (!base)
+      continue;
+    if (omit_empty_base_classes &&
+        !RecordHasFields(base->type.Get(), complete))
+      continue;
     if (base->type.Get()->GetName().GetName() == name)
-      return i;
+      return visible_base_idx;
+    ++visible_base_idx;
   }
   // Fields follow the base classes.
   for (uint32_t i = 0, e = t->GetNumFields(); i < e; ++i) {
     if (t->GetFieldAtIndex(i)->name.GetName() == name)
-      return num_bases + i;
+      return visible_base_idx + i;
   }
   return llvm::createStringError(
       "TypeSystemCpp::GetIndexOfChildWithName: no such child");
@@ -1554,7 +1616,21 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
           name, omit_empty_base_classes, child_indexes);
     return 0;
   }
-  uint32_t num_bases = t->GetNumBaseClasses();
+  // Compute the number of visible base classes (empty ones omitted when
+  // requested), since fields are laid out after them and their child indices
+  // must match GetChildCompilerTypeAtIndex.
+  auto complete = [this](cpp_typesystem::Type *bt) {
+    GetCompleteType(static_cast<opaque_compiler_type_t>(bt));
+  };
+  uint32_t total_bases = t->GetNumBaseClasses();
+  auto base_is_visible = [&](const cpp_typesystem::BaseClass *base) {
+    return base && (!omit_empty_base_classes ||
+                    RecordHasFields(base->type.Get(), complete));
+  };
+  uint32_t num_visible_bases = 0;
+  for (uint32_t i = 0; i < total_bases; ++i)
+    if (base_is_visible(t->GetBaseClassAtIndex(i)))
+      ++num_visible_bases;
 
   // A matching field is a direct child, laid out after the base classes. An
   // unnamed field is an anonymous union/struct whose members are reached as if
@@ -1563,12 +1639,12 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
     const Field *field = t->GetFieldAtIndex(i);
     llvm::StringRef field_name = field->name.GetName();
     if (field_name == name) {
-      child_indexes.push_back(num_bases + i);
+      child_indexes.push_back(num_visible_bases + i);
       return child_indexes.size();
     }
     if (field_name.empty() && field->type) {
       std::vector<uint32_t> save_indices = child_indexes;
-      child_indexes.push_back(num_bases + i);
+      child_indexes.push_back(num_visible_bases + i);
       if (GetCompilerType(field->type.Get())
               .GetIndexOfChildMemberWithName(name, omit_empty_base_classes,
                                              child_indexes))
@@ -1578,16 +1654,20 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
   }
 
   // Otherwise the member may be inherited from a base class. Base classes are
-  // the first children, so their child index is just their position.
-  for (uint32_t i = 0; i < num_bases; ++i) {
+  // the first children, so their child index is their visible position.
+  uint32_t visible_base_idx = 0;
+  for (uint32_t i = 0; i < total_bases; ++i) {
     const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
+    if (!base_is_visible(base))
+      continue;
     std::vector<uint32_t> save_indices = child_indexes;
-    child_indexes.push_back(i);
+    child_indexes.push_back(visible_base_idx);
     if (GetCompilerType(base->type.Get())
             .GetIndexOfChildMemberWithName(name, omit_empty_base_classes,
                                            child_indexes))
       return child_indexes.size();
     child_indexes = std::move(save_indices);
+    ++visible_base_idx;
   }
   return 0;
 }
