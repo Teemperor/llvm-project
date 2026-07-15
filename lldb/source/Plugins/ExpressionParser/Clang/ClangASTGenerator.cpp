@@ -335,6 +335,7 @@ clang::QualType ClangASTGenerator::GenerateBuiltin(ct::Type *cpp_type) {
           .Case("signed char", ast.SignedCharTy)
           .Case("unsigned char", ast.UnsignedCharTy)
           .Case("wchar_t", ast.WCharTy)
+          .Case("char8_t", ast.Char8Ty)
           .Case("char16_t", ast.Char16Ty)
           .Case("char32_t", ast.Char32Ty)
           .Case("short", ast.ShortTy)
