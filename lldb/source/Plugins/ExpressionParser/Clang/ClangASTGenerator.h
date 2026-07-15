@@ -185,6 +185,20 @@ private:
   /// Complete a record's fields/bases from its cpp_typesystem description.
   void PopulateRecord(clang::RecordDecl *record_decl);
 
+  /// Build a clang::ClassTemplateSpecializationDecl (backed by a synthesized
+  /// ClassTemplateDecl) for the class-template instantiation \p rec, so a
+  /// template-id such as `TestObj<int>` written in an expression resolves: the
+  /// parser looks the bare template name (`TestObj`) up as a ClassTemplateDecl
+  /// and applies the arguments. \p rec must be a template instantiation
+  /// (RecordType::IsTemplateInstantiation()). \p kind is the record's
+  /// clang::TagTypeKind, \p decl_ctx its declaration context. Returns the
+  /// specialization decl (a CXXRecordDecl), created as a forward declaration
+  /// like every other generated record.
+  clang::CXXRecordDecl *BuildClassTemplateSpecializationDecl(
+      TypeSystemCpp &ts, cpp_typesystem::RecordType *rec,
+      clang::TagTypeKind kind, clang::DeclContext *decl_ctx,
+      llvm::StringRef base_name);
+
   /// Complete any record type embedded by value in \p qt (the type itself, or
   /// an array element) so it can be used as a base/field.
   void EnsureComplete(clang::QualType qt);

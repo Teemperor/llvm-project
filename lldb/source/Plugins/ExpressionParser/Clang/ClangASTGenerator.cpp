@@ -24,6 +24,7 @@
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclTemplate.h"
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
@@ -420,6 +421,106 @@ clang::QualType ClangASTGenerator::GenerateBuiltin(ct::Type *cpp_type) {
   return {};
 }
 
+clang::CXXRecordDecl *ClangASTGenerator::BuildClassTemplateSpecializationDecl(
+    TypeSystemCpp &ts, ct::RecordType *rec, clang::TagTypeKind kind,
+    clang::DeclContext *decl_ctx, llvm::StringRef base_name) {
+  clang::ASTContext &ast = m_ast;
+  if (base_name.empty())
+    return nullptr;
+
+  // Build the clang template arguments (and matching template parameters) from
+  // the modeled cpp template arguments. Mirrors TypeSystemClang's
+  // CreateTemplateParameterList / CreateClassTemplateSpecializationDecl but
+  // driven by cpp_typesystem::TemplateArgument. Type arguments become
+  // TemplateTypeParmDecls, integral arguments NonTypeTemplateParmDecls. Any
+  // argument kind we can't model (a template-template argument, whose modeled
+  // type we don't have) makes us bail so the caller falls back to a plain
+  // record decl.
+  llvm::SmallVector<clang::TemplateArgument, 4> args;
+  llvm::SmallVector<clang::NamedDecl *, 4> param_decls;
+  clang::DeclContext *tu = ast.getTranslationUnitDecl();
+  const unsigned depth = 0;
+  for (uint32_t i = 0; i < rec->GetNumTemplateArguments(); ++i) {
+    const ct::TemplateArgument *arg = rec->GetTemplateArgumentAtIndex(i);
+    if (!arg)
+      return nullptr;
+    if (arg->kind == lldb::eTemplateArgumentKindType) {
+      clang::QualType arg_qt = GenerateType(ts, arg->type.Get());
+      if (arg_qt.isNull())
+        return nullptr;
+      args.push_back(clang::TemplateArgument(arg_qt));
+      param_decls.push_back(clang::TemplateTypeParmDecl::Create(
+          ast, tu, clang::SourceLocation(), clang::SourceLocation(), depth, i,
+          /*Id=*/nullptr, /*Typename=*/false, /*ParameterPack=*/false));
+    } else if (arg->kind == lldb::eTemplateArgumentKindIntegral) {
+      clang::QualType arg_qt = GenerateType(ts, arg->type.Get());
+      if (arg_qt.isNull() || !arg_qt->isIntegralOrEnumerationType())
+        return nullptr;
+      ct::Type *arg_type = arg->type.Get();
+      const bool is_signed =
+          arg_type && arg_type->GetEncoding() == lldb::eEncodingSint;
+      unsigned width = ast.getIntWidth(arg_qt);
+      llvm::APSInt value(llvm::APInt(width, arg->integral_value, is_signed),
+                         !is_signed);
+      args.push_back(clang::TemplateArgument(ast, value, arg_qt));
+      param_decls.push_back(clang::NonTypeTemplateParmDecl::Create(
+          ast, tu, clang::SourceLocation(), clang::SourceLocation(), depth, i,
+          /*Id=*/nullptr, arg_qt, /*ParameterPack=*/false,
+          ast.getTrivialTypeSourceInfo(arg_qt)));
+    } else {
+      return nullptr;
+    }
+  }
+
+  clang::IdentifierInfo &ii = ast.Idents.get(base_name);
+  clang::DeclarationName decl_name(&ii);
+
+  clang::TemplateParameterList *param_list =
+      clang::TemplateParameterList::Create(
+          ast, clang::SourceLocation(), clang::SourceLocation(), param_decls,
+          clang::SourceLocation(), /*RequiresClause=*/nullptr);
+
+  // The bare template's pattern record (a forward declaration; a class template
+  // has "specializations" but the pattern itself is never defined here).
+  auto *pattern = clang::CXXRecordDecl::CreateDeserialized(
+      ast, clang::GlobalDeclID());
+  pattern->setTagKind(kind);
+  pattern->setDeclContext(decl_ctx);
+  pattern->setDeclName(decl_name);
+  for (clang::NamedDecl *param : param_decls)
+    param->setDeclContext(pattern);
+
+  auto *class_template =
+      clang::ClassTemplateDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+  class_template->setDeclContext(decl_ctx);
+  class_template->setDeclName(decl_name);
+  class_template->setTemplateParameters(param_list);
+  class_template->init(pattern);
+  pattern->setDescribedClassTemplate(class_template);
+  class_template->setAccess(clang::AS_public);
+  decl_ctx->addDecl(class_template);
+
+  auto *spec = clang::ClassTemplateSpecializationDecl::CreateDeserialized(
+      ast, clang::GlobalDeclID());
+  spec->setTagKind(kind);
+  spec->setDeclContext(decl_ctx);
+  spec->setInstantiationOf(class_template);
+  spec->setTemplateArgs(clang::TemplateArgumentList::CreateCopy(ast, args));
+  void *insert_pos = nullptr;
+  if (!class_template->findSpecialization(args, insert_pos))
+    class_template->AddSpecialization(spec, insert_pos);
+  spec->setDeclName(decl_name);
+  spec->setStrictPackMatch(false);
+  spec->setSpecializationKind(clang::TSK_ExplicitSpecialization);
+  spec->setAccess(clang::AS_public);
+  decl_ctx->addDecl(spec);
+
+  // Completed lazily like every other generated record (see PopulateRecord).
+  spec->setHasExternalLexicalStorage(true);
+  spec->setHasExternalVisibleStorage(true);
+  return spec;
+}
+
 clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
                                                 ct::Type *cpp_type) {
   if (!cpp_type)
@@ -456,11 +557,51 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
                                   : (llvm::isa<ct::ClassType>(rec)
                                          ? clang::TagTypeKind::Class
                                          : clang::TagTypeKind::Struct);
+    // A class-template instantiation must be modeled as a
+    // ClassTemplateSpecializationDecl (backed by a ClassTemplateDecl named by
+    // the bare template name), so a template-id written in an expression
+    // (`TestObj<int>`) resolves: the parser looks up the template name and
+    // applies the arguments. Whether a record is a template instantiation --
+    // and its template arguments -- is only known once the record is completed
+    // (both come from the same DWARF completion step). Completing every record
+    // here would defeat lazy completion (a record reachable only through a
+    // pointer must stay a forward declaration), so first use the record's name
+    // as a cheap, completion-free filter: a template instantiation's spelling
+    // is a template-id (`TestObj<int>`), which contains a `<` and is never a
+    // plain identifier; a non-template record's name never does. The
+    // fully-qualified name (GetName) always carries the reconstructed `<...>`
+    // even under -gsimple-template-names, whereas the unqualified spelling may
+    // be the bare `TestObj`. Only for a template-id name do we complete the
+    // record to read its template arguments and build the specialization decl.
+    // Look at the record's own (last) name component so a `<` that belongs only
+    // to an enclosing scope (`Foo<int>::Bar`) doesn't misfire.
+    llvm::StringRef name = unqualified_name(rec);
+    llvm::StringRef full_name = rec->GetName().GetName();
+    llvm::StringRef last_component = full_name;
+    if (size_t scope = full_name.rfind("::"); scope != llvm::StringRef::npos)
+      last_component = full_name.substr(scope + 2);
+    if (name.contains('<') || last_component.contains('<')) {
+      ts.GetCompilerType(rec).GetCompleteType();
+      if (rec->IsTemplateInstantiation()) {
+        llvm::StringRef base_name = name.substr(0, name.find('<'));
+        if (clang::CXXRecordDecl *spec = BuildClassTemplateSpecializationDecl(
+                ts, rec, kind, decl_ctx, base_name)) {
+          result = ast.getCanonicalTagType(spec);
+          auto info = std::make_unique<RecordInfo>();
+          info->ts = &ts;
+          info->cpp_record = rec;
+          info->clang_decl = spec;
+          m_records[spec] = std::move(info);
+          m_generated[cpp_type] = result.getAsOpaquePtr();
+          m_reverse[result.getAsOpaquePtr()] = cpp_type;
+          return result;
+        }
+      }
+    }
     auto *decl =
         clang::CXXRecordDecl::CreateDeserialized(ast, clang::GlobalDeclID());
     decl->setTagKind(kind);
     decl->setDeclContext(decl_ctx);
-    llvm::StringRef name = unqualified_name(rec);
     if (!name.empty())
       decl->setDeclName(&ast.Idents.get(name));
     decl->setAccess(clang::AS_public);
