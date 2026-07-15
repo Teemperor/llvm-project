@@ -20,6 +20,7 @@
 #include "lldb/lldb-public.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/StringSet.h"
 
 #include <memory>
 #include <optional>
@@ -154,11 +155,46 @@ private:
   /// labels) for them so an expression can call them. When \p scope is a valid
   /// namespace CompilerDeclContext the search is restricted to that namespace
   /// (in \p module); otherwise the whole target is searched. Generated decls
-  /// are placed in \p dc.
+  /// are placed in \p dc. When \p shared_seen is non-null it is used (instead of
+  /// a call-local set) to dedup functions by signature, so repeated calls across
+  /// several enclosing scopes collect the union of the differently-typed
+  /// overloads while dropping identical-signature duplicates (an inner scope's
+  /// overload hides an outer scope's same-signature one).
+  ///
+  /// When \p require_ns_name is non-empty the search is done target-wide and
+  /// restricted to functions whose immediate enclosing namespace has that
+  /// (basename) name, regardless of where that namespace is nested. This
+  /// mirrors TypeSystemClang's namespace lumping: a qualified `B::func()` finds
+  /// `A::B::func` even when the `B` clang resolved (e.g. a global `::B`) has no
+  /// such member.
   bool LookupFunctions(const clang::DeclContext *dc, ConstString name,
                        lldb::ModuleSP module,
                        const CompilerDeclContext &scope,
-                       llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+                       llvm::SmallVectorImpl<clang::NamedDecl *> &decls,
+                       llvm::StringSet<> *shared_seen = nullptr,
+                       llvm::StringRef require_ns_name = {});
+
+  /// Fallback for a call to a code symbol with no debug info (e.g. a libc
+  /// function like `strlen`): find a code/resolver symbol named \p name and
+  /// synthesize a generic variadic `__unknown_anytype ()` FunctionDecl bound to
+  /// the symbol's load address (materialized via Materializer::AddSymbol). The
+  /// expression must cast the call to a concrete type. Only used at
+  /// translation-unit scope after every debug-info candidate (function,
+  /// variable, type, namespace) failed, so a debug-info entity is never
+  /// shadowed by a bare symbol.
+  bool LookupSymbolFunction(const clang::DeclContext *dc, ConstString name,
+                            llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
+  /// Look up a data symbol named \p name that has no debug info (e.g. a global
+  /// variable in a stripped/hidden translation unit) and create a VarDecl of
+  /// type `void *&` bound to the symbol's load address (materialized via
+  /// Materializer::AddSymbol). Only used at translation-unit scope after every
+  /// debug-info candidate (variable, function, type, namespace) failed, so a
+  /// debug-info entity is never shadowed by a bare symbol. Mirrors the legacy
+  /// ClangExpressionDeclMap::AddOneGenericVariable path. Any ambiguity/error
+  /// from choosing among conflicting symbols is reported as a parser diagnostic.
+  bool LookupGlobalDataSymbol(const clang::DeclContext *dc, ConstString name,
+                              llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
   /// Look up a global (or file-static) variable named \p name and create a
   /// VarDecl referencing its storage, mirroring LookupLocalVariable. When
@@ -192,6 +228,15 @@ private:
   bool LookupNamespace(const clang::DeclContext *parent_dc, ConstString name,
                        llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
+  /// Materialize (or reuse) a clang::NamespaceDecl in \p parent_dc for the
+  /// namespace described by \p map (its representative cpp namespace is the
+  /// first entry's decl context), give it external visible storage, cache its
+  /// NamespaceMap, and push it into \p decls. Shared by the top-level, nested
+  /// and frame-scope namespace lookups.
+  bool MaterializeNamespaceMap(const clang::DeclContext *parent_dc,
+                               ConstString name, NamespaceMap map,
+                               llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
   /// Resolve a name looked up inside a namespace decl \p nsd we created: fan
   /// the lookup out over the namespace's NamespaceMap (nested namespaces,
   /// types, variables, functions).
@@ -214,6 +259,16 @@ private:
   /// unit).
   bool LookupInFrameNamespaces(const clang::DeclContext *dc, ConstString name,
                                llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
+  /// Honor the current frame's enclosing C++ class scope for an unqualified
+  /// lookup: if the frame function is a (possibly static) member function,
+  /// resolve \p name to a static data member of the enclosing class (e.g. `s_a`
+  /// to `A::s_a`). Such a member is emitted like a global but the plain global
+  /// search rejects it (it must not shadow a true `::name`); this class-scoped
+  /// step surfaces it. Works without a `this` pointer, so it also covers static
+  /// member functions. Decls are created in \p dc (the translation unit).
+  bool LookupInFrameClass(const clang::DeclContext *dc, ConstString name,
+                          llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
   /// Look up a persistent expression variable (e.g. a prior result \c $0 or a
   /// user variable \c $foo) and create a reference-typed VarDecl for it.

@@ -50,14 +50,16 @@ public:
   CompilerType GetVoidType();
   CompilerType CreateRecordType(ConstString name,
                                 std::optional<uint64_t> byte_size,
-                                bool is_cpp_class, bool is_union = false);
+                                bool is_cpp_class, bool is_union = false,
+                                bool is_class_keyword = false);
   /// Create an array of \p num_elements elements of \p element_type (or an
   /// array of unknown bound when \p num_elements is std::nullopt).
   CompilerType CreateArrayType(CompilerType element_type,
                                std::optional<uint64_t> num_elements);
   /// Create a pointer to \p pointee_type (an empty CompilerType denotes a
-  /// `void *`).
-  CompilerType CreatePointerType(CompilerType pointee_type);
+  /// `void *`). \p is_block marks an Apple "blocks" pointer (`int (^)(int)`).
+  CompilerType CreatePointerType(CompilerType pointee_type,
+                                 bool is_block = false);
   /// Create an lvalue or rvalue reference to \p pointee_type.
   CompilerType CreateReferenceType(CompilerType pointee_type, bool is_rvalue);
   /// Create a typedef named \p name aliasing \p underlying_type.

@@ -129,6 +129,28 @@ static void AppendClassScopePrefix(llvm::StringRef qualified_name,
 }
 
 
+// An unnamed record/enum (e.g. a function-local `struct { ... } x;`) has no
+// spelling in the debug info. Match clang's TagDecl printing, which renders
+// such a type as "(unnamed struct)" / "(unnamed union)" / "(unnamed class)" /
+// "(unnamed enum)" (see TagDecl::printName). Returns an empty string for any
+// other (named or non-tag) type.
+static std::string BuildUnnamedTagName(cpp_typesystem::Type *t) {
+  using namespace cpp_typesystem;
+  if (!t->GetName().GetName().empty() ||
+      !t->GetUnqualifiedName().GetName().empty())
+    return {};
+  if (auto *rec = llvm::dyn_cast<RecordType>(t)) {
+    if (rec->IsUnion())
+      return "(unnamed union)";
+    if (rec->IsClassKeyword())
+      return "(unnamed class)";
+    return "(unnamed struct)";
+  }
+  if (llvm::isa<EnumType>(t))
+    return "(unnamed enum)";
+  return {};
+}
+
 static std::string BuildDisplayName(cpp_typesystem::Type *t,
                                     bool hide_default_args = true);
 
@@ -147,8 +169,10 @@ static std::string BuildFunctionName(cpp_typesystem::FunctionType *fn,
   }
   if (fn->IsVariadic())
     params += params.empty() ? "..." : ", ...";
-  else if (params.empty())
-    params = "void";
+  // An empty, prototyped parameter list is rendered as `()` (matching clang's
+  // TypePrinter and TypeSystemClang) -- not `(void)`. An unprototyped (K&R)
+  // function has a DW_TAG_unspecified_parameters child and is modelled as
+  // variadic above, so it prints as `(...)`.
   return ret + " " + decl.str() + "(" + params + ")";
 }
 
@@ -361,7 +385,7 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
     cpp_typesystem::Type *pointee = ptr->GetPointeeType();
     if (auto *fn = llvm::dyn_cast_or_null<FunctionType>(pointee))
-      return BuildFunctionName(fn, "(*)");
+      return BuildFunctionName(fn, ptr->IsBlockPointer() ? "(^)" : "(*)");
     return (pointee ? BuildDisplayName(pointee, hide_default_args)
                     : std::string("void")) +
            " *";
@@ -402,8 +426,13 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
   // Named leaf type (record/typedef/enum/builtin). Builtins carry no
   // unqualified name; fall back to their stored name.
   llvm::StringRef unqualified = t->GetUnqualifiedName().GetName();
-  if (unqualified.empty())
+  if (unqualified.empty()) {
+    // An unnamed record/enum prints as "(unnamed struct)" etc. (matching clang);
+    // builtins have no unqualified name but do carry a stored name.
+    if (std::string unnamed = BuildUnnamedTagName(t); !unnamed.empty())
+      return unnamed;
     return t->GetName().GetName().str();
+  }
 
   std::string result;
   AppendNamespacePrefix(t->GetDeclContext(), result);
@@ -666,7 +695,15 @@ bool TypeSystemCpp::IsCharType(opaque_compiler_type_t type) {
 }
 
 bool TypeSystemCpp::IsCompleteType(opaque_compiler_type_t type) {
-  return false;
+  if (!type)
+    return false;
+  // Mirror TypeSystemClang: complete the type now (if it has a definition in
+  // the debug info) so we can give the caller an accurate answer about whether
+  // the type actually has a definition, rather than just its current internal
+  // completeness state. Builtins, pointers, references, etc. report complete
+  // via cpp_typesystem::Type::IsComplete(); only records/enums that were parsed
+  // as forward declarations without a definition stay incomplete.
+  return GetCompleteType(type);
 }
 
 bool TypeSystemCpp::IsDefined(opaque_compiler_type_t type) { return false; }
@@ -695,13 +732,20 @@ bool TypeSystemCpp::IsFunctionPointerType(opaque_compiler_type_t type) {
   if (!type)
     return false;
   cpp_typesystem::Type *t = Desugar(GetCppType(type));
-  cpp_typesystem::Type *pointee = nullptr;
-  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t))
-    pointee = ptr->GetPointeeType();
-  else if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t))
-    pointee = ref->GetPointeeType();
-  return pointee &&
-         llvm::isa<cpp_typesystem::FunctionType>(Desugar(pointee));
+  // Only a *pointer* to a function is a function-pointer type. A reference to a
+  // function (`void (&)(int)`) is not, matching clang's isFunctionPointerType()
+  // (and TypeSystemClang). This distinction matters for formatting: the C++
+  // "function pointer summary" only applies to pointers, so a function
+  // reference must not pick it up.
+  auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t);
+  if (!ptr)
+    return false;
+  // A block pointer (`int (^)(int)`) is not a function-pointer type, matching
+  // clang's isFunctionPointerType().
+  if (ptr->IsBlockPointer())
+    return false;
+  cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+  return pointee && llvm::isa<cpp_typesystem::FunctionType>(Desugar(pointee));
 }
 
 bool TypeSystemCpp::IsMemberFunctionPointerType(opaque_compiler_type_t type) {
@@ -714,7 +758,21 @@ bool TypeSystemCpp::IsMemberDataPointerType(opaque_compiler_type_t type) {
 
 bool TypeSystemCpp::IsBlockPointerType(
     opaque_compiler_type_t type, CompilerType *function_pointer_type_ptr) {
-  return false;
+  if (!type)
+    return false;
+  auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(
+      Desugar(GetCppType(type)));
+  if (!ptr || !ptr->IsBlockPointer())
+    return false;
+  // Report the corresponding function-pointer type (a plain pointer to the
+  // block's function type), mirroring TypeSystemClang.
+  if (function_pointer_type_ptr) {
+    if (cpp_typesystem::Type *fn = ptr->GetPointeeType())
+      *function_pointer_type_ptr =
+          cpp_typesystem::Builder(*this).CreatePointerType(
+              GetCompilerType(fn));
+  }
+  return true;
 }
 
 bool TypeSystemCpp::IsIntegerType(opaque_compiler_type_t type,
@@ -843,6 +901,20 @@ TypeSystemCpp::GetUsingDeclarations(Block &block) {
     return decls;
   parser->CollectUsingDeclarations(block_die, decls);
   return decls;
+}
+
+CompilerType TypeSystemCpp::GetOwningClassForFunction(Block &function_block) {
+  auto *parser = llvm::dyn_cast_or_null<DWARFASTParserCpp>(GetDWARFParser());
+  if (!parser)
+    return CompilerType();
+  auto *dwarf = llvm::dyn_cast_or_null<plugin::dwarf::SymbolFileDWARF>(
+      function_block.GetSymbolFile());
+  if (!dwarf)
+    return CompilerType();
+  plugin::dwarf::DWARFDIE block_die = dwarf->GetDIE(function_block.GetID());
+  if (!block_die)
+    return CompilerType();
+  return parser->GetOwningClassForFunctionFromDWARF(block_die);
 }
 
 uint32_t TypeSystemCpp::GetPointerByteSize() {
@@ -1013,6 +1085,10 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
     if (!unqualified.empty())
       return ConstString(unqualified);
   }
+  // An unnamed record/enum has no spelling in the debug info; render it as
+  // "(unnamed struct)" etc. to match clang / TypeSystemClang.
+  if (std::string unnamed = BuildUnnamedTagName(t); !unnamed.empty())
+    return ConstString(unnamed);
   return ConstString(t->GetName().GetName());
 }
 
@@ -1147,6 +1223,11 @@ TypeSystemCpp::GetFunctionArgumentTypeAtIndex(opaque_compiler_type_t type,
 }
 
 CompilerType TypeSystemCpp::GetFunctionReturnType(opaque_compiler_type_t type) {
+  if (!type)
+    return CompilerType();
+  if (auto *fn = llvm::dyn_cast<cpp_typesystem::FunctionType>(
+          Desugar(GetCppType(type))))
+    return GetCompilerType(fn->GetReturnType());
   return CompilerType();
 }
 
@@ -1177,6 +1258,22 @@ CompilerType TypeSystemCpp::GetPointerType(opaque_compiler_type_t type) {
 }
 
 CompilerType
+TypeSystemCpp::GetLValueReferenceType(opaque_compiler_type_t type) {
+  if (!type)
+    return CompilerType();
+  return cpp_typesystem::Builder(*this).CreateReferenceType(
+      GetCompilerType(GetCppType(type)), /*is_rvalue=*/false);
+}
+
+CompilerType
+TypeSystemCpp::GetRValueReferenceType(opaque_compiler_type_t type) {
+  if (!type)
+    return CompilerType();
+  return cpp_typesystem::Builder(*this).CreateReferenceType(
+      GetCompilerType(GetCppType(type)), /*is_rvalue=*/true);
+}
+
+CompilerType
 TypeSystemCpp::GetTypeForFormatters(opaque_compiler_type_t type) {
   if (!type)
     return CompilerType();
@@ -1204,6 +1301,18 @@ TypeSystemCpp::GetTypeForFormatters(opaque_compiler_type_t type) {
       return cpp_typesystem::Builder(*this).CreatePointerType(
           GetCompilerType(stripped));
   }
+  // The C-string array summary keys off an array type's spelling
+  // (`char[N]` / `unsigned char[N]`), which clang produces by stripping the
+  // element's cv-qualifiers. An array of `const char` is modeled here with the
+  // cv-qualifier on the element (not the array), so rebuild the array with the
+  // unqualified element so `const char[N]` also matches.
+  if (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(t)) {
+    cpp_typesystem::Type *element = array->GetElementType();
+    cpp_typesystem::Type *stripped = strip_cv(element);
+    if (stripped != element && stripped)
+      return cpp_typesystem::Builder(*this).CreateArrayType(
+          GetCompilerType(stripped), array->GetNumElements());
+  }
   return GetCompilerType(t);
 }
 
@@ -1219,6 +1328,13 @@ TypeSystemCpp::GetBitSize(opaque_compiler_type_t type,
     return llvm::createStringError("invalid type");
   if (std::optional<uint64_t> byte_size = GetCppType(type)->GetByteSize())
     return *byte_size * 8;
+  // Function types have no storage of their own. Matching TypeSystemClang
+  // (clang models function types with a type size of 0), report a bit size of
+  // 0 rather than an error. This keeps the dereferenced-value child of a
+  // function pointer/reference from surfacing a size error (or a spurious byte
+  // read) as its summary -- a zero-sized value simply has no value string.
+  if (llvm::isa<cpp_typesystem::FunctionType>(Desugar(GetCppType(type))))
+    return 0;
   return llvm::createStringError("TypeSystemCpp::GetBitSize: unknown size");
 }
 
@@ -1584,6 +1700,18 @@ TypeSystemCpp::GetIndexOfChildWithName(opaque_compiler_type_t type,
 size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
     opaque_compiler_type_t type, llvm::StringRef name,
     bool omit_empty_base_classes, std::vector<uint32_t> &child_indexes) {
+  // The record the lookup starts from is allowed to transparently search its
+  // anonymous (unnamed union/struct) fields; recursion into base classes is not
+  // (see GetIndexOfChildMemberWithNameImpl).
+  return GetIndexOfChildMemberWithNameImpl(type, name, omit_empty_base_classes,
+                                           /*descend_anon_fields=*/true,
+                                           child_indexes);
+}
+
+size_t TypeSystemCpp::GetIndexOfChildMemberWithNameImpl(
+    opaque_compiler_type_t type, llvm::StringRef name,
+    bool omit_empty_base_classes, bool descend_anon_fields,
+    std::vector<uint32_t> &child_indexes) {
   if (!type)
     return 0;
   GetCompleteType(type);
@@ -1602,14 +1730,16 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
     if (!pointee || !pointee->IsAggregate())
       return 0;
     child_indexes.push_back(0);
-    return GetCompilerType(pointee).GetIndexOfChildMemberWithName(
-        name, omit_empty_base_classes, child_indexes);
+    return GetIndexOfChildMemberWithNameImpl(
+        static_cast<opaque_compiler_type_t>(pointee), name,
+        omit_empty_base_classes, /*descend_anon_fields=*/true, child_indexes);
   }
   if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t)) {
     cpp_typesystem::Type *pointee = ref->GetPointeeType();
     if (pointee && pointee->IsAggregate())
-      return GetCompilerType(pointee).GetIndexOfChildMemberWithName(
-          name, omit_empty_base_classes, child_indexes);
+      return GetIndexOfChildMemberWithNameImpl(
+          static_cast<opaque_compiler_type_t>(pointee), name,
+          omit_empty_base_classes, /*descend_anon_fields=*/true, child_indexes);
     return 0;
   }
   // Compute the number of visible base classes (empty ones omitted when
@@ -1630,7 +1760,9 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
 
   // A matching field is a direct child, laid out after the base classes. An
   // unnamed field is an anonymous union/struct whose members are reached as if
-  // they belonged to this record, so recurse into it.
+  // they belonged to this record, so recurse into it -- but only when
+  // `descend_anon_fields` is set (i.e. this is the record the lookup started
+  // from, not a base class we recursed into).
   for (uint32_t i = 0, e = t->GetNumFields(); i < e; ++i) {
     const Field *field = t->GetFieldAtIndex(i);
     llvm::StringRef field_name = field->name.GetName();
@@ -1638,19 +1770,26 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
       child_indexes.push_back(num_visible_bases + i);
       return child_indexes.size();
     }
-    if (field_name.empty() && field->type) {
+    if (descend_anon_fields && field_name.empty() && field->type) {
       std::vector<uint32_t> save_indices = child_indexes;
       child_indexes.push_back(num_visible_bases + i);
-      if (GetCompilerType(field->type.Get())
-              .GetIndexOfChildMemberWithName(name, omit_empty_base_classes,
-                                             child_indexes))
+      // An anonymous field of the starting record still injects the members of
+      // *its* anonymous fields, so keep descending transparently through it.
+      if (GetIndexOfChildMemberWithNameImpl(
+              static_cast<opaque_compiler_type_t>(field->type.Get()), name,
+              omit_empty_base_classes, /*descend_anon_fields=*/true,
+              child_indexes))
         return child_indexes.size();
       child_indexes = std::move(save_indices);
     }
   }
 
   // Otherwise the member may be inherited from a base class. Base classes are
-  // the first children, so their child index is their visible position.
+  // the first children, so their child index is their visible position. When
+  // recursing into a base we must NOT descend into that base's anonymous fields:
+  // C++ name lookup does not find a member that is injected by an anonymous
+  // field of a base class (only direct members and further base classes are
+  // reachable), matching TypeSystemClang.
   uint32_t visible_base_idx = 0;
   for (uint32_t i = 0; i < total_bases; ++i) {
     const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
@@ -1658,9 +1797,10 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithName(
       continue;
     std::vector<uint32_t> save_indices = child_indexes;
     child_indexes.push_back(visible_base_idx);
-    if (GetCompilerType(base->type.Get())
-            .GetIndexOfChildMemberWithName(name, omit_empty_base_classes,
-                                           child_indexes))
+    if (GetIndexOfChildMemberWithNameImpl(
+            static_cast<opaque_compiler_type_t>(base->type.Get()), name,
+            omit_empty_base_classes, /*descend_anon_fields=*/false,
+            child_indexes))
       return child_indexes.size();
     child_indexes = std::move(save_indices);
     ++visible_base_idx;
@@ -2096,13 +2236,25 @@ bool TypeSystemCpp::IsPolymorphicClass(opaque_compiler_type_t type) {
 }
 
 bool TypeSystemCpp::IsTypedefType(opaque_compiler_type_t type) {
-  return type && llvm::isa<cpp_typesystem::TypedefType>(GetCppType(type));
+  if (!type)
+    return false;
+  // Strip elaborated display sugar (e.g. a qualifier-spelled `GlobalTypedef::V`)
+  // but stop at the typedef itself, mirroring TypeSystemClang's
+  // RemoveWrappingTypes({Typedef}): the source spelling only affects display,
+  // so a typedef named through a qualifier is still a typedef.
+  cpp_typesystem::Type *t = GetCppType(type);
+  while (auto *el = llvm::dyn_cast<cpp_typesystem::ElaboratedType>(t))
+    t = el->GetUnderlyingType();
+  return llvm::isa<cpp_typesystem::TypedefType>(t);
 }
 
 CompilerType TypeSystemCpp::GetTypedefedType(opaque_compiler_type_t type) {
   if (!type)
     return CompilerType();
-  if (auto *td = llvm::dyn_cast<cpp_typesystem::TypedefType>(GetCppType(type)))
+  cpp_typesystem::Type *t = GetCppType(type);
+  while (auto *el = llvm::dyn_cast<cpp_typesystem::ElaboratedType>(t))
+    t = el->GetUnderlyingType();
+  if (auto *td = llvm::dyn_cast<cpp_typesystem::TypedefType>(t))
     return GetCompilerType(td->GetUnderlyingType());
   return CompilerType();
 }

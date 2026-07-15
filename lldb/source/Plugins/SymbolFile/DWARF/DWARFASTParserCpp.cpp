@@ -32,6 +32,7 @@
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/Type.h"
 #include "lldb/Target/Language.h"
+#include "lldb/Utility/StreamString.h"
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
@@ -85,10 +86,30 @@ Function *DWARFASTParserCpp::ParseFunctionFromDWARF(CompileUnit &comp_unit,
     return nullptr;
 
   Mangled func_name;
-  if (mangled)
+  if (mangled && name &&
+      Mangled::GetManglingScheme(mangled) == Mangled::eManglingSchemeNone) {
+    // The linkage name is present but is not actually a mangled name. Display
+    // the source name (DW_AT_name) and keep the linkage name as the symbol so
+    // lookups by either name still resolve.
+    func_name.SetDemangledName(ConstString(name));
+    func_name.SetMangledName(ConstString(mangled));
+  } else if (mangled) {
     func_name.SetValue(ConstString(mangled));
-  else
+  } else if ((die.GetParent().Tag() == DW_TAG_compile_unit ||
+              die.GetParent().Tag() == DW_TAG_partial_unit) &&
+             Language::LanguageIsCPlusPlus(
+                 SymbolFileDWARF::GetLanguage(*die.GetCU())) &&
+             !Language::LanguageIsObjC(
+                 SymbolFileDWARF::GetLanguage(*die.GetCU())) &&
+             name && strcmp(name, "main") != 0) {
+    // No mangled name in the DWARF: synthesize the demangled name from the decl
+    // context (skipping `main`, which is never mangled), and keep DW_AT_name as
+    // the symbol so a lookup by that name still resolves.
+    func_name.SetDemangledName(ConstructDemangledNameFromDWARF(die));
+    func_name.SetMangledName(ConstString(name));
+  } else if (name) {
     func_name.SetValue(ConstString(name));
+  }
 
   SymbolFileDWARF *dwarf = die.GetDWARF();
   // Supply the type _only_ if it has already been parsed.
@@ -242,6 +263,66 @@ static std::string GetDIEQualifiedName(const DWARFDIE &die) {
   return name;
 }
 
+ConstString
+DWARFASTParserCpp::ConstructDemangledNameFromDWARF(const DWARFDIE &die) {
+  // TypeSystemCpp must not touch clang decl contexts, so (unlike
+  // DWARFASTParserClang) build the demangled name straight from DWARF: the
+  // qualified function name followed by its parameter type spellings and any
+  // cv-qualifier on the object parameter.
+  StreamString sstr;
+  sstr << GetDIEQualifiedName(die);
+
+  bool is_variadic = false;
+  bool is_const = false;
+  std::vector<std::string> param_types;
+  for (DWARFDIE child : die.children()) {
+    switch (child.Tag()) {
+    case DW_TAG_formal_parameter: {
+      DWARFDIE param_type_die =
+          child.GetAttributeValueAsReferenceDIE(DW_AT_type);
+      // The artificial `this` parameter isn't part of the printed signature,
+      // but a `const` method has a `this` whose pointee is const-qualified.
+      if (child.GetAttributeValueAsUnsigned(DW_AT_artificial, 0)) {
+        if (Type *this_type = die.ResolveTypeUID(param_type_die)) {
+          CompilerType pointee =
+              this_type->GetForwardCompilerType().GetPointeeType();
+          if (pointee.GetTypeQualifiers() & 0x1)
+            is_const = true;
+        }
+        break;
+      }
+      std::string type_name;
+      if (Type *param_type = die.ResolveTypeUID(param_type_die))
+        type_name = param_type->GetForwardCompilerType().GetTypeName().GetString();
+      param_types.push_back(std::move(type_name));
+      break;
+    }
+    case DW_TAG_unspecified_parameters:
+      is_variadic = true;
+      break;
+    default:
+      break;
+    }
+  }
+
+  sstr << "(";
+  for (size_t i = 0; i < param_types.size(); ++i) {
+    if (i > 0)
+      sstr << ", ";
+    sstr << param_types[i];
+  }
+  if (is_variadic) {
+    if (!param_types.empty())
+      sstr << ", ";
+    sstr << "...";
+  }
+  sstr << ")";
+  if (is_const)
+    sstr << " const";
+
+  return ConstString(sstr.GetString());
+}
+
 /// Build the chain of enclosing namespaces for \p die, marking libc++-style
 /// inline namespaces (DWARF's DW_AT_export_symbols) so they can be skipped when
 /// printing the type name. Returns the innermost namespace, or null if the type
@@ -382,6 +463,34 @@ void DWARFASTParserCpp::CollectUsingDeclarations(
       break;
   }
 }
+
+CompilerType DWARFASTParserCpp::GetOwningClassForFunctionFromDWARF(
+    const DWARFDIE &function_die) {
+  if (!function_die)
+    return CompilerType();
+
+  // The semantic parent of a member-function DIE (following
+  // DW_AT_specification / DW_AT_abstract_origin for out-of-line definitions) is
+  // the class/struct/union it belongs to. This holds for static member
+  // functions too, which have no `this` pointer to derive the class from.
+  DWARFDIE parent = function_die.GetParentDeclContextDIE();
+  if (!parent)
+    return CompilerType();
+  switch (parent.Tag()) {
+  case DW_TAG_structure_type:
+  case DW_TAG_class_type:
+  case DW_TAG_union_type:
+    break;
+  default:
+    return CompilerType();
+  }
+
+  Type *class_type = function_die.ResolveTypeUID(parent);
+  if (!class_type)
+    return CompilerType();
+  return class_type->GetForwardCompilerType();
+}
+
 /// the JIT can resolve the call to the right symbol in the inferior. Mirrors
 /// DWARFASTParserClang's MakeLLDBFuncAsmLabel.
 static std::string MakeFuncAsmLabel(const DWARFDIE &die) {
@@ -500,6 +609,34 @@ TypeSP DWARFASTParserCpp::ParseArrayType(const DWARFDIE &die) {
                          Type::ResolveState::Full);
 }
 
+CompilerType DWARFASTParserCpp::ParseBlockFunctionType(const DWARFDIE &die) {
+  // An Apple "blocks" pointer points at a compiler-generated literal struct
+  // (marked with DW_AT_APPLE_block) that contains a `__FuncPtr` member: a
+  // pointer to the block's invoke function. Follow that member to recover the
+  // block's function type.
+  if (!die || !die.GetAttributeValueAsUnsigned(DW_AT_APPLE_block, 0))
+    return CompilerType();
+
+  for (DWARFDIE child : die.children()) {
+    if (child.Tag() != DW_TAG_member)
+      continue;
+    const char *member_name = child.GetAttributeValueAsString(DW_AT_name, "");
+    if (!member_name || strcmp(member_name, "__FuncPtr") != 0)
+      continue;
+
+    DWARFDIE func_ptr_type = child.GetAttributeValueAsReferenceDIE(DW_AT_type);
+    if (!func_ptr_type)
+      return CompilerType();
+    DWARFDIE func_type = func_ptr_type.GetAttributeValueAsReferenceDIE(DW_AT_type);
+    if (!func_type)
+      return CompilerType();
+    if (Type *function = die.ResolveTypeUID(func_type))
+      return function->GetForwardCompilerType();
+    return CompilerType();
+  }
+  return CompilerType();
+}
+
 TypeSP DWARFASTParserCpp::ParsePointerType(const DWARFDIE &die) {
   SymbolFileDWARF *dwarf = die.GetDWARF();
 
@@ -511,13 +648,21 @@ TypeSP DWARFASTParserCpp::ParsePointerType(const DWARFDIE &die) {
   // so use the forward-declared CompilerType and don't force completion here.
   DWARFDIE pointee_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
   CompilerType pointee_type;
+  bool is_block = false;
   if (pointee_die) {
-    if (Type *pointee = die.ResolveTypeUID(pointee_die))
+    // An Apple "blocks" pointer (`int (^)(int)`) points at a block-literal
+    // struct; model it as a pointer to the block's function type, flagged as a
+    // block pointer, rather than a pointer to the literal struct.
+    if (CompilerType block_func = ParseBlockFunctionType(pointee_die)) {
+      pointee_type = block_func;
+      is_block = true;
+    } else if (Type *pointee = die.ResolveTypeUID(pointee_die)) {
       pointee_type = pointee->GetForwardCompilerType();
+    }
   }
 
   CompilerType pointer_type =
-      cpp_typesystem::Builder(m_ts).CreatePointerType(pointee_type);
+      cpp_typesystem::Builder(m_ts).CreatePointerType(pointee_type, is_block);
 
   Declaration decl;
   ConstString empty_name;

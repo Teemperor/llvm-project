@@ -20,6 +20,7 @@
 #include "lldb/Expression/Expression.h"
 #include "lldb/Expression/ExpressionVariable.h"
 #include "lldb/Symbol/Block.h"
+#include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Symbol/SymbolContext.h"
@@ -42,8 +43,10 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/Twine.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/SaveAndRestore.h"
 
+#include <algorithm>
 #include <functional>
 
 using namespace lldb_private;
@@ -113,8 +116,13 @@ CppExpressionDeclMap::~CppExpressionDeclMap() = default;
 
 ClangASTGenerator &CppExpressionDeclMap::GetGenerator() {
   assert(m_ast_context && "parser AST context not installed yet");
-  if (!m_generator)
+  if (!m_generator) {
     m_generator.emplace(*m_ast_context);
+    // Let the generator resolve a type that is only forward-declared in the
+    // module it was parsed from but fully defined in another module of the
+    // target (TypeSystemCpp has no cross-module ASTImporter).
+    m_generator->SetTarget(m_target);
+  }
   return *m_generator;
 }
 
@@ -354,6 +362,14 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
       // fall through to a global-scope search.
       if (LookupInFrameNamespaces(dc, ConstString(sname), decls))
         return true;
+      // Inside a member function, an unqualified name can refer to a static
+      // data member of the enclosing class (e.g. `s_a` for `A::s_a`). Such a
+      // member is emitted like a global but is rejected by the plain global
+      // search (it must not shadow a true `::s_a`); resolve it here through the
+      // frame's class scope. This works for static member functions too, which
+      // have no `this` pointer to reach the class through.
+      if (LookupInFrameClass(dc, ConstString(sname), decls))
+        return true;
       // A name at file scope can refer to a global variable or a function.
       // Prefer the variable (an object shadows a function of the same name in
       // C/C++ unqualified lookup), then fall back to functions.
@@ -376,6 +392,19 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
       found |= LookupType(dc, ConstString(sname), /*module=*/nullptr,
                           CompilerDeclContext(), decls);
       found |= LookupNamespace(dc, ConstString(sname), decls);
+      // Last resort: a call to a code symbol that has no debug info (e.g. a
+      // libc function like `strlen`). Only when nothing with debug info
+      // matched, so a real function / variable / type / namespace is never
+      // shadowed by a bare symbol (which regressed same-named debug-info
+      // lookups before). The expression must cast the call to a concrete type.
+      if (!found)
+        found = LookupSymbolFunction(dc, ConstString(sname), decls);
+      // Last resort for a data reference: a global variable that has no debug
+      // info, present only as a data symbol (e.g. a hidden global in a stripped
+      // translation unit). Only when nothing with debug info matched, so a real
+      // variable / function / type is never shadowed by a bare symbol.
+      if (!found)
+        found = LookupGlobalDataSymbol(dc, ConstString(sname), decls);
       return found;
     }
   }
@@ -385,7 +414,8 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
 bool CppExpressionDeclMap::LookupFunctions(
     const clang::DeclContext *dc, ConstString name, lldb::ModuleSP module,
     const CompilerDeclContext &scope,
-    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls,
+    llvm::StringSet<> *shared_seen, llvm::StringRef require_ns_name) {
   Target *target = m_exe_ctx.GetTargetPtr();
   if (!target)
     return false;
@@ -394,7 +424,7 @@ bool CppExpressionDeclMap::LookupFunctions(
   ModuleFunctionSearchOptions options;
   options.include_inlines = false;
   options.include_symbols = true;
-  if (scope.IsValid() && module) {
+  if (scope.IsValid() && module && require_ns_name.empty()) {
     // A namespace-scoped lookup: restrict to functions declared in that
     // namespace, matching only the basename.
     module->FindFunctions(name, scope, lldb::eFunctionNameTypeBase, options,
@@ -405,6 +435,27 @@ bool CppExpressionDeclMap::LookupFunctions(
         options, sc_list);
   }
 
+  // A target-wide search can return, alongside a global `::func()`, a file-local
+  // `static func()` from another translation unit that has the same signature.
+  // In C++ a file-static function in the current translation unit hides the
+  // global one, so when the frame's own compile unit declares a matching
+  // function, prefer it: order those candidates first so the signature dedup
+  // below keeps the frame-CU-local one rather than an arbitrary same-signature
+  // duplicate. (A namespace-scoped search is already unambiguous.)
+  std::vector<SymbolContext> ordered(sc_list.begin(), sc_list.end());
+  if (!scope.IsValid()) {
+    if (StackFrame *frame = m_exe_ctx.GetFramePtr()) {
+      SymbolContext frame_sc =
+          frame->GetSymbolContext(lldb::eSymbolContextCompUnit);
+      if (CompileUnit *frame_cu = frame_sc.comp_unit)
+        std::stable_sort(
+            ordered.begin(), ordered.end(),
+            [frame_cu](const SymbolContext &a, const SymbolContext &b) {
+              return (a.comp_unit == frame_cu) && (b.comp_unit != frame_cu);
+            });
+    }
+  }
+
   clang::ASTContext &ast = *m_ast_context;
   bool added = false;
   // FindFunctions can return the same underlying function more than once (e.g.
@@ -413,12 +464,24 @@ bool CppExpressionDeclMap::LookupFunctions(
   // (e.g. a file-local `static` function defined in several translation units).
   // Both cases would synthesize identical-signature FunctionDecls, which clang
   // then reports as an ambiguous call. Genuine overloads differ in signature
-  // and must remain distinct, so dedup by the function's type signature.
-  llvm::StringSet<> seen_signatures;
-  for (const SymbolContext &sc : sc_list) {
+  // and must remain distinct, so dedup by the function's type signature. A
+  // caller collecting functions across several enclosing scopes passes a shared
+  // set so that an outer scope's same-signature overload is dropped in favor of
+  // the inner scope's (already added), while differently-typed overloads accrue.
+  llvm::StringSet<> local_seen;
+  llvm::StringSet<> &seen_signatures = shared_seen ? *shared_seen : local_seen;
+  for (const SymbolContext &sc : ordered) {
     Function *function = sc.function;
     if (!function)
       continue;
+    // When restricting to a named namespace (the lumping fallback), keep only
+    // functions whose immediate enclosing namespace has that basename, e.g.
+    // `A::B::func` for `require_ns_name == "B"`.
+    if (!require_ns_name.empty()) {
+      CompilerDeclContext fn_ctx = function->GetDeclContext();
+      if (!fn_ctx || fn_ctx.GetName().GetStringRef() != require_ns_name)
+        continue;
+    }
     Type *func_type = function->GetType();
     if (!func_type)
       continue;
@@ -466,6 +529,140 @@ bool CppExpressionDeclMap::LookupFunctions(
     }
   }
   return added;
+}
+
+bool CppExpressionDeclMap::LookupSymbolFunction(
+    const clang::DeclContext *dc, ConstString name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  Target *target = m_exe_ctx.GetTargetPtr();
+  if (!target)
+    return false;
+
+  // Search for a function by name including symbol-table entries; we only care
+  // about matches that are symbol-only (no debug-info Function), since a
+  // debug-info function was already tried and failed by the caller.
+  SymbolContextList sc_list;
+  ModuleFunctionSearchOptions options;
+  options.include_inlines = false;
+  options.include_symbols = true;
+  target->GetImages().FindFunctions(
+      name, lldb::eFunctionNameTypeFull | lldb::eFunctionNameTypeBase, options,
+      sc_list);
+
+  // Prefer an external symbol over a file-local one, matching the legacy
+  // ClangExpressionDeclMap. Resolve re-exported symbols to their target.
+  const Symbol *extern_symbol = nullptr;
+  const Symbol *non_extern_symbol = nullptr;
+  for (const SymbolContext &sc : sc_list) {
+    // Skip anything backed by debug info: that path is handled by
+    // LookupFunctions and must not be shadowed by a bare symbol here.
+    if (sc.function)
+      continue;
+    Symbol *symbol = sc.symbol;
+    if (!symbol)
+      continue;
+    if (symbol->GetType() == eSymbolTypeReExported) {
+      symbol = symbol->ResolveReExportedSymbol(*target);
+      if (!symbol)
+        continue;
+    }
+    // Only code (or indirect/resolver) symbols are callable.
+    switch (symbol->GetType()) {
+    case eSymbolTypeCode:
+    case eSymbolTypeResolver:
+    case eSymbolTypeReExported:
+      break;
+    default:
+      continue;
+    }
+    if (symbol->IsExternal())
+      extern_symbol = symbol;
+    else
+      non_extern_symbol = symbol;
+  }
+
+  const Symbol *symbol = extern_symbol ? extern_symbol : non_extern_symbol;
+  if (!symbol)
+    return false;
+
+  clang::FunctionDecl *fd =
+      GetGenerator().GenerateGenericFunction(name.GetStringRef());
+  if (!fd)
+    return false;
+  if (dc && dc != m_ast_context->getTranslationUnitDecl()) {
+    fd->setDeclContext(const_cast<clang::DeclContext *>(dc));
+    const_cast<clang::DeclContext *>(dc)->addDecl(fd);
+  }
+
+  // Bind the decl to the symbol so the materializer resolves the callee to the
+  // symbol's load address (the generic decl carries no asm label).
+  auto *entity = new ClangExpressionVariable(
+      m_exe_ctx.GetBestExecutionContextScope(), m_byte_order, m_addr_byte_size);
+  m_found_entities.AddNewlyConstructedVariable(entity);
+  entity->EnableParserVars(GetParserID());
+  ClangExpressionVariable::ParserVars *pv = entity->GetParserVars(GetParserID());
+  pv->m_named_decl = fd;
+  pv->m_llvm_value = nullptr;
+  pv->m_lldb_sym = symbol;
+
+  decls.push_back(fd);
+  return true;
+}
+
+bool CppExpressionDeclMap::LookupGlobalDataSymbol(
+    const clang::DeclContext *dc, ConstString name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  Target *target = m_exe_ctx.GetTargetPtr();
+  if (!target)
+    return false;
+
+  // Build the symbol context used to pick the best data symbol. Seeding it with
+  // the frame's module makes a symbol in the currently-executing module win over
+  // an identically-named one in another module (the "conflicting symbol" case),
+  // matching the legacy ClangExpressionDeclMap, which searches from the
+  // expression's own symbol context.
+  SymbolContext sym_ctx;
+  sym_ctx.target_sp = target->shared_from_this();
+  if (StackFrame *frame = m_exe_ctx.GetFramePtr()) {
+    SymbolContext frame_sc = frame->GetSymbolContext(lldb::eSymbolContextModule);
+    sym_ctx.module_sp = frame_sc.module_sp;
+  }
+
+  Status error;
+  const Symbol *symbol = sym_ctx.FindBestGlobalDataSymbol(name, error);
+  // FindBestGlobalDataSymbol reports an ambiguity (e.g. "Multiple internal
+  // symbols found") through `error`; surface it as a parser diagnostic so the
+  // expression fails with that message rather than an "undeclared identifier".
+  if (!error.Success() && m_diagnostics)
+    m_diagnostics->AddDiagnostic(error.AsCString(), lldb::eSeverityError,
+                                 DiagnosticOrigin::eDiagnosticOriginLLDB);
+  if (!symbol)
+    return false;
+
+  // A bare data symbol has no debug type; model it as `void *&` (a reference to
+  // pointer-sized storage) so the materializer can bind the decl to the
+  // symbol's load address, mirroring the legacy AddOneGenericVariable path.
+  clang::QualType void_ptr_ref = m_ast_context->getLValueReferenceType(
+      m_ast_context->getPointerType(m_ast_context->VoidTy));
+
+  auto *vd = clang::VarDecl::Create(
+      *m_ast_context, const_cast<clang::DeclContext *>(dc),
+      clang::SourceLocation(), clang::SourceLocation(),
+      &m_ast_context->Idents.get(name.GetStringRef()), void_ptr_ref, nullptr,
+      clang::SC_Static);
+  decls.push_back(vd);
+
+  auto *entity = new ClangExpressionVariable(
+      m_exe_ctx.GetBestExecutionContextScope(), m_byte_order, m_addr_byte_size);
+  m_found_entities.AddNewlyConstructedVariable(entity);
+  entity->EnableParserVars(GetParserID());
+  ClangExpressionVariable::ParserVars *pv = entity->GetParserVars(GetParserID());
+  pv->m_named_decl = vd;
+  pv->m_llvm_value = nullptr;
+  pv->m_lldb_sym = symbol;
+  // The decl is a reference type, so its value is the storage's address.
+  entity->m_flags |= ClangExpressionVariable::EVTypeIsReference;
+  return true;
 }
 
 bool CppExpressionDeclMap::LookupOperatorFunctions(
@@ -943,16 +1140,21 @@ bool CppExpressionDeclMap::LookupType(
     return false;
   }
 
+  // A typedef must surface its own TypedefDecl (whose name is the alias, e.g.
+  // `NamespaceTypedef`), not the decl of the type it aliases. Check this before
+  // getAsTagDecl(), which sees through the typedef sugar to the underlying tag
+  // (e.g. `S<float>`); returning that tag under the alias name makes clang's
+  // name reconciliation assert on a declaration-name mismatch.
+  if (const auto *tdt = qt->getAs<clang::TypedefType>()) {
+    decls.push_back(tdt->getDecl());
+    return true;
+  }
   if (clang::TagDecl *tag = qt->getAsTagDecl()) {
     // Make sure the members/enumerators are available (e.g. for sizeof or
     // offsetof, which need a complete type).
     if (auto *record = llvm::dyn_cast<clang::RecordDecl>(tag))
       GetGenerator().CompleteRecord(record);
     decls.push_back(tag);
-    return true;
-  }
-  if (const auto *tdt = qt->getAs<clang::TypedefType>()) {
-    decls.push_back(tdt->getDecl());
     return true;
   }
   return false;
@@ -1039,6 +1241,15 @@ bool CppExpressionDeclMap::LookupNamespace(
   }
 
   if (map.empty())
+    return false;
+
+  return MaterializeNamespaceMap(parent_dc, name, std::move(map), decls);
+}
+
+bool CppExpressionDeclMap::MaterializeNamespaceMap(
+    const clang::DeclContext *parent_dc, ConstString name, NamespaceMap map,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  if (map.empty() || !m_ast_context)
     return false;
 
   // The representative cpp namespace (first module's decl context) this clang
@@ -1176,6 +1387,17 @@ bool CppExpressionDeclMap::LookupInNamespace(
       break;
     }
   }
+
+  // TypeSystemClang lumps every namespace of the same name into one clang
+  // NamespaceDecl, so a qualified `B::func()` can bind to `A::B::func` even
+  // when the `B` clang resolved (e.g. a global `::B`) declares no `func`. The
+  // per-module NamespaceMap above only carries the one resolved `B`, so on a
+  // miss fall back to a target-wide function search restricted to any namespace
+  // named like this one.
+  if (!added)
+    added = LookupFunctions(dc, name, /*module=*/nullptr, CompilerDeclContext(),
+                            decls, /*shared_seen=*/nullptr,
+                            /*require_ns_name=*/nsd->getName());
   return added;
 }
 
@@ -1247,16 +1469,123 @@ bool CppExpressionDeclMap::LookupInFrameNamespaces(
   if (!frame_ctx ||
       !llvm::isa_and_nonnull<TypeSystemCpp>(frame_ctx.GetTypeSystem()))
     return false;
+  // Functions are collected across every enclosing scope (not just the first),
+  // so an unqualified call can bind to an overload declared in an outer scope
+  // even when an inner scope declares the same name -- lldb intentionally
+  // diverges from C++ name hiding here and merges the overload sets, deduping
+  // only identical signatures (the inner scope's declaration wins). A variable
+  // or type, by contrast, is name-hidden: the innermost scope that declares it
+  // wins and stops the walk.
+  llvm::StringSet<> fn_seen;
+  bool found_function = false;
   for (auto *ns = static_cast<const cpp_typesystem::Namespace *>(
            frame_ctx.GetOpaqueDeclContext());
        ns; ns = ns->GetParent()) {
     CompilerDeclContext scope(ts, const_cast<cpp_typesystem::Namespace *>(ns));
-    if (LookupGlobalVariable(dc, name, module, scope, decls))
+    if (!found_function &&
+        LookupGlobalVariable(dc, name, module, scope, decls))
       return true;
-    if (LookupFunctions(dc, name, module, scope, decls))
+    if (LookupFunctions(dc, name, module, scope, decls, &fn_seen))
+      found_function = true;
+    if (!found_function && LookupType(dc, name, module, scope, decls))
       return true;
-    if (LookupType(dc, name, module, scope, decls))
-      return true;
+  }
+  return found_function;
+}
+
+bool CppExpressionDeclMap::LookupInFrameClass(
+    const clang::DeclContext *dc, ConstString name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  Log *log = GetLog(LLDBLog::Expressions);
+  StackFrame *frame = m_exe_ctx.GetFramePtr();
+  Target *target = m_exe_ctx.GetTargetPtr();
+  if (!frame || !target)
+    return false;
+
+  SymbolContext sc = frame->GetSymbolContext(lldb::eSymbolContextFunction |
+                                             lldb::eSymbolContextBlock);
+  Block *function_block = sc.GetFunctionBlock();
+  if (!function_block || !sc.module_sp)
+    return false;
+
+  auto ts_or_err =
+      sc.module_sp->GetTypeSystemForLanguage(lldb::eLanguageTypeC_plus_plus);
+  if (!ts_or_err) {
+    llvm::consumeError(ts_or_err.takeError());
+    return false;
+  }
+  auto *ts = llvm::dyn_cast_or_null<TypeSystemCpp>(ts_or_err->get());
+  if (!ts)
+    return false;
+
+  // The class the frame function is a member of (if any). Derived from the
+  // function itself, so this also covers static member functions (no `this`).
+  CompilerType class_type = ts->GetOwningClassForFunction(*function_block);
+  if (!class_type)
+    return false;
+
+  // A static data member of `Class` is emitted as a global whose qualified name
+  // is `Class::member` (e.g. `A<int>::s_a`). Build that spelling to match it.
+  ConstString class_name = class_type.GetTypeName();
+  if (!class_name)
+    return false;
+  std::string qualified = class_name.GetStringRef().str();
+  qualified += "::";
+  qualified += name.GetStringRef();
+  ConstString qualified_name(qualified);
+
+  VariableList vars;
+  target->GetImages().FindGlobalVariables(name, -1, vars);
+  for (size_t i = 0, e = vars.GetSize(); i != e; ++i) {
+    VariableSP var = vars.GetVariableAtIndex(i);
+    // Only a static data member of exactly this class (matched by its
+    // fully-qualified name) resolves for an unqualified reference here.
+    if (!var || !var->IsStaticMember() || var->GetName() != qualified_name)
+      continue;
+    if (var->GetUnqualifiedName() != name)
+      continue;
+
+    Type *var_type = var->GetType();
+    if (!var_type)
+      continue;
+    CompilerType var_cpp_type = var_type->GetFullCompilerType();
+    if (!var_cpp_type || !var_cpp_type.GetTypeSystem<TypeSystemCpp>())
+      continue;
+
+    clang::QualType qt = GetGenerator().Generate(var_cpp_type);
+    if (qt.isNull()) {
+      LLDB_LOG(log,
+               "CppEDM: couldn't generate a parser type for static member {0}",
+               qualified_name);
+      continue;
+    }
+
+    // Represented by a reference to its storage (unless already a reference),
+    // like the global-variable path, so the materializer binds it to the
+    // member's load address.
+    clang::QualType var_qt =
+        qt->isReferenceType() ? qt : m_ast_context->getLValueReferenceType(qt);
+
+    auto *vd = clang::VarDecl::Create(
+        *m_ast_context, const_cast<clang::DeclContext *>(dc),
+        clang::SourceLocation(), clang::SourceLocation(),
+        &m_ast_context->Idents.get(name.GetStringRef()), var_qt, nullptr,
+        clang::SC_Static);
+    decls.push_back(vd);
+
+    ValueObjectSP valobj = ValueObjectVariable::Create(
+        m_exe_ctx.GetBestExecutionContextScope(), var);
+    auto *entity = new ClangExpressionVariable(valobj);
+    m_found_entities.AddNewlyConstructedVariable(entity);
+    entity->EnableParserVars(GetParserID());
+    ClangExpressionVariable::ParserVars *pv =
+        entity->GetParserVars(GetParserID());
+    pv->m_named_decl = vd;
+    pv->m_llvm_value = nullptr;
+    pv->m_lldb_var = var;
+    if (var_qt->isReferenceType())
+      entity->m_flags |= ClangExpressionVariable::EVTypeIsReference;
+    return true;
   }
   return false;
 }
@@ -1314,35 +1643,88 @@ bool CppExpressionDeclMap::AddPersistentVariable(const clang::NamedDecl *decl,
                                                  bool is_lvalue) {
   Log *log = GetLog(LLDBLog::Expressions);
 
-  // Only the expression result needs materialization here. `type` was produced
-  // by WrapType, so it is already a TypeSystemCpp type living in the scratch
-  // TypeSystemCpp.
-  if (!(is_result && m_materializer))
-    return true;
-
+  // `type` was produced by WrapType, so it is already a TypeSystemCpp type
+  // living in the scratch TypeSystemCpp.
   if (!type) {
-    LLDB_LOG(log, "CppEDM: result type couldn't be mapped to a TypeSystemCpp "
-                  "type");
+    LLDB_LOG(log, "CppEDM: persistent variable type couldn't be mapped to a "
+                  "TypeSystemCpp type");
     return false;
   }
 
   TypeFromUser user_type(type);
-  Status err;
-  uint32_t offset = m_materializer->AddResultVariable(
-      user_type, is_lvalue, m_keep_result_in_memory, m_result_delegate, err);
-  if (!err.Success()) {
-    LLDB_LOG(log, "CppEDM: couldn't add result variable: {0}", err.AsCString());
+
+  // The expression result ($0, $1, ...) is materialized as a result variable in
+  // the current expression's struct; the materializer wires up its storage.
+  if (is_result && m_materializer) {
+    Status err;
+    uint32_t offset = m_materializer->AddResultVariable(
+        user_type, is_lvalue, m_keep_result_in_memory, m_result_delegate, err);
+    if (!err.Success()) {
+      LLDB_LOG(log, "CppEDM: couldn't add result variable: {0}",
+               err.AsCString());
+      return false;
+    }
+
+    auto *var = new ClangExpressionVariable(
+        m_exe_ctx.GetBestExecutionContextScope(), name, user_type, m_byte_order,
+        m_addr_byte_size);
+    m_found_entities.AddNewlyConstructedVariable(var);
+    var->EnableParserVars(GetParserID());
+    var->GetParserVars(GetParserID())->m_named_decl = decl;
+    var->EnableJITVars(GetParserID());
+    var->GetJITVars(GetParserID())->m_offset = offset;
+    return true;
+  }
+
+  // An explicitly-declared persistent variable ($foo = ...) lives in the
+  // persistent expression state so it survives across expression evaluations.
+  if (!m_persistent_vars)
+    return false;
+
+  // Reject a redefinition rather than silently shadowing the existing one.
+  if (m_persistent_vars->GetVariable(name)) {
+    if (m_diagnostics) {
+      std::string msg =
+          llvm::formatv("redefinition of persistent variable '{0}'", name)
+              .str();
+      m_diagnostics->AddDiagnostic(msg, lldb::eSeverityError,
+                                   DiagnosticOrigin::eDiagnosticOriginLLDB);
+    }
     return false;
   }
 
-  auto *var = new ClangExpressionVariable(
-      m_exe_ctx.GetBestExecutionContextScope(), name, user_type, m_byte_order,
-      m_addr_byte_size);
-  m_found_entities.AddNewlyConstructedVariable(var);
+  auto *var = llvm::cast<ClangExpressionVariable>(
+      m_persistent_vars
+          ->CreatePersistentVariable(m_exe_ctx.GetBestExecutionContextScope(),
+                                     name, user_type, m_byte_order,
+                                     m_addr_byte_size)
+          .get());
+  if (!var)
+    return false;
+
+  var->m_frozen_sp->SetHasCompleteType();
+
+  if (is_result)
+    var->m_flags |= ClangExpressionVariable::EVNeedsFreezeDry;
+  else
+    // Explicitly-declared persistent variables should persist.
+    var->m_flags |= ClangExpressionVariable::EVKeepInTarget;
+
+  if (is_lvalue) {
+    var->m_flags |= ClangExpressionVariable::EVIsProgramReference;
+  } else {
+    var->m_flags |= ClangExpressionVariable::EVIsLLDBAllocated;
+    var->m_flags |= ClangExpressionVariable::EVNeedsAllocation;
+  }
+
+  if (m_keep_result_in_memory)
+    var->m_flags |= ClangExpressionVariable::EVKeepInTarget;
+
+  LLDB_LOG(log, "CppEDM: created persistent variable {0} with flags {1:x}", name,
+           var->m_flags);
+
   var->EnableParserVars(GetParserID());
   var->GetParserVars(GetParserID())->m_named_decl = decl;
-  var->EnableJITVars(GetParserID());
-  var->GetJITVars(GetParserID())->m_offset = offset;
   return true;
 }
 
@@ -1387,7 +1769,9 @@ bool CppExpressionDeclMap::AddValueToStruct(const clang::NamedDecl *decl,
       lldb::ExpressionVariableSP var_sp(var->shared_from_this());
       member_offset =
           m_materializer->AddPersistentVariable(var_sp, nullptr, err);
-    } else if (parser_vars->m_lldb_var)
+    } else if (parser_vars->m_lldb_sym)
+      member_offset = m_materializer->AddSymbol(*parser_vars->m_lldb_sym, err);
+    else if (parser_vars->m_lldb_var)
       member_offset = m_materializer->AddVariable(parser_vars->m_lldb_var, err);
     else if (parser_vars->m_lldb_valobj_provider)
       member_offset = m_materializer->AddValueObject(

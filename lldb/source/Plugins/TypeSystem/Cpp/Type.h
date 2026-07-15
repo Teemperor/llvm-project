@@ -245,6 +245,13 @@ public:
   /// the type can be reconstructed with the correct tag kind.
   bool IsUnion() const { return m_is_union; }
 
+  /// True if this record was declared with the `class` keyword (as opposed to
+  /// `struct`). In a C++ translation unit both are modeled as a ClassType (the
+  /// struct/class keyword does not change layout), so this preserves the source
+  /// tag keyword purely for naming an *unnamed* record ("(unnamed class)" vs
+  /// "(unnamed struct)"), matching clang's TagDecl printing.
+  bool IsClassKeyword() const { return m_is_class_keyword; }
+
   uint32_t GetTypeInfo() const override {
     return lldb::eTypeHasChildren | lldb::eTypeIsStructUnion;
   }
@@ -355,6 +362,7 @@ private:
 
   bool m_complete = false;
   bool m_is_union = false;
+  bool m_is_class_keyword = false;
   bool m_is_template = false;
   bool m_member_functions_parsed = false;
   std::vector<Field> m_fields;
@@ -450,6 +458,13 @@ public:
   Type *GetPointeeType() const { return m_pointee_type.Get(); }
   void SetPointeeType(TypeRef type) { m_pointee_type = type; }
 
+  /// True if this models an Apple "blocks" pointer (`int (^)(int)`), i.e. the
+  /// pointee is a FunctionType but the runtime representation and calling
+  /// convention are those of a block, not a plain function pointer. This is
+  /// how DWARF's `DW_AT_APPLE_block` closures are represented.
+  bool IsBlockPointer() const { return m_is_block; }
+  void SetIsBlockPointer(bool is_block) { m_is_block = is_block; }
+
   lldb::Encoding GetEncoding() const override { return lldb::eEncodingUint; }
   lldb::Format GetFormat() const override { return lldb::eFormatHex; }
   lldb::TypeClass GetTypeClass() const override {
@@ -461,6 +476,7 @@ public:
 
 private:
   TypeRef m_pointee_type;
+  bool m_is_block = false;
 };
 
 /// A C++ reference type: lvalue `T &` or rvalue `T &&`. At runtime a reference

@@ -50,9 +50,7 @@ public:
                      bool *type_is_new_ptr) override;
 
   lldb_private::ConstString ConstructDemangledNameFromDWARF(
-      const lldb_private::plugin::dwarf::DWARFDIE &die) override {
-    return lldb_private::ConstString();
-  }
+      const lldb_private::plugin::dwarf::DWARFDIE &die) override;
 
   lldb_private::Function *
   ParseFunctionFromDWARF(lldb_private::CompileUnit &comp_unit,
@@ -102,6 +100,13 @@ public:
       std::vector<std::pair<lldb_private::ConstString,
                             lldb_private::CompilerDeclContext>> &decls);
 
+  /// If \p function_die is a C++ member function (its semantic parent is a
+  /// class/struct/union), return the owning class' CompilerType; otherwise an
+  /// invalid CompilerType. Works for static member functions too, which have no
+  /// `this` pointer to derive the class from.
+  lldb_private::CompilerType GetOwningClassForFunctionFromDWARF(
+      const lldb_private::plugin::dwarf::DWARFDIE &function_die);
+
   void EnsureAllDIEsInDeclContextHaveBeenParsed(
       lldb_private::CompilerDeclContext decl_context) override {}
 
@@ -143,6 +148,12 @@ private:
   ParseArrayType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParsePointerType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  /// Given the block-literal struct DIE of an Apple "blocks" pointer (the DIE
+  /// carrying DW_AT_APPLE_block), return the block's function type by following
+  /// its `__FuncPtr` member. Returns an invalid CompilerType if the struct
+  /// doesn't have the expected shape.
+  lldb_private::CompilerType
+  ParseBlockFunctionType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParseReferenceType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP

@@ -98,6 +98,14 @@ class TestConflictingSymbols(TestBase):
     @expectedFailureAll(bugnumber="llvm.org/pr35043")
     @skipIfWindows  # This test is "passing" on Windows, but it is a false positive.
     def test_shadowed(self):
+        # pr35043 (shadowing a conflicting symbol with a persistent variable)
+        # only affects TypeSystemClang; TypeSystemCpp handles it correctly and
+        # this test passes there. The xfail above only applies to the
+        # TypeSystemClang configuration, so skip under TypeSystemCpp to avoid an
+        # unexpected success.
+        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+            self.skipTest("pr35043 is fixed under TypeSystemCpp (xfail is TypeSystemClang-only)")
+
         self.build()
         exe = self.getBuildArtifact("a.out")
         target = self.dbg.CreateTarget(exe)

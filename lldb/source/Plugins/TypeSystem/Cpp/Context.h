@@ -58,10 +58,12 @@ public:
 
   /// Create a record type. When \p is_cpp_class is true the record can carry
   /// C++-only information (base classes) and a ClassType is created; otherwise
-  /// a plain StructType is used.
+  /// a plain StructType is used. \p is_class_keyword records whether the source
+  /// used the `class` keyword (only used to name an unnamed record).
   RecordType *CreateRecordType(llvm::StringRef name,
                                std::optional<uint64_t> byte_size,
-                               bool is_cpp_class, bool is_union = false);
+                               bool is_cpp_class, bool is_union = false,
+                               bool is_class_keyword = false);
 
   /// Create an array type of \p num_elements elements of \p element_type.
   /// \p num_elements is std::nullopt for an array of unknown bound.
@@ -69,8 +71,10 @@ public:
                              std::optional<uint64_t> num_elements);
 
   /// Create a pointer type pointing to \p pointee_type (which may be empty for
-  /// `void *`). Its byte size is the target's pointer size.
-  PointerType *CreatePointerType(TypeRef pointee_type);
+  /// `void *`). Its byte size is the target's pointer size. \p is_block marks
+  /// an Apple "blocks" pointer (`int (^)(int)`), whose pointee is a
+  /// FunctionType.
+  PointerType *CreatePointerType(TypeRef pointee_type, bool is_block = false);
 
   /// Create an lvalue (`T &`) or rvalue (`T &&`) reference to \p pointee_type.
   /// Its byte size is the target's pointer size.
