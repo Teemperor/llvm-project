@@ -364,14 +364,39 @@ BuildNamespaceForDIE(const DWARFDIE &ns_die, cpp_typesystem::Builder &builder) {
   return builder.GetNamespace(ConstString(name ? name : ""), parent, is_inline);
 }
 
+/// The unqualified spelling of a named type DIE, including any reconstructed
+/// template arguments (e.g. "FwdTemplateClass<int>"). This mirrors
+/// GetDIEQualifiedName but omits the enclosing namespace/class scopes, since
+/// TypeSystemCpp stores the scope separately (via SetDeclContext) and rebuilds
+/// the qualified display name itself.
+///
+/// For a non-template type, or a type whose DW_AT_name already carries the
+/// "<...>" template arguments, this yields the same string as the bare
+/// DW_AT_name; it only differs for a template specialization whose DW_AT_name
+/// is just the template's base name (e.g. a forward-declared
+/// `FwdTemplateClass<int>`, whose declaration DIE is named "FwdTemplateClass"
+/// with separate DW_TAG_template_*_parameter children).
+static std::string GetDIEUnqualifiedName(const DWARFDIE &die) {
+  // If the DW_AT_name already carries the template arguments, use it verbatim
+  // so we don't reconstruct and duplicate them.
+  const char *name = die.GetName();
+  if (name && llvm::StringRef(name).contains('<'))
+    return name;
+
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  llvm::DWARFTypePrinter<DWARFDIE>(os).appendUnqualifiedName(die);
+  return result;
+}
+
 /// Record on \p type the namespace it is declared in and its unqualified
 /// DW_AT_name spelling, so TypeSystemCpp can rebuild the display name while
 /// hiding inline namespaces.
 static void SetTypeNameInfo(const DWARFDIE &die, CompilerType type,
                             cpp_typesystem::Builder &builder) {
   builder.SetDeclContext(type, BuildDeclNamespace(die, builder));
-  if (const char *name = die.GetName())
-    builder.SetUnqualifiedName(type, ConstString(name));
+  if (die.GetName())
+    builder.SetUnqualifiedName(type, ConstString(GetDIEUnqualifiedName(die)));
 }
 
 CompilerDeclContext
@@ -974,6 +999,16 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   if (!cpp_type || !cpp_type->IsAggregate())
     return false;
   auto *record = static_cast<cpp_typesystem::RecordType *>(cpp_type);
+
+  // SymbolFileDWARF::CompleteType falls back to the declaration DIE when it
+  // can't find a defining DIE anywhere in the debug info (e.g. a type that is
+  // only ever forward declared, like `struct FwdClass;`). Such a DIE still
+  // carries DW_AT_declaration and has no members to add, so leave the record
+  // incomplete instead of marking a declaration-only record complete. This is
+  // what lets SBType::IsTypeComplete correctly report a forward-declared type
+  // (or the pointee of a pointer to one) as incomplete.
+  if (die.GetAttributeValueAsUnsigned(DW_AT_declaration, 0))
+    return false;
 
   // Remember the DIE that defines this record so that its member functions can
   // be parsed on demand later. Unlike fields and base classes, member functions
