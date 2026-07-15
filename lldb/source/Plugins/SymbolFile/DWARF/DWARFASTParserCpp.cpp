@@ -10,6 +10,7 @@
 
 #include "DWARFASTParser.h"
 #include "DWARFDIE.h"
+#include "DWARFDeclContext.h"
 #include "DWARFDefines.h"
 #include "DWARFUnit.h"
 #include "SymbolFileDWARF.h"
@@ -257,6 +258,12 @@ std::string DWARFASTParserCpp::GetDIEClassTemplateParams(DWARFDIE die) {
 /// lets type-name-based data formatters (such as libc++'s container summaries)
 /// match our types.
 static std::string GetDIEQualifiedName(const DWARFDIE &die) {
+  // A DIE with no DW_AT_name is an unnamed type (e.g. a function-local unnamed
+  // struct/union/enum). llvm::DWARFTypePrinter::appendQualifiedName would emit
+  // a bogus bare tag keyword (e.g. "structure ") for it, so return an empty
+  // name and let the type system supply an "(unnamed ...)" display name.
+  if (!die.GetName())
+    return std::string();
   std::string name;
   llvm::raw_string_ostream os(name);
   llvm::DWARFTypePrinter<DWARFDIE>(os).appendQualifiedName(die);
@@ -269,8 +276,12 @@ DWARFASTParserCpp::ConstructDemangledNameFromDWARF(const DWARFDIE &die) {
   // DWARFASTParserClang) build the demangled name straight from DWARF: the
   // qualified function name followed by its parameter type spellings and any
   // cv-qualifier on the object parameter.
+  // Use the DWARF decl context's qualified name (mirroring
+  // DWARFASTParserClang) rather than GetDIEQualifiedName: the former prefixes
+  // top-level names with "::" (e.g. "::foo"), which is what the demangled
+  // function name is expected to carry.
   StreamString sstr;
-  sstr << GetDIEQualifiedName(die);
+  sstr << die.GetDWARFDeclContext().GetQualifiedName();
 
   bool is_variadic = false;
   bool is_const = false;
@@ -566,12 +577,17 @@ TypeSP DWARFASTParserCpp::ParseStructureType(const DWARFDIE &die) {
   lldb::LanguageType language = SymbolFileDWARF::GetLanguage(*die.GetCU());
   bool is_cpp_class = Language::LanguageIsCPlusPlus(language);
   bool is_union = die.Tag() == DW_TAG_union_type;
+  // Both `struct` and `class` are modeled by the same record type, so remember
+  // the source keyword to reproduce it in display names (e.g. for an unnamed
+  // record: "(unnamed struct)" vs "(unnamed class)").
+  bool is_class_keyword = die.Tag() == DW_TAG_class_type;
 
   CompilerType compiler_type;
   {
     cpp_typesystem::Builder builder(m_ts);
     compiler_type =
-        builder.CreateRecordType(name, byte_size, is_cpp_class, is_union);
+        builder.CreateRecordType(name, byte_size, is_cpp_class, is_union,
+                                 is_class_keyword);
     SetTypeNameInfo(die, compiler_type, builder);
   }
 
@@ -944,6 +960,7 @@ TypeSP DWARFASTParserCpp::ParseTypeFromDWARF(const SymbolContext &sc,
     type_sp = ParseReferenceType(die);
     break;
   case DW_TAG_typedef:
+  case DW_TAG_template_alias:
     type_sp = ParseTypedef(die);
     break;
   case DW_TAG_const_type:
@@ -1190,9 +1207,9 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
             pack_param.Tag() == DW_TAG_template_value_parameter ||
             pack_param.Tag() == DW_TAG_GNU_template_template_param)
           add_template_param(pack_param);
-    } else if (tag == DW_TAG_typedef || tag == DW_TAG_structure_type ||
-               tag == DW_TAG_class_type || tag == DW_TAG_union_type ||
-               tag == DW_TAG_enumeration_type) {
+    } else if (tag == DW_TAG_typedef || tag == DW_TAG_template_alias ||
+               tag == DW_TAG_structure_type || tag == DW_TAG_class_type ||
+               tag == DW_TAG_union_type || tag == DW_TAG_enumeration_type) {
       // A type declared inside this record. Resolving the child DIE itself
       // yields the nested type; data formatters look these up by name (e.g. a
       // container's "__node_pointer"). Skip anonymous ones.
