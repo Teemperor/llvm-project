@@ -30,6 +30,7 @@ namespace clang {
 class ASTContext;
 class DeclContext;
 class DeclarationName;
+class FunctionDecl;
 class NamedDecl;
 class NamespaceDecl;
 class RecordDecl;
@@ -133,11 +134,14 @@ private:
   /// syntax (`a == b`). \p name is the CXXOperatorName DeclarationName clang
   /// looked up; the target is searched for functions spelled `operator<X>` and
   /// the generated FunctionDecls carry that same operator DeclarationName so
-  /// overload resolution binds to them.
+  /// overload resolution binds to them. When \p scope_ns is non-null the lookup
+  /// is qualified (`A::operator<`): only operators whose own namespace matches
+  /// \p scope_ns are surfaced, and their generated decls are placed in it.
   bool
   LookupOperatorFunctions(const clang::DeclContext *dc,
                           clang::DeclarationName name,
-                          llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+                          llvm::SmallVectorImpl<clang::NamedDecl *> &decls,
+                          const clang::NamespaceDecl *scope_ns = nullptr);
 
   /// The clang DeclContext a generated free-operator FunctionDecl for
   /// \p function should be placed in: the clang::NamespaceDecl matching the
@@ -194,6 +198,14 @@ private:
   bool LookupInNamespace(const clang::NamespaceDecl *nsd, ConstString name,
                          llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
+  /// Ensure the routing map for a clang::NamespaceDecl the ClangASTGenerator
+  /// created on its own (while placing a namespace-scoped type) is present in
+  /// \c m_namespace_maps, so member lookups (types, functions, operators)
+  /// inside it route back here. Returns false if \p nsd is not a
+  /// generator-owned namespace decl or its cpp namespace can't be resolved to
+  /// any module.
+  bool EnsureGeneratorNamespaceMap(const clang::NamespaceDecl *nsd);
+
   /// Honor the current frame's enclosing C++ namespace scope for an unqualified
   /// lookup: search the frame function's namespace and its parents
   /// (innermost-first) for \p name, so an expression evaluated in `A::B::f`
@@ -228,7 +240,20 @@ private:
   /// keeps a namespace decl unique per name/scope.
   llvm::DenseMap<const clang::NamespaceDecl *, NamespaceMap> m_namespace_maps;
 
+  /// FunctionDecls generated for target functions this parse, keyed by the
+  /// function's user id. A single target function can be reached by several
+  /// lookups (ordinary unqualified lookup and argument-dependent lookup for the
+  /// same call); returning the same FunctionDecl for each avoids synthesizing
+  /// two identical-signature decls that clang would then treat as an ambiguous
+  /// overload set.
+  llvm::DenseMap<lldb::user_id_t, clang::FunctionDecl *> m_generated_functions;
+
   bool m_lookups_enabled = false;
+  /// Set while LookupOperatorFunctions is running. Adding a generated operator
+  /// decl into its (external-visible) namespace makes clang reconcile that
+  /// name, which routes an operator lookup back here; this guard stops that
+  /// reentrant lookup from recursively resolving the same operators.
+  bool m_resolving_operators = false;
   ExecutionContext m_exe_ctx;
   Materializer *m_materializer = nullptr;
   clang::ASTConsumer *m_code_gen = nullptr;

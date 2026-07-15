@@ -212,6 +212,20 @@ void ClangASTGenerator::RegisterNamespace(const ct::Namespace *cpp_ns,
     m_namespaces[cpp_ns] = clang_ns;
 }
 
+clang::NamespaceDecl *
+ClangASTGenerator::GetRegisteredNamespace(const ct::Namespace *cpp_ns) const {
+  if (!cpp_ns)
+    return nullptr;
+  auto it = m_namespaces.find(cpp_ns);
+  return it != m_namespaces.end() ? it->second : nullptr;
+}
+
+const ct::Namespace *
+ClangASTGenerator::GetNamespaceForDecl(const clang::NamespaceDecl *clang_ns) const {
+  auto it = m_namespace_decls.find(clang_ns);
+  return it != m_namespace_decls.end() ? it->second : nullptr;
+}
+
 clang::DeclContext *
 ClangASTGenerator::GetDeclContextForNamespace(const ct::Namespace *cpp_ns) {
   if (!cpp_ns)
@@ -235,8 +249,15 @@ ClangASTGenerator::GetDeclContextForNamespace(const ct::Namespace *cpp_ns) {
   auto *nsd = clang::NamespaceDecl::Create(
       m_ast, parent, cpp_ns->IsInline(), clang::SourceLocation(),
       clang::SourceLocation(), ident, /*PrevDecl=*/nullptr, /*Nested=*/false);
+  // Route member lookups (qualified names, ADL operators) inside this namespace
+  // back through the decl map: without external visible storage a qualified
+  // lookup such as `A::operator<` would find nothing, since the operator is
+  // resolved lazily and never lives lexically in the decl. Record the reverse
+  // mapping so the decl map can rebuild this namespace's lookup map on demand.
+  clang::Decl::castToDeclContext(nsd)->setHasExternalVisibleStorage(true);
   parent->addDecl(nsd);
   RegisterNamespace(cpp_ns, nsd);
+  m_namespace_decls[nsd] = cpp_ns;
   return clang::Decl::castToDeclContext(nsd);
 }
 
