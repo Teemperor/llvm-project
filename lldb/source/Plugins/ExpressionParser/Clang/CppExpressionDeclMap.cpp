@@ -718,6 +718,15 @@ bool CppExpressionDeclMap::LookupGlobalVariable(
     // namespace here so `::a` wins, matching C++ unqualified lookup. A scoped
     // lookup (`scope` valid) already restricted the search to one namespace.
     if (!scope.IsValid()) {
+      // A static class member (e.g. `A::a`) is emitted like a global (its
+      // enclosing record is not modelled as a namespace decl context, so it
+      // reports an invalid/global decl context), but it is not reachable from
+      // the global scope by an unqualified name or by `::a`. It is found
+      // instead via record member lookup when the expression writes `A::a`.
+      // Reject it here so a true global `::a` is not shadowed by a same-named
+      // class static.
+      if (var->IsStaticMember())
+        continue;
       CompilerDeclContext var_ctx = var->GetDeclContext();
       if (var_ctx.IsValid()) {
         auto *ns = static_cast<const cpp_typesystem::Namespace *>(
