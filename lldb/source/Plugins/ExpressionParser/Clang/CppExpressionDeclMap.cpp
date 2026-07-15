@@ -710,6 +710,30 @@ bool CppExpressionDeclMap::LookupGlobalVariable(
     if (!var || (var->GetName() != name && var->GetUnqualifiedName() != name))
       continue;
 
+    // An unqualified name looked up at global scope (no namespace `scope`)
+    // resolves to a variable at global scope only; a namespace-scoped variable
+    // (e.g. `NN::a`) must not shadow the true global (`::a`). Target-wide
+    // FindGlobalVariables does not filter by scope, so `NN::a` and `::a` both
+    // come back for `a`; reject the ones that live in a (non-global-reachable)
+    // namespace here so `::a` wins, matching C++ unqualified lookup. A scoped
+    // lookup (`scope` valid) already restricted the search to one namespace.
+    if (!scope.IsValid()) {
+      CompilerDeclContext var_ctx = var->GetDeclContext();
+      if (var_ctx.IsValid()) {
+        auto *ns = static_cast<const cpp_typesystem::Namespace *>(
+            var_ctx.GetOpaqueDeclContext());
+        bool global_reachable = true;
+        for (; ns; ns = ns->GetParent()) {
+          if (!ns->IsInline() && !ns->GetName().GetName().empty()) {
+            global_reachable = false;
+            break;
+          }
+        }
+        if (!global_reachable)
+          continue;
+      }
+    }
+
     Type *var_type = var->GetType();
     if (!var_type)
       continue;
