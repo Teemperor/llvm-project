@@ -26,6 +26,7 @@
 #include "lldb/Symbol/SymbolFile.h"
 #include "lldb/Symbol/Type.h"
 #include "lldb/Target/Language.h"
+#include "lldb/Target/Process.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/DataExtractor.h"
 #include "lldb/Utility/Scalar.h"
@@ -75,6 +76,45 @@ static bool RecordHasFields(cpp_typesystem::Type *t,
       return true;
   }
   return false;
+}
+
+// Compute the byte offset of a virtual base subobject within a live derived
+// object, using the Itanium-ABI vtable slot recorded on the base. `base` must
+// be a virtual base with a vbase_offset_offset. `valobj` is the derived object
+// being inspected. Reads the object's vtable pointer, steps back
+// vbase_offset_offset bytes to the slot holding this base's offset, and returns
+// that offset (relative to the derived object's start). Returns nullopt if the
+// process/object isn't available or the reads fail, so the caller falls back to
+// the (static, possibly wrong) byte_offset. Mirrors
+// TypeSystemClang::GetVBaseBitOffset.
+static std::optional<int64_t>
+ReadVirtualBaseOffset(const cpp_typesystem::BaseClass &base,
+                      ValueObject *valobj) {
+  if (!valobj || !base.vbase_offset_offset)
+    return std::nullopt;
+  ExecutionContext exe_ctx(valobj->GetExecutionContextRef());
+  Process *process = exe_ctx.GetProcessPtr();
+  if (!process)
+    return std::nullopt;
+
+  // The vtable pointer sits at the start of the (derived) object.
+  ValueObject::AddrAndType addr = valobj->GetAddressOf();
+  if (addr.address == LLDB_INVALID_ADDRESS ||
+      addr.type != eAddressTypeLoad)
+    return std::nullopt;
+  lldb::addr_t obj_addr = addr.address;
+
+  Status err;
+  lldb::addr_t vtable_ptr = process->ReadPointerFromMemory(obj_addr, err);
+  if (err.Fail() || vtable_ptr == LLDB_INVALID_ADDRESS)
+    return std::nullopt;
+
+  const uint32_t addr_size = process->GetAddressByteSize();
+  int64_t offset = process->ReadSignedIntegerFromMemory(
+      vtable_ptr - *base.vbase_offset_offset, addr_size, INT64_MAX, err);
+  if (err.Fail() || offset == INT64_MAX)
+    return std::nullopt;
+  return offset;
 }
 
 // Append the namespace qualification for `ns` (outermost first), skipping
@@ -1604,7 +1644,8 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
   // A pointer's single child is the dereferenced value. A pointer is NOT
   // transparent (unlike a reference, below): its members are reached by first
   // dereferencing it. Keeping this fixed makes the child layout independent of
-  // when the pointee is lazily completed (see GetNumChildren).
+  // when the pointee is lazily completed (see GetNumChildren), and keeps the
+  // deref child that the DIL `ptr->member` path relies on.
   if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
     cpp_typesystem::Type *pointee = ptr->GetPointeeType();
     if (!pointee)
@@ -1681,8 +1722,26 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
         !RecordHasFields(base->type.Get(), complete))
       continue;
     if (visible_base_idx == idx) {
+      // Name the base-class child by its (possibly sugar-wrapped) type name
+      // rather than the raw record name: a base recovered for an expression
+      // result can be an elaborated/spelling-sugar wrapper whose own m_name is
+      // empty (the real name sits on the underlying type), so fall back to the
+      // display type name in that case.
       child_name = base->type.Get()->GetName().GetName().str();
+      if (child_name.empty())
+        child_name =
+            GetCompilerType(base->type.Get()).GetTypeName().GetString();
       child_byte_offset = base->byte_offset;
+      // A virtual base has no constant offset: its subobject can sit at
+      // different places in different most-derived objects (the diamond case).
+      // Read the real offset from the live object's vtable when we can, so e.g.
+      // Joiner1.Derived1.VBase and Joiner1.Derived2.VBase resolve to the one
+      // shared subobject. Falls back to byte_offset (0) if no live object.
+      if (base->is_virtual) {
+        if (std::optional<int64_t> vbase_off =
+                ReadVirtualBaseOffset(*base, valobj))
+          child_byte_offset = *vbase_off;
+      }
       if (std::optional<uint64_t> byte_size = base->type.Get()->GetByteSize())
         child_byte_size = *byte_size;
       child_is_base_class = true;
@@ -1745,6 +1804,11 @@ TypeSystemCpp::GetIndexOfChildWithName(opaque_compiler_type_t type,
         !RecordHasFields(base->type.Get(), complete))
       continue;
     if (base->type.Get()->GetName().GetName() == name)
+      return visible_base_idx;
+    // A sugar-wrapped base (see GetChildCompilerTypeAtIndex) has an empty raw
+    // name; match it by its display type name instead.
+    if (base->type.Get()->GetName().GetName().empty() &&
+        GetCompilerType(base->type.Get()).GetTypeName().GetStringRef() == name)
       return visible_base_idx;
     ++visible_base_idx;
   }
@@ -2332,10 +2396,17 @@ TypeSystemCpp::GetFullyUnqualifiedType(opaque_compiler_type_t type) {
 CompilerType TypeSystemCpp::GetNonReferenceType(opaque_compiler_type_t type) {
   if (!type)
     return CompilerType();
-  // Peeling only the reference (not typedef/cv sugar) mirrors clang: e.g. the
-  // non-reference type of `const int &` is `const int`.
+  // A reference may hide behind sugar (e.g. `typedef int &td_int_ref`), so look
+  // through the sugar to find it -- matching IsReferenceType, which also
+  // Desugars. If they disagreed (IsReferenceType true but this returning the
+  // sugared type unchanged) a consumer that loops while IsReferenceType() holds
+  // -- like FormatManager::GetPossibleMatches -- would recurse forever on a
+  // typedef-of-reference. Once the reference is found, peel only the reference
+  // (not the referent's own typedef/cv sugar), mirroring clang: the
+  // non-reference type of `const int &` is `const int`, and of `td_int_ref` is
+  // `int`.
   if (auto *ref =
-          llvm::dyn_cast<cpp_typesystem::ReferenceType>(GetCppType(type)))
+          llvm::dyn_cast<cpp_typesystem::ReferenceType>(Desugar(GetCppType(type))))
     return GetCompilerType(ref->GetPointeeType());
   return CompilerType(weak_from_this(), type);
 }

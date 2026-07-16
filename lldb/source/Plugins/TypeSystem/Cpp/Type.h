@@ -98,8 +98,22 @@ struct BaseClass {
   /// The base class type.
   TypeRef type;
   /// Offset of the base class subobject from the start of the derived record,
-  /// in bytes.
+  /// in bytes. For a virtual base this is not a reliable constant (DWARF encodes
+  /// it as a location expression evaluated against a live object), so it is left
+  /// 0 and consumers must derive the real offset from a live object instead
+  /// (see vbase_offset_offset).
   uint64_t byte_offset = 0;
+  /// True if this is a virtual base class (`class D : virtual B`).
+  bool is_virtual = false;
+  /// For a virtual base under the Itanium ABI: the (positive) byte offset that,
+  /// subtracted from the derived object's vtable pointer, yields the address of
+  /// the slot holding this virtual base's offset. That is, the base subobject
+  /// lives at `obj + *(int*)(*(void**)obj - vbase_offset_offset)`. Extracted
+  /// from the base's DWARF DW_AT_data_member_location expression (the standard
+  /// `DW_OP_dup DW_OP_deref DW_OP_constu N DW_OP_minus DW_OP_deref DW_OP_plus`
+  /// form). std::nullopt when not a virtual base or the expression didn't match,
+  /// in which case consumers fall back to byte_offset.
+  std::optional<uint64_t> vbase_offset_offset;
 };
 
 /// A template argument of a class template instantiation (e.g. the `int` and
@@ -404,8 +418,11 @@ private:
   // Gated like RecordType's mutators (see there): only Context, reached through
   // the locked Builder, may add base classes.
   friend class Context;
-  void AddBaseClass(TypeRef type, uint64_t byte_offset) {
-    m_bases.push_back(BaseClass{type, byte_offset});
+  void AddBaseClass(TypeRef type, uint64_t byte_offset,
+                    bool is_virtual = false,
+                    std::optional<uint64_t> vbase_offset_offset = std::nullopt) {
+    m_bases.push_back(
+        BaseClass{type, byte_offset, is_virtual, vbase_offset_offset});
   }
 
   std::vector<BaseClass> m_bases;

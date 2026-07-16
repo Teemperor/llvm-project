@@ -124,7 +124,9 @@ public:
   void AddField(RecordType &record, Identifier name, Type *type,
                 uint64_t byte_offset, uint32_t bitfield_bit_size = 0,
                 uint32_t bitfield_bit_offset = 0);
-  void AddBaseClass(ClassType &record, Type *type, uint64_t byte_offset);
+  void AddBaseClass(ClassType &record, Type *type, uint64_t byte_offset,
+                    bool is_virtual = false,
+                    std::optional<uint64_t> vbase_offset_offset = std::nullopt);
   void AddTemplateArgument(RecordType &record,
                            lldb::TemplateArgumentKind kind, Type *type,
                            uint64_t integral_value, bool is_default);

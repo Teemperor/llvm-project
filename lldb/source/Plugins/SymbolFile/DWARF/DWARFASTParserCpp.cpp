@@ -1046,6 +1046,46 @@ DWARFASTParserCpp::ResolveReferencedType(const DWARFDIE &referencing_die,
   return TypeSystemCpp::GetCppType(forward.GetOpaqueQualType());
 }
 
+/// A virtual base's DW_AT_data_member_location under the Itanium ABI is a
+/// location expression of the form
+///   DW_OP_dup DW_OP_deref DW_OP_constu N DW_OP_minus DW_OP_deref DW_OP_plus
+/// which computes `obj + *(int*)(*(void**)obj - N)`: read the object's vtable
+/// pointer, step back N bytes to the slot holding this base's offset, and add
+/// that offset to the object address. Recognize exactly that shape and return
+/// N, so a live object can be walked to the virtual base at value-inspection
+/// time (see TypeSystemCpp::GetChildCompilerTypeAtIndex). Returns nullopt for
+/// any other expression (e.g. a plain constant, or a non-Itanium form), in
+/// which case the caller falls back to the constant byte offset.
+static std::optional<uint64_t>
+ExtractVBaseOffsetOffset(const DWARFDIE &die,
+                         const DWARFFormValue &form_value) {
+  const uint8_t *block = form_value.BlockData();
+  if (!block)
+    return std::nullopt;
+  const uint64_t block_length = form_value.Unsigned();
+  const DWARFDataExtractor &debug_info_data = die.GetData();
+  lldb::offset_t block_offset = block - debug_info_data.GetDataStart();
+  lldb::offset_t end = block_offset + block_length;
+
+  auto next_op = [&](uint8_t expected) {
+    return block_offset < end &&
+           debug_info_data.GetU8(&block_offset) == expected;
+  };
+
+  if (!next_op(DW_OP_dup) || !next_op(DW_OP_deref))
+    return std::nullopt;
+  if (block_offset >= end ||
+      debug_info_data.GetU8(&block_offset) != DW_OP_constu)
+    return std::nullopt;
+  uint64_t n = debug_info_data.GetULEB128(&block_offset);
+  if (!next_op(DW_OP_minus) || !next_op(DW_OP_deref) || !next_op(DW_OP_plus))
+    return std::nullopt;
+  // The expression must end here (no trailing opcodes) to match exactly.
+  if (block_offset != end)
+    return std::nullopt;
+  return n;
+}
+
 bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     const DWARFDIE &die, Type *type, const CompilerType &compiler_type) {
   if (!die)
@@ -1121,6 +1161,11 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     uint64_t data_bit_offset = UINT64_MAX;
     // For a template argument: true if it was defaulted (DW_AT_default_value).
     bool is_default = false;
+    // For a base class: true if it is a virtual base (DW_AT_virtuality).
+    bool is_virtual = false;
+    // For a virtual base: the vtable-pointer-relative byte offset extracted from
+    // its DW_AT_data_member_location expression (see BaseClass), if recognized.
+    std::optional<uint64_t> vbase_offset_offset;
     // For a static data member: its DW_AT_const_value, if present.
     std::optional<uint64_t> const_value;
   };
@@ -1176,11 +1221,28 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
       // Base classes only exist on C++ class types.
       if (!cpp_class)
         continue;
+      // A virtual base's DW_AT_data_member_location is a location expression
+      // (evaluated against a live object), not a constant, so the byte offset
+      // read below is meaningless for it; mark it virtual and let the record
+      // layout supply the real offset (mirroring DWARFASTParserClang, which
+      // likewise omits a constant offset for virtual bases).
+      const bool base_is_virtual =
+          child.GetAttributeValueAsUnsigned(DW_AT_virtuality, 0) != 0;
+      // For a virtual base, recover the vtable-pointer-relative offset from its
+      // location expression so a live object can be walked to it later.
+      std::optional<uint64_t> vbase_offset_offset;
+      if (base_is_virtual) {
+        if (std::optional<DWARFFormValue> loc =
+                child.find(DW_AT_data_member_location))
+          vbase_offset_offset = ExtractVBaseOffsetOffset(child, *loc);
+      }
       members.push_back(
           {MemberInfo::Kind::Base, /*name=*/{},
            child.GetAttributeValueAsUnsigned(DW_AT_data_member_location, 0),
            /*value=*/0, child,
            child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+      members.back().is_virtual = base_is_virtual;
+      members.back().vbase_offset_offset = vbase_offset_offset;
     } else if (tag == DW_TAG_member) {
       // Skip the artificial vtable pointer (`_vptr$Class`): Clang re-creates it
       // itself for a polymorphic class, so adding it as a field here would
@@ -1334,7 +1396,8 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     switch (member.kind) {
     case MemberInfo::Kind::Base:
       if (member_type)
-        ts.AddBaseClass(*cpp_class, member_type, member.byte_offset);
+        ts.AddBaseClass(*cpp_class, member_type, member.byte_offset,
+                        member.is_virtual, member.vbase_offset_offset);
       break;
     case MemberInfo::Kind::Field:
       if (member_type) {
