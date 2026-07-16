@@ -885,6 +885,45 @@ bool TypeSystemCpp::IsPossibleDynamicType(opaque_compiler_type_t type,
                                           CompilerType *target_type,
                                           bool check_cplusplus,
                                           bool check_objc) {
+  if (target_type)
+    target_type->Clear();
+  if (!type)
+    return false;
+
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+
+  auto set_target = [&](cpp_typesystem::Type *pointee) {
+    if (target_type && pointee)
+      target_type->SetCompilerType(weak_from_this(),
+                                   static_cast<opaque_compiler_type_t>(pointee));
+  };
+
+  // An Objective-C object is always accessed through a pointer (`Foo *` / `id`).
+  // A pointer to an ObjC interface is a possible dynamic type when checking ObjC.
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
+    cpp_typesystem::Type *pointee =
+        ptr->GetPointeeType() ? Desugar(ptr->GetPointeeType()) : nullptr;
+    if (pointee) {
+      if (llvm::isa<cpp_typesystem::ObjCInterfaceType>(pointee)) {
+        if (check_objc) {
+          set_target(pointee);
+          return true;
+        }
+        return false;
+      }
+      // `id` is modeled as a pointer to the opaque `objc_object` record.
+      if (check_objc) {
+        if (auto *rec = llvm::dyn_cast<cpp_typesystem::RecordType>(pointee)) {
+          llvm::StringRef name = rec->GetName().GetName();
+          if (name == "objc_object" || name == "objc_class") {
+            set_target(pointee);
+            return true;
+          }
+        }
+      }
+    }
+  }
+
   return false;
 }
 
@@ -1243,8 +1282,17 @@ LanguageType TypeSystemCpp::GetMinimumLanguage(opaque_compiler_type_t type) {
   // Pointers to records keep reporting C++ so class data formatters still fire.
   if (type) {
     cpp_typesystem::Type *t = Desugar(GetCppType(type));
+    // An Objective-C interface (or a pointer to one, i.e. an ObjC object like
+    // `NSObject *`) is an Objective-C construct. Reporting ObjC is what routes
+    // it to the ObjC language runtime for dynamic-type resolution (see
+    // ValueObjectDynamicValue::UpdateValue).
+    if (llvm::isa<cpp_typesystem::ObjCInterfaceType>(t))
+      return eLanguageTypeObjC;
     if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
       cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+      if (pointee &&
+          llvm::isa<cpp_typesystem::ObjCInterfaceType>(Desugar(pointee)))
+        return eLanguageTypeObjC;
       if (!pointee ||
           !llvm::isa<cpp_typesystem::RecordType>(Desugar(pointee)))
         return eLanguageTypeC;
