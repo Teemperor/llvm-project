@@ -11,12 +11,14 @@
 #include "ClangExpressionParser.h"
 #include "ClangExpressionSourceCode.h"
 #include "ClangPersistentVariables.h"
+#include "CppExpressionDeclMap.h"
 
 #include <cstdio>
 #include <sys/types.h>
 
 
 #include "lldb/Core/Module.h"
+#include "lldb/Core/ModuleList.h"
 #include "lldb/Expression/IRExecutionUnit.h"
 #include "lldb/Host/Host.h"
 #include "lldb/Target/ExecutionContext.h"
@@ -178,6 +180,18 @@ char ClangUtilityFunction::ClangUtilityFunctionHelper::ID;
 
 void ClangUtilityFunction::ClangUtilityFunctionHelper::ResetDeclMap(
     ExecutionContext &exe_ctx, bool keep_result_in_memory) {
+  // When TypeSystemCpp is enabled, the target has no ScratchTypeSystemClang for
+  // the ASTImporter-based ClangExpressionDeclMap to build on. A utility function
+  // is a self-contained Clang C program, so -- like a user expression (see
+  // ClangUserExpression::...::ResetDeclMap) -- use the TypeSystemCpp-aware decl
+  // map, whose WillParse does not require a scratch Clang AST.
+  if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp()) {
+    m_expr_decl_map_up = std::make_unique<CppExpressionDeclMap>(
+        keep_result_in_memory, /*result_delegate=*/nullptr,
+        exe_ctx.GetTargetSP(), /*ctx_obj=*/nullptr,
+        /*ignore_context_qualifiers=*/false);
+    return;
+  }
   std::shared_ptr<ClangASTImporter> ast_importer;
   auto *state = exe_ctx.GetTargetSP()->GetPersistentExpressionStateForLanguage(
       lldb::eLanguageTypeC);

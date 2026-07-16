@@ -1115,6 +1115,13 @@ bool CppExpressionDeclMap::LookupType(
   // ClangExpressionDeclMap gets type lookups from ClangASTSource; the
   // TypeSystemCpp path has no such helper, so do it here. A namespace-scoped
   // lookup restricts the query to the namespace (in one module).
+  // Objective-C provides id/Class/SEL/Protocol intrinsically when compiling
+  // ObjC(++) code (as does the ObjC runtime's own utility-function source).
+  // Surfacing a same-named debug-info type here makes the reference ambiguous
+  // in the parser ("reference to 'Class' is ambiguous"), so never inject these
+  // reserved ObjC builtin type names.
+  if (name == "id" || name == "Class" || name == "SEL" || name == "Protocol")
+    return false;
   TypeResults results;
   if (scope.IsValid() && module) {
     TypeQuery query(scope, name, TypeQueryOptions::e_find_one);
