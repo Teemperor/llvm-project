@@ -64,6 +64,17 @@ class TestTemplateWithSameArg(TestBase):
 
         self.expect_expr("(intptr_t)&FromMod1 + (intptr_t)&FromMod2")
 
+        # The rest of this test FileChecks `target module dump ast`, which dumps
+        # the persistent Clang AST that TypeSystemClang populates from debug info
+        # via the ASTImporter. TypeSystemCpp does not build such a persistent
+        # Clang AST (it synthesizes one on demand only for expressions), so the
+        # module AST dump is empty and this redeclaration-chain check does not
+        # apply.
+        if self.dbg.GetSetting(
+            "symbols.enable-typesystem-cpp"
+        ).GetBooleanValue():
+            self.skipTest("TypeSystemCpp does not build a persistent Clang AST")
+
         # Make sure we only have a single 'Member' decl on the AST
         self.filecheck("target module dump ast", __file__)
 
