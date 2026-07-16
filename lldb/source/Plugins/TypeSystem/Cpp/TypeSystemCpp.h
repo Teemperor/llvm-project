@@ -11,6 +11,7 @@
 
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/TargetParser/Triple.h"
 
 #include "Builder.h"
@@ -22,6 +23,8 @@
 class DWARFASTParserCpp;
 
 namespace lldb_private {
+
+class ObjCLanguageRuntime;
 
 class TypeSystemCpp : public TypeSystem {
   // LLVM RTTI support
@@ -331,10 +334,36 @@ private:
   cpp_typesystem::Type *
   GetObjCBaseClassBearingType(lldb::opaque_compiler_type_t type);
 
+  /// For an Objective-C interface whose ivars are NOT in the debug info (e.g.
+  /// ivars declared in an @implementation compiled with -g0), build the ivar
+  /// list from the ObjC runtime. To keep process-specific runtime data out of
+  /// the shared per-module types, the completed type is created in the target's
+  /// **scratch** TypeSystemCpp; \p t (a module type with no fields) is left
+  /// untouched. Returns the scratch CompilerType, or an empty one when no
+  /// redirection applies (no process/runtime, not an ObjC interface, the type
+  /// already has fields, or this already is the scratch context).
+  CompilerType GetRuntimeCompletedObjCType(cpp_typesystem::Type *t,
+                                           const ExecutionContext *exe_ctx);
+  /// Get-or-create (in this scratch context) an ObjCInterfaceType for
+  /// \p class_name whose ivars are populated from the ObjC runtime.
+  CompilerType CreateRuntimeObjCInterface(ConstString class_name,
+                                          Process &process,
+                                          ObjCLanguageRuntime &runtime);
+  /// Realize a single Objective-C type-encoding (e.g. "i", "f", "^v", "@") into
+  /// a cpp type created through \p builder, advancing \p enc past what it
+  /// consumed. Returns an empty CompilerType for an unrecognized encoding.
+  CompilerType RealizeObjCEncoding(cpp_typesystem::Builder &builder,
+                                   llvm::StringRef &enc);
+
   std::string m_display_name;
   llvm::Triple m_triple;
   cpp_typesystem::Context m_context;
   std::unique_ptr<DWARFASTParserCpp> m_dwarf_ast_parser_up;
+
+  /// ObjC interfaces whose ivars were built from the runtime, keyed by class
+  /// name. Only populated on a scratch context (see CreateRuntimeObjCInterface),
+  /// so process-specific runtime layout never leaks into a shared module type.
+  llvm::StringMap<cpp_typesystem::Type *> m_runtime_objc_types;
 
   // Serializes all mutation of m_context (and the Type nodes it owns) so the
   // DWARF parser can resolve referenced types on worker threads. Recursive so
