@@ -192,6 +192,10 @@ void Builder::AddBaseClass(cpp_typesystem::ClassType &record,
                               vbase_offset_offset);
 }
 
+void Builder::SetRecordPolymorphic(cpp_typesystem::ClassType &record) {
+  m_ts.m_context.SetPolymorphic(record);
+}
+
 void Builder::SetObjCSuperClass(cpp_typesystem::ObjCInterfaceType &record,
                                 cpp_typesystem::Type *superclass) {
   m_ts.m_context.SetObjCSuperClass(record, ToTypeRef(superclass));

@@ -19,6 +19,16 @@ using namespace lldb_private;
 
 static const char *vtable_demangled_prefix = "vtable for ";
 
+// The dynamic type found for a vtable symbol must be a C++ class/struct. Check
+// this via the CompilerType's own type-class bitfield rather than a
+// TypeSystemClang-specific query, so it works regardless of which type system
+// backs the type (TypeSystemClang or TypeSystemCpp).
+static bool IsCXXClassOrStruct(const CompilerType &type) {
+  if (!type)
+    return false;
+  return (type.GetTypeClass() & (eTypeClassClass | eTypeClassStruct)) != 0;
+}
+
 ItaniumABIRuntime::ItaniumABIRuntime(Process *process) : m_process(process) {}
 
 TypeAndOrName
@@ -84,8 +94,7 @@ ItaniumABIRuntime::GetTypeInfo(ValueObject &in_value,
       if (class_types.GetSize() == 1) {
         type_sp = class_types.GetTypeAtIndex(0);
         if (type_sp) {
-          if (TypeSystemClang::IsCXXClassType(
-                  type_sp->GetForwardCompilerType())) {
+          if (IsCXXClassOrStruct(type_sp->GetForwardCompilerType())) {
             LLDB_LOGF(log,
                       "0x%16.16" PRIx64
                       ": static-type = '%s' has dynamic type: uid={0x%" PRIx64
@@ -116,8 +125,7 @@ ItaniumABIRuntime::GetTypeInfo(ValueObject &in_value,
         for (i = 0; i < class_types.GetSize(); i++) {
           type_sp = class_types.GetTypeAtIndex(i);
           if (type_sp) {
-            if (TypeSystemClang::IsCXXClassType(
-                    type_sp->GetForwardCompilerType())) {
+            if (IsCXXClassOrStruct(type_sp->GetForwardCompilerType())) {
               LLDB_LOGF(log,
                         "0x%16.16" PRIx64 ": static-type = '%s' has multiple "
                         "matching dynamic types, picking "

@@ -334,6 +334,12 @@ private:
   cpp_typesystem::Type *
   GetObjCBaseClassBearingType(lldb::opaque_compiler_type_t type);
 
+  /// Recursive worker for GetFullyUnqualifiedType: strip top-level
+  /// cv-qualifiers and recurse through pointer/reference/array pointees so the
+  /// whole type is cv-unqualified (see the definition for details).
+  cpp_typesystem::Type *
+  GetFullyUnqualifiedTypeImpl(cpp_typesystem::Type *type);
+
   /// For an Objective-C interface whose ivars are NOT in the debug info (e.g.
   /// ivars declared in an @implementation compiled with -g0), build the ivar
   /// list from the ObjC runtime. To keep process-specific runtime data out of

@@ -131,6 +131,10 @@ public:
   void AddBaseClass(ClassType &record, Type *type, uint64_t byte_offset,
                     bool is_virtual = false,
                     std::optional<uint64_t> vbase_offset_offset = std::nullopt);
+  /// Mark \p record as a polymorphic C++ class (it -- or a base -- has a
+  /// vtable). Recorded eagerly during completion so C++ dynamic-type detection
+  /// need not force lazy member-function parsing (see ClassType::IsPolymorphic).
+  void SetRecordPolymorphic(ClassType &record);
   /// Set \p record's Objective-C superclass (its single base class).
   void SetObjCSuperClass(ObjCInterfaceType &record, Type *superclass);
   /// Add an Objective-C method to \p record. \p name is the full method name

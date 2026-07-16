@@ -924,6 +924,48 @@ bool TypeSystemCpp::IsPossibleDynamicType(opaque_compiler_type_t type,
     }
   }
 
+  // C++: a pointer or reference to a polymorphic class (one that -- or whose
+  // base -- has a vtable) is a possible dynamic type. The object's vtable
+  // pointer is followed to its RTTI to find the most-derived type (see the
+  // Itanium ABI language runtime). Mirror TypeSystemClang::IsPossibleDynamicType:
+  // also accept a pointer to `void` (an opaque pointer that may really point at
+  // a polymorphic object). References only appear in C++, so they always imply
+  // the C++ path.
+  cpp_typesystem::Type *pointee = nullptr;
+  bool is_reference = false;
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
+    pointee = ptr->GetPointeeType() ? Desugar(ptr->GetPointeeType()) : nullptr;
+  } else if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t)) {
+    pointee = ref->GetPointeeType() ? Desugar(ref->GetPointeeType()) : nullptr;
+    is_reference = true;
+  }
+
+  if (pointee && check_cplusplus) {
+    // `void *` -- accept as a possible (watered-down) dynamic pointer, matching
+    // TypeSystemClang. A reference can't be to void.
+    if (!is_reference) {
+      if (auto *bt = llvm::dyn_cast<cpp_typesystem::BuiltinType>(pointee)) {
+        if (bt->GetEncoding() == lldb::eEncodingInvalid &&
+            bt->GetName().GetName() == "void") {
+          set_target(pointee);
+          return true;
+        }
+      }
+    }
+    // A pointer/reference to a class: dynamic iff the class is polymorphic.
+    // Complete the (possibly forward-declared) record first, since the vtable
+    // fact is only known after completion -- this mirrors clang's
+    // GetCompleteType() -> isDynamicClass() fallback.
+    if (llvm::isa<cpp_typesystem::ClassType>(pointee)) {
+      GetCompleteType(static_cast<opaque_compiler_type_t>(pointee));
+      if (pointee->IsPolymorphic()) {
+        set_target(pointee);
+        return true;
+      }
+      return false;
+    }
+  }
+
   return false;
 }
 
@@ -2663,7 +2705,10 @@ uint32_t TypeSystemCpp::IsHomogeneousAggregate(opaque_compiler_type_t type,
 }
 
 bool TypeSystemCpp::IsPolymorphicClass(opaque_compiler_type_t type) {
-  return false;
+  if (!type)
+    return false;
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+  return t && t->IsPolymorphic();
 }
 
 bool TypeSystemCpp::IsTypedefType(opaque_compiler_type_t type) {
@@ -2697,7 +2742,58 @@ bool TypeSystemCpp::IsVectorType(opaque_compiler_type_t type,
 
 CompilerType
 TypeSystemCpp::GetFullyUnqualifiedType(opaque_compiler_type_t type) {
-  return CompilerType();
+  if (!type)
+    return CompilerType();
+  return GetCompilerType(GetFullyUnqualifiedTypeImpl(GetCppType(type)));
+}
+
+cpp_typesystem::Type *
+TypeSystemCpp::GetFullyUnqualifiedTypeImpl(cpp_typesystem::Type *t) {
+  // Mirror TypeSystemClang::GetFullyUnqualifiedType: strip top-level
+  // cv-qualifiers, and recurse through pointers/references/arrays so their
+  // pointee/element is likewise fully unqualified (so `namesp::Virtual * const`
+  // -> `namesp::Virtual *`, and `const char *` -> `char *`). Other sugar
+  // (typedefs, elaborated spellings) is preserved. A reference has no
+  // cv-qualifiers of its own, but its referent is unqualified.
+  if (!t)
+    return t;
+  // Strip any stacked top-level cv-qualifiers.
+  while (auto *cv = llvm::dyn_cast<cpp_typesystem::CVQualifiedType>(t))
+    t = cv->GetUnderlyingType();
+
+  cpp_typesystem::Builder builder(*this);
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
+    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+    cpp_typesystem::Type *stripped = GetFullyUnqualifiedTypeImpl(pointee);
+    if (stripped != pointee)
+      return static_cast<cpp_typesystem::Type *>(
+          builder
+              .CreatePointerType(stripped ? GetCompilerType(stripped)
+                                          : CompilerType())
+              .GetOpaqueQualType());
+    return t;
+  }
+  if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t)) {
+    cpp_typesystem::Type *pointee = ref->GetPointeeType();
+    cpp_typesystem::Type *stripped = GetFullyUnqualifiedTypeImpl(pointee);
+    if (stripped && stripped != pointee)
+      return static_cast<cpp_typesystem::Type *>(
+          builder.CreateReferenceType(GetCompilerType(stripped), ref->IsRValue())
+              .GetOpaqueQualType());
+    return t;
+  }
+  if (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(t)) {
+    cpp_typesystem::Type *element = array->GetElementType();
+    cpp_typesystem::Type *stripped = GetFullyUnqualifiedTypeImpl(element);
+    if (stripped && stripped != element)
+      return static_cast<cpp_typesystem::Type *>(
+          builder
+              .CreateArrayType(GetCompilerType(stripped),
+                               array->GetNumElements())
+              .GetOpaqueQualType());
+    return t;
+  }
+  return t;
 }
 
 CompilerType TypeSystemCpp::GetNonReferenceType(opaque_compiler_type_t type) {

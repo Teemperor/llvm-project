@@ -1343,6 +1343,12 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   // (mirroring DWARFASTParserClang, where the vptr advances last_field_end).
   uint64_t vtable_ptr_end_bits = 0;
 
+  // True if this record is a polymorphic C++ class: it has an artificial
+  // `_vptr$` member (a direct vtable pointer) or a virtual base class. Recorded
+  // eagerly here (during completion) so C++ dynamic-type detection does not have
+  // to force lazy member-function parsing (see ClassType::IsPolymorphic).
+  bool has_vtable = false;
+
   // True once we see any template-parameter DIE (type/value parameter or a
   // GNU parameter pack), i.e. this record is a class-template instantiation.
   // An instantiation over an *empty* pack (e.g. `TypePack<>`) emits an empty
@@ -1409,6 +1415,10 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
            child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
       members.back().is_virtual = base_is_virtual;
       members.back().vbase_offset_offset = vbase_offset_offset;
+      // A virtual base is reached through the vtable (its offset lives in the
+      // vtable), so the class is polymorphic.
+      if (base_is_virtual)
+        has_vtable = true;
     } else if (tag == DW_TAG_member) {
       // Skip the artificial vtable pointer (`_vptr$Class`): Clang re-creates it
       // itself for a polymorphic class, so adding it as a field here would
@@ -1424,6 +1434,7 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
               DW_AT_data_member_location, 0);
           vtable_ptr_end_bits =
               vptr_offset * 8 + child.GetCU()->GetAddressByteSize() * 8;
+          has_vtable = true;
           continue;
         }
       }
@@ -1670,6 +1681,26 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
       }
       break;
     }
+  }
+
+  // Mark the class polymorphic if it has its own vtable pointer / a virtual
+  // base, or if it inherits a vtable from a (direct) polymorphic base. Recorded
+  // eagerly so C++ dynamic-type detection (IsPossibleDynamicType) works without
+  // forcing lazy member-function parsing (see ClassType::IsPolymorphic).
+  if (cpp_class) {
+    if (!has_vtable) {
+      for (size_t i = 0; i < members.size(); ++i) {
+        if (members[i].kind != MemberInfo::Kind::Base)
+          continue;
+        if (auto *base = member_types[i];
+            base && base->IsPolymorphic()) {
+          has_vtable = true;
+          break;
+        }
+      }
+    }
+    if (has_vtable)
+      ts.SetRecordPolymorphic(*cpp_class);
   }
 
   return true;

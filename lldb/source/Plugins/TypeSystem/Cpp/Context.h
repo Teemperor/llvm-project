@@ -142,6 +142,7 @@ public:
                     std::optional<uint64_t> vbase_offset_offset = std::nullopt) {
     record.AddBaseClass(type, byte_offset, is_virtual, vbase_offset_offset);
   }
+  void SetPolymorphic(ClassType &record) { record.SetPolymorphic(); }
   void SetObjCSuperClass(ObjCInterfaceType &record, TypeRef superclass) {
     record.SetSuperClass(superclass);
   }
