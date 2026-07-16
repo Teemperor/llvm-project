@@ -1310,6 +1310,11 @@ ClangASTGenerator::GenerateFunction(clang::DeclarationName name,
 
 clang::FunctionDecl *
 ClangASTGenerator::GenerateGenericFunction(llvm::StringRef name) {
+  // Held while we synthesize (and add) the decl: adding a named decl to the
+  // external-visible TU makes clang look that same name up again, which without
+  // this guard would re-enter LookupSymbolFunction -> GenerateGenericFunction
+  // and recurse forever (IsGeneratingDecls() gates that re-entrant lookup off).
+  GenerationGuard guard(*this);
   clang::ASTContext &ast = m_ast;
   // A variadic function returning `__unknown_anytype`, mirroring
   // NameSearchContext::AddGenericFunDecl for symbol-only callees. The
