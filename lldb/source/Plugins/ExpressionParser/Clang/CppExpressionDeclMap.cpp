@@ -82,7 +82,9 @@ public:
   void CompleteType(clang::TagDecl *tag_decl) override {
     m_map.CompleteType(tag_decl);
   }
-  void CompleteType(clang::ObjCInterfaceDecl *) override {}
+  void CompleteType(clang::ObjCInterfaceDecl *iface_decl) override {
+    m_map.CompleteType(iface_decl);
+  }
 
   bool layoutRecordType(
       const clang::RecordDecl *record, uint64_t &size, uint64_t &alignment,
@@ -209,6 +211,11 @@ void CppExpressionDeclMap::StartTranslationUnit() {
 void CppExpressionDeclMap::CompleteType(clang::TagDecl *tag_decl) {
   if (m_ast_context)
     GetGenerator().CompleteRecord(tag_decl);
+}
+
+void CppExpressionDeclMap::CompleteType(clang::ObjCInterfaceDecl *iface_decl) {
+  if (m_ast_context)
+    GetGenerator().CompleteObjCInterface(iface_decl);
 }
 
 bool CppExpressionDeclMap::LayoutRecordType(

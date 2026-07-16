@@ -70,8 +70,15 @@ UNRESOLVED (30) — lldb crashes, two signatures:
 2. SIGABRT (-6) — clang assertion
    `checkBitfieldClipping: (M.Offset >= Tail && "Bitfield access unit is not clipped"),
    CGRecordLayoutBuilder.cpp:960` when clang lays out an ObjC record with ivars.
-   Tests: TestHiddenIvars, TestIvarInFrameworkBase, TestBitfieldIvars,
-   TestObjCIvarsInBlocks, TestObjCIvarStripped, TestObjCMethodsString.
+   FIXED: ClangASTGenerator now generates a clang ObjCInterfaceDecl (with
+   ObjCIvarDecls + superclass) for cpp_typesystem::ObjCInterfaceType instead of a
+   CXXRecordDecl, and a pointer to it becomes an ObjCObjectPointerType. The
+   formerly-crashing tests (TestHiddenIvars, TestIvarInFrameworkBase,
+   TestBitfieldIvars, TestObjCIvarsInBlocks, TestObjCIvarStripped,
+   TestObjCMethodsString) no longer abort; they now fail cleanly on the separate
+   ObjC-expression gap in bucket #1 above ("undeclared identifier" for an
+   unqualified ivar; runtime-only "hidden" ivars not modeled). `self->ivar`
+   member access through the ObjC pointer now works.
    A few -6 aborts are instead "Program aborted due to an unhandled Error:
    Could not install utility function / current process state is unsuitable for
    expression parsing" (TestObjCMethods2, TestObjCMethodsNSArray, TestPtrRefsObjC,

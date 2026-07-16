@@ -31,6 +31,7 @@ class CXXRecordDecl;
 class FieldDecl;
 class FunctionDecl;
 class TagDecl;
+class ObjCInterfaceDecl;
 } // namespace clang
 
 namespace lldb_private {
@@ -40,6 +41,7 @@ class TypeSystemCpp;
 namespace cpp_typesystem {
 class Type;
 class RecordType;
+class ObjCInterfaceType;
 class Namespace;
 } // namespace cpp_typesystem
 
@@ -92,6 +94,13 @@ public:
   /// external source when Clang requires the full definition. Returns true if
   /// \p tag_decl was created by this generator (and is now complete).
   bool CompleteRecord(clang::TagDecl *tag_decl);
+
+  /// Complete an Objective-C interface previously handed out by Generate().
+  /// Called by the external source (via
+  /// ExternalASTSource::CompleteType(ObjCInterfaceDecl*)) when Clang requires
+  /// the full definition (its ivars/superclass). Returns true if \p iface_decl
+  /// was created by this generator (and is now complete).
+  bool CompleteObjCInterface(clang::ObjCInterfaceDecl *iface_decl);
 
   /// Resolve a type declared inside a record created by this generator (a
   /// nested class/union/enum/typedef) by its unqualified \p name, so a
@@ -200,6 +209,14 @@ private:
 
   /// Complete a record's fields/bases from its cpp_typesystem description.
   void PopulateRecord(clang::RecordDecl *record_decl);
+
+  /// Complete an Objective-C interface's ivars/superclass from its
+  /// cpp_typesystem description. The ivars are added as clang::ObjCIvarDecls
+  /// (not FieldDecls) and the superclass wired up via setSuperClass, so clang
+  /// lays it out with the Objective-C runtime ABI rather than as a C++ record
+  /// (which would misclassify runtime-offset bitfield ivars and assert in
+  /// checkBitfieldClipping during expression codegen).
+  void PopulateObjCInterface(clang::ObjCInterfaceDecl *iface_decl);
 
   /// If \p rec (owned by \p ts) is an incomplete record whose complete
   /// definition lives in a *different* module of the target, find that complete
@@ -323,6 +340,19 @@ private:
   // DenseMap rehash would otherwise invalidate references into it).
   llvm::DenseMap<const clang::RecordDecl *, std::unique_ptr<RecordInfo>>
       m_records;
+
+  /// Per-interface bookkeeping for lazy completion of Objective-C classes,
+  /// mirroring m_records but for ObjCInterfaceDecls (which are not RecordDecls
+  /// so they don't route through m_records / CompleteRecord).
+  struct ObjCInterfaceInfo {
+    TypeSystemCpp *ts = nullptr;
+    cpp_typesystem::ObjCInterfaceType *cpp_iface = nullptr;
+    clang::ObjCInterfaceDecl *clang_decl = nullptr;
+    bool completed = false;
+  };
+  llvm::DenseMap<const clang::ObjCInterfaceDecl *,
+                 std::unique_ptr<ObjCInterfaceInfo>>
+      m_objc_interfaces;
 };
 
 } // namespace lldb_private

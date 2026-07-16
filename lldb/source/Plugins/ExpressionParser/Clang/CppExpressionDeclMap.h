@@ -34,6 +34,7 @@ class DeclarationName;
 class FunctionDecl;
 class NamedDecl;
 class NamespaceDecl;
+class ObjCInterfaceDecl;
 class RecordDecl;
 class TagDecl;
 } // namespace clang
@@ -100,6 +101,7 @@ public:
     return m_generator && m_generator->IsGenerating();
   }
   void CompleteType(clang::TagDecl *tag_decl);
+  void CompleteType(clang::ObjCInterfaceDecl *iface_decl);
   bool LayoutRecordType(
       const clang::RecordDecl *record, uint64_t &size, uint64_t &alignment,
       llvm::DenseMap<const clang::FieldDecl *, uint64_t> &field_offsets,

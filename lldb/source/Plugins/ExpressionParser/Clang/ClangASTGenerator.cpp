@@ -29,6 +29,7 @@
 #include "clang/AST/CXXInheritance.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/Expr.h"
@@ -557,7 +558,32 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     return n.empty() ? t->GetName().GetName() : n;
   };
 
-  if (auto *rec = llvm::dyn_cast<ct::RecordType>(cpp_type)) {
+  if (auto *iface = llvm::dyn_cast<ct::ObjCInterfaceType>(cpp_type)) {
+    // An Objective-C class must become a clang ObjCInterfaceDecl (not a
+    // CXXRecordDecl): its ivars are laid out with the Objective-C runtime ABI,
+    // and modeling it as a C++ record misclassifies its runtime-offset bitfield
+    // ivars, tripping checkBitfieldClipping during expression codegen. Created
+    // as a forward declaration and completed on demand via
+    // CompleteObjCInterface (mirroring how records are completed).
+    llvm::StringRef name = unqualified_name(iface);
+    auto *decl =
+        clang::ObjCInterfaceDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+    decl->setDeclContext(decl_ctx);
+    if (!name.empty())
+      decl->setDeclName(&ast.Idents.get(name));
+    decl_ctx->addDecl(decl);
+    // Ask clang to call back into us (CompleteType(ObjCInterfaceDecl*)) before
+    // it needs the definition.
+    decl->setHasExternalLexicalStorage(true);
+    decl->setHasExternalVisibleStorage(true);
+
+    result = ast.getObjCInterfaceType(decl);
+    auto info = std::make_unique<ObjCInterfaceInfo>();
+    info->ts = &ts;
+    info->cpp_iface = iface;
+    info->clang_decl = decl;
+    m_objc_interfaces[decl] = std::move(info);
+  } else if (auto *rec = llvm::dyn_cast<ct::RecordType>(cpp_type)) {
     // Records are created as forward declarations and completed on demand (see
     // PopulateRecord). This mirrors lazy DWARF parsing and keeps cycles finite.
     clang::TagTypeKind kind = rec->IsUnion()
@@ -653,10 +679,16 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     else
       pointee = ast.VoidTy;
     if (!pointee.isNull()) {
+      // A pointer to an Objective-C class (`Foo *`) must be a clang
+      // ObjCObjectPointerType, not a plain PointerType, so member access
+      // (`obj->ivar` / `obj.prop`) and messaging resolve through the ObjC path.
+      if (llvm::isa_and_nonnull<ct::ObjCInterfaceType>(ptr->GetPointeeType()) &&
+          pointee->isObjCObjectType())
+        result = ast.getObjCObjectPointerType(pointee);
       // An Apple "blocks" pointer (`int (^)(int)`) wraps a function type but
       // must be a real clang BlockPointerType so it stays callable and prints
       // with `^` rather than `*`.
-      if (ptr->IsBlockPointer())
+      else if (ptr->IsBlockPointer())
         result = ast.getBlockPointerType(pointee);
       else
         result = ast.getPointerType(pointee);
@@ -1400,6 +1432,92 @@ bool ClangASTGenerator::CompleteRecord(clang::TagDecl *tag_decl) {
   return true;
 }
 
+void ClangASTGenerator::PopulateObjCInterface(
+    clang::ObjCInterfaceDecl *iface_decl) {
+  auto it = m_objc_interfaces.find(iface_decl);
+  if (it == m_objc_interfaces.end())
+    return;
+  ObjCInterfaceInfo &info = *it->second;
+  if (info.completed)
+    return;
+  info.completed = true;
+
+  TypeSystemCpp *ts = info.ts;
+  ct::ObjCInterfaceType *iface = info.cpp_iface;
+  clang::ASTContext &ast = m_ast;
+
+  // Make sure the interface's ivars/superclass are parsed from debug info.
+  CompilerType cpp_ct = ts->GetCompilerType(iface);
+  cpp_ct.GetCompleteType();
+
+  // Turn the forward declaration into a definition. Clang lays out the ivars
+  // itself using the Objective-C runtime ABI (non-fragile), so -- unlike C++
+  // records -- we do not supply field offsets via layoutRecordType.
+  iface_decl->startDefinition();
+
+  // Superclass (modeled as the interface's single base class).
+  if (const ct::BaseClass *super = iface->GetBaseClassAtIndex(0)) {
+    clang::QualType super_qt = GenerateType(*ts, super->type.Get());
+    if (!super_qt.isNull() && super_qt->isObjCObjectType()) {
+      if (auto *super_obj = super_qt->getAs<clang::ObjCObjectType>()) {
+        if (clang::ObjCInterfaceDecl *super_decl = super_obj->getInterface()) {
+          CompleteObjCInterface(super_decl);
+          iface_decl->setSuperClass(
+              ast.getTrivialTypeSourceInfo(super_qt));
+        }
+      }
+    }
+  }
+
+  // Ivars, added as ObjCIvarDecls (not FieldDecls).
+  for (uint32_t i = 0; i < iface->GetNumFields(); ++i) {
+    const ct::Field *field = iface->GetFieldAtIndex(i);
+    clang::QualType ivar_qt = GenerateType(*ts, field->type.Get());
+    if (ivar_qt.isNull())
+      continue;
+    EnsureComplete(ivar_qt);
+
+    clang::Expr *bit_width = nullptr;
+    if (field->IsBitfield()) {
+      llvm::APInt width(ast.getIntWidth(ast.IntTy), field->bitfield_bit_size);
+      clang::Expr *literal = clang::IntegerLiteral::Create(
+          ast, width, ast.IntTy, clang::SourceLocation());
+      bit_width = clang::ConstantExpr::Create(
+          ast, literal, clang::APValue(llvm::APSInt(width)));
+    }
+
+    clang::IdentifierInfo *ident = nullptr;
+    if (!field->name.GetName().empty())
+      ident = &ast.Idents.get(field->name.GetName());
+
+    auto *ivar =
+        clang::ObjCIvarDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+    ivar->setDeclContext(iface_decl);
+    ivar->setDeclName(ident);
+    ivar->setType(ivar_qt);
+    ivar->setAccessControl(clang::ObjCIvarDecl::Public);
+    if (bit_width)
+      ivar->setBitWidth(bit_width);
+    iface_decl->addDecl(ivar);
+  }
+
+  // The members were added directly, so no external source is needed to
+  // enumerate them.
+  iface_decl->setHasExternalLexicalStorage(false);
+  iface_decl->setHasExternalVisibleStorage(false);
+}
+
+bool ClangASTGenerator::CompleteObjCInterface(
+    clang::ObjCInterfaceDecl *iface_decl) {
+  GenerationGuard guard(*this);
+  if (!iface_decl)
+    return false;
+  if (m_objc_interfaces.find(iface_decl) == m_objc_interfaces.end())
+    return false;
+  PopulateObjCInterface(iface_decl);
+  return true;
+}
+
 clang::NamedDecl *
 ClangASTGenerator::LookupNestedType(const clang::RecordDecl *record_decl,
                                     llvm::StringRef name) {
@@ -1784,6 +1902,14 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
   // e.g. the `T &` VarDecls we synthesize for locals or the result
   // synthesizer's pointer wrappers) aren't in the map. Reconstruct them in
   // result_ts from their pointee, which is looked up recursively.
+  if (const auto *objc_ptr = qt->getAs<clang::ObjCObjectPointerType>()) {
+    // A pointer to an Objective-C class (`Foo *`) the parser formed. Map the
+    // pointee interface and wrap it in a cpp pointer.
+    if (CompilerType pointee =
+            MapClangTypeToCpp(objc_ptr->getPointeeType(), result_ts))
+      return cpp_typesystem::Builder(result_ts).CreatePointerType(pointee);
+    return {};
+  }
   if (qt->isReferenceType()) {
     if (CompilerType pointee = MapClangTypeToCpp(qt->getPointeeType(), result_ts))
       return cpp_typesystem::Builder(result_ts).CreateReferenceType(
