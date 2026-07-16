@@ -156,6 +156,11 @@ private:
   ParseBaseType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParseStructureType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  /// If \p die is a forward declaration nested in a DW_TAG_module (a
+  /// -gmodules/PCH container), find and return the complete definition of the
+  /// type from the external module/PCH DWARF. Null if not applicable.
+  lldb::TypeSP
+  FindClangModuleDefinitionType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParseArrayType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
