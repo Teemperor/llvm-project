@@ -39,6 +39,7 @@
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"
+#include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclarationName.h"
 #include "clang/Basic/OperatorKinds.h"
 #include "llvm/ADT/StringExtras.h"
@@ -335,6 +336,10 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
   if (llvm::isa<clang::TranslationUnitDecl>(dc)) {
     if (sname == "$__lldb_class") {
       LookUpLldbClass(name, decls);
+      return !decls.empty();
+    }
+    if (sname == "$__lldb_objc_class") {
+      LookUpLldbObjCClass(name, decls);
       return !decls.empty();
     }
     if (sname == "$__lldb_local_vars") {
@@ -914,6 +919,59 @@ void CppExpressionDeclMap::LookUpLldbClass(
       ast, ast.getTranslationUnitDecl(), clang::SourceLocation(),
       clang::SourceLocation(), name.getAsIdentifierInfo(), ti);
   decls.push_back(td);
+}
+
+void CppExpressionDeclMap::LookUpLldbObjCClass(
+    clang::DeclarationName name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  StackFrame *frame = m_exe_ctx.GetFramePtr();
+  if (!frame)
+    return;
+
+  // The enclosing Objective-C method's object type is the pointee of the
+  // frame's implicit `self` parameter. Mirrors
+  // ClangExpressionDeclMap::LookUpLldbObjCClass, but instead of consulting a
+  // clang ObjCMethodDecl we go straight through the `self` variable (whose
+  // pointee is the method's ObjCInterfaceType). Returning that interface for
+  // the wrapper's `$__lldb_objc_class` gives the injected method an implicit
+  // `self` of the right type, so unqualified ivar names resolve as ObjC ivar
+  // accesses on `self` (just as C++ members resolve through `this`).
+  VariableListSP vars = frame->GetInScopeVariableList(true);
+  VariableSP self_var =
+      vars ? vars->FindVariable(ConstString("self")) : VariableSP();
+  if (!self_var)
+    return;
+  Type *self_type = self_var->GetType();
+  if (!self_type)
+    return;
+
+  CompilerType self_cpp_type = self_type->GetForwardCompilerType();
+  // `self` is a pointer to the interface (an ObjC object pointer); the class is
+  // its pointee. This runs only for an instance (`-`) method (see
+  // ClangUserExpression::ScanContext), so `self`'s pointee is the interface.
+  CompilerType class_cpp_type = self_cpp_type.GetPointeeType();
+  if (!class_cpp_type || !class_cpp_type.GetTypeSystem<TypeSystemCpp>())
+    return;
+
+  clang::QualType class_qt = GetGenerator().Generate(class_cpp_type);
+  if (class_qt.isNull())
+    return;
+
+  // The generated type for an ObjCInterfaceType is an ObjCInterfaceType (an
+  // ObjCObjectType); pull out its ObjCInterfaceDecl and make its ivars
+  // available for unqualified lookup through `self`.
+  clang::ObjCInterfaceDecl *iface_decl = nullptr;
+  if (const auto *obj_type = class_qt->getAs<clang::ObjCObjectType>())
+    iface_decl = obj_type->getInterface();
+  if (!iface_decl)
+    return;
+  GetGenerator().CompleteObjCInterface(iface_decl);
+
+  // Hand clang the real interface decl as the answer for `$__lldb_objc_class`.
+  // The wrapper declares `@interface $__lldb_objc_class (...)`; clang tolerates
+  // the returned interface carrying its true name (e.g. `A`), mirroring the
+  // legacy NameSearchContext::AddTypeDecl ObjC path.
+  decls.push_back(iface_decl);
 }
 
 bool CppExpressionDeclMap::LookupLocalVariable(

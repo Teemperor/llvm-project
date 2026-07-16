@@ -151,6 +151,30 @@ void ClangUserExpression::ScanContext(DiagnosticManager &diagnostic_manager,
           }
         }
     }
+    // Likewise for an Objective-C instance method: TypeSystemCpp does not model
+    // the ObjCMethodDecl the detection below relies on, so recognize the method
+    // from the frame's implicit `self` and the mangled `-[Class sel]` function
+    // name. The class context and `self` object pointer are then wired up the
+    // same way as for the Clang path so unqualified ivar references resolve as
+    // an access on `self` (see LookUpLldbObjCClass). Only an instance (`-`)
+    // method is treated this way: a class (`+`) method has no ivars to reach,
+    // and the plain generic wrapper resolves the globals such a method uses
+    // (using the ObjC class-method wrapper there would require the runtime
+    // metaclass and just complicates codegen for no benefit).
+    if (m_allow_objc && !m_ctx_obj && !m_in_cplusplus_method) {
+      llvm::StringRef fname(sym_ctx.function->GetName().GetStringRef());
+      if (fname.starts_with("-[")) {
+        if (lldb::VariableListSP vars =
+                function_block->GetBlockVariableList(true)) {
+          lldb::VariableSP self_var = vars->FindVariable(ConstString("self"));
+          if (self_var && self_var->IsInScope(frame) &&
+              self_var->LocationIsValidForFrame(frame)) {
+            m_in_objectivec_method = true;
+            m_needs_object_ptr = true;
+          }
+        }
+      }
+    }
     return;
   }
 

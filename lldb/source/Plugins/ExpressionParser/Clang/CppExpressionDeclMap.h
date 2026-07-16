@@ -132,6 +132,13 @@ private:
   void LookUpLldbClass(clang::DeclarationName name,
                        llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
+  /// Provide `$__lldb_objc_class` (the Objective-C interface of the enclosing
+  /// method's object, i.e. the pointee of the frame's implicit `self`) so an
+  /// expression evaluated in an ObjC method can reach ivars unqualified as an
+  /// access on `self`. Mirrors ClangExpressionDeclMap::LookUpLldbObjCClass.
+  void LookUpLldbObjCClass(clang::DeclarationName name,
+                           llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
   /// Resolve free overloaded operator functions (e.g. `operator==`) referenced
   /// by an expression -- either explicitly (`operator==(a, b)`) or via operator
   /// syntax (`a == b`). \p name is the CXXOperatorName DeclarationName clang
