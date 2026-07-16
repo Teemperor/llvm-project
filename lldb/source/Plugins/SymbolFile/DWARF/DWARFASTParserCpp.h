@@ -24,6 +24,8 @@ class TypeSystemCpp;
 namespace cpp_typesystem {
 class Type;
 class RecordType;
+class ObjCInterfaceType;
+class Builder;
 }
 } // namespace lldb_private
 
@@ -68,6 +70,16 @@ public:
   /// reached through TypeSystemCpp::CompleteMemberFunctions.
   void CompleteMemberFunctionsFromDWARF(
       lldb_private::cpp_typesystem::RecordType &record);
+
+  /// Parse the Objective-C methods of \p iface (from its child method
+  /// declarations and the standalone `+[Class sel]` / `-[Class sel]`
+  /// definitions reachable via the ObjC-method index) and add them as
+  /// ObjCMethods so the expression parser can message-send them. Called from
+  /// CompleteMemberFunctionsFromDWARF for an ObjCInterfaceType.
+  void CompleteObjCMethodsFromDWARF(
+      lldb_private::cpp_typesystem::ObjCInterfaceType &iface,
+      const lldb_private::plugin::dwarf::DWARFDIE &class_die,
+      lldb_private::cpp_typesystem::Builder &ts);
 
   lldb_private::CompilerDecl GetDeclForUIDFromDWARF(
       const lldb_private::plugin::dwarf::DWARFDIE &die) override {

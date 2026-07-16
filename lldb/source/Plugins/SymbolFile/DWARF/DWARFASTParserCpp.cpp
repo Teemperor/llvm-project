@@ -21,6 +21,8 @@
 #include "Plugins/TypeSystem/Cpp/Type.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
+#include "Plugins/Language/ObjC/ObjCLanguage.h"
+
 #include "lldb/Core/Declaration.h"
 #include "lldb/Core/Mangled.h"
 #include "lldb/Core/Module.h"
@@ -36,6 +38,7 @@
 #include "lldb/Utility/StreamString.h"
 
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
 
@@ -1572,6 +1575,18 @@ void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
     return;
   DWARFDIE die = die_it->second;
 
+  // An Objective-C interface's "member functions" are its methods, which are
+  // messaged (not called directly). They live in DWARF both as child
+  // DW_TAG_subprogram declarations of the class DIE and as standalone
+  // definitions (named `+[Class sel:]` / `-[Class sel:]`) reachable through the
+  // ObjC-method index. Parse both so the expression parser can type-check and
+  // lower a message send.
+  if (auto *objc_iface =
+          llvm::dyn_cast<cpp_typesystem::ObjCInterfaceType>(&record)) {
+    CompleteObjCMethodsFromDWARF(*objc_iface, die, ts);
+    return;
+  }
+
   // The record's unqualified base name (no template arguments), used to detect
   // constructors: a member subprogram whose unqualified name equals the class
   // name (and which has no return type) is a constructor. A destructor's name
@@ -1652,4 +1667,64 @@ void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
                          ConstString(asm_label), is_static, is_const,
                          is_volatile, is_virtual, ref_qualifier, kind);
   }
+}
+
+void DWARFASTParserCpp::CompleteObjCMethodsFromDWARF(
+    cpp_typesystem::ObjCInterfaceType &iface, const DWARFDIE &class_die,
+    cpp_typesystem::Builder &ts) {
+  llvm::StringRef class_name = iface.GetName().GetName();
+
+  // Track which method DIEs we've already added so a method that appears both
+  // as a child declaration of the class DIE and as a standalone definition
+  // (reachable via the index) is only added once.
+  llvm::DenseSet<dw_offset_t> seen;
+
+  auto add_method = [&](const DWARFDIE &method_die) {
+    const char *name = method_die.GetName();
+    if (!name || !name[0])
+      return;
+    std::optional<const ObjCLanguage::ObjCMethodName> objc_name =
+        ObjCLanguage::ObjCMethodName::Create(name, /*strict=*/true);
+    if (!objc_name)
+      return;
+    // Only methods of this interface.
+    if (objc_name->GetClassName() != class_name)
+      return;
+    if (!seen.insert(method_die.GetOffset()).second)
+      return;
+
+    // The FunctionType parsed from the DIE already strips the artificial
+    // self/_cmd parameters (see ParseFunctionType), matching what a
+    // clang::ObjCMethodDecl expects (one parameter per selector argument).
+    Type *func_type = class_die.ResolveTypeUID(method_die);
+    if (!func_type)
+      return;
+
+    bool is_variadic = false;
+    for (DWARFDIE param : method_die.children())
+      if (param.Tag() == DW_TAG_unspecified_parameters)
+        is_variadic = true;
+
+    const std::string asm_label = MakeFuncAsmLabel(method_die);
+
+    ts.AddObjCMethod(iface, ConstString(name),
+                     func_type->GetForwardCompilerType(),
+                     ConstString(asm_label), objc_name->IsClassMethod(),
+                     is_variadic);
+  };
+
+  // Method declarations that are children of the class DIE.
+  for (DWARFDIE child : class_die.children())
+    if (child.Tag() == DW_TAG_subprogram)
+      add_method(child);
+
+  // Standalone method definitions (and declarations in other CUs) reachable
+  // through the ObjC-method index (mirrors DWARFASTParserClang, which calls
+  // dwarf->GetObjCMethods to find every `+[Class sel]` / `-[Class sel]` DIE).
+  if (SymbolFileDWARF *dwarf = class_die.GetDWARF())
+    dwarf->GetObjCMethods(ConstString(class_name),
+                          [&](DWARFDIE method_die) {
+                            add_method(method_die);
+                            return IterationAction::Continue;
+                          });
 }

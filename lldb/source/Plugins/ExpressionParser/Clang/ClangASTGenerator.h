@@ -43,6 +43,7 @@ class Type;
 class RecordType;
 class ObjCInterfaceType;
 class Namespace;
+struct ObjCMethod;
 } // namespace cpp_typesystem
 
 /// Translates types from the module-level TypeSystemCpp (see the
@@ -217,6 +218,13 @@ private:
   /// (which would misclassify runtime-offset bitfield ivars and assert in
   /// checkBitfieldClipping during expression codegen).
   void PopulateObjCInterface(clang::ObjCInterfaceDecl *iface_decl);
+
+  /// Add a single Objective-C method (\p method, owned by \p ts) to the
+  /// generated \p iface_decl as an ObjCMethodDecl, so the expression parser can
+  /// type-check and lower a message send. Mirrors
+  /// TypeSystemClang::AddMethodToObjCObjectType.
+  void AddObjCMethod(clang::ObjCInterfaceDecl *iface_decl, TypeSystemCpp &ts,
+                     const cpp_typesystem::ObjCMethod &method);
 
   /// If \p rec (owned by \p ts) is an incomplete record whose complete
   /// definition lives in a *different* module of the target, find that complete

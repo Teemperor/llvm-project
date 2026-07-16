@@ -181,6 +181,25 @@ struct MemberFunction {
   MemberFunctionKind kind = MemberFunctionKind::Method;
 };
 
+/// An Objective-C method of an interface. Only what an expression needs to
+/// build a clang::ObjCMethodDecl and message-send it: the full method name
+/// (`-[Class sel:]` / `+[Class sel:]`, which encodes both the selector and
+/// whether it is an instance or class method), the (self/_cmd-stripped)
+/// signature, and the asm label so the JIT can resolve the callee. Whether the
+/// method is variadic matters for the message-send lowering.
+struct ObjCMethod {
+  /// The full name as written in the debug info, e.g. `+[Foo doThing:with:]`.
+  Identifier name;
+  /// The method's type (a FunctionType); its parameters exclude the implicit
+  /// `self`/`_cmd` parameters.
+  TypeRef type;
+  /// The asm label (an lldb FunctionCallLabel) the call resolves through.
+  Identifier asm_label;
+  /// True for a class method (`+[...]`), false for an instance method.
+  bool is_class_method = false;
+  bool is_variadic = false;
+};
+
 /// Represents everything needed to understand a type.
 ///
 /// A pointer to a Type is what TypeSystemCpp hands out as its
@@ -460,6 +479,16 @@ public:
     return nullptr;
   }
 
+  /// Objective-C methods of this interface (used to build ObjCMethodDecls so
+  /// the expression parser can type-check and lower a message send). Parsed
+  /// lazily alongside member functions (see AreMemberFunctionsParsed).
+  uint32_t GetNumObjCMethods() const { return m_objc_methods.size(); }
+  const ObjCMethod *GetObjCMethodAtIndex(uint32_t idx) const {
+    if (idx < m_objc_methods.size())
+      return &m_objc_methods[idx];
+    return nullptr;
+  }
+
 private:
   // Gated like RecordType's mutators (see there): only Context, reached through
   // the locked Builder, may set the superclass.
@@ -468,8 +497,12 @@ private:
     m_superclass = BaseClass{type, /*byte_offset=*/0, /*is_virtual=*/false,
                              /*vbase_offset_offset=*/std::nullopt};
   }
+  void AddObjCMethod(ObjCMethod method) {
+    m_objc_methods.push_back(std::move(method));
+  }
 
   std::optional<BaseClass> m_superclass;
+  std::vector<ObjCMethod> m_objc_methods;
 };
 
 /// A C array type: a fixed number of contiguous elements of the same type.

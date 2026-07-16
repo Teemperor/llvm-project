@@ -197,6 +197,19 @@ void Builder::SetObjCSuperClass(cpp_typesystem::ObjCInterfaceType &record,
   m_ts.m_context.SetObjCSuperClass(record, ToTypeRef(superclass));
 }
 
+void Builder::AddObjCMethod(cpp_typesystem::ObjCInterfaceType &record,
+                            ConstString name, CompilerType function_type,
+                            ConstString asm_label, bool is_class_method,
+                            bool is_variadic) {
+  cpp_typesystem::ObjCMethod method;
+  method.name = GetIdentifier(name.GetStringRef());
+  method.type = ToTypeRef(function_type);
+  method.asm_label = GetIdentifier(asm_label.GetStringRef());
+  method.is_class_method = is_class_method;
+  method.is_variadic = is_variadic;
+  m_ts.m_context.AddObjCMethod(record, std::move(method));
+}
+
 void Builder::AddEnumerator(cpp_typesystem::EnumType &enum_type,
                             cpp_typesystem::Identifier name, uint64_t value) {
   m_ts.m_context.AddEnumerator(enum_type, name, value);

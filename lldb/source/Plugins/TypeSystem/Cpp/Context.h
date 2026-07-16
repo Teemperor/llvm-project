@@ -145,6 +145,9 @@ public:
   void SetObjCSuperClass(ObjCInterfaceType &record, TypeRef superclass) {
     record.SetSuperClass(superclass);
   }
+  void AddObjCMethod(ObjCInterfaceType &record, ObjCMethod method) {
+    record.AddObjCMethod(std::move(method));
+  }
   void AddTemplateArgument(RecordType &record, TemplateArgument arg) {
     record.AddTemplateArgument(arg);
   }
