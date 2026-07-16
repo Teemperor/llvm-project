@@ -112,36 +112,44 @@ AppleObjCRuntime::GetObjectDescription(Stream &strm, Value &value,
     return llvm::createStringError("no print function");
 
   Target *target = exe_ctx.GetTargetPtr();
+
+  // Use the generic scratch TypeSystem for the language (this may be a
+  // TypeSystemClang or a TypeSystemCpp depending on the
+  // symbols.enable-typesystem-cpp setting). We only rely on the neutral
+  // CompilerType / TypeSystem API here so both work.
+  auto scratch_ts_or_err =
+      target->GetScratchTypeSystemForLanguage(lldb::eLanguageTypeObjC);
+  if (!scratch_ts_or_err) {
+    llvm::consumeError(scratch_ts_or_err.takeError());
+    return llvm::createStringError("no scratch type system");
+  }
+  lldb::TypeSystemSP scratch_ts_sp = *scratch_ts_or_err;
+  if (!scratch_ts_sp)
+    return llvm::createStringError("no scratch type system");
+
   CompilerType compiler_type = value.GetCompilerType();
   if (compiler_type) {
-    if (!TypeSystemClang::IsObjCObjectPointerType(compiler_type))
+    bool is_signed = false;
+    // ObjC objects are pointers (or an integer that actually holds a pointer
+    // but hasn't been typecast yet).
+    if (!compiler_type.IsPointerType() &&
+        !compiler_type.IsIntegerType(is_signed) &&
+        !(compiler_type.GetTypeInfo() & lldb::eTypeIsObjC))
       return llvm::createStringError(
           "Value doesn't point to an ObjC object.\n");
   } else {
     // If it is not a pointer, see if we can make it into a pointer.
-    TypeSystemClangSP scratch_ts_sp =
-        ScratchTypeSystemClang::GetForTarget(*target);
-    if (!scratch_ts_sp)
-      return llvm::createStringError("no scratch type system");
-
-    CompilerType opaque_type = scratch_ts_sp->GetBasicType(eBasicTypeObjCID);
-    if (!opaque_type)
-      opaque_type =
-          scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
-    // value.SetContext(Value::eContextTypeClangType, opaque_type_ptr);
+    CompilerType opaque_type =
+        scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
     value.SetCompilerType(opaque_type);
   }
 
   ValueList arg_value_list;
   arg_value_list.PushValue(value);
 
-  // This is the return value:
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(*target);
-  if (!scratch_ts_sp)
-    return llvm::createStringError("no scratch type system");
-
-  CompilerType return_compiler_type = scratch_ts_sp->GetCStringType(true);
+  // This is the return value: a C string (char *).
+  CompilerType return_compiler_type =
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeChar).GetPointerType();
   Value ret;
   //    ret.SetContext(Value::eContextTypeClangType, return_compiler_type);
   ret.SetCompilerType(return_compiler_type);

@@ -14,6 +14,7 @@
 #include <optional>
 #include <vector>
 
+#include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 
 #include "lldb/lldb-enumerations.h"
@@ -565,7 +566,18 @@ public:
     return lldb::eTypeClassPointer;
   }
   uint32_t GetTypeInfo() const override {
-    return lldb::eTypeHasChildren | lldb::eTypeIsPointer | lldb::eTypeHasValue;
+    uint32_t info =
+        lldb::eTypeHasChildren | lldb::eTypeIsPointer | lldb::eTypeHasValue;
+    // A pointer to an Objective-C interface (`Foo *` / `id`) is itself an
+    // Objective-C construct: report eTypeIsObjC so that the value printer's
+    // ObjC pointer-expansion (dwim-print's SetExpandPointerTypeFlags) and the
+    // ObjC language runtime treat it as an object pointer. (Sugar between the
+    // pointer and the interface is peeled by the caller via Desugar; the
+    // pointee stored here is normally the interface directly.)
+    const Type *pointee = m_pointee_type.Get();
+    if (pointee && llvm::isa<ObjCInterfaceType>(pointee))
+      info |= lldb::eTypeIsObjC;
+    return info;
   }
 
 private:
