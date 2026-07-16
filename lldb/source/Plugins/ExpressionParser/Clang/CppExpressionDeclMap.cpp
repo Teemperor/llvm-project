@@ -25,6 +25,7 @@
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Symbol/SymbolFile.h"
+#include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/Type.h"
 #include "lldb/Symbol/Variable.h"
 #include "lldb/Symbol/VariableList.h"
@@ -1138,6 +1139,16 @@ bool CppExpressionDeclMap::LookupType(
   lldb::TypeSP type_sp = results.GetFirstType();
   if (!type_sp)
     return false;
+  // Skip types that live in a JIT'd expression / utility-function module: those
+  // are LLDB-internal artifacts (a previous expression's own structs, emitted
+  // with debug info), not real program types. Surfacing one makes a later
+  // expression that defines a same-named type -- e.g. the ObjC runtime's
+  // `struct ClassInfo` in its class-scan utility functions -- fail with a
+  // spurious "redefinition" against the earlier utility function's copy.
+  if (lldb::ModuleSP module = type_sp->GetModule())
+    if (ObjectFile *obj = module->GetObjectFile())
+      if (obj->GetType() == ObjectFile::eTypeJIT)
+        return false;
 
   CompilerType type = type_sp->GetFullCompilerType();
   // Only handle types owned by a TypeSystemCpp; other language plugins own
