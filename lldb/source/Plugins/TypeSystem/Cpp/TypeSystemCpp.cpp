@@ -25,7 +25,9 @@
 #include "lldb/Host/StreamFile.h"
 #include "lldb/Expression/UtilityFunction.h"
 #include "lldb/Symbol/Block.h"
+#include "lldb/Symbol/SymbolContext.h"
 #include "lldb/Symbol/SymbolFile.h"
+#include "lldb/Symbol/Symbol.h"
 #include "lldb/Symbol/Type.h"
 #include "lldb/Target/Language.h"
 #include "lldb/Target/Process.h"
@@ -1452,9 +1454,177 @@ Format TypeSystemCpp::GetFormat(opaque_compiler_type_t type) {
   return GetCppType(type)->GetFormat();
 }
 
+CompilerType TypeSystemCpp::RealizeObjCEncoding(cpp_typesystem::Builder &builder,
+                                                llvm::StringRef &enc) {
+  // Skip leading method/ivar qualifier characters (const, in/out, byref, ...).
+  while (!enc.empty() && llvm::StringRef("rnNoRVA").contains(enc.front()))
+    enc = enc.drop_front();
+  if (enc.empty())
+    return CompilerType();
+  const char c = enc.front();
+  enc = enc.drop_front();
+  auto builtin = [&](const char *name, uint64_t size, lldb::Encoding e,
+                     lldb::Format f) {
+    return builder.GetBuiltinType(ConstString(name), size, e, f);
+  };
+  switch (c) {
+  case 'c':
+    return builtin("char", 1, lldb::eEncodingSint, lldb::eFormatChar);
+  case 'C':
+    return builtin("unsigned char", 1, lldb::eEncodingUint, lldb::eFormatChar);
+  case 'B':
+    return builtin("bool", 1, lldb::eEncodingUint, lldb::eFormatBoolean);
+  case 's':
+    return builtin("short", 2, lldb::eEncodingSint, lldb::eFormatDecimal);
+  case 'S':
+    return builtin("unsigned short", 2, lldb::eEncodingUint,
+                   lldb::eFormatUnsigned);
+  case 'i':
+    return builtin("int", 4, lldb::eEncodingSint, lldb::eFormatDecimal);
+  case 'I':
+    return builtin("unsigned int", 4, lldb::eEncodingUint,
+                   lldb::eFormatUnsigned);
+  case 'l':
+    return builtin("long", 8, lldb::eEncodingSint, lldb::eFormatDecimal);
+  case 'L':
+    return builtin("unsigned long", 8, lldb::eEncodingUint,
+                   lldb::eFormatUnsigned);
+  case 'q':
+    return builtin("long long", 8, lldb::eEncodingSint, lldb::eFormatDecimal);
+  case 'Q':
+    return builtin("unsigned long long", 8, lldb::eEncodingUint,
+                   lldb::eFormatUnsigned);
+  case 'f':
+    return builtin("float", 4, lldb::eEncodingIEEE754, lldb::eFormatFloat);
+  case 'd':
+    return builtin("double", 8, lldb::eEncodingIEEE754, lldb::eFormatFloat);
+  case 'v':
+    return builder.GetVoidType();
+  case '*': // char *
+    return builder.CreatePointerType(
+        builtin("char", 1, lldb::eEncodingSint, lldb::eFormatChar));
+  case '@': // id
+  case '#': // Class
+  case ':': // SEL
+    // Modeled as an opaque pointer; the ObjC object graph is not reconstructed.
+    return builder.CreatePointerType(CompilerType());
+  case '^': { // pointer to the following encoding
+    CompilerType pointee = RealizeObjCEncoding(builder, enc);
+    return builder.CreatePointerType(pointee);
+  }
+  default:
+    return CompilerType();
+  }
+}
+
+CompilerType
+TypeSystemCpp::CreateRuntimeObjCInterface(ConstString class_name,
+                                          Process &process,
+                                          ObjCLanguageRuntime &runtime) {
+  // One runtime-built type per class name in this scratch context.
+  if (auto it = m_runtime_objc_types.find(class_name.GetStringRef());
+      it != m_runtime_objc_types.end())
+    return GetCompilerType(it->second);
+
+  ObjCLanguageRuntime::ClassDescriptorSP descriptor =
+      runtime.GetClassDescriptorFromClassName(class_name);
+  if (!descriptor) {
+    // Dynamically-registered classes are often missing from the runtime's
+    // name->isa map. The `OBJC_CLASS_$_<name>` symbol's address is exactly the
+    // isa an instance of the class carries, so look the descriptor up by that.
+    ConstString class_symbol(
+        ("OBJC_CLASS_$_" + class_name.GetStringRef()).str());
+    SymbolContextList sc_list;
+    process.GetTarget().GetImages().FindSymbolsWithNameAndType(
+        class_symbol, lldb::eSymbolTypeObjCClass, sc_list);
+    for (const SymbolContext &sc : sc_list) {
+      if (!sc.symbol)
+        continue;
+      lldb::addr_t isa = sc.symbol->GetLoadAddress(&process.GetTarget());
+      if (isa == LLDB_INVALID_ADDRESS)
+        continue;
+      descriptor = runtime.GetClassDescriptorFromISA(isa);
+      if (descriptor)
+        break;
+    }
+  }
+  if (!descriptor)
+    return CompilerType();
+
+  cpp_typesystem::Builder builder(*this);
+  CompilerType iface_ct =
+      builder.CreateObjCInterfaceType(class_name, std::nullopt);
+  auto *iface = llvm::cast<cpp_typesystem::ObjCInterfaceType>(
+      GetCppType(iface_ct.GetOpaqueQualType()));
+  // Publish before filling so a self-referential ivar can't recurse forever.
+  m_runtime_objc_types[class_name.GetStringRef()] = iface;
+
+  descriptor->Describe(
+      /*superclass_func=*/nullptr, /*instance_method_func=*/nullptr,
+      /*class_method_func=*/nullptr,
+      [&](const char *name, const char *type, lldb::addr_t offset_ptr,
+          uint64_t size) -> bool {
+        if (!name || !name[0])
+          return false;
+        // The runtime stores a pointer to the ivar's (32-bit) byte offset.
+        Status error;
+        uint64_t byte_offset =
+            process.ReadUnsignedIntegerFromMemory(offset_ptr, 4, 0, error);
+        llvm::StringRef enc(type ? type : "");
+        CompilerType ivar_type = RealizeObjCEncoding(builder, enc);
+        // Fall back to an opaque byte blob of the right size so a member we
+        // can't decode still occupies its slot in the layout.
+        if (!ivar_type)
+          ivar_type = builder.CreateArrayType(
+              builder.GetBuiltinType(ConstString("char"), 1,
+                                     lldb::eEncodingSint, lldb::eFormatChar),
+              size);
+        auto *field_type =
+            GetCppType(ivar_type.GetOpaqueQualType());
+        builder.AddField(*iface, builder.GetIdentifier(name), field_type,
+                         byte_offset);
+        return false;
+      });
+  builder.SetRecordComplete(*iface);
+  return iface_ct;
+}
+
+CompilerType
+TypeSystemCpp::GetRuntimeCompletedObjCType(cpp_typesystem::Type *t,
+                                           const ExecutionContext *exe_ctx) {
+  auto *objc = llvm::dyn_cast_or_null<cpp_typesystem::ObjCInterfaceType>(t);
+  // Only redirect a module interface that has no debug-info ivars; a type that
+  // already has fields (a DWARF-described class, or a runtime-built scratch
+  // type) is answered directly.
+  if (!objc || objc->GetNumFields() != 0 || !exe_ctx)
+    return CompilerType();
+  Process *process = exe_ctx->GetProcessPtr();
+  if (!process)
+    return CompilerType();
+  ObjCLanguageRuntime *runtime = ObjCLanguageRuntime::Get(*process);
+  if (!runtime)
+    return CompilerType();
+  Target &target = process->GetTarget();
+  auto scratch_or =
+      target.GetScratchTypeSystemForLanguage(lldb::eLanguageTypeObjC_plus_plus);
+  if (!scratch_or) {
+    llvm::consumeError(scratch_or.takeError());
+    return CompilerType();
+  }
+  auto *scratch = llvm::dyn_cast_or_null<TypeSystemCpp>(scratch_or->get());
+  // Never redirect within the scratch context itself (that would recurse), and
+  // require a distinct scratch context to hold the runtime data.
+  if (!scratch || scratch == this)
+    return CompilerType();
+  ConstString class_name(objc->GetName().GetName());
+  if (!class_name)
+    return CompilerType();
+  return scratch->CreateRuntimeObjCInterface(class_name, *process, *runtime);
+}
+
 llvm::Expected<uint32_t>
 TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
-                              bool omit_empty_base_classes,
+                             bool omit_empty_base_classes,
                               const ExecutionContext *exe_ctx) {
   if (!type)
     return 0;
@@ -1499,6 +1669,10 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
   }
   if (!t->IsAggregate())
     return 0;
+  // An ObjC interface with no debug-info ivars is completed from the runtime
+  // (into the scratch context); answer from that completed type.
+  if (CompilerType rt = GetRuntimeCompletedObjCType(t, exe_ctx))
+    return rt.GetNumChildren(omit_empty_base_classes, exe_ctx);
   GetCompleteType(type);
   // Children of a record are its direct base classes followed by its fields.
   // Empty base classes (no data members, recursively) are omitted when
@@ -1721,6 +1895,15 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
     child_byte_offset = 0;
     return GetCompilerType(pointee);
   }
+
+  // An ObjC interface with no debug-info ivars is completed from the runtime
+  // (into the scratch context); resolve children against that completed type.
+  if (CompilerType rt = GetRuntimeCompletedObjCType(t, exe_ctx))
+    return rt.GetChildCompilerTypeAtIndex(
+        exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
+        ignore_array_bounds, child_name, child_byte_size, child_byte_offset,
+        child_bitfield_bit_size, child_bitfield_bit_offset, child_is_base_class,
+        child_is_deref_of_parent, valobj, language_flags);
 
   // Children are laid out as the direct base classes followed by the fields.
   // When omit_empty_base_classes is set, empty base classes (no data members,
