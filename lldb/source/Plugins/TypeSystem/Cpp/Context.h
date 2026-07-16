@@ -132,8 +132,10 @@ public:
     record.AddField(name, type, byte_offset, bitfield_bit_size,
                     bitfield_bit_offset);
   }
-  void AddBaseClass(ClassType &record, TypeRef type, uint64_t byte_offset) {
-    record.AddBaseClass(type, byte_offset);
+  void AddBaseClass(ClassType &record, TypeRef type, uint64_t byte_offset,
+                    bool is_virtual = false,
+                    std::optional<uint64_t> vbase_offset_offset = std::nullopt) {
+    record.AddBaseClass(type, byte_offset, is_virtual, vbase_offset_offset);
   }
   void AddTemplateArgument(RecordType &record, TemplateArgument arg) {
     record.AddTemplateArgument(arg);

@@ -178,8 +178,11 @@ void Builder::AddField(cpp_typesystem::RecordType &record,
 }
 
 void Builder::AddBaseClass(cpp_typesystem::ClassType &record,
-                           cpp_typesystem::Type *type, uint64_t byte_offset) {
-  m_ts.m_context.AddBaseClass(record, ToTypeRef(type), byte_offset);
+                           cpp_typesystem::Type *type, uint64_t byte_offset,
+                           bool is_virtual,
+                           std::optional<uint64_t> vbase_offset_offset) {
+  m_ts.m_context.AddBaseClass(record, ToTypeRef(type), byte_offset, is_virtual,
+                              vbase_offset_offset);
 }
 
 void Builder::AddEnumerator(cpp_typesystem::EnumType &enum_type,

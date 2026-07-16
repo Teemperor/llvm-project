@@ -905,9 +905,9 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
         continue;
       EnsureComplete(base_qt);
       bases.push_back(new (ast) clang::CXXBaseSpecifier(
-          clang::SourceRange(), /*is_virtual=*/false, /*base_of_class=*/true,
-          clang::AS_public, ast.getTrivialTypeSourceInfo(base_qt),
-          clang::SourceLocation()));
+          clang::SourceRange(), /*is_virtual=*/base->is_virtual,
+          /*base_of_class=*/true, clang::AS_public,
+          ast.getTrivialTypeSourceInfo(base_qt), clang::SourceLocation()));
     }
     if (!bases.empty())
       decl->setBases(bases.data(), bases.size());
@@ -1350,8 +1350,38 @@ void ClangASTGenerator::EnsureComplete(clang::QualType qt) {
   const clang::Type *type = qt.getCanonicalType().getTypePtr();
   while (const clang::ArrayType *at = m_ast.getAsArrayType(clang::QualType(type, 0)))
     type = at->getElementType().getCanonicalType().getTypePtr();
-  if (auto *rd = type->getAsCXXRecordDecl())
+  if (auto *rd = type->getAsCXXRecordDecl()) {
     CompleteRecord(rd);
+    // A record embedded by value (a base subobject or a member) must be a
+    // complete clang type: clang's record layout (EmptySubobjectMap, pointer
+    // alignment) queries getASTRecordLayout on it and asserts on a forward
+    // declaration. CompleteRecord leaves it forward-declared when no definition
+    // exists in any module (e.g. a base/field of a type built with
+    // -flimit-debug-info whose key function lives in a stripped TU). Forcefully
+    // complete it to an empty definition so codegen can lay out the enclosing
+    // record, mirroring DWARFASTParserClang's SetDeclIsForcefullyCompleted for
+    // the same limited-debug-info case.
+    //
+    // Only do this when the *cpp* record itself is genuinely incomplete. If the
+    // cpp record is complete but the clang decl is not yet a complete definition,
+    // we are re-entering while that record is still mid-population (e.g. a class
+    // with a member function whose signature mentions the class through a
+    // pointer re-enters EnsureComplete on itself before PopulateRecord reaches
+    // its completeDefinition()). Forcefully completing it here would wipe the
+    // fields/bases the in-progress PopulateRecord is about to add (turning it
+    // into an empty struct and losing its members); leave it and let the
+    // outstanding PopulateRecord finish the definition.
+    auto info_it = m_records.find(rd);
+    if (info_it != m_records.end() && !rd->isCompleteDefinition() &&
+        info_it->second->cpp_record &&
+        !info_it->second->cpp_record->IsComplete()) {
+      auto *mrd = const_cast<clang::CXXRecordDecl *>(rd);
+      mrd->startDefinition();
+      mrd->completeDefinition();
+      mrd->setHasExternalLexicalStorage(false);
+      mrd->setHasExternalVisibleStorage(false);
+    }
+  }
 }
 
 bool ClangASTGenerator::CompleteRecord(clang::TagDecl *tag_decl) {
@@ -1469,13 +1499,20 @@ bool ClangASTGenerator::LayoutRecord(
       field_offsets[fd] = offset_it->second;
   }
 
-  // Base-class offsets (in bytes), matching declaration order.
+  // Base-class offsets (in bytes), matching declaration order. A virtual base
+  // has no constant offset (DWARF encodes it as a location expression), so it
+  // must not be reported as a direct-base offset -- Clang computes the virtual
+  // base layout itself from the record's size/vtable. Mirrors
+  // DWARFASTParserClang, which likewise omits virtual bases from base_offsets
+  // and leaves vbase_offsets empty.
   if (const auto *cxx = llvm::dyn_cast<clang::CXXRecordDecl>(record_decl)) {
     uint32_t base_idx = 0;
     for (const clang::CXXBaseSpecifier &base : cxx->bases()) {
       if (base_idx >= rec->GetNumBaseClasses())
         break;
       const ct::BaseClass *cpp_base = rec->GetBaseClassAtIndex(base_idx++);
+      if (cpp_base->is_virtual)
+        continue;
       if (auto *base_rd = base.getType()->getAsCXXRecordDecl())
         base_offsets[base_rd] =
             clang::CharUnits::fromQuantity(cpp_base->byte_offset);
@@ -1687,6 +1724,31 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
           /*is_union=*/rd->isUnion());
       auto *cpp_record = llvm::cast<ct::RecordType>(
           static_cast<ct::Type *>(record.GetOpaqueQualType()));
+      // Base classes (C++ records only). The parser-defined record's layout is
+      // complete here, so use the concrete base offsets from it directly (unlike
+      // the DWARF path, where a virtual base has no constant offset). Emit the
+      // direct bases in declaration order (matching TypeSystemClang's child
+      // order), tagging each with its virtuality and offset from the layout.
+      auto *cpp_class = llvm::dyn_cast<ct::ClassType>(cpp_record);
+      if (const auto *cxx = llvm::dyn_cast<clang::CXXRecordDecl>(rd);
+          cxx && cpp_class) {
+        for (const clang::CXXBaseSpecifier &base : cxx->bases()) {
+          const auto *base_rd = base.getType()->getAsCXXRecordDecl();
+          if (!base_rd)
+            continue;
+          CompilerType base_type = MapClangTypeToCpp(base.getType(), result_ts);
+          if (!base_type)
+            return {};
+          const bool is_virtual = base.isVirtual();
+          clang::CharUnits off = is_virtual
+                                     ? layout.getVBaseClassOffset(base_rd)
+                                     : layout.getBaseClassOffset(base_rd);
+          builder.AddBaseClass(
+              *cpp_class,
+              static_cast<ct::Type *>(base_type.GetOpaqueQualType()),
+              off.getQuantity(), is_virtual);
+        }
+      }
       unsigned field_idx = 0;
       for (const clang::FieldDecl *fd : rd->fields()) {
         CompilerType field_type = MapClangTypeToCpp(fd->getType(), result_ts);
