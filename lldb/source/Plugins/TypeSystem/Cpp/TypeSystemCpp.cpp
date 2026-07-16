@@ -1551,11 +1551,26 @@ CompilerType TypeSystemCpp::GetFieldAtIndex(opaque_compiler_type_t type,
   return GetCompilerType(field->type.Get());
 }
 
+cpp_typesystem::Type *
+TypeSystemCpp::GetObjCBaseClassBearingType(opaque_compiler_type_t type) {
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+  // An Objective-C object is always handled through a pointer (`Foo *`), so a
+  // pointer to an ObjC interface answers base-class queries as the interface
+  // `Foo` itself would. This does not apply to ordinary C++ pointers.
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t))
+    if (cpp_typesystem::Type *pointee = ptr->GetPointeeType())
+      if (llvm::isa<cpp_typesystem::ObjCInterfaceType>(Desugar(pointee))) {
+        GetCompleteType(static_cast<opaque_compiler_type_t>(pointee));
+        return Desugar(pointee);
+      }
+  return t;
+}
+
 uint32_t TypeSystemCpp::GetNumDirectBaseClasses(opaque_compiler_type_t type) {
   if (!type)
     return 0;
   GetCompleteType(type);
-  return GetCppType(type)->GetNumBaseClasses();
+  return GetObjCBaseClassBearingType(type)->GetNumBaseClasses();
 }
 
 uint32_t TypeSystemCpp::GetNumVirtualBaseClasses(opaque_compiler_type_t type) {
@@ -1569,7 +1584,7 @@ TypeSystemCpp::GetDirectBaseClassAtIndex(opaque_compiler_type_t type,
     return CompilerType();
   GetCompleteType(type);
   const cpp_typesystem::BaseClass *base =
-      GetCppType(type)->GetBaseClassAtIndex(idx);
+      GetObjCBaseClassBearingType(type)->GetBaseClassAtIndex(idx);
   if (!base)
     return CompilerType();
   if (bit_offset_ptr)

@@ -324,6 +324,13 @@ private:
       bool omit_empty_base_classes, bool descend_anon_fields,
       std::vector<uint32_t> &child_indexes);
 
+  /// If \p type is a pointer to an Objective-C interface, return the (completed)
+  /// interface type; otherwise the desugared \p type. ObjC objects are always
+  /// referenced by pointer, so base-class queries on `Foo *` are answered by the
+  /// interface `Foo`.
+  cpp_typesystem::Type *
+  GetObjCBaseClassBearingType(lldb::opaque_compiler_type_t type);
+
   std::string m_display_name;
   llvm::Triple m_triple;
   cpp_typesystem::Context m_context;
