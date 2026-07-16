@@ -340,6 +340,17 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
     // A free function or global variable referenced by the expression
     // (e.g. `globalFuncCall()` or `g_global`).
     if (!sname.starts_with("$")) {
+      // When compiling Objective-C, clang provides id/Class/SEL/Protocol
+      // intrinsically. Never answer a lookup for these reserved names from the
+      // debug info: doing so gives the parser a second, conflicting decl and
+      // makes the reference ambiguous ("reference to 'Class' is ambiguous",
+      // e.g. in the ObjC runtime's own utility functions). Let clang use its
+      // builtin. (In non-ObjC code these are ordinary identifiers, so only
+      // suppress them in ObjC mode.)
+      if (m_ast_context->getLangOpts().ObjC &&
+          (sname == "id" || sname == "Class" || sname == "SEL" ||
+           sname == "Protocol"))
+        return false;
       // Skip the whole-module function search while we are synthesizing decls:
       // adding a named decl to the (external-visible) TU makes clang look that
       // name up here, but those are internal reconciliation lookups, not
@@ -1115,13 +1126,6 @@ bool CppExpressionDeclMap::LookupType(
   // ClangExpressionDeclMap gets type lookups from ClangASTSource; the
   // TypeSystemCpp path has no such helper, so do it here. A namespace-scoped
   // lookup restricts the query to the namespace (in one module).
-  // Objective-C provides id/Class/SEL/Protocol intrinsically when compiling
-  // ObjC(++) code (as does the ObjC runtime's own utility-function source).
-  // Surfacing a same-named debug-info type here makes the reference ambiguous
-  // in the parser ("reference to 'Class' is ambiguous"), so never inject these
-  // reserved ObjC builtin type names.
-  if (name == "id" || name == "Class" || name == "SEL" || name == "Protocol")
-    return false;
   TypeResults results;
   if (scope.IsValid() && module) {
     TypeQuery query(scope, name, TypeQueryOptions::e_find_one);
