@@ -149,9 +149,20 @@ ObjCLanguageRuntime::LookupInCompleteClassCache(ConstString &name) {
     TypeResults results;
     module_sp->FindTypes(query, results);
     for (const TypeSP &type_sp : results.GetTypeMap().Types()) {
-      if (TypeSystemClang::IsObjCObjectOrInterfaceType(
-              type_sp->GetForwardCompilerType())) {
+      CompilerType fwd_type = type_sp->GetForwardCompilerType();
+      if (TypeSystemClang::IsObjCObjectOrInterfaceType(fwd_type)) {
         if (TypePayloadClang(type_sp->GetPayload()).IsCompleteObjCClass()) {
+          m_complete_class_cache[name] = type_sp;
+          return type_sp;
+        }
+        continue;
+      }
+      // TypeSystemCpp models ObjC classes as ObjCInterfaceType (not a
+      // clang::ObjCInterfaceType) and does not use the clang type payload.
+      // Accept any ObjC struct/union type whose full definition is available.
+      if ((fwd_type.GetTypeInfo() & lldb::eTypeIsObjC) &&
+          (fwd_type.GetTypeInfo() & lldb::eTypeIsStructUnion)) {
+        if (type_sp->GetFullCompilerType().IsCompleteType()) {
           m_complete_class_cache[name] = type_sp;
           return type_sp;
         }
