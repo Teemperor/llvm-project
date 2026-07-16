@@ -1703,6 +1703,15 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
     cpp_typesystem::Type *pointee = ptr->GetPointeeType();
     if (!pointee)
       return 0;
+    // An Objective-C object is only ever accessed through a pointer (there is
+    // no by-value ObjC object), so a pointer to an ObjC interface is treated as
+    // transparent -- its children are the interface's ivars/superclass, matching
+    // TypeSystemClang. This does not conflict with the lazy-completion concerns
+    // that keep C/C++ pointers opaque, since an ObjC interface is never a
+    // by-value type reached through a separate deref child.
+    if (llvm::isa<cpp_typesystem::ObjCInterfaceType>(Desugar(pointee)))
+      return GetNumChildren(static_cast<opaque_compiler_type_t>(pointee),
+                            omit_empty_base_classes, exe_ctx);
     return 1;
   }
   // A reference is transparent: its children are those of the referenced type.
@@ -1890,6 +1899,21 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
     if (!pointee)
       return CompilerType(); // Can't dereference `void *`.
 
+    // A pointer to an ObjC interface is transparent (see GetNumChildren): its
+    // children are the interface's ivars/superclass, reached without an
+    // intervening deref child. This matches TypeSystemClang and is what lets
+    // `p obj` / the object-description fallback show the ivars.
+    if (llvm::isa<cpp_typesystem::ObjCInterfaceType>(Desugar(pointee))) {
+      GetCompleteType(GetCompilerType(pointee).GetOpaqueQualType());
+      bool tmp_child_is_deref_of_parent = false;
+      return GetCompilerType(pointee).GetChildCompilerTypeAtIndex(
+          exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
+          ignore_array_bounds, child_name, child_byte_size, child_byte_offset,
+          child_bitfield_bit_size, child_bitfield_bit_offset,
+          child_is_base_class, tmp_child_is_deref_of_parent, valobj,
+          language_flags);
+    }
+
     child_is_deref_of_parent = true;
     if (const char *parent_name =
             valobj ? valobj->GetName().GetCString() : nullptr) {
@@ -2040,9 +2064,17 @@ TypeSystemCpp::GetIndexOfChildWithName(opaque_compiler_type_t type,
   // A pointer is not transparent: its only child is the (unnamed) dereferenced
   // value, so no named member is directly addressable on the pointer. A
   // reference forwards to its aggregate referent.
-  if (llvm::isa<cpp_typesystem::PointerType>(t))
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
+    // A pointer to an ObjC interface is transparent (see GetNumChildren): its
+    // named children are the interface's members, so forward the lookup.
+    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
+    if (pointee &&
+        llvm::isa<cpp_typesystem::ObjCInterfaceType>(Desugar(pointee)))
+      return GetCompilerType(pointee).GetIndexOfChildWithName(
+          name, omit_empty_base_classes);
     return llvm::createStringError(
         "TypeSystemCpp::GetIndexOfChildWithName: no such child");
+  }
   cpp_typesystem::Type *pointee = nullptr;
   if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t))
     pointee = ref->GetPointeeType();
@@ -2117,6 +2149,14 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithNameImpl(
     cpp_typesystem::Type *pointee = ptr->GetPointeeType();
     if (!pointee || !pointee->IsAggregate())
       return 0;
+    // A pointer to an Objective-C interface is transparent (see GetNumChildren
+    // / GetChildCompilerTypeAtIndex): its children are the interface's members
+    // directly, with no intervening deref child. Recurse without pushing the
+    // index-0 deref step so the returned indices match the child layout.
+    if (llvm::isa<cpp_typesystem::ObjCInterfaceType>(Desugar(pointee)))
+      return GetIndexOfChildMemberWithNameImpl(
+          static_cast<opaque_compiler_type_t>(pointee), name,
+          omit_empty_base_classes, /*descend_anon_fields=*/true, child_indexes);
     child_indexes.push_back(0);
     return GetIndexOfChildMemberWithNameImpl(
         static_cast<opaque_compiler_type_t>(pointee), name,
