@@ -65,6 +65,11 @@ public:
                                bool is_cpp_class, bool is_union = false,
                                bool is_class_keyword = false);
 
+  /// Create an Objective-C class type (`@interface`). Its ivars are added as
+  /// fields and its superclass via SetSuperClass during completion.
+  ObjCInterfaceType *CreateObjCInterfaceType(llvm::StringRef name,
+                                             std::optional<uint64_t> byte_size);
+
   /// Create an array type of \p num_elements elements of \p element_type.
   /// \p num_elements is std::nullopt for an array of unknown bound.
   ArrayType *CreateArrayType(TypeRef element_type,
@@ -136,6 +141,9 @@ public:
                     bool is_virtual = false,
                     std::optional<uint64_t> vbase_offset_offset = std::nullopt) {
     record.AddBaseClass(type, byte_offset, is_virtual, vbase_offset_offset);
+  }
+  void SetObjCSuperClass(ObjCInterfaceType &record, TypeRef superclass) {
+    record.SetSuperClass(superclass);
   }
   void AddTemplateArgument(RecordType &record, TemplateArgument arg) {
     record.AddTemplateArgument(arg);

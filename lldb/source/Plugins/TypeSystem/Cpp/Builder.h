@@ -52,6 +52,10 @@ public:
                                 std::optional<uint64_t> byte_size,
                                 bool is_cpp_class, bool is_union = false,
                                 bool is_class_keyword = false);
+  /// Create an Objective-C class type (`@interface`). Ivars are added as fields
+  /// (via AddField) and the superclass via SetObjCSuperClass during completion.
+  CompilerType CreateObjCInterfaceType(ConstString name,
+                                       std::optional<uint64_t> byte_size);
   /// Create an array of \p num_elements elements of \p element_type (or an
   /// array of unknown bound when \p num_elements is std::nullopt).
   CompilerType CreateArrayType(CompilerType element_type,
@@ -127,6 +131,8 @@ public:
   void AddBaseClass(ClassType &record, Type *type, uint64_t byte_offset,
                     bool is_virtual = false,
                     std::optional<uint64_t> vbase_offset_offset = std::nullopt);
+  /// Set \p record's Objective-C superclass (its single base class).
+  void SetObjCSuperClass(ObjCInterfaceType &record, Type *superclass);
   void AddTemplateArgument(RecordType &record,
                            lldb::TemplateArgumentKind kind, Type *type,
                            uint64_t integral_value, bool is_default);

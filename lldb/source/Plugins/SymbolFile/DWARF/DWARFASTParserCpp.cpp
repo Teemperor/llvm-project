@@ -571,6 +571,48 @@ TypeSP DWARFASTParserCpp::ParseStructureType(const DWARFDIE &die) {
   std::optional<uint64_t> byte_size =
       die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size);
 
+  // An Objective-C class (`@interface`) carries DW_AT_APPLE_runtime_class. It
+  // is modeled by a dedicated ObjCInterfaceType (ivars are added as fields, the
+  // superclass as its one base class) rather than a C/C++ record.
+  const bool is_objc_class =
+      die.GetAttributeValueAsOptionalUnsigned(DW_AT_APPLE_runtime_class)
+          .has_value();
+  if (is_objc_class) {
+    // A CU that merely *uses* an ObjC class emits an incomplete stub for it
+    // (no ivars, and no DW_AT_APPLE_objc_complete_type); the real definition
+    // with ivars lives in the CU that implements the class. When this DIE is
+    // such a stub, find and return the complete definition instead (mirroring
+    // DWARFASTParserClang).
+    const bool is_complete_objc_class =
+        die.GetAttributeValueAsUnsigned(DW_AT_APPLE_objc_complete_type, 0) != 0;
+    if (!is_complete_objc_class && name) {
+      TypeSP complete =
+          dwarf->FindCompleteObjCDefinitionTypeForDIE(die, name, true);
+      if (!complete)
+        if (SymbolFileDWARFDebugMap *debug_map = dwarf->GetDebugMapSymfile())
+          complete =
+              debug_map->FindCompleteObjCDefinitionTypeForDIE(die, name, true);
+      if (complete)
+        return complete;
+    }
+
+    CompilerType compiler_type;
+    {
+      cpp_typesystem::Builder builder(m_ts);
+      compiler_type = builder.CreateObjCInterfaceType(name, byte_size);
+      SetTypeNameInfo(die, compiler_type, builder);
+    }
+
+    Declaration decl;
+    TypeSP type_sp = dwarf->MakeType(
+        die.GetID(), name, byte_size, /*context=*/nullptr, LLDB_INVALID_UID,
+        Type::eEncodingIsUID, decl, compiler_type, Type::ResolveState::Forward);
+    if (std::optional<DIERef> die_ref = die.GetDIERef())
+      dwarf->GetForwardDeclCompilerTypeToDIE().insert_or_assign(
+          compiler_type.GetOpaqueQualType(), *die_ref);
+    return type_sp;
+  }
+
   // In a C++ translation unit even a `struct` may have base classes, so back
   // records with a ClassType (which reserves storage for that C++-only
   // information). Plain C records use the lighter StructType.
@@ -1136,6 +1178,8 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
 
   // C++-only information (base classes) is only stored on ClassType.
   auto *cpp_class = llvm::dyn_cast<cpp_typesystem::ClassType>(record);
+  // An Objective-C class stores its (single) superclass separately.
+  auto *objc_interface = llvm::dyn_cast<cpp_typesystem::ObjCInterfaceType>(record);
 
   // Collect the base classes, members and template arguments in declaration
   // order, along with the DWARF reference to each one's type. This DWARF
@@ -1218,8 +1262,9 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   for (DWARFDIE child : die.children()) {
     const dw_tag_t tag = child.Tag();
     if (tag == DW_TAG_inheritance) {
-      // Base classes only exist on C++ class types.
-      if (!cpp_class)
+      // Base classes exist on C++ class types; an ObjC interface records its
+      // single superclass the same way (integrated via SetObjCSuperClass).
+      if (!cpp_class && !objc_interface)
         continue;
       // A virtual base's DW_AT_data_member_location is a location expression
       // (evaluated against a live object), not a constant, so the byte offset
@@ -1395,9 +1440,13 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     const MemberInfo &member = members[i];
     switch (member.kind) {
     case MemberInfo::Kind::Base:
-      if (member_type)
-        ts.AddBaseClass(*cpp_class, member_type, member.byte_offset,
-                        member.is_virtual, member.vbase_offset_offset);
+      if (member_type) {
+        if (objc_interface)
+          ts.SetObjCSuperClass(*objc_interface, member_type);
+        else if (cpp_class)
+          ts.AddBaseClass(*cpp_class, member_type, member.byte_offset,
+                          member.is_virtual, member.vbase_offset_offset);
+      }
       break;
     case MemberInfo::Kind::Field:
       if (member_type) {

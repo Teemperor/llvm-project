@@ -48,6 +48,13 @@ CompilerType Builder::CreateRecordType(ConstString name,
       is_class_keyword));
 }
 
+CompilerType
+Builder::CreateObjCInterfaceType(ConstString name,
+                                 std::optional<uint64_t> byte_size) {
+  return m_ts.GetCompilerType(
+      m_ts.m_context.CreateObjCInterfaceType(name.GetStringRef(), byte_size));
+}
+
 CompilerType Builder::CreateArrayType(CompilerType element_type,
                                       std::optional<uint64_t> num_elements) {
   return m_ts.GetCompilerType(
@@ -183,6 +190,11 @@ void Builder::AddBaseClass(cpp_typesystem::ClassType &record,
                            std::optional<uint64_t> vbase_offset_offset) {
   m_ts.m_context.AddBaseClass(record, ToTypeRef(type), byte_offset, is_virtual,
                               vbase_offset_offset);
+}
+
+void Builder::SetObjCSuperClass(cpp_typesystem::ObjCInterfaceType &record,
+                                cpp_typesystem::Type *superclass) {
+  m_ts.m_context.SetObjCSuperClass(record, ToTypeRef(superclass));
 }
 
 void Builder::AddEnumerator(cpp_typesystem::EnumType &enum_type,
