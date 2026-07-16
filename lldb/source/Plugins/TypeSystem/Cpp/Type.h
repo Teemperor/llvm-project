@@ -257,6 +257,15 @@ public:
     return nullptr;
   }
 
+  /// True if this is a polymorphic C++ class -- i.e. it (or one of its base
+  /// classes) has a vtable. Only ClassType can be polymorphic. This drives
+  /// C++ dynamic-type detection (IsPossibleDynamicType / IsPolymorphicClass):
+  /// the object's vtable pointer is followed to its RTTI to find the
+  /// most-derived type. Unlike member functions (parsed lazily), this fact is
+  /// recorded eagerly during record completion from the artificial `_vptr$`
+  /// member / a virtual base, so it is reliable without forcing method parsing.
+  virtual bool IsPolymorphic() const { return false; }
+
 private:
   Identifier m_name;
   Identifier m_unqualified_name;
@@ -434,6 +443,8 @@ public:
     return nullptr;
   }
 
+  bool IsPolymorphic() const override { return m_is_polymorphic; }
+
 private:
   // Gated like RecordType's mutators (see there): only Context, reached through
   // the locked Builder, may add base classes.
@@ -444,8 +455,10 @@ private:
     m_bases.push_back(
         BaseClass{type, byte_offset, is_virtual, vbase_offset_offset});
   }
+  void SetPolymorphic() { m_is_polymorphic = true; }
 
   std::vector<BaseClass> m_bases;
+  bool m_is_polymorphic = false;
 };
 
 /// An Objective-C class type (`@interface Foo`). Its instance variables
