@@ -18,6 +18,8 @@
 #include "Plugins/ExpressionParser/Clang/ClangUserExpression.h"
 #include "Plugins/ExpressionParser/Clang/ClangUtilityFunction.h"
 
+#include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
+
 #include "lldb/Core/DumpDataExtractor.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Host/StreamFile.h"
@@ -1756,6 +1758,22 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
 
   child_name = field->name.GetName().str();
   child_byte_offset = field->byte_offset;
+  // An Objective-C ivar's byte offset is not reliably encoded in DWARF (the
+  // compiler emits 0 for every ivar); the authoritative offset lives in the
+  // ObjC runtime's `OBJC_IVAR_$_Class.ivar` symbols. Resolve it against the
+  // live process when possible, falling back to the DWARF offset otherwise.
+  if (llvm::isa<cpp_typesystem::ObjCInterfaceType>(t) && exe_ctx) {
+    if (Process *process = exe_ctx->GetProcessPtr()) {
+      if (ObjCLanguageRuntime *objc_runtime =
+              ObjCLanguageRuntime::Get(*process)) {
+        CompilerType parent_type = GetCompilerType(t);
+        size_t ivar_offset = objc_runtime->GetByteOffsetForIvar(
+            parent_type, field->name.GetName().str().c_str());
+        if (ivar_offset != static_cast<size_t>(LLDB_INVALID_IVAR_OFFSET))
+          child_byte_offset = ivar_offset;
+      }
+    }
+  }
   if (std::optional<uint64_t> byte_size = field->type.Get()->GetByteSize())
     child_byte_size = *byte_size;
   if (field->IsBitfield()) {
@@ -2149,7 +2167,10 @@ void TypeSystemCpp::Dump(llvm::raw_ostream &output, llvm::StringRef filter,
 }
 
 bool TypeSystemCpp::IsRuntimeGeneratedType(opaque_compiler_type_t type) {
-  return false;
+  // An Objective-C class's layout (ivar offsets) is provided by the ObjC
+  // runtime rather than being fixed by the debug info.
+  return type && llvm::isa<cpp_typesystem::ObjCInterfaceType>(
+                     Desugar(GetCppType(type)));
 }
 
 bool TypeSystemCpp::IsPointerOrReferenceType(opaque_compiler_type_t type,

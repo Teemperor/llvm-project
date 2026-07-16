@@ -18,6 +18,7 @@ add_lldb_library(lldbPluginTypeSystemCpp PLUGIN
     lldbUtility
     lldbPluginExpressionParserClang
     lldbPluginSymbolFileDWARF
+    lldbPluginObjCRuntime
   CLANG_LIBS
     clangBasic
 )

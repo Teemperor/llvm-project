@@ -428,6 +428,50 @@ private:
   std::vector<BaseClass> m_bases;
 };
 
+/// An Objective-C class type (`@interface Foo`). Its instance variables
+/// (ivars) are modeled as record fields and its (single) superclass as its one
+/// base class, so it reuses the RecordType field/base-class machinery.
+///
+/// Unlike a C/C++ record, an ObjC ivar's byte offset is NOT reliably present in
+/// DWARF: the compiler emits 0 for every ivar (see the identical
+/// DW_AT_data_member_location values in the debug info). The authoritative
+/// offset lives in the Objective-C runtime -- specifically in the
+/// `OBJC_IVAR_$_Class.ivar` offset symbols -- and is resolved against a live
+/// process at value-inspection time (see
+/// TypeSystemCpp::GetChildCompilerTypeAtIndex). The field byte_offset stored
+/// here is therefore only a fallback.
+class ObjCInterfaceType
+    : public llvm::RTTIExtends<ObjCInterfaceType, RecordType> {
+public:
+  static char ID;
+
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassObjCObject;
+  }
+  uint32_t GetTypeInfo() const override {
+    return lldb::eTypeHasChildren | lldb::eTypeIsObjC | lldb::eTypeIsStructUnion;
+  }
+
+  // The superclass is exposed as this interface's single base class.
+  uint32_t GetNumBaseClasses() const override { return m_superclass ? 1 : 0; }
+  const BaseClass *GetBaseClassAtIndex(uint32_t idx) const override {
+    if (idx == 0 && m_superclass)
+      return &*m_superclass;
+    return nullptr;
+  }
+
+private:
+  // Gated like RecordType's mutators (see there): only Context, reached through
+  // the locked Builder, may set the superclass.
+  friend class Context;
+  void SetSuperClass(TypeRef type) {
+    m_superclass = BaseClass{type, /*byte_offset=*/0, /*is_virtual=*/false,
+                             /*vbase_offset_offset=*/std::nullopt};
+  }
+
+  std::optional<BaseClass> m_superclass;
+};
+
 /// A C array type: a fixed number of contiguous elements of the same type.
 class ArrayType : public llvm::RTTIExtends<ArrayType, Type> {
 public:

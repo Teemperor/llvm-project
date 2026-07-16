@@ -67,6 +67,15 @@ RecordType *Context::CreateRecordType(llvm::StringRef name,
   return Track(std::move(type));
 }
 
+ObjCInterfaceType *
+Context::CreateObjCInterfaceType(llvm::StringRef name,
+                                 std::optional<uint64_t> byte_size) {
+  auto type = std::make_unique<ObjCInterfaceType>();
+  type->SetName(GetIdentifier(name));
+  type->SetByteSize(byte_size);
+  return Track(std::move(type));
+}
+
 ArrayType *Context::CreateArrayType(TypeRef element_type,
                                     std::optional<uint64_t> num_elements) {
   assert(element_type && "an array must have an element type");
