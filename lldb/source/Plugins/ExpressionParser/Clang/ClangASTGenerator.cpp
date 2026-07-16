@@ -710,6 +710,15 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
             elem, clang::ArraySizeModifier::Normal, 0);
     }
   } else if (auto *td = llvm::dyn_cast<ct::TypedefType>(cpp_type)) {
+    // The Objective-C pseudo-builtin `id` appears in DWARF as an ordinary
+    // typedef (`id` -> `objc_object *`), but clang's ObjC semantics (implicit
+    // conversions such as `NSString*` -> `id`, and message sends to `id`) only
+    // apply through the special built-in `id` type. Map it back to the
+    // ASTContext's canonical builtin so those semantics work. (`Class` and
+    // `SEL` are intentionally left as plain typedefs: mapping them to builtins
+    // breaks the reverse-mapping of the `_cmd`/`self` locals a method binds.)
+    if (ast.getLangOpts().ObjC && unqualified_name(td) == "id")
+      return ast.getObjCIdType();
     clang::QualType underlying = GenerateType(ts, td->GetUnderlyingType());
     if (!underlying.isNull()) {
       llvm::StringRef name = unqualified_name(td);
@@ -1501,10 +1510,97 @@ void ClangASTGenerator::PopulateObjCInterface(
     iface_decl->addDecl(ivar);
   }
 
+  // Methods, added as ObjCMethodDecls so the expression parser can type-check
+  // and lower message sends (`[obj sel:arg]` / `[Class sel:arg]`). Mirrors
+  // TypeSystemClang::AddMethodToObjCObjectType. Methods are parsed lazily (like
+  // C++ member functions), so make sure they're available first.
+  ts->CompleteMemberFunctions(iface);
+  for (uint32_t i = 0; i < iface->GetNumObjCMethods(); ++i) {
+    const ct::ObjCMethod *method = iface->GetObjCMethodAtIndex(i);
+    AddObjCMethod(iface_decl, *ts, *method);
+  }
+
   // The members were added directly, so no external source is needed to
   // enumerate them.
   iface_decl->setHasExternalLexicalStorage(false);
   iface_decl->setHasExternalVisibleStorage(false);
+}
+
+void ClangASTGenerator::AddObjCMethod(clang::ObjCInterfaceDecl *iface_decl,
+                                      TypeSystemCpp &ts,
+                                      const ct::ObjCMethod &method) {
+  clang::ASTContext &ast = m_ast;
+  llvm::StringRef full_name = method.name.GetName();
+
+  // The full name is `[+-][Class selector-part(s)]`; the selector starts after
+  // the first space.
+  size_t space = full_name.find(' ');
+  if (space == llvm::StringRef::npos)
+    return;
+  llvm::StringRef selector_str = full_name.substr(space + 1);
+  selector_str.consume_back("]");
+
+  // Split the selector into its identifier pieces, counting how many take an
+  // argument (`sel:`). A unary selector (`length`) has zero args.
+  llvm::SmallVector<const clang::IdentifierInfo *, 8> selector_idents;
+  unsigned num_selectors_with_args = 0;
+  llvm::StringRef rest = selector_str;
+  while (!rest.empty()) {
+    size_t colon = rest.find(':');
+    if (colon == llvm::StringRef::npos) {
+      selector_idents.push_back(&ast.Idents.get(rest));
+      break;
+    }
+    ++num_selectors_with_args;
+    selector_idents.push_back(&ast.Idents.get(rest.substr(0, colon)));
+    rest = rest.substr(colon + 1);
+  }
+  if (selector_idents.empty())
+    return;
+
+  clang::Selector sel = ast.Selectors.getSelector(
+      num_selectors_with_args ? selector_idents.size() : 0,
+      selector_idents.data());
+
+  // Build the (self/_cmd-stripped) function prototype for the return type and
+  // parameter types.
+  clang::QualType fn_qt = GenerateType(ts, method.type.Get());
+  const auto *proto = fn_qt.isNull()
+                          ? nullptr
+                          : fn_qt->getAs<clang::FunctionProtoType>();
+  if (!proto)
+    return;
+  if (proto->getNumParams() != num_selectors_with_args)
+    return; // Corrupt debug info; give up on this method.
+
+  const bool is_instance = !method.is_class_method;
+
+  auto *method_decl =
+      clang::ObjCMethodDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+  method_decl->setDeclName(sel);
+  method_decl->setReturnType(proto->getReturnType());
+  method_decl->setDeclContext(iface_decl);
+  method_decl->setInstanceMethod(is_instance);
+  method_decl->setVariadic(method.is_variadic);
+  method_decl->setPropertyAccessor(false);
+  method_decl->setSynthesizedAccessorStub(false);
+  method_decl->setImplicit(true);
+  method_decl->setDefined(false);
+  method_decl->setDeclImplementation(clang::ObjCImplementationControl::None);
+  method_decl->setRelatedResultType(false);
+
+  const unsigned num_args = proto->getNumParams();
+  if (num_args > 0) {
+    llvm::SmallVector<clang::ParmVarDecl *, 8> params;
+    for (unsigned p = 0; p < num_args; ++p)
+      params.push_back(clang::ParmVarDecl::Create(
+          ast, method_decl, clang::SourceLocation(), clang::SourceLocation(),
+          /*Id=*/nullptr, proto->getParamType(p), /*TInfo=*/nullptr,
+          clang::SC_None, /*DefArg=*/nullptr));
+    method_decl->setMethodParams(ast, params, {});
+  }
+
+  iface_decl->addDecl(method_decl);
 }
 
 bool ClangASTGenerator::CompleteObjCInterface(
@@ -1903,6 +1999,21 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
   // synthesizer's pointer wrappers) aren't in the map. Reconstruct them in
   // result_ts from their pointee, which is looked up recursively.
   if (const auto *objc_ptr = qt->getAs<clang::ObjCObjectPointerType>()) {
+    // The built-in `id` / `Class` pseudo-types (an ObjCObjectPointerType whose
+    // object type has no backing interface). We generate these from the `id` /
+    // `Class` typedefs (see GenerateType), so they aren't in the reverse map;
+    // rebuild them as a pointer to the opaque `objc_object` / `objc_class`
+    // record, matching how TypeSystemCpp models `id` (see IsPossibleDynamicType
+    // / the DWARF parser).
+    if (objc_ptr->isObjCIdType() || objc_ptr->isObjCClassType()) {
+      cpp_typesystem::Builder builder(result_ts);
+      CompilerType opaque = builder.CreateRecordType(
+          ConstString(objc_ptr->isObjCClassType() ? "objc_class"
+                                                   : "objc_object"),
+          /*byte_size=*/std::nullopt, /*is_cpp_class=*/false,
+          /*is_union=*/false);
+      return builder.CreatePointerType(opaque);
+    }
     // A pointer to an Objective-C class (`Foo *`) the parser formed. Map the
     // pointee interface and wrap it in a cpp pointer.
     if (CompilerType pointee =

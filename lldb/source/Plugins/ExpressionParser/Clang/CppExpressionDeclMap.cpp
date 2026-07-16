@@ -1244,6 +1244,17 @@ bool CppExpressionDeclMap::LookupType(
     decls.push_back(tag);
     return true;
   }
+  // An Objective-C class (`@interface Foo`) is an ObjCObjectType, not a
+  // TagType. Surface its ObjCInterfaceDecl so a bare `Foo` names the class --
+  // needed for a class message send (`[Foo sel:...]`) and for casting. Complete
+  // it so its methods/ivars are available.
+  if (const auto *obj_type = qt->getAs<clang::ObjCObjectType>()) {
+    if (clang::ObjCInterfaceDecl *iface_decl = obj_type->getInterface()) {
+      GetGenerator().CompleteObjCInterface(iface_decl);
+      decls.push_back(iface_decl);
+      return true;
+    }
+  }
   return false;
 }
 

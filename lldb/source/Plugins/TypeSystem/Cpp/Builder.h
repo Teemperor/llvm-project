@@ -133,6 +133,13 @@ public:
                     std::optional<uint64_t> vbase_offset_offset = std::nullopt);
   /// Set \p record's Objective-C superclass (its single base class).
   void SetObjCSuperClass(ObjCInterfaceType &record, Type *superclass);
+  /// Add an Objective-C method to \p record. \p name is the full method name
+  /// (`+[Class sel:]` / `-[Class sel:]`); \p function_type's parameters exclude
+  /// the implicit self/_cmd; \p asm_label is the FunctionCallLabel the call
+  /// resolves through.
+  void AddObjCMethod(ObjCInterfaceType &record, ConstString name,
+                     CompilerType function_type, ConstString asm_label,
+                     bool is_class_method, bool is_variadic);
   void AddTemplateArgument(RecordType &record,
                            lldb::TemplateArgumentKind kind, Type *type,
                            uint64_t integral_value, bool is_default);
