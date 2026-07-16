@@ -437,6 +437,17 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
 
   // Composite types have no name of their own; build them from their parts.
   if (llvm::isa<ArrayType>(t)) {
+    // A vector type (DW_AT_GNU_vector) is spelled like clang's ext_vector
+    // attribute rather than as an array, so vector formatters match and
+    // array/char-array formatters don't (see GetTypeName).
+    if (auto *vec = llvm::dyn_cast<ArrayType>(t); vec && vec->IsVector()) {
+      uint64_t n = vec->GetNumElements().value_or(0);
+      return llvm::formatv("{0} __attribute__((ext_vector_type({1})))",
+                           BuildDisplayName(vec->GetElementType(),
+                                            hide_default_args),
+                           n)
+          .str();
+    }
     // For a multidimensional C array the DWARF/type nesting goes
     // outermost-dimension first (`T[2][3]` == array-of-2 of array-of-3 of T),
     // but the element name must be printed innermost-last. Peel the whole
@@ -744,6 +755,12 @@ bool TypeSystemCpp::IsArrayType(opaque_compiler_type_t type,
       type ? Desugar(GetCppType(type)) : nullptr);
   if (!array)
     return false;
+  // A vector type (DW_AT_GNU_vector) is laid out like an array but is not an
+  // array type (matching TypeSystemClang, where a Vector/ExtVector is distinct
+  // from ConstantArray). Reporting it as an array makes char-element vectors
+  // match the char-array-to-string formatter and mis-render.
+  if (array->IsVector())
+    return false;
 
   if (element_type)
     *element_type = GetCompilerType(array->GetElementType());
@@ -986,7 +1003,17 @@ bool TypeSystemCpp::IsScalarType(opaque_compiler_type_t type) {
   return type && (GetCppType(type)->GetTypeInfo() & eTypeIsScalar);
 }
 
-bool TypeSystemCpp::IsVoidType(opaque_compiler_type_t type) { return false; }
+bool TypeSystemCpp::IsVoidType(opaque_compiler_type_t type) {
+  if (!type)
+    return false;
+  // Void is the builtin with an invalid encoding spelled "void" (see
+  // BuiltinTypes.cpp). Identify it by spelling so a void reached through another
+  // Context (e.g. an expression result) is still recognized.
+  auto *builtin =
+      llvm::dyn_cast<cpp_typesystem::BuiltinType>(Desugar(GetCppType(type)));
+  return builtin && builtin->GetEncoding() == lldb::eEncodingInvalid &&
+         builtin->GetName().GetName() == "void";
+}
 
 bool TypeSystemCpp::CanPassInRegisters(const CompilerType &type) {
   return false;
@@ -1146,6 +1173,20 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
   // the whole chain and print the dimensions in source order after the
   // innermost element's name.
   if (llvm::isa<cpp_typesystem::ArrayType>(t)) {
+    // A vector type (DW_AT_GNU_vector) is spelled like clang's
+    // `<element> __attribute__((ext_vector_type(N)))` rather than as an array
+    // (`<element>[N]`), so it doesn't get matched by array/char-array
+    // formatters (matching TypeSystemClang's type name for vectors).
+    if (auto *vec = llvm::dyn_cast<cpp_typesystem::ArrayType>(t);
+        vec && vec->IsVector()) {
+      std::string element_name =
+          GetTypeName(vec->GetElementType(), BaseOnly).GetStringRef().str();
+      uint64_t n = vec->GetNumElements().value_or(0);
+      return ConstString(
+          llvm::formatv("{0} __attribute__((ext_vector_type({1})))",
+                        element_name, n)
+              .str());
+    }
     std::string dims;
     cpp_typesystem::Type *cur = t;
     while (auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(cur)) {
@@ -1358,6 +1399,20 @@ TypeSystemCpp::GetArrayElementType(opaque_compiler_type_t type,
           llvm::dyn_cast<cpp_typesystem::ArrayType>(Desugar(GetCppType(type))))
     return GetCompilerType(array->GetElementType());
   return CompilerType();
+}
+
+CompilerType TypeSystemCpp::GetArrayType(opaque_compiler_type_t type,
+                                         uint64_t size) {
+  if (!type)
+    return CompilerType();
+  // Build an array of `size` elements of `type` (size 0 => unbounded). Used by
+  // the formatter matcher to form a typedef-stripped array candidate name (e.g.
+  // `MCHAR[5]` -> `char[5]`), so char-array-of-typedef matches the char[] string
+  // summary.
+  return cpp_typesystem::Builder(*this).CreateArrayType(
+      GetCompilerType(GetCppType(type)),
+      size ? std::optional<uint64_t>(size)
+           : std::optional<uint64_t>(std::nullopt));
 }
 
 CompilerType TypeSystemCpp::GetCanonicalType(opaque_compiler_type_t type) {
@@ -1793,6 +1848,10 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
 }
 
 BasicType TypeSystemCpp::GetBasicTypeEnumeration(opaque_compiler_type_t type) {
+  // void is queried by IsPointerToVoid (via GetPointeeType) to reject
+  // `--element-count` on `void *`.
+  if (IsVoidType(type))
+    return eBasicTypeVoid;
   return eBasicTypeInvalid;
 }
 
@@ -2393,8 +2452,35 @@ bool TypeSystemCpp::DumpTypeValue(opaque_compiler_type_t type, Stream &s,
         bitfield_bit_size == 0)
       return DumpEnumValue(*enum_type, s, data, data_offset, data_byte_size);
   }
+  // Some formats dump the value as a sequence of smaller items rather than one
+  // scalar: e.g. the char/bytes formats print each byte, and the unicode
+  // formats print each code unit. Split the byte size into that many items so
+  // e.g. a 16-byte `__uint128_t` printed with a char format is shown as 16
+  // characters instead of being rejected as too wide (matching TypeSystemClang).
+  uint32_t item_count = 1;
+  switch (format) {
+  case eFormatChar:
+  case eFormatCharPrintable:
+  case eFormatCharArray:
+  case eFormatBytes:
+  case eFormatUnicode8:
+  case eFormatBytesWithASCII:
+    item_count = data_byte_size;
+    data_byte_size = 1;
+    break;
+  case eFormatUnicode16:
+    item_count = data_byte_size / 2;
+    data_byte_size = 2;
+    break;
+  case eFormatUnicode32:
+    item_count = data_byte_size / 4;
+    data_byte_size = 4;
+    break;
+  default:
+    break;
+  }
   return DumpDataExtractor(data, &s, data_offset, format, data_byte_size,
-                           /*item_count=*/1, UINT32_MAX, LLDB_INVALID_ADDRESS,
+                           item_count, UINT32_MAX, LLDB_INVALID_ADDRESS,
                            bitfield_bit_size, bitfield_bit_offset, exe_scope);
 }
 
@@ -2737,7 +2823,19 @@ CompilerType TypeSystemCpp::GetTypedefedType(opaque_compiler_type_t type) {
 
 bool TypeSystemCpp::IsVectorType(opaque_compiler_type_t type,
                                  CompilerType *element_type, uint64_t *size) {
-  return false;
+  if (!type)
+    return false;
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+  auto *array = llvm::dyn_cast<cpp_typesystem::ArrayType>(t);
+  if (!array || !array->IsVector())
+    return false;
+  if (element_type)
+    *element_type = GetCompilerType(array->GetElementType());
+  if (size) {
+    if (std::optional<uint64_t> num = array->GetNumElements())
+      *size = *num;
+  }
+  return true;
 }
 
 CompilerType

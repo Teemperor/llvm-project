@@ -541,12 +541,20 @@ public:
   uint64_t GetDIEUID() const { return m_die_uid; }
   void SetDIEUID(uint64_t uid) { m_die_uid = uid; }
 
+  /// Whether this array is really a GCC/Clang vector type (DW_AT_GNU_vector,
+  /// e.g. `float __attribute__((ext_vector_type(4)))`). Vectors are laid out
+  /// like arrays but LLDB treats them as vector types for formatting.
+  bool IsVector() const { return m_is_vector; }
+  void SetIsVector(bool is_vector) { m_is_vector = is_vector; }
+
   // An array is an aggregate whose children are its elements.
   bool IsAggregate() const override { return true; }
   lldb::TypeClass GetTypeClass() const override {
-    return lldb::eTypeClassArray;
+    return m_is_vector ? lldb::eTypeClassVector : lldb::eTypeClassArray;
   }
   uint32_t GetTypeInfo() const override {
+    if (m_is_vector)
+      return lldb::eTypeHasChildren | lldb::eTypeIsVector;
     return lldb::eTypeHasChildren | lldb::eTypeIsArray;
   }
 
@@ -554,6 +562,7 @@ private:
   TypeRef m_element_type;
   std::optional<uint64_t> m_num_elements;
   uint64_t m_die_uid = UINT64_MAX;
+  bool m_is_vector = false;
 };
 
 /// A simple pointer type.
