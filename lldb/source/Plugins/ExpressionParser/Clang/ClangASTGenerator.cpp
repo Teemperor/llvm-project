@@ -701,11 +701,17 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
   } else if (auto *arr = llvm::dyn_cast<ct::ArrayType>(cpp_type)) {
     clang::QualType elem = GenerateType(ts, arr->GetElementType());
     if (!elem.isNull()) {
-      if (std::optional<uint64_t> n = arr->GetNumElements())
+      std::optional<uint64_t> n = arr->GetNumElements();
+      if (arr->IsVector() && n) {
+        // A GCC/Clang vector type (e.g. ext_vector_type) must be reproduced as a
+        // clang vector type, not a plain array, so vector-format reinterpretation
+        // (e.g. `expr -f int16_t[] -- v`) sees the right number of elements.
+        result = ast.getExtVectorType(elem, *n);
+      } else if (n) {
         result = ast.getConstantArrayType(
             elem, llvm::APInt(64, *n), nullptr,
             clang::ArraySizeModifier::Normal, 0);
-      else
+      } else
         result = ast.getIncompleteArrayType(
             elem, clang::ArraySizeModifier::Normal, 0);
     }
@@ -2055,6 +2061,19 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
       builder.AddParameter(fn, cpp_param);
     }
     return fn;
+  } else if (const clang::VectorType *vt = qt->getAs<clang::VectorType>()) {
+    // A vector type (e.g. an ext_vector `float __attribute__((ext_vector_type(4)))`
+    // or a vector-format reinterpretation result). Rebuild it as a cpp vector
+    // array so it can be sized and formatted as a vector.
+    if (CompilerType element =
+            MapClangTypeToCpp(vt->getElementType(), result_ts)) {
+      CompilerType arr = cpp_typesystem::Builder(result_ts).CreateArrayType(
+          element, vt->getNumElements());
+      if (auto *arr_type = llvm::dyn_cast_or_null<cpp_typesystem::ArrayType>(
+              TypeSystemCpp::GetCppType(arr.GetOpaqueQualType())))
+        arr_type->SetIsVector(true);
+      return arr;
+    }
   } else if (const clang::ArrayType *at = m_ast.getAsArrayType(qt)) {
     // An array the parser formed (e.g. the `const char16_t[6]` result type of a
     // `u"hello"` string literal). Map the element type recursively and rebuild

@@ -783,6 +783,7 @@ TypeSP DWARFASTParserCpp::ParseArrayType(const DWARFDIE &die) {
   std::optional<SymbolFile::ArrayInfo> array_info = ParseChildArrayInfo(die);
 
   CompilerType array_type = element_type->GetForwardCompilerType();
+  bool is_vector = die.GetAttributeValueAsUnsigned(DW_AT_GNU_vector, 0) != 0;
   {
     // Build the (possibly nested) array type(s) under a single lock.
     cpp_typesystem::Builder ts(m_ts);
@@ -798,8 +799,13 @@ TypeSP DWARFASTParserCpp::ParseArrayType(const DWARFDIE &die) {
     // Remember the backing DIE on the outermost array so a runtime
     // (variable-length) bound can be re-resolved later (see GetNumChildren).
     if (auto *arr = llvm::dyn_cast_or_null<cpp_typesystem::ArrayType>(
-            TypeSystemCpp::GetCppType(array_type.GetOpaqueQualType())))
+            TypeSystemCpp::GetCppType(array_type.GetOpaqueQualType()))) {
       arr->SetDIEUID(die.GetID());
+      // A GCC/Clang vector type (e.g. `float __attribute__((ext_vector_type(4)))`)
+      // is described as an array with DW_AT_GNU_vector; mark it so LLDB treats
+      // it as a vector type for formatting.
+      arr->SetIsVector(is_vector);
+    }
   }
 
   std::optional<uint64_t> byte_size =
@@ -977,6 +983,37 @@ TypeSP DWARFASTParserCpp::ParseCVQualifiedType(const DWARFDIE &die) {
   return dwarf->MakeType(die.GetID(), empty_name, byte_size,
                          /*context=*/nullptr, underlying_die.GetID(),
                          Type::eEncodingIsUID, decl, cv_type,
+                         Type::ResolveState::Full);
+}
+
+TypeSP DWARFASTParserCpp::ParseAtomicType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  // A DW_TAG_atomic_type (`_Atomic(T)`) has the same size, layout and value as
+  // its underlying type T. TypeSystemCpp doesn't model an atomic qualifier, so
+  // treat it transparently as T -- this is enough for value inspection (e.g. a
+  // libc++ `std::atomic`'s `__a_value` member is `_Atomic(int)`).
+  DWARFDIE underlying_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  CompilerType underlying_type;
+  if (underlying_die) {
+    Type *underlying = die.ResolveTypeUID(underlying_die);
+    if (!underlying)
+      return nullptr;
+    underlying_type = underlying->GetForwardCompilerType();
+  }
+  if (!underlying_type) {
+    cpp_typesystem::Builder ts(m_ts);
+    underlying_type = ts.GetVoidType();
+  }
+
+  std::optional<uint64_t> byte_size =
+      llvm::expectedToOptional(underlying_type.GetByteSize(nullptr));
+
+  Declaration decl;
+  ConstString empty_name;
+  return dwarf->MakeType(die.GetID(), empty_name, byte_size,
+                         /*context=*/nullptr, underlying_die.GetID(),
+                         Type::eEncodingIsUID, decl, underlying_type,
                          Type::ResolveState::Full);
 }
 
@@ -1170,6 +1207,9 @@ TypeSP DWARFASTParserCpp::ParseTypeFromDWARF(const SymbolContext &sc,
     break;
   case DW_TAG_LLVM_ptrauth_type:
     type_sp = ParsePtrAuthType(die);
+    break;
+  case DW_TAG_atomic_type:
+    type_sp = ParseAtomicType(die);
     break;
   case DW_TAG_enumeration_type:
     type_sp = ParseEnum(die);
