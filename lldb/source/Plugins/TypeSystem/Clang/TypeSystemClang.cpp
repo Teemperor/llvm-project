@@ -9626,8 +9626,26 @@ ScratchTypeSystemClang::GetForTarget(Target &target,
   auto ts_sp = *type_system_or_err;
   ScratchTypeSystemClang *scratch_ast =
       llvm::dyn_cast_or_null<ScratchTypeSystemClang>(ts_sp.get());
-  if (!scratch_ast)
-    return nullptr;
+  if (!scratch_ast) {
+    // With TypeSystemCpp enabled, the target's C/C++ scratch slot holds a
+    // ScratchTypeSystemCpp. The Clang expression parser and the runtime utility
+    // functions it installs (e.g. the ObjC class-scan helper) are plain Clang C
+    // programs that still need a real Clang scratch AST, so hand out a dedicated
+    // companion owned by that Cpp scratch context.
+    if (auto *cpp_scratch =
+            llvm::dyn_cast_or_null<ScratchTypeSystemCpp>(ts_sp.get())) {
+      lldb::TypeSystemSP companion = cpp_scratch->GetCompanionClangScratch();
+      if (!companion && create_on_demand) {
+        companion = std::make_shared<ScratchTypeSystemClang>(
+            target, target.GetArchitecture().GetTriple());
+        cpp_scratch->SetCompanionClangScratch(companion);
+      }
+      ts_sp = companion;
+      scratch_ast = llvm::dyn_cast_or_null<ScratchTypeSystemClang>(ts_sp.get());
+    }
+    if (!scratch_ast)
+      return nullptr;
+  }
   // If no dedicated sub-AST was requested, just return the main AST.
   if (ast_kind == DefaultAST)
     return std::static_pointer_cast<TypeSystemClang>(ts_sp);

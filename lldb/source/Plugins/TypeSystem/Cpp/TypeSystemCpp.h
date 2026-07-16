@@ -404,11 +404,27 @@ public:
 
   PersistentExpressionState *GetPersistentExpressionState() override;
 
+  /// A dedicated Clang scratch type system used when this Cpp scratch context
+  /// occupies the target's C/C++ scratch slot but Clang-based expression and
+  /// utility-function infrastructure (e.g. the ObjC runtime's class-scan helper,
+  /// which is a plain Clang C program) still needs a real ScratchTypeSystemClang.
+  /// Stored opaquely as a TypeSystemSP to avoid a link dependency on the Clang
+  /// type-system plugin; created and cast by ScratchTypeSystemClang::GetForTarget.
+  /// @{
+  lldb::TypeSystemSP GetCompanionClangScratch() const {
+    return m_companion_clang_scratch;
+  }
+  void SetCompanionClangScratch(lldb::TypeSystemSP ts) {
+    m_companion_clang_scratch = std::move(ts);
+  }
+  /// @}
+
 private:
   lldb::TargetWP m_target_wp;
   /// Persistent variables ($0, $foo, ...) for expressions evaluated in this
   /// scratch context. Created lazily.
   std::unique_ptr<PersistentExpressionState> m_persistent_variables;
+  lldb::TypeSystemSP m_companion_clang_scratch;
 };
 
 } // namespace lldb_private

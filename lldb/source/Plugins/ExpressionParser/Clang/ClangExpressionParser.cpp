@@ -1641,8 +1641,12 @@ lldb_private::Status ClangExpressionParser::DoPrepareForExecution(
 
           DiagnosticManager install_diags;
           if (Error Err = dynamic_checkers->Install(install_diags, exe_ctx))
-            return Status::FromError(install_diags.GetAsError(
-                lldb::eExpressionSetupError, "couldn't install checkers:"));
+            // Install() reports the real reason through its returned Error (the
+            // DiagnosticManager is often left empty), so surface that Error
+            // directly. Building a Status from the empty diagnostics instead
+            // would drop -- and, worse, never consume -- Err, which then aborts
+            // the process via llvm::Error's unchecked-error handler.
+            return Status::FromError(std::move(Err));
 
           process->SetDynamicCheckers(dynamic_checkers);
 
