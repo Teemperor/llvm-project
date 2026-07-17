@@ -41,8 +41,8 @@ LanguageOpts::LanguageOpts(llvm::Triple triple) : LanguageOpts() {
   target_opts.Triple = m_triple.str();
 
   clang::DiagnosticOptions diag_opts;
-  clang::DiagnosticsEngine diags(
-      llvm::makeIntrusiveRefCnt<clang::DiagnosticIDs>(), diag_opts);
+  clang::DiagnosticsEngine diags(llvm::makeIntrusiveRefCnt<clang::DiagnosticIDs>(),
+                                 diag_opts, new clang::IgnoringDiagConsumer());
 
   // TargetOptions must outlive the returned TargetInfo, which it does here.
   std::unique_ptr<clang::TargetInfo> target(
@@ -106,8 +106,8 @@ std::optional<uint64_t> LanguageOpts::GetBitIntByteSize(unsigned bits) const {
   target_opts.Triple = m_triple.str();
 
   clang::DiagnosticOptions diag_opts;
-  clang::DiagnosticsEngine diags(
-      llvm::makeIntrusiveRefCnt<clang::DiagnosticIDs>(), diag_opts);
+  clang::DiagnosticsEngine diags(llvm::makeIntrusiveRefCnt<clang::DiagnosticIDs>(),
+                                 diag_opts, new clang::IgnoringDiagConsumer());
 
   std::unique_ptr<clang::TargetInfo> target(
       clang::TargetInfo::CreateTargetInfo(diags, target_opts));
