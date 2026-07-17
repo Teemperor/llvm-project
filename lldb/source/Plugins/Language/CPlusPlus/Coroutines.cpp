@@ -9,6 +9,7 @@
 #include "Coroutines.h"
 
 #include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
+#include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/VariableList.h"
 #include "llvm/Support/ErrorExtras.h"
@@ -134,15 +135,17 @@ lldb_private::formatters::StdlibCoroutineHandleSyntheticFrontEnd::Update() {
   auto &exe_ctx = m_backend.GetExecutionContextRef();
   lldb::ProcessSP process_sp = target_sp->GetProcessSP();
   auto ptr_size = process_sp->GetAddressByteSize();
-  auto ast_ctx = valobj_sp->GetCompilerType().GetTypeSystem<TypeSystemClang>();
-  if (!ast_ctx)
+  CompilerType handle_type = valobj_sp->GetCompilerType();
+  auto ast_ctx = handle_type.GetTypeSystem<TypeSystemClang>();
+  auto cpp_ts = handle_type.GetTypeSystem<TypeSystemCpp>();
+  if (!ast_ctx && !cpp_ts)
     return lldb::ChildCacheState::eRefetch;
 
   // Determine the coroutine frame type and the promise type. Fall back
   // to `void`, since even the pointer itself might be useful, even if the
   // type inference failed.
   Function *destroy_func = ExtractDestroyFunction(target_sp, frame_ptr_addr);
-  CompilerType void_type = ast_ctx->GetBasicType(lldb::eBasicTypeVoid);
+  CompilerType void_type = handle_type.GetBasicTypeFromAST(lldb::eBasicTypeVoid);
   CompilerType promise_type;
   if (CompilerType template_arg =
           valobj_sp->GetCompilerType().GetTypeTemplateArgument(0))
@@ -161,11 +164,21 @@ lldb_private::formatters::StdlibCoroutineHandleSyntheticFrontEnd::Update() {
   if (!coro_frame_type)
     coro_frame_type = void_type;
 
-  // Create the `resume` and `destroy` children.
-  std::array<CompilerType, 1> args{coro_frame_type};
-  CompilerType coro_func_type = ast_ctx->CreateFunctionType(
-      /*result_type=*/void_type, args,
-      /*is_variadic=*/false, /*qualifiers=*/0);
+  // Create the `resume` and `destroy` children. TypeSystemCpp has no generic
+  // (TypeSystem-agnostic) CreateFunctionType, so branch on which TypeSystem
+  // owns this coroutine_handle's type.
+  CompilerType coro_func_type;
+  if (ast_ctx) {
+    std::array<CompilerType, 1> args{coro_frame_type};
+    coro_func_type = ast_ctx->CreateFunctionType(
+        /*result_type=*/void_type, args,
+        /*is_variadic=*/false, /*qualifiers=*/0);
+  } else {
+    cpp_typesystem::Builder builder(*cpp_ts);
+    coro_func_type = builder.CreateFunctionType(void_type,
+                                                /*is_variadic=*/false);
+    builder.AddParameter(coro_func_type, coro_frame_type);
+  }
   CompilerType coro_func_ptr_type = coro_func_type.GetPointerType();
   ValueObjectSP resume_ptr_sp = CreateChildValueObjectFromAddress(
       "resume", frame_ptr_addr + 0 * ptr_size, exe_ctx, coro_func_ptr_type);
@@ -198,7 +211,7 @@ llvm::Expected<size_t>
 StdlibCoroutineHandleSyntheticFrontEnd::GetIndexOfChildWithName(
     ConstString name) {
   for (const auto &[idx, child_sp] : llvm::enumerate(m_children)) {
-    if (child_sp->GetName() == name)
+    if (child_sp && child_sp->GetName() == name)
       return idx;
   }
 
