@@ -2384,16 +2384,19 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
     if (!pointee)
       return CompilerType(); // Can't dereference `void *`.
 
-    // A pointer to an ObjC interface is always transparent (see
-    // GetNumChildren): its children are the interface's ivars/superclass,
-    // reached without an intervening deref child. This is what lets `p obj` /
-    // the object-description fallback show the ivars.
+    // A pointer to an ObjC interface, like any other aggregate pointee, is
+    // only expanded transparently when explicitly asked (transparent_pointers)
+    // -- e.g. `--ptr-depth`/child enumeration -- matching TypeSystemClang's
+    // ObjCObjectPointer case. A non-transparent access (idx 0, as used by
+    // `*ptr`/GetDereferencedType) must fall through to the "child 0 is the
+    // dereferenced value" path below so `*ptr` yields the whole pointee
+    // object rather than its first base/ivar.
     bool is_objc =
         llvm::isa<cpp_typesystem::ObjCInterfaceType>(Desugar(pointee));
     if (is_objc)
       GetCompleteType(GetCompilerType(pointee).GetOpaqueQualType());
-    if (is_objc || (transparent_pointers && pointee->IsAggregate() &&
-                    pointee->IsComplete())) {
+    if (transparent_pointers &&
+        (is_objc || (pointee->IsAggregate() && pointee->IsComplete()))) {
       bool tmp_child_is_deref_of_parent = false;
       return GetCompilerType(pointee).GetChildCompilerTypeAtIndex(
           exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
