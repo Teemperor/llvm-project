@@ -1363,6 +1363,11 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
       if (std::optional<uint64_t> byte_size =
               die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size))
         record->SetByteSize(byte_size);
+    // An explicit `DW_AT_alignment` (e.g. from `alignas(...)`) cannot be
+    // recovered from the size, so record it for GetTypeBitAlign.
+    if (std::optional<uint64_t> align =
+            die.GetAttributeValueAsOptionalUnsigned(DW_AT_alignment))
+      record->SetAlignInBits(*align * 8);
     ts.SetRecordComplete(*record);
   }
 
@@ -1709,6 +1714,17 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
         ts.AddField(*record, ts.GetIdentifier(member.name), member_type,
                     byte_offset, bitfield_bit_size, bitfield_bit_offset);
 
+        // An unnamed data member (no DW_AT_name, and not an unnamed bitfield)
+        // whose type is an unnamed record is an anonymous struct/union: its
+        // members are injected into this record's scope. Mark the member's
+        // record type so SBType::IsAnonymousType reports it (mirroring clang's
+        // RecordDecl::isAnonymousStructOrUnion). A merely unnamed record given a
+        // member name (`struct { int x; } m;`) is not anonymous.
+        if (!is_bitfield && member.name.empty())
+          if (auto *field_record =
+                  llvm::dyn_cast<cpp_typesystem::RecordType>(member_type))
+            if (field_record->GetName().GetName().empty())
+              ts.SetRecordAnonymousStructOrUnion(*field_record);
         // Advance the running field-end used for gap detection.
         uint64_t this_end = abs_bit_offset + this_bit_size;
         if (this_end > last_field_end || !seen_field)
@@ -1865,6 +1881,8 @@ void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
     }
 
     const std::string asm_label = MakeFuncAsmLabel(child);
+    const char *mangled_name = child.GetMangledName(
+        /*substitute_name_allowed=*/false);
 
     // Classify constructors/destructors so the expression evaluator can build
     // the proper C++ declaration name (`Foo(2)` must resolve to a constructor).
@@ -1882,8 +1900,10 @@ void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
 
     ts.AddMemberFunction(record, ConstString(method_name),
                          func_type->GetForwardCompilerType(),
-                         ConstString(asm_label), is_static, is_const,
-                         is_volatile, is_virtual, ref_qualifier, kind);
+                         ConstString(asm_label),
+                         ConstString(mangled_name ? mangled_name : ""),
+                         is_static, is_const, is_volatile, is_virtual,
+                         ref_qualifier, kind);
   }
 }
 

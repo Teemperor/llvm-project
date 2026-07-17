@@ -91,7 +91,9 @@ public:
 
   // CompilerDecl functions
   ConstString DeclGetName(void *opaque_decl) override;
+  ConstString DeclGetMangledName(void *opaque_decl) override;
   CompilerType GetTypeForDecl(void *opaque_decl) override;
+  Scalar DeclGetConstantValue(void *opaque_decl) override;
 
   // CompilerDeclContext functions
   ConstString DeclContextGetName(void *opaque_decl_ctx) override;
@@ -112,6 +114,7 @@ public:
                    CompilerType *element_type, uint64_t *size,
                    bool *is_incomplete) override;
   bool IsAggregateType(lldb::opaque_compiler_type_t type) override;
+  bool IsAnonymousType(lldb::opaque_compiler_type_t type) override;
   bool IsCharType(lldb::opaque_compiler_type_t type) override;
   bool IsCompleteType(lldb::opaque_compiler_type_t type) override;
   bool IsDefined(lldb::opaque_compiler_type_t type) override;
@@ -225,6 +228,8 @@ public:
                                std::string &name, uint64_t *bit_offset_ptr,
                                uint32_t *bitfield_bit_size_ptr,
                                bool *is_bitfield_ptr) override;
+  CompilerDecl GetStaticFieldWithName(lldb::opaque_compiler_type_t type,
+                                      llvm::StringRef name) override;
   uint32_t GetNumDirectBaseClasses(lldb::opaque_compiler_type_t type) override;
   uint32_t GetNumVirtualBaseClasses(lldb::opaque_compiler_type_t type) override;
   CompilerType GetDirectBaseClassAtIndex(lldb::opaque_compiler_type_t type,

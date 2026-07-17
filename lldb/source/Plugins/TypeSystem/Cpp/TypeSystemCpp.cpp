@@ -18,6 +18,7 @@
 #include "Plugins/ExpressionParser/Clang/ClangUserExpression.h"
 #include "Plugins/ExpressionParser/Clang/ClangUtilityFunction.h"
 
+#include "Plugins/Language/ObjC/ObjCLanguage.h"
 #include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
 
 #include "lldb/Core/DumpDataExtractor.h"
@@ -661,11 +662,78 @@ ScratchTypeSystemCpp::GetPersistentExpressionState() {
 }
 
 ConstString TypeSystemCpp::DeclGetName(void *opaque_decl) {
+  // TypeSystemCpp's CompilerDecls are tagged cpp_typesystem::Decl references.
+  auto *decl = static_cast<const cpp_typesystem::Decl *>(opaque_decl);
+  if (!decl)
+    return ConstString();
+  switch (decl->kind) {
+  case cpp_typesystem::Decl::Kind::StaticDataMember:
+    return ConstString(
+        static_cast<const cpp_typesystem::StaticDataMember *>(decl->payload)
+            ->name.GetName());
+  case cpp_typesystem::Decl::Kind::MemberFunction:
+    return ConstString(
+        static_cast<const cpp_typesystem::MemberFunction *>(decl->payload)
+            ->name.GetName());
+  }
+  return ConstString();
+}
+
+ConstString TypeSystemCpp::DeclGetMangledName(void *opaque_decl) {
+  auto *decl = static_cast<const cpp_typesystem::Decl *>(opaque_decl);
+  if (!decl)
+    return ConstString();
+  switch (decl->kind) {
+  case cpp_typesystem::Decl::Kind::StaticDataMember:
+    return ConstString(
+        static_cast<const cpp_typesystem::StaticDataMember *>(decl->payload)
+            ->mangled_name.GetName());
+  case cpp_typesystem::Decl::Kind::MemberFunction:
+    return ConstString(
+        static_cast<const cpp_typesystem::MemberFunction *>(decl->payload)
+            ->mangled_name.GetName());
+  }
   return ConstString();
 }
 
 CompilerType TypeSystemCpp::GetTypeForDecl(void *opaque_decl) {
+  auto *decl = static_cast<const cpp_typesystem::Decl *>(opaque_decl);
+  if (!decl)
+    return CompilerType();
+  switch (decl->kind) {
+  case cpp_typesystem::Decl::Kind::StaticDataMember:
+    return GetCompilerType(
+        static_cast<const cpp_typesystem::StaticDataMember *>(decl->payload)
+            ->type.Get());
+  case cpp_typesystem::Decl::Kind::MemberFunction:
+    return GetCompilerType(
+        static_cast<const cpp_typesystem::MemberFunction *>(decl->payload)
+            ->type.Get());
+  }
   return CompilerType();
+}
+
+Scalar TypeSystemCpp::DeclGetConstantValue(void *opaque_decl) {
+  auto *decl = static_cast<const cpp_typesystem::Decl *>(opaque_decl);
+  if (!decl || decl->kind != cpp_typesystem::Decl::Kind::StaticDataMember)
+    return Scalar();
+  auto *member =
+      static_cast<const cpp_typesystem::StaticDataMember *>(decl->payload);
+  if (!member->HasConstValue())
+    return Scalar();
+  cpp_typesystem::Type *type = member->type.Get();
+  if (!type)
+    return Scalar();
+  cpp_typesystem::Type *desugared = Desugar(type);
+  std::optional<uint64_t> byte_size = type->GetByteSize();
+  if (!byte_size)
+    return Scalar();
+  // Interpret the raw constant bits using the member type's signedness so a
+  // signed integral member (e.g. `static constexpr long = 47`) reads back
+  // correctly.
+  bool is_signed = desugared->GetEncoding() == lldb::eEncodingSint;
+  llvm::APInt value(*byte_size * 8, *member->const_value, is_signed);
+  return Scalar(llvm::APSInt(value, !is_signed));
 }
 
 ConstString TypeSystemCpp::DeclContextGetName(void *opaque_decl_ctx) {
@@ -827,12 +895,22 @@ bool TypeSystemCpp::IsFunctionType(opaque_compiler_type_t type) {
 
 size_t
 TypeSystemCpp::GetNumberOfFunctionArguments(opaque_compiler_type_t type) {
+  if (!type)
+    return 0;
+  if (auto *fn = llvm::dyn_cast<cpp_typesystem::FunctionType>(
+          Desugar(GetCppType(type))))
+    return fn->GetNumParameters();
   return 0;
 }
 
 CompilerType
 TypeSystemCpp::GetFunctionArgumentAtIndex(opaque_compiler_type_t type,
                                           const size_t index) {
+  if (!type)
+    return CompilerType();
+  if (auto *fn = llvm::dyn_cast<cpp_typesystem::FunctionType>(
+          Desugar(GetCppType(type))))
+    return GetCompilerType(fn->GetParameterAtIndex(index));
   return CompilerType();
 }
 
@@ -1514,13 +1592,18 @@ void TypeSystemCpp::ForEachEnumerator(
 }
 
 int TypeSystemCpp::GetFunctionArgumentCount(opaque_compiler_type_t type) {
+  if (!type)
+    return -1;
+  if (auto *fn = llvm::dyn_cast<cpp_typesystem::FunctionType>(
+          Desugar(GetCppType(type))))
+    return static_cast<int>(fn->GetNumParameters());
   return -1;
 }
 
 CompilerType
 TypeSystemCpp::GetFunctionArgumentTypeAtIndex(opaque_compiler_type_t type,
                                               size_t idx) {
-  return CompilerType();
+  return GetFunctionArgumentAtIndex(type, idx);
 }
 
 CompilerType TypeSystemCpp::GetFunctionReturnType(opaque_compiler_type_t type) {
@@ -1533,13 +1616,80 @@ CompilerType TypeSystemCpp::GetFunctionReturnType(opaque_compiler_type_t type) {
 }
 
 size_t TypeSystemCpp::GetNumMemberFunctions(opaque_compiler_type_t type) {
+  if (!type)
+    return 0;
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+  // Member functions of a record; ObjC methods of an interface (reached through
+  // a pointer, as always for ObjC). They are parsed lazily.
+  cpp_typesystem::Type *bearer = GetObjCBaseClassBearingType(type);
+  if (auto *iface = llvm::dyn_cast<cpp_typesystem::ObjCInterfaceType>(bearer)) {
+    CompleteMemberFunctions(iface);
+    return iface->GetNumObjCMethods();
+  }
+  if (auto *record = llvm::dyn_cast<cpp_typesystem::RecordType>(t)) {
+    CompleteMemberFunctions(record);
+    return record->GetNumMemberFunctions();
+  }
   return 0;
 }
 
 TypeMemberFunctionImpl
 TypeSystemCpp::GetMemberFunctionAtIndex(opaque_compiler_type_t type,
                                         size_t idx) {
-  return TypeMemberFunctionImpl();
+  if (!type)
+    return TypeMemberFunctionImpl();
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+
+  // Objective-C methods (reached through the interface, possibly via a pointer).
+  cpp_typesystem::Type *bearer = GetObjCBaseClassBearingType(type);
+  if (auto *iface = llvm::dyn_cast<cpp_typesystem::ObjCInterfaceType>(bearer)) {
+    CompleteMemberFunctions(iface);
+    const cpp_typesystem::ObjCMethod *method = iface->GetObjCMethodAtIndex(idx);
+    if (!method)
+      return TypeMemberFunctionImpl();
+    // Clang names the member function by the method's selector (e.g. `foo:` /
+    // `init`). The stored name is the full `-[Class sel:]`; recover the
+    // selector from it.
+    std::string name = method->name.GetName().str();
+    if (std::optional<const ObjCLanguage::ObjCMethodName> parsed =
+            ObjCLanguage::ObjCMethodName::Create(name, /*strict=*/false))
+      name = parsed->GetSelector().str();
+    MemberFunctionKind kind = method->is_class_method
+                                  ? lldb::eMemberFunctionKindStaticMethod
+                                  : lldb::eMemberFunctionKindInstanceMethod;
+    return TypeMemberFunctionImpl(GetCompilerType(method->type.Get()),
+                                  CompilerDecl(), name, kind);
+  }
+
+  auto *record = llvm::dyn_cast<cpp_typesystem::RecordType>(t);
+  if (!record)
+    return TypeMemberFunctionImpl();
+  CompleteMemberFunctions(record);
+  const cpp_typesystem::MemberFunction *method =
+      record->GetMemberFunctionAtIndex(idx);
+  if (!method)
+    return TypeMemberFunctionImpl();
+
+  MemberFunctionKind kind;
+  switch (method->kind) {
+  case cpp_typesystem::MemberFunctionKind::Constructor:
+    kind = lldb::eMemberFunctionKindConstructor;
+    break;
+  case cpp_typesystem::MemberFunctionKind::Destructor:
+    kind = lldb::eMemberFunctionKindDestructor;
+    break;
+  case cpp_typesystem::MemberFunctionKind::Method:
+    kind = method->is_static ? lldb::eMemberFunctionKindStaticMethod
+                             : lldb::eMemberFunctionKindInstanceMethod;
+    break;
+  }
+  // Hand out a tagged Decl so GetMangledName/GetDemangledName can recover the
+  // linkage name; the (return/argument) types come from the function type.
+  CompilerDecl decl(this,
+                    const_cast<cpp_typesystem::Decl *>(m_context.GetOrCreateDecl(
+                        cpp_typesystem::Decl::Kind::MemberFunction, method)));
+  return TypeMemberFunctionImpl(GetCompilerType(method->type.Get()), decl,
+                                method->name.GetName().str(), kind);
 }
 
 CompilerType TypeSystemCpp::GetPointeeType(opaque_compiler_type_t type) {
@@ -2034,7 +2184,9 @@ uint32_t TypeSystemCpp::GetNumFields(opaque_compiler_type_t type) {
   if (!type)
     return 0;
   GetCompleteType(type);
-  return GetCppType(type)->GetNumFields();
+  // A pointer to an ObjC interface answers field queries as the interface
+  // itself would (an ObjC object is only ever accessed through a pointer).
+  return GetObjCBaseClassBearingType(type)->GetNumFields();
 }
 
 CompilerType TypeSystemCpp::GetFieldAtIndex(opaque_compiler_type_t type,
@@ -2045,7 +2197,7 @@ CompilerType TypeSystemCpp::GetFieldAtIndex(opaque_compiler_type_t type,
   if (!type)
     return CompilerType();
   GetCompleteType(type);
-  const Field *field = GetCppType(type)->GetFieldAtIndex(idx);
+  const Field *field = GetObjCBaseClassBearingType(type)->GetFieldAtIndex(idx);
   if (!field)
     return CompilerType();
   name = field->name.GetName().str();
@@ -2056,6 +2208,29 @@ CompilerType TypeSystemCpp::GetFieldAtIndex(opaque_compiler_type_t type,
   if (is_bitfield_ptr)
     *is_bitfield_ptr = field->IsBitfield();
   return GetCompilerType(field->type.Get());
+}
+
+CompilerDecl TypeSystemCpp::GetStaticFieldWithName(opaque_compiler_type_t type,
+                                                   llvm::StringRef name) {
+  if (!type)
+    return CompilerDecl();
+  GetCompleteType(type);
+  auto *record =
+      llvm::dyn_cast<cpp_typesystem::RecordType>(Desugar(GetCppType(type)));
+  if (!record)
+    return CompilerDecl();
+  for (uint32_t i = 0, n = record->GetNumStaticDataMembers(); i < n; ++i) {
+    const cpp_typesystem::StaticDataMember *member =
+        record->GetStaticDataMemberAtIndex(i);
+    if (member->name.GetName() == name)
+      // The opaque decl is a tagged cpp_typesystem::Decl; the Decl* query
+      // methods (DeclGetName / GetTypeForDecl / DeclGetConstantValue) interpret
+      // it.
+      return CompilerDecl(
+          this, const_cast<cpp_typesystem::Decl *>(m_context.GetOrCreateDecl(
+                    cpp_typesystem::Decl::Kind::StaticDataMember, member)));
+  }
+  return CompilerDecl();
 }
 
 cpp_typesystem::Type *
@@ -2082,6 +2257,18 @@ uint32_t TypeSystemCpp::GetNumDirectBaseClasses(opaque_compiler_type_t type) {
 
 uint32_t TypeSystemCpp::GetNumVirtualBaseClasses(opaque_compiler_type_t type) {
   return 0;
+}
+
+bool TypeSystemCpp::IsAnonymousType(opaque_compiler_type_t type) {
+  if (!type)
+    return false;
+  // An anonymous struct/union (an unnamed record embedded as an unnamed member
+  // of its parent) is marked as such by the DWARF parser. Look through sugar,
+  // matching TypeSystemClang's RemoveWrappingTypes.
+  if (auto *record =
+          llvm::dyn_cast<cpp_typesystem::RecordType>(Desugar(GetCppType(type))))
+    return record->IsAnonymousStructOrUnion();
+  return false;
 }
 
 CompilerType
@@ -2812,6 +2999,13 @@ TypeSystemCpp::GetTypeBitAlign(opaque_compiler_type_t type,
       llvm::isa<cpp_typesystem::ReferenceType>(t))
     return GetPointerByteSize() * 8;
 
+  // Prefer an explicitly-recorded alignment (e.g. an `alignas(...)` type, whose
+  // DW_AT_alignment the DWARF parser stored), which the size-derived heuristic
+  // below cannot recover.
+  if (std::optional<uint64_t> align = t->GetAlignInBits())
+    if (*align != 0)
+      return *align;
+
   // The cpp_typesystem model doesn't record alignment. For scalars this is the
   // size; for aggregates, derive an alignment that divides the size (natural
   // alignment for the standard-layout types produced from debug info). Cap at
@@ -2826,6 +3020,38 @@ TypeSystemCpp::GetTypeBitAlign(opaque_compiler_type_t type,
 }
 
 CompilerType TypeSystemCpp::GetBuiltinTypeByName(ConstString name) {
+  llvm::StringRef name_ref = name.GetStringRef();
+
+  // `_BitInt(N)` / `unsigned _BitInt(N)` are synthesized on demand (they never
+  // appear as an enumerated builtin spelling). Mirror TypeSystemClang: parse the
+  // bit width and lay the type out with the target's ABI size.
+  bool bitint_unsigned = name_ref.consume_front("unsigned _BitInt(");
+  if (bitint_unsigned || name_ref.consume_front("_BitInt(")) {
+    uint64_t bits;
+    if (name_ref.consumeInteger(/*Radix=*/10, bits))
+      return CompilerType();
+    if (name_ref != ")")
+      return CompilerType();
+    std::optional<uint64_t> byte_size =
+        m_context.GetLanguageOpts().GetBitIntByteSize(bits);
+    if (!byte_size)
+      return CompilerType();
+    return GetCompilerType(m_context.GetBuiltinType(
+        name.GetStringRef(), *byte_size,
+        bitint_unsigned ? lldb::eEncodingUint : lldb::eEncodingSint,
+        bitint_unsigned ? lldb::eFormatUnsigned : lldb::eFormatDecimal));
+  }
+
+  // `__int128_t` / `__uint128_t` are aliases for the 128-bit integer builtins
+  // (whose canonical spellings are `__int128` / `unsigned __int128`). They are
+  // not themselves builtin spellings, so map them explicitly.
+  if (name_ref == "__int128_t")
+    return GetCompilerType(
+        m_context.GetBuiltinType(cpp_typesystem::BuiltinKind::Int128));
+  if (name_ref == "__uint128_t")
+    return GetCompilerType(
+        m_context.GetBuiltinType(cpp_typesystem::BuiltinKind::UnsignedInt128));
+
   if (cpp_typesystem::BuiltinType *bt =
           m_context.GetBuiltinTypeByName(name.GetStringRef()))
     return GetCompilerType(bt);

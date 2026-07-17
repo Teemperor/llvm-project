@@ -128,14 +128,15 @@ void Builder::AddParameter(CompilerType function_type,
 
 void Builder::AddMemberFunction(cpp_typesystem::RecordType &record,
                                 ConstString name, CompilerType function_type,
-                                ConstString asm_label, bool is_static,
-                                bool is_const, bool is_volatile, bool is_virtual,
-                                RefQualifier ref_qualifier,
+                                ConstString asm_label, ConstString mangled_name,
+                                bool is_static, bool is_const, bool is_volatile,
+                                bool is_virtual, RefQualifier ref_qualifier,
                                 MemberFunctionKind kind) {
   cpp_typesystem::MemberFunction method;
   method.name = GetIdentifier(name.GetStringRef());
   method.type = ToTypeRef(function_type);
   method.asm_label = GetIdentifier(asm_label.GetStringRef());
+  method.mangled_name = GetIdentifier(mangled_name.GetStringRef());
   method.is_static = is_static;
   method.is_const = is_const;
   method.is_volatile = is_volatile;
@@ -168,6 +169,11 @@ void Builder::SetRecordComplete(cpp_typesystem::RecordType &record) {
 void Builder::SetRecordTemplateInstantiation(
     cpp_typesystem::RecordType &record) {
   m_ts.m_context.SetTemplateInstantiation(record);
+}
+
+void Builder::SetRecordAnonymousStructOrUnion(
+    cpp_typesystem::RecordType &record) {
+  m_ts.m_context.SetAnonymousStructOrUnion(record);
 }
 
 void Builder::SetRecordMemberFunctionsParsed(
