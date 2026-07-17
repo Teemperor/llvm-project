@@ -95,8 +95,9 @@ public:
   /// Add a member function to \p record.
   void AddMemberFunction(RecordType &record, ConstString name,
                          CompilerType function_type, ConstString asm_label,
-                         bool is_static, bool is_const, bool is_volatile,
-                         bool is_virtual, RefQualifier ref_qualifier,
+                         ConstString mangled_name, bool is_static, bool is_const,
+                         bool is_volatile, bool is_virtual,
+                         RefQualifier ref_qualifier,
                          MemberFunctionKind kind = MemberFunctionKind::Method);
   /// Add a static data member to \p record. \p mangled_name is the linkage name
   /// used to resolve the member's runtime storage (empty for a constant-only
@@ -122,6 +123,10 @@ public:
   /// RecordType::IsTemplateInstantiation). Set even for a specialization over an
   /// empty parameter pack, which has no arguments but still prints `<>`.
   void SetRecordTemplateInstantiation(RecordType &record);
+  /// Mark \p record as an anonymous struct/union (an unnamed record embedded as
+  /// an unnamed member of its parent; see
+  /// RecordType::IsAnonymousStructOrUnion).
+  void SetRecordAnonymousStructOrUnion(RecordType &record);
   /// Mark \p record's member functions as parsed (they are filled in lazily,
   /// after completion; see DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF).
   void SetRecordMemberFunctionsParsed(RecordType &record);

@@ -15,6 +15,7 @@
 #include "clang/Basic/TargetOptions.h"
 
 #include "llvm/ADT/APFloat.h"
+#include "llvm/Support/MathExtras.h"
 
 #include <memory>
 #include <utility>
@@ -92,4 +93,32 @@ LanguageOpts::GetFloatTypeSemantics(size_t byte_size,
   if (bit_size == 128)
     return *m_float128_semantics;
   return llvm::APFloat::Bogus();
+}
+
+std::optional<uint64_t> LanguageOpts::GetBitIntByteSize(unsigned bits) const {
+  if (bits == 0)
+    return std::nullopt;
+
+  // Recreate a transient TargetInfo (this is a rare lookup path) to ask for the
+  // ABI layout of a `_BitInt` of this width. This uses only clang::TargetInfo,
+  // not the Clang AST, so it stays within TypeSystemCpp's rule.
+  clang::TargetOptions target_opts;
+  target_opts.Triple = m_triple.str();
+
+  clang::DiagnosticOptions diag_opts;
+  clang::DiagnosticsEngine diags(
+      llvm::makeIntrusiveRefCnt<clang::DiagnosticIDs>(), diag_opts);
+
+  std::unique_ptr<clang::TargetInfo> target(
+      clang::TargetInfo::CreateTargetInfo(diags, target_opts));
+  if (!target)
+    return std::nullopt;
+
+  if (bits > target->getMaxBitIntWidth())
+    return std::nullopt;
+
+  // clang lays out a `_BitInt` by rounding its width up to its ABI alignment.
+  unsigned align_bits = target->getBitIntAlign(bits);
+  uint64_t size_bits = llvm::alignTo(bits, align_bits);
+  return size_bits / 8;
 }

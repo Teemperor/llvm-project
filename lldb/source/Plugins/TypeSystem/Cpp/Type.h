@@ -170,6 +170,10 @@ struct MemberFunction {
   /// The asm label (an lldb FunctionCallLabel) the call resolves through, so
   /// the JIT can find the callee in the inferior.
   Identifier asm_label;
+  /// The raw mangled (linkage) name, if the debug info recorded one. Used by
+  /// SBTypeMemberFunction::GetMangledName/GetDemangledName (distinct from
+  /// asm_label, which is a FunctionCallLabel wrapping this name plus location).
+  Identifier mangled_name;
   bool is_static = false;
   bool is_const = false;
   bool is_volatile = false;
@@ -231,8 +235,14 @@ public:
   Identifier GetUnqualifiedName() const { return m_unqualified_name; }
   void SetUnqualifiedName(Identifier name) { m_unqualified_name = name; }
 
-  std::optional<uint64_t> GetByteSize() const { return m_byte_size; }
+  virtual std::optional<uint64_t> GetByteSize() const { return m_byte_size; }
   void SetByteSize(std::optional<uint64_t> byte_size) { m_byte_size = byte_size; }
+
+  /// An explicitly-specified alignment in bits (from `DW_AT_alignment`, e.g.
+  /// `alignas(128)`), if the debug info recorded one. When absent, callers fall
+  /// back to deriving a natural alignment from the size.
+  std::optional<uint64_t> GetAlignInBits() const { return m_align_in_bits; }
+  void SetAlignInBits(std::optional<uint64_t> align) { m_align_in_bits = align; }
 
   /// True if this type has members (a struct/class/union).
   virtual bool IsAggregate() const { return false; }
@@ -271,6 +281,7 @@ private:
   Identifier m_unqualified_name;
   const Namespace *m_decl_context = nullptr;
   std::optional<uint64_t> m_byte_size;
+  std::optional<uint64_t> m_align_in_bits;
 };
 
 /// Common base for C/C++ record types (struct/class/union). Owns the data
@@ -294,6 +305,14 @@ public:
   /// tag keyword purely for naming an *unnamed* record ("(unnamed class)" vs
   /// "(unnamed struct)"), matching clang's TagDecl printing.
   bool IsClassKeyword() const { return m_is_class_keyword; }
+
+  /// True if this record is an anonymous struct/union: an *unnamed* record that
+  /// is embedded as an *unnamed* member of its enclosing record, so its members
+  /// are injected into the enclosing scope (e.g. `struct { int y; };`). This is
+  /// distinct from a merely unnamed record that is given a member name
+  /// (`struct { int x; } named;`), which is not anonymous. Mirrors clang's
+  /// RecordDecl::isAnonymousStructOrUnion(); set by the DWARF parser.
+  bool IsAnonymousStructOrUnion() const { return m_is_anonymous_struct_union; }
 
   uint32_t GetTypeInfo() const override {
     return lldb::eTypeHasChildren | lldb::eTypeIsStructUnion;
@@ -378,6 +397,7 @@ private:
   void SetIsTemplateInstantiation(bool is_template) {
     m_is_template = is_template;
   }
+  void SetIsAnonymousStructOrUnion(bool v) { m_is_anonymous_struct_union = v; }
   void SetMemberFunctionsParsed() { m_member_functions_parsed = true; }
   void AddField(Identifier name, TypeRef type, uint64_t byte_offset,
                 uint32_t bitfield_bit_size = 0,
@@ -407,6 +427,7 @@ private:
   bool m_is_union = false;
   bool m_is_class_keyword = false;
   bool m_is_template = false;
+  bool m_is_anonymous_struct_union = false;
   bool m_member_functions_parsed = false;
   std::vector<Field> m_fields;
   std::vector<TemplateArgument> m_template_args;
@@ -663,6 +684,13 @@ public:
   }
   bool IsComplete() const override {
     return m_underlying_type.Get()->IsComplete();
+  }
+  // Sugar has the same storage as the type it wraps. Forward dynamically rather
+  // than relying on a snapshot taken at creation time: the underlying type's
+  // size may only become known later (e.g. a target-dependent builtin size or a
+  // lazily completed record), and a stale cached 0 would then be wrong.
+  std::optional<uint64_t> GetByteSize() const override {
+    return m_underlying_type.Get()->GetByteSize();
   }
   lldb::Encoding GetEncoding() const override {
     return m_underlying_type.Get()->GetEncoding();

@@ -14,6 +14,7 @@
 #include "lldb/lldb-enumerations.h"
 
 #include <cstdint>
+#include <optional>
 
 namespace llvm {
 struct fltSemantics;
@@ -61,6 +62,12 @@ public:
   /// types. Returns APFloat::Bogus() when nothing matches.
   const llvm::fltSemantics &GetFloatTypeSemantics(size_t byte_size,
                                                   lldb::Format format) const;
+
+  /// The storage size (in bytes) of a `_BitInt(bits)` on this target, as clang
+  /// would lay it out (the bit width rounded up to the type's ABI alignment).
+  /// Returns std::nullopt if the bit width is invalid for the target. Uses only
+  /// clang::TargetInfo (ABI facts), staying within the "no clang AST" rule.
+  std::optional<uint64_t> GetBitIntByteSize(unsigned bits) const;
 
 private:
   llvm::Triple m_triple;

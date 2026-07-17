@@ -33,6 +33,16 @@ const Namespace *Context::GetNamespace(Identifier name, const Namespace *parent,
   return ns;
 }
 
+const Decl *Context::GetOrCreateDecl(Decl::Kind kind, const void *payload) {
+  auto key = std::make_pair(kind, payload);
+  if (auto it = m_decl_map.find(key); it != m_decl_map.end())
+    return it->second;
+  m_decls.push_back(std::make_unique<Decl>(Decl{kind, payload}));
+  const Decl *result = m_decls.back().get();
+  m_decl_map[key] = result;
+  return result;
+}
+
 BuiltinType *Context::GetBuiltinType(llvm::StringRef name,
                                      std::optional<uint64_t> byte_size,
                                      lldb::Encoding encoding,
@@ -91,11 +101,20 @@ ArrayType *Context::CreateArrayType(TypeRef element_type,
 }
 
 PointerType *Context::CreatePointerType(TypeRef pointee_type, bool is_block) {
+  // Unique pointer types by (pointee, is_block) so that two independently-formed
+  // `T *` (e.g. a variable's type and `SBType::GetPointerType()`) are the same
+  // instance and thus compare equal (SBType/CompilerType equality is identity of
+  // the opaque type). This mirrors clang, whose ASTContext uniques pointer types.
+  auto key = std::make_pair(pointee_type.Get(), is_block);
+  if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
+    return it->second;
   auto type = std::make_unique<PointerType>();
   type->SetPointeeType(pointee_type);
   type->SetIsBlockPointer(is_block);
   type->SetByteSize(m_opts.GetBuiltinSizes().pointer_size);
-  return Track(std::move(type));
+  PointerType *result = Track(std::move(type));
+  m_pointer_map[key] = result;
+  return result;
 }
 
 ReferenceType *Context::CreateReferenceType(TypeRef pointee_type,
