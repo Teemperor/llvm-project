@@ -938,6 +938,40 @@ TypeSP DWARFASTParserCpp::ParseReferenceType(const DWARFDIE &die) {
                          Type::ResolveState::Full);
 }
 
+TypeSP DWARFASTParserCpp::ParsePointerToMemberType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  // A pointer-to-member always points at a member (data member or member
+  // function) of a class, and both must be resolvable to build this type;
+  // clang does not reliably emit DW_AT_byte_size for this DIE (it is
+  // ABI-defined -- see Context::CreateMemberPointerType), so it is not read
+  // here.
+  DWARFDIE pointee_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  DWARFDIE containing_die =
+      die.GetAttributeValueAsReferenceDIE(DW_AT_containing_type);
+  if (!pointee_die || !containing_die)
+    return nullptr;
+  Type *pointee = die.ResolveTypeUID(pointee_die);
+  Type *containing = die.ResolveTypeUID(containing_die);
+  if (!pointee || !containing)
+    return nullptr;
+
+  CompilerType member_pointer_type =
+      cpp_typesystem::Builder(m_ts).CreateMemberPointerType(
+          pointee->GetForwardCompilerType(),
+          containing->GetForwardCompilerType());
+
+  std::optional<uint64_t> byte_size =
+      llvm::expectedToOptional(member_pointer_type.GetByteSize(nullptr));
+
+  Declaration decl;
+  ConstString empty_name;
+  return dwarf->MakeType(die.GetID(), empty_name, byte_size,
+                         /*context=*/nullptr, pointee_die.GetID(),
+                         Type::eEncodingIsUID, decl, member_pointer_type,
+                         Type::ResolveState::Full);
+}
+
 TypeSP DWARFASTParserCpp::ParseTypedef(const DWARFDIE &die) {
   SymbolFileDWARF *dwarf = die.GetDWARF();
   ConstString name(GetDIEQualifiedName(die));
@@ -1221,6 +1255,9 @@ TypeSP DWARFASTParserCpp::ParseTypeFromDWARF(const SymbolContext &sc,
   case DW_TAG_reference_type:
   case DW_TAG_rvalue_reference_type:
     type_sp = ParseReferenceType(die);
+    break;
+  case DW_TAG_ptr_to_member_type:
+    type_sp = ParsePointerToMemberType(die);
     break;
   case DW_TAG_typedef:
   case DW_TAG_template_alias:

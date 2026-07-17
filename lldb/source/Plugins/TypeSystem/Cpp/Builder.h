@@ -65,6 +65,10 @@ public:
                                  bool is_block = false);
   /// Create an lvalue or rvalue reference to \p pointee_type.
   CompilerType CreateReferenceType(CompilerType pointee_type, bool is_rvalue);
+  /// Create a pointer-to-member of \p containing_type, pointing at a data
+  /// member/member function of type \p pointee_type.
+  CompilerType CreateMemberPointerType(CompilerType pointee_type,
+                                       CompilerType containing_type);
   /// Create a typedef named \p name aliasing \p underlying_type.
   CompilerType CreateTypedefType(llvm::StringRef name,
                                  CompilerType underlying_type);

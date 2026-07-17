@@ -72,6 +72,12 @@ CompilerType Builder::CreateReferenceType(CompilerType pointee_type,
       m_ts.m_context.CreateReferenceType(ToTypeRef(pointee_type), is_rvalue));
 }
 
+CompilerType Builder::CreateMemberPointerType(CompilerType pointee_type,
+                                              CompilerType containing_type) {
+  return m_ts.GetCompilerType(m_ts.m_context.CreateMemberPointerType(
+      ToTypeRef(pointee_type), ToTypeRef(containing_type)));
+}
+
 CompilerType Builder::CreateTypedefType(llvm::StringRef name,
                                         CompilerType underlying_type) {
   return m_ts.GetCompilerType(

@@ -686,6 +686,42 @@ private:
   bool m_is_rvalue = false;
 };
 
+/// A C++ pointer-to-member type: a pointer to a non-static data member
+/// (`T C::*`) or non-static member function (`R (C::*)(Args...)`) of class
+/// `C`. Unlike PointerType/ReferenceType this is not transparent -- it has no
+/// children and cannot be dereferenced without an object of the containing
+/// class -- so it behaves like an opaque scalar value for layout purposes.
+/// Its byte size is ABI-defined (Itanium: sizeof(ptrdiff_t) for a data member,
+/// two pointers for a member function) and is computed by the DWARF parser
+/// (DW_AT_byte_size is not reliably emitted for this DIE), not derived here.
+class MemberPointerType
+    : public llvm::RTTIExtends<MemberPointerType, Type> {
+public:
+  static char ID;
+
+  /// The type of the pointed-to member: the data member's type, or the member
+  /// function's type (a FunctionType).
+  Type *GetPointeeType() const { return m_pointee_type.Get(); }
+  void SetPointeeType(TypeRef type) { m_pointee_type = type; }
+
+  /// The class this is a pointer-to-member of.
+  Type *GetContainingType() const { return m_containing_type.Get(); }
+  void SetContainingType(TypeRef type) { m_containing_type = type; }
+
+  lldb::Encoding GetEncoding() const override { return lldb::eEncodingUint; }
+  lldb::Format GetFormat() const override { return lldb::eFormatHex; }
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassMemberPointer;
+  }
+  uint32_t GetTypeInfo() const override {
+    return lldb::eTypeIsPointer | lldb::eTypeIsMember | lldb::eTypeHasValue;
+  }
+
+private:
+  TypeRef m_pointee_type;
+  TypeRef m_containing_type;
+};
+
 /// Common base for "sugar" types that wrap another type and are transparent to
 /// most layout/children queries: typedefs and cv-qualified types. Stripping all
 /// sugar off a type yields its canonical type (see Type::GetCanonicalType-style

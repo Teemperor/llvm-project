@@ -95,6 +95,13 @@ public:
   /// Its byte size is the target's pointer size.
   ReferenceType *CreateReferenceType(TypeRef pointee_type, bool is_rvalue);
 
+  /// Create a pointer-to-member of \p containing_type, pointing at a data
+  /// member/member function of type \p pointee_type. Its byte size follows
+  /// the Itanium ABI: one pointer for a data member, two for a member
+  /// function (the function pointer plus the `this` adjustment).
+  MemberPointerType *CreateMemberPointerType(TypeRef pointee_type,
+                                             TypeRef containing_type);
+
   /// Create a typedef named \p name aliasing \p underlying_type.
   TypedefType *CreateTypedefType(llvm::StringRef name, TypeRef underlying_type);
 
