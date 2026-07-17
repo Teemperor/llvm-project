@@ -49,6 +49,11 @@ public:
   CompilerType Convert(clang::QualType qt);
 
 private:
+  /// Peel a deduced `auto`/`decltype(auto)` type down to the type deduction
+  /// resolved it to; returns \p qt unchanged if it isn't a deduced type. The
+  /// result is null if deduction hasn't run yet (an undeduced `auto`).
+  clang::QualType Desugar(clang::QualType qt);
+
   /// Look up a type the generator synthesized (including cv-qualified variants,
   /// a qualifier-sugared typedef, or the canonical type) in the generator's
   /// reverse map. Sets \p found when \p qt was found there (in which case the
