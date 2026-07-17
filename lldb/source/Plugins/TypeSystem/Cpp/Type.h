@@ -639,6 +639,16 @@ public:
     const Type *pointee = m_pointee_type.Get();
     if (pointee && llvm::isa<ObjCInterfaceType>(pointee))
       info |= lldb::eTypeIsObjC;
+    // `id` / `Class` are modeled as a pointer to the opaque `objc_object` /
+    // `objc_class` record (see TypeSystemCpp::IsPossibleDynamicType /
+    // GetMinimumLanguage); recognize that idiom too, so e.g.
+    // ObjCLanguage::IsNilReference still prints a null `id`/`Class` as "nil"
+    // instead of "0x0".
+    if (auto *rec = llvm::dyn_cast_or_null<RecordType>(pointee)) {
+      llvm::StringRef name = rec->GetName().GetName();
+      if (name == "objc_object" || name == "objc_class")
+        info |= lldb::eTypeIsObjC;
+    }
     return info;
   }
 

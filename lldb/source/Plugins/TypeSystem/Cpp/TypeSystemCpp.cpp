@@ -674,6 +674,14 @@ ScratchTypeSystemCpp::GetPersistentExpressionState() {
   return m_persistent_variables.get();
 }
 
+lldb::TypeSystemSP ScratchTypeSystemCpp::GetOrCreateAuxiliaryClangScratchAST(
+    llvm::function_ref<lldb::TypeSystemSP()> create_callback) {
+  std::lock_guard<std::mutex> guard(m_aux_clang_scratch_ast_mutex);
+  if (!m_aux_clang_scratch_ast_sp)
+    m_aux_clang_scratch_ast_sp = create_callback();
+  return m_aux_clang_scratch_ast_sp;
+}
+
 ConstString TypeSystemCpp::DeclGetName(void *opaque_decl) {
   // TypeSystemCpp's CompilerDecls are tagged cpp_typesystem::Decl references.
   auto *decl = static_cast<const cpp_typesystem::Decl *>(opaque_decl);
@@ -1519,6 +1527,18 @@ LanguageType TypeSystemCpp::GetMinimumLanguage(opaque_compiler_type_t type) {
       if (pointee &&
           llvm::isa<cpp_typesystem::ObjCInterfaceType>(Desugar(pointee)))
         return eLanguageTypeObjC;
+      if (pointee) {
+        // `id` / `Class` are modeled as a pointer to the opaque
+        // `objc_object` / `objc_class` record (see IsPossibleDynamicType);
+        // recognize that idiom too so e.g. an `id`-typed container element
+        // still gets routed to the ObjC runtime for dynamic-type resolution.
+        if (auto *rec =
+                llvm::dyn_cast<cpp_typesystem::RecordType>(Desugar(pointee))) {
+          llvm::StringRef name = rec->GetName().GetName();
+          if (name == "objc_object" || name == "objc_class")
+            return eLanguageTypeObjC;
+        }
+      }
       if (!pointee ||
           !llvm::isa<cpp_typesystem::RecordType>(Desugar(pointee)))
         return eLanguageTypeC;
@@ -3146,6 +3166,30 @@ CompilerType TypeSystemCpp::GetBasicTypeFromAST(BasicType basic_type) {
   case eBasicTypeNullPtr:
     kind = BuiltinKind::NullPtr;
     break;
+  case eBasicTypeObjCID:
+  case eBasicTypeObjCClass: {
+    // `id` / `Class` are typedefs over a pointer to the opaque `objc_object`
+    // / `objc_class` record, matching how the DWARF parser and
+    // ClangTypeConverter (see ConvertObjCObjectPointer) model them elsewhere
+    // in TypeSystemCpp.
+    const bool is_class = basic_type == eBasicTypeObjCClass;
+    cpp_typesystem::Builder builder(*this);
+    CompilerType opaque = builder.CreateRecordType(
+        is_class ? "objc_class" : "objc_object",
+        /*byte_size=*/std::nullopt, /*is_cpp_class=*/false,
+        /*is_union=*/false);
+    CompilerType ptr = builder.CreatePointerType(opaque);
+    return builder.CreateTypedefType(is_class ? "Class" : "id", ptr);
+  }
+  case eBasicTypeObjCSel: {
+    // `SEL` is a typedef over a pointer to the opaque `objc_selector` record.
+    cpp_typesystem::Builder builder(*this);
+    CompilerType opaque = builder.CreateRecordType(
+        "objc_selector", /*byte_size=*/std::nullopt, /*is_cpp_class=*/false,
+        /*is_union=*/false);
+    CompilerType ptr = builder.CreatePointerType(opaque);
+    return builder.CreateTypedefType("SEL", ptr);
+  }
   default:
     break;
   }
