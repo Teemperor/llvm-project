@@ -780,9 +780,16 @@ TypeSP DWARFASTParserCpp::ParseStructureType(const DWARFDIE &die) {
   }
 
   Declaration decl;
+  // The lldb_private::Type record (unlike the cpp_typesystem::Type above) is
+  // named with the bare, unqualified DW_AT_name spelling -- e.g. "valarray"
+  // rather than "std::__1::valarray<int>" -- to match TypeSystemClang (whose
+  // Type::m_name is the raw DW_AT_name), since e.g. DIL's out-of-bounds-index
+  // diagnostic prints this name and is tested against that unqualified form.
+  ConstString unqualified_name(GetDIEUnqualifiedName(die));
   TypeSP type_sp = dwarf->MakeType(
-      die.GetID(), name, byte_size, /*context=*/nullptr, LLDB_INVALID_UID,
-      Type::eEncodingIsUID, decl, compiler_type, Type::ResolveState::Forward);
+      die.GetID(), unqualified_name, byte_size, /*context=*/nullptr,
+      LLDB_INVALID_UID, Type::eEncodingIsUID, decl, compiler_type,
+      Type::ResolveState::Forward);
 
   // Remember which DIE backs this (so far incomplete) record so that
   // SymbolFileDWARF::CompleteType can find it and call back into
