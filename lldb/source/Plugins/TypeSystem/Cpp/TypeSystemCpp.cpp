@@ -102,12 +102,25 @@ ReadVirtualBaseOffset(const cpp_typesystem::BaseClass &base,
   if (!process)
     return std::nullopt;
 
-  // The vtable pointer sits at the start of the (derived) object.
-  ValueObject::AddrAndType addr = valobj->GetAddressOf();
-  if (addr.address == LLDB_INVALID_ADDRESS ||
-      addr.type != eAddressTypeLoad)
+  // The vtable pointer sits at the start of the (derived) object. When the
+  // vbase is reached transparently through a pointer (see the transparent
+  // pointer forwarding in GetChildCompilerTypeAtIndex), `valobj` is the pointer
+  // itself: the derived object is what it points to, so use the pointee (load)
+  // address rather than where the pointer is stored.
+  lldb::addr_t obj_addr = LLDB_INVALID_ADDRESS;
+  if (valobj->IsPointerType()) {
+    ValueObject::AddrAndType ptr = valobj->GetPointerValue();
+    if (ptr.type != eAddressTypeLoad)
+      return std::nullopt;
+    obj_addr = ptr.address;
+  } else {
+    ValueObject::AddrAndType addr = valobj->GetAddressOf();
+    if (addr.type != eAddressTypeLoad)
+      return std::nullopt;
+    obj_addr = addr.address;
+  }
+  if (obj_addr == LLDB_INVALID_ADDRESS || obj_addr == 0)
     return std::nullopt;
-  lldb::addr_t obj_addr = addr.address;
 
   Status err;
   lldb::addr_t vtable_ptr = process->ReadPointerFromMemory(obj_addr, err);
