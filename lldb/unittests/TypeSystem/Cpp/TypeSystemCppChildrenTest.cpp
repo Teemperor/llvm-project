@@ -9,8 +9,6 @@
 #include "Plugins/TypeSystem/Cpp/Builder.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
-#include "lldb/Utility/ConstString.h"
-
 #include "llvm/Testing/Support/Error.h"
 
 #include "gtest/gtest.h"
@@ -25,14 +23,14 @@ struct TypeSystemCppChildrenTest : public testing::Test {
   Builder builder{*ts};
 
   CompilerType GetInt() {
-    return builder.GetBuiltinType(ConstString("int"), 4, lldb::eEncodingSint,
+    return builder.GetBuiltinType("int", 4, lldb::eEncodingSint,
                                   lldb::eFormatDecimal);
   }
 
   /// A complete record with two `int` fields, "a" at offset 0 and "b" at
   /// offset 4.
   CompilerType MakeSimpleRecord() {
-    CompilerType record = builder.CreateRecordType(ConstString("Pair"), 8, false);
+    CompilerType record = builder.CreateRecordType("Pair", 8, false);
     auto *r =
         llvm::cast<RecordType>(static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
     builder.AddField(*r, builder.GetIdentifier("a"),
@@ -198,12 +196,12 @@ TEST_F(TypeSystemCppChildrenTest, GetIndexOfChildWithNameNotFound) {
 // child 0.
 TEST_F(TypeSystemCppChildrenTest, EmptyBaseClassOmitted) {
   CompilerType empty_base =
-      builder.CreateRecordType(ConstString("EmptyBase"), 1, true);
+      builder.CreateRecordType("EmptyBase", 1, true);
   builder.SetRecordComplete(*llvm::cast<ClassType>(
       static_cast<cpp_typesystem::Type *>(empty_base.GetOpaqueQualType())));
 
   CompilerType derived =
-      builder.CreateRecordType(ConstString("Derived"), 4, true);
+      builder.CreateRecordType("Derived", 4, true);
   auto *derived_class = llvm::cast<ClassType>(
       static_cast<cpp_typesystem::Type *>(derived.GetOpaqueQualType()));
   builder.AddBaseClass(

@@ -10,8 +10,6 @@
 #include "Plugins/TypeSystem/Cpp/Type.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
-#include "lldb/Utility/ConstString.h"
-
 #include "llvm/Support/Casting.h"
 
 #include "gtest/gtest.h"
@@ -31,7 +29,7 @@ struct BuilderTest : public testing::Test {
 TEST_F(BuilderTest, CreateAndCompleteRecord) {
   Builder builder(*ts);
   CompilerType record =
-      builder.CreateRecordType(ConstString("Foo"), 4, /*is_cpp_class=*/false);
+      builder.CreateRecordType("Foo", 4, /*is_cpp_class=*/false);
   ASSERT_TRUE(record.IsValid());
   auto *r = llvm::cast<RecordType>(
       static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
@@ -44,9 +42,9 @@ TEST_F(BuilderTest, CreateAndCompleteRecord) {
 TEST_F(BuilderTest, AddField) {
   Builder builder(*ts);
   CompilerType int_type = builder.GetBuiltinType(
-      ConstString("int"), 4, lldb::eEncodingSint, lldb::eFormatDecimal);
+      "int", 4, lldb::eEncodingSint, lldb::eFormatDecimal);
   CompilerType record =
-      builder.CreateRecordType(ConstString("Foo"), 4, /*is_cpp_class=*/false);
+      builder.CreateRecordType("Foo", 4, /*is_cpp_class=*/false);
   auto *r = llvm::cast<RecordType>(
       static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
 
@@ -66,8 +64,8 @@ TEST_F(BuilderTest, AddField) {
 TEST_F(BuilderTest, AddBaseClass) {
   Builder builder(*ts);
   CompilerType base =
-      builder.CreateRecordType(ConstString("Base"), 4, /*is_cpp_class=*/true);
-  CompilerType derived = builder.CreateRecordType(ConstString("Derived"), 8,
+      builder.CreateRecordType("Base", 4, /*is_cpp_class=*/true);
+  CompilerType derived = builder.CreateRecordType("Derived", 8,
                                                   /*is_cpp_class=*/true);
   auto *derived_class = llvm::cast<ClassType>(
       static_cast<cpp_typesystem::Type *>(derived.GetOpaqueQualType()));
@@ -85,9 +83,9 @@ TEST_F(BuilderTest, AddBaseClass) {
 TEST_F(BuilderTest, AddTemplateArgument) {
   Builder builder(*ts);
   CompilerType int_type = builder.GetBuiltinType(
-      ConstString("int"), 4, lldb::eEncodingSint, lldb::eFormatDecimal);
+      "int", 4, lldb::eEncodingSint, lldb::eFormatDecimal);
   CompilerType record = builder.CreateRecordType(
-      ConstString("vector<int>"), 24, /*is_cpp_class=*/true);
+      "vector<int>", 24, /*is_cpp_class=*/true);
   auto *r = llvm::cast<RecordType>(
       static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
   builder.SetRecordTemplateInstantiation(*r);
@@ -106,7 +104,7 @@ TEST_F(BuilderTest, AddTemplateArgument) {
 // only (it names another template, which isn't itself a modeled Type).
 TEST_F(BuilderTest, AddTemplateTemplateArgument) {
   Builder builder(*ts);
-  CompilerType record = builder.CreateRecordType(ConstString("C<float, T1>"),
+  CompilerType record = builder.CreateRecordType("C<float, T1>",
                                                  std::nullopt, true);
   auto *r = llvm::cast<RecordType>(
       static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
@@ -125,7 +123,7 @@ TEST_F(BuilderTest, AddTemplateTemplateArgument) {
 TEST_F(BuilderTest, PointerTypesUniquedThroughBuilder) {
   Builder builder(*ts);
   CompilerType record =
-      builder.CreateRecordType(ConstString("Foo"), 4, false);
+      builder.CreateRecordType("Foo", 4, false);
   CompilerType p1 = builder.CreatePointerType(record);
   CompilerType p2 = builder.CreatePointerType(record);
   EXPECT_EQ(p1.GetOpaqueQualType(), p2.GetOpaqueQualType());
@@ -136,11 +134,11 @@ TEST_F(BuilderTest, PointerTypesUniquedThroughBuilder) {
 TEST_F(BuilderTest, DeclContextAndUnqualifiedName) {
   Builder builder(*ts);
   const Namespace *ns =
-      builder.GetNamespace(ConstString("std"), nullptr, /*is_inline=*/false);
+      builder.GetNamespace("std", nullptr, /*is_inline=*/false);
   CompilerType record =
-      builder.CreateRecordType(ConstString("std::string"), 32, true);
+      builder.CreateRecordType("std::string", 32, true);
   builder.SetDeclContext(record, ns);
-  builder.SetUnqualifiedName(record, ConstString("string"));
+  builder.SetUnqualifiedName(record, "string");
 
   auto *t = static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType());
   EXPECT_EQ(t->GetDeclContext(), ns);

@@ -53,7 +53,7 @@ CompilerType ClangTypeConverter::Convert(clang::QualType qt) {
       std::string spelling = qt.getAsString(m_ast.getPrintingPolicy());
       if (!spelling.empty())
         return cpp_typesystem::Builder(m_target).CreateElaboratedType(
-            ConstString(spelling), inner);
+            spelling, inner);
       return inner;
     }
     return {};
@@ -157,7 +157,7 @@ CompilerType ClangTypeConverter::ConvertViaReverseMap(clang::QualType qt,
     std::string spelling = qt.getAsString(m_ast.getPrintingPolicy());
     if (!spelling.empty())
       return cpp_typesystem::Builder(m_target).CreateElaboratedType(
-          ConstString(spelling), mapped);
+          spelling, mapped);
   }
   return mapped;
 }
@@ -250,7 +250,7 @@ CompilerType ClangTypeConverter::ConvertRecord(const clang::RecordType *rt) {
     std::string name = rd->getNameAsString();
     cpp_typesystem::Builder builder(m_target);
     CompilerType record = builder.CreateRecordType(
-        ConstString(name), m_ast.getTypeSizeInChars(qt).getQuantity(),
+        name, m_ast.getTypeSizeInChars(qt).getQuantity(),
         /*is_cpp_class=*/llvm::isa<clang::CXXRecordDecl>(rd),
         /*is_union=*/rd->isUnion());
     auto *cpp_record = llvm::cast<ct::RecordType>(
@@ -299,7 +299,7 @@ CompilerType ClangTypeConverter::ConvertRecord(const clang::RecordType *rt) {
   // byte size, no SetRecordComplete) so the pointer can be sized/stored.
   std::string name = decl->getNameAsString();
   return cpp_typesystem::Builder(m_target).CreateRecordType(
-      ConstString(name), /*byte_size=*/std::nullopt,
+      name, /*byte_size=*/std::nullopt,
       /*is_cpp_class=*/llvm::isa<clang::CXXRecordDecl>(decl),
       /*is_union=*/decl->isUnion());
 }
@@ -316,7 +316,7 @@ CompilerType ClangTypeConverter::ConvertObjCObjectPointer(
     cpp_typesystem::Builder builder(m_target);
     const bool is_class = objc_ptr->isObjCClassType();
     CompilerType opaque = builder.CreateRecordType(
-        ConstString(is_class ? "objc_class" : "objc_object"),
+        is_class ? "objc_class" : "objc_object",
         /*byte_size=*/std::nullopt, /*is_cpp_class=*/false,
         /*is_union=*/false);
     CompilerType ptr = builder.CreatePointerType(opaque);
@@ -324,7 +324,7 @@ CompilerType ClangTypeConverter::ConvertObjCObjectPointer(
     // preserve that spelling so an expression result prints as `(id)` /
     // `(Class)` rather than the underlying `objc_object *` (matching how the
     // DWARF parser models `id` and TypeSystemClang's result type).
-    return builder.CreateTypedefType(ConstString(is_class ? "Class" : "id"),
+    return builder.CreateTypedefType(is_class ? "Class" : "id",
                                      ptr);
   }
   // A pointer to an Objective-C class (`Foo *`) the parser formed. Map the

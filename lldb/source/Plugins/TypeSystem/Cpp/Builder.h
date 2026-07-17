@@ -12,7 +12,6 @@
 #include "Context.h"
 
 #include "lldb/Symbol/CompilerType.h"
-#include "lldb/Utility/ConstString.h"
 #include "lldb/lldb-enumerations.h"
 
 #include <cstdint>
@@ -41,20 +40,20 @@ public:
   Builder &operator=(const Builder &) = delete;
 
   // Type creation.
-  CompilerType GetBuiltinType(ConstString name,
+  CompilerType GetBuiltinType(llvm::StringRef name,
                               std::optional<uint64_t> byte_size,
                               lldb::Encoding encoding, lldb::Format format);
   /// The `void` builtin type. DWARF encodes `void` as the absence of a
   /// DW_AT_type, so the parser uses this to fill in the underlying type of a
   /// cv-qualified or typedef'd `void` (e.g. the pointee of a `const void *`).
   CompilerType GetVoidType();
-  CompilerType CreateRecordType(ConstString name,
+  CompilerType CreateRecordType(llvm::StringRef name,
                                 std::optional<uint64_t> byte_size,
                                 bool is_cpp_class, bool is_union = false,
                                 bool is_class_keyword = false);
   /// Create an Objective-C class type (`@interface`). Ivars are added as fields
   /// (via AddField) and the superclass via SetObjCSuperClass during completion.
-  CompilerType CreateObjCInterfaceType(ConstString name,
+  CompilerType CreateObjCInterfaceType(llvm::StringRef name,
                                        std::optional<uint64_t> byte_size);
   /// Create an array of \p num_elements elements of \p element_type (or an
   /// array of unknown bound when \p num_elements is std::nullopt).
@@ -67,7 +66,7 @@ public:
   /// Create an lvalue or rvalue reference to \p pointee_type.
   CompilerType CreateReferenceType(CompilerType pointee_type, bool is_rvalue);
   /// Create a typedef named \p name aliasing \p underlying_type.
-  CompilerType CreateTypedefType(ConstString name,
+  CompilerType CreateTypedefType(llvm::StringRef name,
                                  CompilerType underlying_type);
   /// Create a const- and/or volatile-qualified version of \p underlying_type.
   CompilerType CreateCVQualifiedType(CompilerType underlying_type,
@@ -79,11 +78,11 @@ public:
                                  unsigned extra_discriminator);
   /// Create display sugar preserving the source \p spelling (e.g. `::Struct`)
   /// over \p underlying_type. Transparent apart from the display name.
-  CompilerType CreateElaboratedType(ConstString spelling,
+  CompilerType CreateElaboratedType(llvm::StringRef spelling,
                                      CompilerType underlying_type);
   /// Create an enumeration type. Enumerators are added afterwards via
   /// AddEnumerator.
-  CompilerType CreateEnumType(ConstString name,
+  CompilerType CreateEnumType(llvm::StringRef name,
                               std::optional<uint64_t> byte_size,
                               CompilerType underlying_type, bool is_scoped);
   /// Create a function type. Parameters are added afterwards via AddParameter.
@@ -93,29 +92,29 @@ public:
   /// Append a parameter type to a FunctionType created by CreateFunctionType.
   void AddParameter(CompilerType function_type, CompilerType param_type);
   /// Add a member function to \p record.
-  void AddMemberFunction(RecordType &record, ConstString name,
-                         CompilerType function_type, ConstString asm_label,
-                         ConstString mangled_name, bool is_static, bool is_const,
-                         bool is_volatile, bool is_virtual,
+  void AddMemberFunction(RecordType &record, llvm::StringRef name,
+                         CompilerType function_type, llvm::StringRef asm_label,
+                         llvm::StringRef mangled_name, bool is_static,
+                         bool is_const, bool is_volatile, bool is_virtual,
                          RefQualifier ref_qualifier,
                          MemberFunctionKind kind = MemberFunctionKind::Method);
   /// Add a static data member to \p record. \p mangled_name is the linkage name
   /// used to resolve the member's runtime storage (empty for a constant-only
   /// member); \p const_value is its compile-time constant, if any.
-  void AddStaticDataMember(RecordType &record, ConstString name, Type *type,
-                           ConstString mangled_name,
+  void AddStaticDataMember(RecordType &record, llvm::StringRef name,
+                           Type *type, llvm::StringRef mangled_name,
                            std::optional<uint64_t> const_value);
   /// Intern a name into the Context so it can be used for a type or record
   /// member. All Identifiers must be created this way.
   Identifier GetIdentifier(llvm::StringRef name);
 
   /// Intern a namespace (see Context::GetNamespace).
-  const Namespace *GetNamespace(ConstString name, const Namespace *parent,
+  const Namespace *GetNamespace(llvm::StringRef name, const Namespace *parent,
                                 bool is_inline);
   /// Record the namespace a type is declared in and its unqualified spelling,
   /// used to build the (inline-namespace-aware) display name.
   void SetDeclContext(CompilerType type, const Namespace *ns);
-  void SetUnqualifiedName(CompilerType type, ConstString name);
+  void SetUnqualifiedName(CompilerType type, llvm::StringRef name);
 
   // Structural completion of a record type.
   void SetRecordComplete(RecordType &record);
@@ -150,8 +149,8 @@ public:
   /// (`+[Class sel:]` / `-[Class sel:]`); \p function_type's parameters exclude
   /// the implicit self/_cmd; \p asm_label is the FunctionCallLabel the call
   /// resolves through.
-  void AddObjCMethod(ObjCInterfaceType &record, ConstString name,
-                     CompilerType function_type, ConstString asm_label,
+  void AddObjCMethod(ObjCInterfaceType &record, llvm::StringRef name,
+                     CompilerType function_type, llvm::StringRef asm_label,
                      bool is_class_method, bool is_variadic);
   void AddTemplateArgument(RecordType &record,
                            lldb::TemplateArgumentKind kind, Type *type,

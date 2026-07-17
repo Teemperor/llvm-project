@@ -1244,9 +1244,9 @@ CompilerType TypeSystemCpp::GetPointerDiffType(bool is_signed) {
       m_context.GetLanguageOpts().GetBuiltinSizes().pointer_size;
   cpp_typesystem::Builder builder(*this);
   if (is_signed)
-    return builder.GetBuiltinType(ConstString("__ptrdiff_t"), byte_size,
+    return builder.GetBuiltinType("__ptrdiff_t", byte_size,
                                   lldb::eEncodingSint, lldb::eFormatDecimal);
-  return builder.GetBuiltinType(ConstString("__ptrdiff_t unsigned"), byte_size,
+  return builder.GetBuiltinType("__ptrdiff_t unsigned", byte_size,
                                 lldb::eEncodingUint, lldb::eFormatUnsigned);
 }
 
@@ -1832,7 +1832,7 @@ CompilerType TypeSystemCpp::RealizeObjCEncoding(cpp_typesystem::Builder &builder
   enc = enc.drop_front();
   auto builtin = [&](const char *name, uint64_t size, lldb::Encoding e,
                      lldb::Format f) {
-    return builder.GetBuiltinType(ConstString(name), size, e, f);
+    return builder.GetBuiltinType(name, size, e, f);
   };
   switch (c) {
   case 'c':
@@ -1920,7 +1920,7 @@ TypeSystemCpp::CreateRuntimeObjCInterface(ConstString class_name,
 
   cpp_typesystem::Builder builder(*this);
   CompilerType iface_ct =
-      builder.CreateObjCInterfaceType(class_name, std::nullopt);
+      builder.CreateObjCInterfaceType(class_name.GetStringRef(), std::nullopt);
   auto *iface = llvm::cast<cpp_typesystem::ObjCInterfaceType>(
       GetCppType(iface_ct.GetOpaqueQualType()));
   // Publish before filling so a self-referential ivar can't recurse forever.
@@ -1943,7 +1943,7 @@ TypeSystemCpp::CreateRuntimeObjCInterface(ConstString class_name,
         // can't decode still occupies its slot in the layout.
         if (!ivar_type)
           ivar_type = builder.CreateArrayType(
-              builder.GetBuiltinType(ConstString("char"), 1,
+              builder.GetBuiltinType("char", 1,
                                      lldb::eEncodingSint, lldb::eFormatChar),
               size);
         auto *field_type =
