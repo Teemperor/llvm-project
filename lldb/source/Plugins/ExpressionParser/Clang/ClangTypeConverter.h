@@ -49,6 +49,35 @@ public:
   CompilerType Convert(clang::QualType qt);
 
 private:
+  /// Look up a type the generator synthesized (including cv-qualified variants,
+  /// a qualifier-sugared typedef, or the canonical type) in the generator's
+  /// reverse map. Sets \p found when \p qt was found there (in which case the
+  /// returned type is authoritative, even if invalid); leaves it false to let
+  /// Convert fall through to the reconstruction paths below.
+  CompilerType ConvertViaReverseMap(clang::QualType qt, bool &found);
+
+  /// Map a clang::BuiltinType the parser created on its own (e.g. the result of
+  /// `1 + 1` or a `sizeof`) onto the corresponding TypeSystemCpp builtin.
+  /// Returns an invalid CompilerType for a builtin kind we don't model.
+  CompilerType ConvertBuiltin(const clang::BuiltinType *bt);
+
+  /// Rebuild a record the parser defined itself (a `struct` written directly in
+  /// the expression source, so it has no cpp counterpart) in the target
+  /// TypeSystemCpp from the clang record's layout. A complete definition is
+  /// rebuilt with its bases/fields; a forward declaration as an incomplete
+  /// record.
+  CompilerType ConvertRecord(const clang::RecordType *rt);
+
+  /// Rebuild the `id` / `Class` pseudo-types or an Objective-C class pointer
+  /// (`Foo *`) the parser formed, neither of which is in the reverse map.
+  CompilerType
+  ConvertObjCObjectPointer(const clang::ObjCObjectPointerType *objc_ptr);
+
+  /// Rebuild a simple derived type the parser formed on its own (a reference,
+  /// pointer, block pointer, complex, function, vector, or array) from its
+  /// recursively-mapped pointee/element.
+  CompilerType ConvertDerived(clang::QualType qt);
+
   ClangASTGenerator &m_generator;
   TypeSystemCpp &m_target;
   clang::ASTContext &m_ast;

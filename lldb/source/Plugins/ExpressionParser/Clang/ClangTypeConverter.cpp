@@ -63,6 +63,44 @@ CompilerType ClangTypeConverter::Convert(clang::QualType qt) {
   }
 
   // Types we generated (including cv-qualified variants) map back directly.
+  bool found = false;
+  if (CompilerType mapped = ConvertViaReverseMap(qt, found); found)
+    return mapped;
+
+  // Preserve cv-qualifiers the parser applied but that we didn't generate
+  // ourselves (e.g. the `const` of the `const char *` parameter in a function
+  // cast): map the unqualified type and re-wrap it.
+  if (qt.hasLocalQualifiers()) {
+    if (CompilerType inner = Convert(qt.getLocalUnqualifiedType()))
+      return cpp_typesystem::Builder(m_target).CreateCVQualifiedType(
+          inner, qt.isLocalConstQualified(), qt.isLocalVolatileQualified());
+    return {};
+  }
+
+  // Builtin types (int, unsigned long, bool, ...) the parser created on its own
+  // -- e.g. the result type of `1 + 1`, a `sizeof` expression, or a cast -- are
+  // never in the reverse map because we didn't generate them. Map them onto the
+  // corresponding TypeSystemCpp builtin so the result type can be sized.
+  if (const auto *bt = qt->getAs<clang::BuiltinType>()) {
+    if (CompilerType builtin = ConvertBuiltin(bt))
+      return builtin;
+  }
+
+  // A record type the parser defined itself (e.g. a `struct Test { ... };`
+  // written directly in the expression source) has no cpp counterpart and so
+  // isn't in the reverse map. Rebuild an equivalent cpp record.
+  if (const auto *rt = qt->getAs<clang::RecordType>())
+    return ConvertRecord(rt);
+
+  // Simple derived types (a reference or pointer created by the parser itself,
+  // e.g. the `T &` VarDecls we synthesize for locals or the result
+  // synthesizer's pointer wrappers) aren't in the map. Reconstruct them.
+  return ConvertDerived(qt);
+}
+
+CompilerType ClangTypeConverter::ConvertViaReverseMap(clang::QualType qt,
+                                                      bool &found) {
+  found = false;
   auto direct = m_generator.m_reverse.find(qt.getAsOpaquePtr());
   auto find = direct;
   // A typedef the user named through a qualifier (e.g. `GlobalTypedef::V`) is
@@ -81,235 +119,221 @@ CompilerType ClangTypeConverter::Convert(clang::QualType qt) {
   }
   if (find == m_generator.m_reverse.end())
     find = m_generator.m_reverse.find(qt.getCanonicalType().getAsOpaquePtr());
-  if (find != m_generator.m_reverse.end()) {
-    // If this record was only forward-declared in its own module but we
-    // completed it from another module's definition, return that complete
-    // definition (carrying its defining module's TypeSystemCpp) so the result
-    // can be sized. This only fires for a record used by value (the one whose
-    // layout was needed and thus populated the map), never for a type reached
-    // solely through a pointer -- preserving lazy completion.
-    if (auto redirect = m_generator.m_cross_module_complete.find(find->second);
-        redirect != m_generator.m_cross_module_complete.end())
-      return redirect->second;
-
-    // Map the recovered type into m_target (the scratch TypeSystemCpp that
-    // owns expression result/persistent types). Keeping result types in the
-    // scratch TS -- rather than their parsing module's TS -- means a type
-    // reachable only through a pointer in the result stays a forward
-    // declaration (it has no SymbolFile in the scratch TS to complete it),
-    // matching the lazy-completion contract.
-    CompilerType mapped = m_target.GetCompilerType(find->second);
-
-    // The parser may have kept elaborated/spelling sugar around the type the
-    // user wrote (e.g. `::Struct`, `$V< ::Struct>`). It only reached us via the
-    // canonical fallback (its own opaque pointer wasn't in the map), which means
-    // the spelling differs from the canonical type. Preserve that spelling as
-    // pure display sugar, mirroring TypeSystemClang: the display name shows
-    // `::Struct` while the canonical type name stays `Struct` so name-based
-    // formatters still match.
-    if (mapped && direct == m_generator.m_reverse.end() &&
-        qt.getAsOpaquePtr() != qt.getCanonicalType().getAsOpaquePtr()) {
-      std::string spelling = qt.getAsString(m_ast.getPrintingPolicy());
-      if (!spelling.empty())
-        return cpp_typesystem::Builder(m_target).CreateElaboratedType(
-            ConstString(spelling), mapped);
-    }
-    return mapped;
-  }
-
-  // Preserve cv-qualifiers the parser applied but that we didn't generate
-  // ourselves (e.g. the `const` of the `const char *` parameter in a function
-  // cast): map the unqualified type and re-wrap it.
-  if (qt.hasLocalQualifiers()) {
-    if (CompilerType inner = Convert(qt.getLocalUnqualifiedType()))
-      return cpp_typesystem::Builder(m_target).CreateCVQualifiedType(
-          inner, qt.isLocalConstQualified(), qt.isLocalVolatileQualified());
+  if (find == m_generator.m_reverse.end())
     return {};
-  }
 
-  // Builtin types (int, unsigned long, bool, ...) the parser created on its own
-  // -- e.g. the result type of `1 + 1`, a `sizeof` expression, or a cast -- are
-  // never in the reverse map because we didn't generate them. Map them onto the
-  // corresponding TypeSystemCpp builtin so the result type can be sized.
-  if (const auto *bt = qt->getAs<clang::BuiltinType>()) {
-    lldb::BasicType basic = lldb::eBasicTypeInvalid;
-    switch (bt->getKind()) {
-    case clang::BuiltinType::Void:
-      basic = lldb::eBasicTypeVoid;
-      break;
-    case clang::BuiltinType::Bool:
-      basic = lldb::eBasicTypeBool;
-      break;
-    case clang::BuiltinType::Char_U:
-    case clang::BuiltinType::Char_S:
-      basic = lldb::eBasicTypeChar;
-      break;
-    case clang::BuiltinType::UChar:
-      basic = lldb::eBasicTypeUnsignedChar;
-      break;
-    case clang::BuiltinType::SChar:
-      basic = lldb::eBasicTypeSignedChar;
-      break;
-    case clang::BuiltinType::WChar_U:
-    case clang::BuiltinType::WChar_S:
-      basic = lldb::eBasicTypeWChar;
-      break;
-    case clang::BuiltinType::Char8:
-      basic = lldb::eBasicTypeChar8;
-      break;
-    case clang::BuiltinType::Char16:
-      basic = lldb::eBasicTypeChar16;
-      break;
-    case clang::BuiltinType::Char32:
-      basic = lldb::eBasicTypeChar32;
-      break;
-    case clang::BuiltinType::Short:
-      basic = lldb::eBasicTypeShort;
-      break;
-    case clang::BuiltinType::UShort:
-      basic = lldb::eBasicTypeUnsignedShort;
-      break;
-    case clang::BuiltinType::Int:
-      basic = lldb::eBasicTypeInt;
-      break;
-    case clang::BuiltinType::UInt:
-      basic = lldb::eBasicTypeUnsignedInt;
-      break;
-    case clang::BuiltinType::Long:
-      basic = lldb::eBasicTypeLong;
-      break;
-    case clang::BuiltinType::ULong:
-      basic = lldb::eBasicTypeUnsignedLong;
-      break;
-    case clang::BuiltinType::LongLong:
-      basic = lldb::eBasicTypeLongLong;
-      break;
-    case clang::BuiltinType::ULongLong:
-      basic = lldb::eBasicTypeUnsignedLongLong;
-      break;
-    case clang::BuiltinType::Int128:
-      basic = lldb::eBasicTypeInt128;
-      break;
-    case clang::BuiltinType::UInt128:
-      basic = lldb::eBasicTypeUnsignedInt128;
-      break;
-    case clang::BuiltinType::Float:
-      basic = lldb::eBasicTypeFloat;
-      break;
-    case clang::BuiltinType::Double:
-      basic = lldb::eBasicTypeDouble;
-      break;
-    case clang::BuiltinType::LongDouble:
-      basic = lldb::eBasicTypeLongDouble;
-      break;
-    default:
-      break;
-    }
-    if (basic != lldb::eBasicTypeInvalid)
-      return m_target.GetBasicTypeFromAST(basic);
-  }
+  found = true;
 
-  // A record type the parser defined itself (e.g. a `struct Test { ... };`
-  // written directly in the expression source) has no cpp counterpart and so
-  // isn't in the reverse map. Rebuild an equivalent cpp record in m_target from
-  // the clang record's layout so the expression result can be sized and its
-  // members read.
-  if (const auto *rt = qt->getAs<clang::RecordType>()) {
-    clang::RecordDecl *decl = rt->getDecl();
-    clang::RecordDecl *rd = decl->getDefinition();
-    if (rd && rd->isCompleteDefinition()) {
-      const clang::ASTRecordLayout &layout = m_ast.getASTRecordLayout(rd);
-      std::string name = rd->getNameAsString();
-      cpp_typesystem::Builder builder(m_target);
-      CompilerType record = builder.CreateRecordType(
-          ConstString(name), m_ast.getTypeSizeInChars(qt).getQuantity(),
-          /*is_cpp_class=*/llvm::isa<clang::CXXRecordDecl>(rd),
-          /*is_union=*/rd->isUnion());
-      auto *cpp_record = llvm::cast<ct::RecordType>(
-          static_cast<ct::Type *>(record.GetOpaqueQualType()));
-      // Base classes (C++ records only). The parser-defined record's layout is
-      // complete here, so use the concrete base offsets from it directly (unlike
-      // the DWARF path, where a virtual base has no constant offset). Emit the
-      // direct bases in declaration order (matching TypeSystemClang's child
-      // order), tagging each with its virtuality and offset from the layout.
-      auto *cpp_class = llvm::dyn_cast<ct::ClassType>(cpp_record);
-      if (const auto *cxx = llvm::dyn_cast<clang::CXXRecordDecl>(rd);
-          cxx && cpp_class) {
-        for (const clang::CXXBaseSpecifier &base : cxx->bases()) {
-          const auto *base_rd = base.getType()->getAsCXXRecordDecl();
-          if (!base_rd)
-            continue;
-          CompilerType base_type = Convert(base.getType());
-          if (!base_type)
-            return {};
-          const bool is_virtual = base.isVirtual();
-          clang::CharUnits off = is_virtual
-                                     ? layout.getVBaseClassOffset(base_rd)
-                                     : layout.getBaseClassOffset(base_rd);
-          builder.AddBaseClass(
-              *cpp_class,
-              static_cast<ct::Type *>(base_type.GetOpaqueQualType()),
-              off.getQuantity(), is_virtual);
-        }
-      }
-      unsigned field_idx = 0;
-      for (const clang::FieldDecl *fd : rd->fields()) {
-        CompilerType field_type = Convert(fd->getType());
-        if (!field_type)
+  // If this record was only forward-declared in its own module but we
+  // completed it from another module's definition, return that complete
+  // definition (carrying its defining module's TypeSystemCpp) so the result
+  // can be sized. This only fires for a record used by value (the one whose
+  // layout was needed and thus populated the map), never for a type reached
+  // solely through a pointer -- preserving lazy completion.
+  if (auto redirect = m_generator.m_cross_module_complete.find(find->second);
+      redirect != m_generator.m_cross_module_complete.end())
+    return redirect->second;
+
+  // Map the recovered type into m_target (the scratch TypeSystemCpp that
+  // owns expression result/persistent types). Keeping result types in the
+  // scratch TS -- rather than their parsing module's TS -- means a type
+  // reachable only through a pointer in the result stays a forward
+  // declaration (it has no SymbolFile in the scratch TS to complete it),
+  // matching the lazy-completion contract.
+  CompilerType mapped = m_target.GetCompilerType(find->second);
+
+  // The parser may have kept elaborated/spelling sugar around the type the
+  // user wrote (e.g. `::Struct`, `$V< ::Struct>`). It only reached us via the
+  // canonical fallback (its own opaque pointer wasn't in the map), which means
+  // the spelling differs from the canonical type. Preserve that spelling as
+  // pure display sugar, mirroring TypeSystemClang: the display name shows
+  // `::Struct` while the canonical type name stays `Struct` so name-based
+  // formatters still match.
+  if (mapped && direct == m_generator.m_reverse.end() &&
+      qt.getAsOpaquePtr() != qt.getCanonicalType().getAsOpaquePtr()) {
+    std::string spelling = qt.getAsString(m_ast.getPrintingPolicy());
+    if (!spelling.empty())
+      return cpp_typesystem::Builder(m_target).CreateElaboratedType(
+          ConstString(spelling), mapped);
+  }
+  return mapped;
+}
+
+CompilerType ClangTypeConverter::ConvertBuiltin(const clang::BuiltinType *bt) {
+  lldb::BasicType basic = lldb::eBasicTypeInvalid;
+  switch (bt->getKind()) {
+  case clang::BuiltinType::Void:
+    basic = lldb::eBasicTypeVoid;
+    break;
+  case clang::BuiltinType::Bool:
+    basic = lldb::eBasicTypeBool;
+    break;
+  case clang::BuiltinType::Char_U:
+  case clang::BuiltinType::Char_S:
+    basic = lldb::eBasicTypeChar;
+    break;
+  case clang::BuiltinType::UChar:
+    basic = lldb::eBasicTypeUnsignedChar;
+    break;
+  case clang::BuiltinType::SChar:
+    basic = lldb::eBasicTypeSignedChar;
+    break;
+  case clang::BuiltinType::WChar_U:
+  case clang::BuiltinType::WChar_S:
+    basic = lldb::eBasicTypeWChar;
+    break;
+  case clang::BuiltinType::Char8:
+    basic = lldb::eBasicTypeChar8;
+    break;
+  case clang::BuiltinType::Char16:
+    basic = lldb::eBasicTypeChar16;
+    break;
+  case clang::BuiltinType::Char32:
+    basic = lldb::eBasicTypeChar32;
+    break;
+  case clang::BuiltinType::Short:
+    basic = lldb::eBasicTypeShort;
+    break;
+  case clang::BuiltinType::UShort:
+    basic = lldb::eBasicTypeUnsignedShort;
+    break;
+  case clang::BuiltinType::Int:
+    basic = lldb::eBasicTypeInt;
+    break;
+  case clang::BuiltinType::UInt:
+    basic = lldb::eBasicTypeUnsignedInt;
+    break;
+  case clang::BuiltinType::Long:
+    basic = lldb::eBasicTypeLong;
+    break;
+  case clang::BuiltinType::ULong:
+    basic = lldb::eBasicTypeUnsignedLong;
+    break;
+  case clang::BuiltinType::LongLong:
+    basic = lldb::eBasicTypeLongLong;
+    break;
+  case clang::BuiltinType::ULongLong:
+    basic = lldb::eBasicTypeUnsignedLongLong;
+    break;
+  case clang::BuiltinType::Int128:
+    basic = lldb::eBasicTypeInt128;
+    break;
+  case clang::BuiltinType::UInt128:
+    basic = lldb::eBasicTypeUnsignedInt128;
+    break;
+  case clang::BuiltinType::Float:
+    basic = lldb::eBasicTypeFloat;
+    break;
+  case clang::BuiltinType::Double:
+    basic = lldb::eBasicTypeDouble;
+    break;
+  case clang::BuiltinType::LongDouble:
+    basic = lldb::eBasicTypeLongDouble;
+    break;
+  default:
+    break;
+  }
+  if (basic != lldb::eBasicTypeInvalid)
+    return m_target.GetBasicTypeFromAST(basic);
+  return {};
+}
+
+CompilerType ClangTypeConverter::ConvertRecord(const clang::RecordType *rt) {
+  clang::RecordDecl *decl = rt->getDecl();
+  clang::RecordDecl *rd = decl->getDefinition();
+  if (rd && rd->isCompleteDefinition()) {
+    clang::QualType qt(rt, 0);
+    const clang::ASTRecordLayout &layout = m_ast.getASTRecordLayout(rd);
+    std::string name = rd->getNameAsString();
+    cpp_typesystem::Builder builder(m_target);
+    CompilerType record = builder.CreateRecordType(
+        ConstString(name), m_ast.getTypeSizeInChars(qt).getQuantity(),
+        /*is_cpp_class=*/llvm::isa<clang::CXXRecordDecl>(rd),
+        /*is_union=*/rd->isUnion());
+    auto *cpp_record = llvm::cast<ct::RecordType>(
+        static_cast<ct::Type *>(record.GetOpaqueQualType()));
+    // Base classes (C++ records only). The parser-defined record's layout is
+    // complete here, so use the concrete base offsets from it directly (unlike
+    // the DWARF path, where a virtual base has no constant offset). Emit the
+    // direct bases in declaration order (matching TypeSystemClang's child
+    // order), tagging each with its virtuality and offset from the layout.
+    auto *cpp_class = llvm::dyn_cast<ct::ClassType>(cpp_record);
+    if (const auto *cxx = llvm::dyn_cast<clang::CXXRecordDecl>(rd);
+        cxx && cpp_class) {
+      for (const clang::CXXBaseSpecifier &base : cxx->bases()) {
+        const auto *base_rd = base.getType()->getAsCXXRecordDecl();
+        if (!base_rd)
+          continue;
+        CompilerType base_type = Convert(base.getType());
+        if (!base_type)
           return {};
-        uint64_t bit_offset = layout.getFieldOffset(field_idx++);
-        builder.AddField(
-            *cpp_record, builder.GetIdentifier(fd->getNameAsString()),
-            static_cast<ct::Type *>(field_type.GetOpaqueQualType()),
-            bit_offset / 8);
+        const bool is_virtual = base.isVirtual();
+        clang::CharUnits off = is_virtual ? layout.getVBaseClassOffset(base_rd)
+                                          : layout.getBaseClassOffset(base_rd);
+        builder.AddBaseClass(
+            *cpp_class, static_cast<ct::Type *>(base_type.GetOpaqueQualType()),
+            off.getQuantity(), is_virtual);
       }
-      builder.SetRecordComplete(*cpp_record);
-      return record;
     }
-    // A record the parser only forward-declared (e.g. `struct S;` written in
-    // the expression, then used through a pointer such as `S *`). It has no
-    // definition and thus no layout/size, but we still need a cpp record to
-    // build a `S *` pointee out of. Rebuild it as an incomplete record (no
-    // byte size, no SetRecordComplete) so the pointer can be sized/stored.
-    std::string name = decl->getNameAsString();
-    return cpp_typesystem::Builder(m_target).CreateRecordType(
-        ConstString(name), /*byte_size=*/std::nullopt,
-        /*is_cpp_class=*/llvm::isa<clang::CXXRecordDecl>(decl),
-        /*is_union=*/decl->isUnion());
+    unsigned field_idx = 0;
+    for (const clang::FieldDecl *fd : rd->fields()) {
+      CompilerType field_type = Convert(fd->getType());
+      if (!field_type)
+        return {};
+      uint64_t bit_offset = layout.getFieldOffset(field_idx++);
+      builder.AddField(
+          *cpp_record, builder.GetIdentifier(fd->getNameAsString()),
+          static_cast<ct::Type *>(field_type.GetOpaqueQualType()),
+          bit_offset / 8);
+    }
+    builder.SetRecordComplete(*cpp_record);
+    return record;
   }
+  // A record the parser only forward-declared (e.g. `struct S;` written in
+  // the expression, then used through a pointer such as `S *`). It has no
+  // definition and thus no layout/size, but we still need a cpp record to
+  // build a `S *` pointee out of. Rebuild it as an incomplete record (no
+  // byte size, no SetRecordComplete) so the pointer can be sized/stored.
+  std::string name = decl->getNameAsString();
+  return cpp_typesystem::Builder(m_target).CreateRecordType(
+      ConstString(name), /*byte_size=*/std::nullopt,
+      /*is_cpp_class=*/llvm::isa<clang::CXXRecordDecl>(decl),
+      /*is_union=*/decl->isUnion());
+}
 
-  // Simple derived types (a reference or pointer created by the parser itself,
-  // e.g. the `T &` VarDecls we synthesize for locals or the result
-  // synthesizer's pointer wrappers) aren't in the map. Reconstruct them in
-  // m_target from their pointee, which is looked up recursively.
-  if (const auto *objc_ptr = qt->getAs<clang::ObjCObjectPointerType>()) {
-    // The built-in `id` / `Class` pseudo-types (an ObjCObjectPointerType whose
-    // object type has no backing interface). We generate these from the `id` /
-    // `Class` typedefs (see GenerateType), so they aren't in the reverse map;
-    // rebuild them as a pointer to the opaque `objc_object` / `objc_class`
-    // record, matching how TypeSystemCpp models `id` (see IsPossibleDynamicType
-    // / the DWARF parser).
-    if (objc_ptr->isObjCIdType() || objc_ptr->isObjCClassType()) {
-      cpp_typesystem::Builder builder(m_target);
-      const bool is_class = objc_ptr->isObjCClassType();
-      CompilerType opaque = builder.CreateRecordType(
-          ConstString(is_class ? "objc_class" : "objc_object"),
-          /*byte_size=*/std::nullopt, /*is_cpp_class=*/false,
-          /*is_union=*/false);
-      CompilerType ptr = builder.CreatePointerType(opaque);
-      // `id` / `Class` are typedefs over `objc_object *` / `objc_class *`;
-      // preserve that spelling so an expression result prints as `(id)` /
-      // `(Class)` rather than the underlying `objc_object *` (matching how the
-      // DWARF parser models `id` and TypeSystemClang's result type).
-      return builder.CreateTypedefType(ConstString(is_class ? "Class" : "id"),
-                                       ptr);
-    }
-    // A pointer to an Objective-C class (`Foo *`) the parser formed. Map the
-    // pointee interface and wrap it in a cpp pointer.
-    if (CompilerType pointee = Convert(objc_ptr->getPointeeType()))
-      return cpp_typesystem::Builder(m_target).CreatePointerType(pointee);
-    return {};
+CompilerType ClangTypeConverter::ConvertObjCObjectPointer(
+    const clang::ObjCObjectPointerType *objc_ptr) {
+  // The built-in `id` / `Class` pseudo-types (an ObjCObjectPointerType whose
+  // object type has no backing interface). We generate these from the `id` /
+  // `Class` typedefs (see GenerateType), so they aren't in the reverse map;
+  // rebuild them as a pointer to the opaque `objc_object` / `objc_class`
+  // record, matching how TypeSystemCpp models `id` (see IsPossibleDynamicType
+  // / the DWARF parser).
+  if (objc_ptr->isObjCIdType() || objc_ptr->isObjCClassType()) {
+    cpp_typesystem::Builder builder(m_target);
+    const bool is_class = objc_ptr->isObjCClassType();
+    CompilerType opaque = builder.CreateRecordType(
+        ConstString(is_class ? "objc_class" : "objc_object"),
+        /*byte_size=*/std::nullopt, /*is_cpp_class=*/false,
+        /*is_union=*/false);
+    CompilerType ptr = builder.CreatePointerType(opaque);
+    // `id` / `Class` are typedefs over `objc_object *` / `objc_class *`;
+    // preserve that spelling so an expression result prints as `(id)` /
+    // `(Class)` rather than the underlying `objc_object *` (matching how the
+    // DWARF parser models `id` and TypeSystemClang's result type).
+    return builder.CreateTypedefType(ConstString(is_class ? "Class" : "id"),
+                                     ptr);
   }
+  // A pointer to an Objective-C class (`Foo *`) the parser formed. Map the
+  // pointee interface and wrap it in a cpp pointer.
+  if (CompilerType pointee = Convert(objc_ptr->getPointeeType()))
+    return cpp_typesystem::Builder(m_target).CreatePointerType(pointee);
+  return {};
+}
+
+CompilerType ClangTypeConverter::ConvertDerived(clang::QualType qt) {
+  if (const auto *objc_ptr = qt->getAs<clang::ObjCObjectPointerType>())
+    return ConvertObjCObjectPointer(objc_ptr);
   if (qt->isReferenceType()) {
     if (CompilerType pointee = Convert(qt->getPointeeType()))
       return cpp_typesystem::Builder(m_target).CreateReferenceType(
