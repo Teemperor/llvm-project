@@ -34,15 +34,12 @@ CompilerType ClangTypeConverter::Convert(clang::QualType qt) {
 
   // A deduced `auto`/`decltype(auto)` type (once deduction has run) wraps the
   // real deduced type. We never generate `AutoType`/`DeducedType` nodes, so they
-  // aren't in the reverse map; map the deduced type instead so the result can be
+  // aren't in the reverse map; peel to the deduced type so the result can be
   // sized. Unlike `typeof`/`decltype` below we don't preserve `auto` as display
   // sugar -- the deduced type (e.g. `int`, `long`, a record) is the result type.
-  if (const auto *deduced = qt->getContainedDeducedType()) {
-    clang::QualType resolved = deduced->getDeducedType();
-    if (resolved.isNull())
-      return {};
-    return Convert(resolved);
-  }
+  qt = Desugar(qt);
+  if (qt.isNull())
+    return {};
 
   // `typeof`/`decltype` sugar (`typeof (i)`, `__typeof__(i)`, `decltype(i)`)
   // wraps a resolved underlying type. None of these sugar nodes are in the
@@ -96,6 +93,12 @@ CompilerType ClangTypeConverter::Convert(clang::QualType qt) {
   // e.g. the `T &` VarDecls we synthesize for locals or the result
   // synthesizer's pointer wrappers) aren't in the map. Reconstruct them.
   return ConvertDerived(qt);
+}
+
+clang::QualType ClangTypeConverter::Desugar(clang::QualType qt) {
+  if (const auto *deduced = qt->getContainedDeducedType())
+    return deduced->getDeducedType();
+  return qt;
 }
 
 CompilerType ClangTypeConverter::ConvertViaReverseMap(clang::QualType qt,
