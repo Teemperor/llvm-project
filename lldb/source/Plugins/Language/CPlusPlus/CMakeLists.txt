@@ -67,6 +67,7 @@ add_lldb_library(lldbPluginCPlusPlusLanguage PLUGIN
     lldbValueObject
     lldbPluginCPPRuntime
     lldbPluginTypeSystemClang
+    lldbPluginTypeSystemCpp
 )
 
 add_dependencies(lldbPluginCPlusPlusLanguage

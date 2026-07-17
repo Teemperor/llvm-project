@@ -3536,8 +3536,20 @@ CompilerType TypeSystemCpp::GetTypeTemplateArgument(opaque_compiler_type_t type,
   GetCompleteType(type);
   if (auto *record = GetRecordForTemplateArgs(GetCppType(type)))
     if (const cpp_typesystem::TemplateArgument *arg =
-            record->GetTemplateArgumentAtIndex(idx))
+            record->GetTemplateArgumentAtIndex(idx)) {
+      if (arg->kind != lldb::eTemplateArgumentKindType)
+        return CompilerType();
+      // A `void` type-kind argument (e.g. `coroutine_handle<void>`) has a null
+      // TypeRef: DWARF encodes `void` by omitting DW_AT_type on the
+      // DW_TAG_template_type_parameter DIE, and TypeRef's null state normally
+      // means "no argument". Disambiguate using the kind (already confirmed
+      // Type above) by returning the actual `void` builtin rather than an
+      // invalid CompilerType, matching TypeSystemClang (whose `void`
+      // QualType is always valid).
+      if (!arg->type.Get())
+        return cpp_typesystem::Builder(*this).GetVoidType();
       return GetCompilerType(arg->type.Get());
+    }
   return CompilerType();
 }
 
