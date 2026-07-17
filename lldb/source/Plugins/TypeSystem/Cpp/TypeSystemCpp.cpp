@@ -150,6 +150,22 @@ static void AppendNamespacePrefix(const cpp_typesystem::Namespace *ns,
   }
 }
 
+// Like AppendNamespacePrefix, but for the fully-qualified (non-display) name:
+// keeps inline namespaces (e.g. `std::__1::`), matching the raw DWARF
+// spelling that data formatters key on. Used when reconstructing a name from
+// the modeled template arguments (see NeedsTemplateNameReconstruction)
+// instead of taking the DWARF spelling verbatim.
+static void AppendQualifiedNamespacePrefix(const cpp_typesystem::Namespace *ns,
+                                           std::string &out) {
+  if (!ns)
+    return;
+  AppendQualifiedNamespacePrefix(ns->GetParent(), out);
+  if (!ns->IsAnonymous()) {
+    out += ns->GetName().GetName().str();
+    out += "::";
+  }
+}
+
 // Count the enclosing namespaces of `ns` (including inline ones), i.e. how many
 // leading scope components of a qualified name are namespaces rather than
 // enclosing classes.
@@ -210,7 +226,8 @@ static std::string BuildUnnamedTagName(cpp_typesystem::Type *t) {
 }
 
 static std::string BuildDisplayName(cpp_typesystem::Type *t,
-                                    bool hide_default_args = true);
+                                    bool hide_default_args = true,
+                                    bool keep_inline_namespaces = false);
 
 // Render an ARMv8.3 pointer-auth qualifier as `__ptrauth(key,addr_disc,extra)`,
 // matching clang's TypePrinter / TypeSystemClang spelling.
@@ -243,14 +260,20 @@ FindPtrAuthType(lldb::opaque_compiler_type_t type) {
 // a plain function, "(*)" for a function pointer, "(&)" for a reference) between
 // the return type and the parameter list: `int (*)(const char *)`.
 static std::string BuildFunctionName(cpp_typesystem::FunctionType *fn,
-                                     llvm::StringRef decl) {
-  std::string ret = fn->GetReturnType() ? BuildDisplayName(fn->GetReturnType())
-                                        : std::string("void");
+                                     llvm::StringRef decl,
+                                     bool keep_inline_namespaces = false) {
+  std::string ret = fn->GetReturnType()
+                        ? BuildDisplayName(fn->GetReturnType(),
+                                           /*hide_default_args=*/true,
+                                           keep_inline_namespaces)
+                        : std::string("void");
   std::string params;
   for (uint32_t i = 0, e = fn->GetNumParameters(); i != e; ++i) {
     if (!params.empty())
       params += ", ";
-    params += BuildDisplayName(fn->GetParameterAtIndex(i));
+    params += BuildDisplayName(fn->GetParameterAtIndex(i),
+                               /*hide_default_args=*/true,
+                               keep_inline_namespaces);
   }
   if (fn->IsVariadic())
     params += params.empty() ? "..." : ", ...";
@@ -339,13 +362,18 @@ BuildFloatArgName(const cpp_typesystem::TemplateArgument &arg,
 // Render a single template argument for the display name. `hide_default_args`
 // is threaded into any nested type arguments so a fully-qualified name keeps
 // defaulted template arguments while a simplified display name drops them.
+// `keep_inline_namespaces` likewise threads through to nested type arguments:
+// set when reconstructing the fully-qualified (non-display) name, which must
+// keep inline namespaces (e.g. `std::__1::`) since data formatters key on
+// that raw spelling.
 static std::string
 BuildTemplateArgName(const cpp_typesystem::TemplateArgument &arg,
-                     bool hide_default_args) {
+                     bool hide_default_args,
+                     bool keep_inline_namespaces = false) {
   if (arg.kind == lldb::eTemplateArgumentKindType)
-    return arg.type.Get()
-               ? BuildDisplayName(arg.type.Get(), hide_default_args)
-               : std::string("void");
+    return arg.type.Get() ? BuildDisplayName(arg.type.Get(), hide_default_args,
+                                             keep_inline_namespaces)
+                          : std::string("void");
   // A template-template argument (e.g. `T1` in `C<float, T1>`) is kept by name
   // only; print that name.
   if (arg.kind == lldb::eTemplateArgumentKindTemplate)
@@ -359,7 +387,8 @@ BuildTemplateArgName(const cpp_typesystem::TemplateArgument &arg,
     // (which uses the matching enumerator's name). If no enumerator matches,
     // clang falls back to the cast form `(EnumName)value`.
     if (auto *enum_type = llvm::dyn_cast<cpp_typesystem::EnumType>(value_type)) {
-      std::string enum_name = BuildDisplayName(enum_type, hide_default_args);
+      std::string enum_name =
+          BuildDisplayName(enum_type, hide_default_args, keep_inline_namespaces);
       for (const cpp_typesystem::Enumerator &e : enum_type->GetEnumerators()) {
         if (e.value == arg.integral_value)
           return enum_name + "::" + e.name.GetName().str();
@@ -387,7 +416,8 @@ BuildTemplateArgName(const cpp_typesystem::TemplateArgument &arg,
     // value to print; clang falls back to printing the argument's type name.
     if (llvm::isa<cpp_typesystem::PointerType>(value_type) ||
         llvm::isa<cpp_typesystem::ReferenceType>(value_type))
-      return BuildDisplayName(value_type, hide_default_args);
+      return BuildDisplayName(value_type, hide_default_args,
+                              keep_inline_namespaces);
   }
   // Other integral arguments: print the numeric value, honoring signedness.
   bool is_signed =
@@ -402,7 +432,8 @@ BuildTemplateArgName(const cpp_typesystem::TemplateArgument &arg,
 // model. `hide_default_args` drops defaulted arguments (for the simplified
 // display name) while keeping them for the fully-qualified name.
 static std::string BuildTemplateArgList(cpp_typesystem::RecordType *rec,
-                                        bool hide_default_args) {
+                                        bool hide_default_args,
+                                        bool keep_inline_namespaces = false) {
   std::string args;
   for (uint32_t i = 0; i < rec->GetNumTemplateArguments(); ++i) {
     const cpp_typesystem::TemplateArgument *arg =
@@ -411,7 +442,7 @@ static std::string BuildTemplateArgList(cpp_typesystem::RecordType *rec,
       continue;
     if (!args.empty())
       args += ", ";
-    args += BuildTemplateArgName(*arg, hide_default_args);
+    args += BuildTemplateArgName(*arg, hide_default_args, keep_inline_namespaces);
   }
   // No (non-default) arguments, e.g. a specialization over an empty pack. Clang
   // still prints an empty argument list: `TypePack<>`.
@@ -424,18 +455,43 @@ static std::string BuildTemplateArgList(cpp_typesystem::RecordType *rec,
   return "<" + args + closer;
 }
 
-// True if any of the record's non-type template arguments has an enum type.
-// Such arguments are the one case where the DWARF producer's spelling of the
-// instantiation name (`Foo<(EnumType)0>`) diverges from clang's
-// (`Foo<EnumType::Member>`), so the name must be reconstructed for them.
-static bool
-HasEnumTypedTemplateArgument(const cpp_typesystem::RecordType &rec) {
-  for (uint32_t i = 0, e = rec.GetNumTemplateArguments(); i != e; ++i) {
+// True if \p rec is a class-template instantiation whose name needs to be
+// reconstructed from the modeled template arguments rather than taken
+// verbatim from the DWARF producer's spelling of the instantiation name. Two
+// cases diverge from clang's own printing (TemplateArgument::print, which
+// BuildTemplateArgName mirrors):
+//  - an enum-typed argument: the DWARF producer renders the cast form
+//    `Foo<(EnumType)0>`, clang prints the enumerator spelling
+//    `Foo<EnumType::Member>`.
+//  - any other non-`int` integral argument (e.g. `long`, `unsigned`): the
+//    DWARF producer's DW_AT_name suffixes the literal to disambiguate its
+//    type (`Foo<1L>`, `Foo<1U>`), which clang's printer never does (`Foo<1>`)
+//    because the type is already known from context.
+// This must recurse into type-kind template arguments (`Foo<Bar<1L>>`):
+// `Bar<1L>`'s own spelling embeds the divergent argument, so `Foo`'s DWARF
+// name is wrong even though none of `Foo`'s own template arguments is
+// integral.
+static bool NeedsTemplateNameReconstruction(cpp_typesystem::Type *t) {
+  auto *rec = llvm::dyn_cast_or_null<cpp_typesystem::RecordType>(t);
+  if (!rec || !rec->IsTemplateInstantiation())
+    return false;
+  for (uint32_t i = 0, e = rec->GetNumTemplateArguments(); i != e; ++i) {
     const cpp_typesystem::TemplateArgument *arg =
-        rec.GetTemplateArgumentAtIndex(i);
-    if (arg->kind == lldb::eTemplateArgumentKindIntegral &&
-        llvm::isa_and_nonnull<cpp_typesystem::EnumType>(arg->type.Get()))
+        rec->GetTemplateArgumentAtIndex(i);
+    if (arg->kind == lldb::eTemplateArgumentKindType) {
+      if (NeedsTemplateNameReconstruction(arg->type.Get()))
+        return true;
+      continue;
+    }
+    if (arg->kind != lldb::eTemplateArgumentKindIntegral)
+      continue;
+    cpp_typesystem::Type *value_type = arg->type.Get();
+    if (llvm::isa_and_nonnull<cpp_typesystem::EnumType>(value_type))
       return true;
+    if (auto *builtin =
+            llvm::dyn_cast_or_null<cpp_typesystem::BuiltinType>(value_type))
+      if (builtin->GetBuiltinKind() != cpp_typesystem::BuiltinKind::Int)
+        return true;
   }
   return false;
 }
@@ -444,7 +500,8 @@ HasEnumTypedTemplateArgument(const cpp_typesystem::RecordType &rec) {
 // its declaring namespaces (inline ones skipped) and, for a class-template
 // instantiation, its template arguments with defaulted ones hidden.
 static std::string BuildDisplayName(cpp_typesystem::Type *t,
-                                    bool hide_default_args) {
+                                    bool hide_default_args,
+                                    bool keep_inline_namespaces) {
   using namespace cpp_typesystem;
   if (!t)
     return "";
@@ -458,7 +515,8 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
       uint64_t n = vec->GetNumElements().value_or(0);
       return llvm::formatv("{0} __attribute__((ext_vector_type({1})))",
                            BuildDisplayName(vec->GetElementType(),
-                                            hide_default_args),
+                                            hide_default_args,
+                                            keep_inline_namespaces),
                            n)
           .str();
     }
@@ -476,15 +534,18 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
         dims += "[]";
       cur = array->GetElementType();
     }
-    return BuildDisplayName(cur, hide_default_args) + dims;
+    return BuildDisplayName(cur, hide_default_args, keep_inline_namespaces) +
+           dims;
   }
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
     cpp_typesystem::Type *pointee = ptr->GetPointeeType();
     if (auto *fn = llvm::dyn_cast_or_null<FunctionType>(pointee))
-      return BuildFunctionName(fn, ptr->IsBlockPointer() ? "(^)" : "(*)");
-    std::string pointee_name = pointee
-                                   ? BuildDisplayName(pointee, hide_default_args)
-                                   : std::string("void");
+      return BuildFunctionName(fn, ptr->IsBlockPointer() ? "(^)" : "(*)",
+                               keep_inline_namespaces);
+    std::string pointee_name =
+        pointee ? BuildDisplayName(pointee, hide_default_args,
+                                   keep_inline_namespaces)
+                : std::string("void");
     // Clang omits the space between a pointer/reference sigil and a following
     // '*' (e.g. "int **", "void **", "int &*"), but keeps it after a plain
     // type name ("int *").
@@ -495,21 +556,24 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
   if (auto *ref = llvm::dyn_cast<ReferenceType>(t)) {
     cpp_typesystem::Type *pointee = ref->GetPointeeType();
     if (auto *fn = llvm::dyn_cast_or_null<FunctionType>(pointee))
-      return BuildFunctionName(fn, ref->IsRValue() ? "(&&)" : "(&)");
-    std::string pointee_name = pointee
-                                   ? BuildDisplayName(pointee, hide_default_args)
-                                   : std::string("void");
+      return BuildFunctionName(fn, ref->IsRValue() ? "(&&)" : "(&)",
+                               keep_inline_namespaces);
+    std::string pointee_name =
+        pointee ? BuildDisplayName(pointee, hide_default_args,
+                                   keep_inline_namespaces)
+                : std::string("void");
     const bool tight = !pointee_name.empty() &&
                        (pointee_name.back() == '*' || pointee_name.back() == '&');
     llvm::StringRef sigil = ref->IsRValue() ? "&&" : "&";
     return pointee_name + (tight ? sigil.str() : (" " + sigil.str()));
   }
   if (auto *fn = llvm::dyn_cast<FunctionType>(t))
-    return BuildFunctionName(fn, "");
+    return BuildFunctionName(fn, "", keep_inline_namespaces);
   if (auto *cx = llvm::dyn_cast<ComplexType>(t)) {
     std::string element = cx->GetElementType()
                               ? BuildDisplayName(cx->GetElementType(),
-                                                 hide_default_args)
+                                                 hide_default_args,
+                                                 keep_inline_namespaces)
                               : std::string("float");
     return "_Complex " + element;
   }
@@ -521,12 +585,13 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
       result += "volatile ";
     return result + (cv->GetUnderlyingType()
                          ? BuildDisplayName(cv->GetUnderlyingType(),
-                                            hide_default_args)
+                                            hide_default_args,
+                                            keep_inline_namespaces)
                          : "");
   }
   if (auto *pa = llvm::dyn_cast<PtrAuthType>(t)) {
-    std::string underlying =
-        BuildDisplayName(pa->GetUnderlyingType(), hide_default_args);
+    std::string underlying = BuildDisplayName(
+        pa->GetUnderlyingType(), hide_default_args, keep_inline_namespaces);
     std::string qualifier = BuildPtrAuthQualifier(pa);
     // Clang spells the qualifier as a declarator suffix on a pointer
     // (`int *__ptrauth(...)`) but as a prefix otherwise (`__ptrauth(...) intp`).
@@ -551,7 +616,10 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
   }
 
   std::string result;
-  AppendNamespacePrefix(t->GetDeclContext(), result);
+  if (keep_inline_namespaces)
+    AppendQualifiedNamespacePrefix(t->GetDeclContext(), result);
+  else
+    AppendNamespacePrefix(t->GetDeclContext(), result);
   AppendClassScopePrefix(t->GetName().GetName(), t->GetDeclContext(), result);
 
   // For a class-template instantiation we have modeled args, so reconstruct
@@ -563,7 +631,7 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
   auto *rec = llvm::dyn_cast<RecordType>(t);
   if (rec && rec->IsTemplateInstantiation()) {
     result += unqualified.substr(0, unqualified.find('<')).str();
-    result += BuildTemplateArgList(rec, hide_default_args);
+    result += BuildTemplateArgList(rec, hide_default_args, keep_inline_namespaces);
   } else {
     result += unqualified.str();
   }
@@ -1298,15 +1366,23 @@ bool TypeSystemCpp::HasPointerAuthQualifier(opaque_compiler_type_t type) {
 // (contains `<`), complete it so its modeled template arguments are available.
 // Building the reconstructed display name needs those arguments; without them
 // the raw DWARF spelling is used verbatim, which renders enum-typed non-type
-// arguments as `(EnumType)0` rather than the enumerator name.
+// arguments as `(EnumType)0` rather than the enumerator name. Recurses into
+// type-kind template arguments (`Foo<Bar<1L>>`): reconstructing `Foo`'s name
+// needs `Bar`'s own arguments too, since `Bar<1L>`'s spelling is embedded in
+// `Foo`'s DWARF name.
 void TypeSystemCpp::CompleteTemplateInstantiationForName(
     cpp_typesystem::Type *t) {
   auto *rec = llvm::dyn_cast_or_null<cpp_typesystem::RecordType>(t);
-  if (!rec || rec->IsComplete())
+  if (!rec || !rec->GetName().GetName().contains('<'))
     return;
-  if (!rec->GetName().GetName().contains('<'))
-    return;
-  GetCompleteType(rec);
+  if (!rec->IsComplete())
+    GetCompleteType(rec);
+  for (uint32_t i = 0, e = rec->GetNumTemplateArguments(); i != e; ++i) {
+    const cpp_typesystem::TemplateArgument *arg =
+        rec->GetTemplateArgumentAtIndex(i);
+    if (arg->kind == lldb::eTemplateArgumentKindType)
+      CompleteTemplateInstantiationForName(arg->type.Get());
+  }
 }
 
 ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
@@ -1456,16 +1532,18 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
   // fully-qualified name keeps defaulted arguments; only GetDisplayTypeName
   // drops them.
   if (auto *rec = llvm::dyn_cast<cpp_typesystem::RecordType>(t)) {
-    if (rec->IsTemplateInstantiation() &&
-        HasEnumTypedTemplateArgument(*rec)) {
+    if (NeedsTemplateNameReconstruction(rec)) {
       llvm::StringRef unqualified = t->GetUnqualifiedName().GetName();
       std::string base = unqualified.substr(0, unqualified.find('<')).str();
-      std::string args = BuildTemplateArgList(rec, /*hide_default_args=*/false);
+      std::string args = BuildTemplateArgList(rec, /*hide_default_args=*/false,
+                                              /*keep_inline_namespaces=*/true);
       if (BaseOnly)
         return ConstString(base + args);
-      // Fully-qualified: prefix the enclosing namespace/class scopes.
+      // Fully-qualified: prefix the enclosing namespace/class scopes, keeping
+      // inline namespaces (unlike the display name) since this is the raw
+      // spelling data formatters key on.
       std::string result;
-      AppendNamespacePrefix(t->GetDeclContext(), result);
+      AppendQualifiedNamespacePrefix(t->GetDeclContext(), result);
       AppendClassScopePrefix(t->GetName().GetName(), t->GetDeclContext(),
                              result);
       return ConstString(result + base + args);
