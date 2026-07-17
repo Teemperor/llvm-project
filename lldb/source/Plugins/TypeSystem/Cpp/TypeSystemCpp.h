@@ -11,6 +11,7 @@
 
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/TargetParser/Triple.h"
 
@@ -422,11 +423,35 @@ public:
 
   PersistentExpressionState *GetPersistentExpressionState() override;
 
+  /// Generic (language-agnostic) data formatters -- e.g. the ObjC NSError /
+  /// NSException / NSArray / NSDictionary formatters in
+  /// source/Plugins/Language/ObjC/ -- historically fabricate small helper
+  /// Clang types (a `void *`, or an internal struct like
+  /// `__lldb_autogen_nspair`) via `ScratchTypeSystemClang::GetForTarget()`.
+  /// That call finds nothing when TypeSystemCpp owns the target's
+  /// `eLanguageTypeC` scratch slot (there is no `ScratchTypeSystemClang` to
+  /// `dyn_cast` to). This provides a side channel: a persistent, lazily
+  /// created auxiliary TypeSystem cached on the `ScratchTypeSystemCpp`
+  /// itself, so those formatters keep working. Returned/stored as an opaque
+  /// `TypeSystemSP` rather than `TypeSystemClangSP` because this plugin must
+  /// not depend on the Clang TypeSystem plugin (lldbPluginTypeSystemClang
+  /// depends on lldbPluginTypeSystemCpp, not the reverse).
+  lldb::TypeSystemSP GetOrCreateAuxiliaryClangScratchAST(
+      llvm::function_ref<lldb::TypeSystemSP()> create_callback);
+  lldb::TypeSystemSP GetAuxiliaryClangScratchAST() const {
+    return m_aux_clang_scratch_ast_sp;
+  }
+
 private:
   lldb::TargetWP m_target_wp;
   /// Persistent variables ($0, $foo, ...) for expressions evaluated in this
   /// scratch context. Created lazily.
   std::unique_ptr<PersistentExpressionState> m_persistent_variables;
+  /// See GetOrCreateAuxiliaryClangScratchAST. Living inside this object means
+  /// it is naturally invalidated together with it (e.g. when the target's
+  /// scratch TypeSystem map is cleared on module changes).
+  std::mutex m_aux_clang_scratch_ast_mutex;
+  lldb::TypeSystemSP m_aux_clang_scratch_ast_sp;
 };
 
 } // namespace lldb_private
