@@ -141,6 +141,11 @@ static lldb::Encoding GetEncodingFromDWARF(uint64_t dw_ate) {
   case DW_ATE_boolean:
   case DW_ATE_unsigned:
   case DW_ATE_unsigned_char:
+  // char8_t/char16_t/char32_t are unsigned; Clang emits them as DW_ATE_UTF
+  // (and, historically, DW_ATE_UCS). Treat them as unsigned integers so they
+  // match the canonical builtin instances.
+  case DW_ATE_UTF:
+  case DW_ATE_UCS:
     return eEncodingUint;
   case DW_ATE_float:
     return eEncodingIEEE754;
@@ -232,6 +237,27 @@ TypeSP DWARFASTParserCpp::ParseBaseType(const DWARFDIE &die) {
 
   Declaration decl;
   return dwarf->MakeType(die.GetID(), name, byte_size, /*context=*/nullptr,
+                         LLDB_INVALID_UID, Type::eEncodingIsUID, decl,
+                         compiler_type, Type::ResolveState::Full);
+}
+
+TypeSP DWARFASTParserCpp::ParseUnspecifiedType(const DWARFDIE &die) {
+  // The only DW_TAG_unspecified_type LLDB models is `std::nullptr_t`
+  // (a.k.a. `decltype(nullptr)`), which Clang emits with that name and no
+  // DW_AT_type. Map it onto the canonical nullptr_t builtin.
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+  ConstString name(die.GetName());
+  llvm::StringRef n = name.GetStringRef();
+  if (n != "decltype(nullptr)" && n != "std::nullptr_t" && n != "nullptr_t")
+    return nullptr;
+
+  const uint64_t ptr_size = m_ts.GetPointerByteSize();
+  cpp_typesystem::Builder builder(m_ts);
+  CompilerType compiler_type =
+      builder.GetBuiltinType(ConstString("decltype(nullptr)"), ptr_size,
+                             lldb::eEncodingUint, lldb::eFormatHex);
+  Declaration decl;
+  return dwarf->MakeType(die.GetID(), name, ptr_size, /*context=*/nullptr,
                          LLDB_INVALID_UID, Type::eEncodingIsUID, decl,
                          compiler_type, Type::ResolveState::Full);
 }
@@ -1217,6 +1243,9 @@ TypeSP DWARFASTParserCpp::ParseTypeFromDWARF(const SymbolContext &sc,
   case DW_TAG_subroutine_type:
   case DW_TAG_subprogram:
     type_sp = ParseFunctionType(die);
+    break;
+  case DW_TAG_unspecified_type:
+    type_sp = ParseUnspecifiedType(die);
     break;
   default:
     break;

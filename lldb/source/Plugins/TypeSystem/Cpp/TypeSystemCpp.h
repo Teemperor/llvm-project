@@ -129,6 +129,8 @@ public:
   bool IsIntegerType(lldb::opaque_compiler_type_t type,
                      bool &is_signed) override;
   bool IsScopedEnumerationType(lldb::opaque_compiler_type_t type) override;
+  bool IsEnumerationType(lldb::opaque_compiler_type_t type,
+                         bool &is_signed) override;
   bool IsPossibleDynamicType(lldb::opaque_compiler_type_t type,
                              CompilerType *target_type, bool check_cplusplus,
                              bool check_objc) override;
@@ -215,6 +217,9 @@ public:
                  const ExecutionContext *exe_ctx) override;
   lldb::BasicType
   GetBasicTypeEnumeration(lldb::opaque_compiler_type_t type) override;
+  bool IsPromotableIntegerType(lldb::opaque_compiler_type_t type) override;
+  CompilerType
+  GetPromotedIntegerType(lldb::opaque_compiler_type_t type) override;
   uint32_t GetNumFields(lldb::opaque_compiler_type_t type) override;
   CompilerType GetFieldAtIndex(lldb::opaque_compiler_type_t type, size_t idx,
                                std::string &name, uint64_t *bit_offset_ptr,

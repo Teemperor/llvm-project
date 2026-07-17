@@ -468,17 +468,27 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
     cpp_typesystem::Type *pointee = ptr->GetPointeeType();
     if (auto *fn = llvm::dyn_cast_or_null<FunctionType>(pointee))
       return BuildFunctionName(fn, ptr->IsBlockPointer() ? "(^)" : "(*)");
-    return (pointee ? BuildDisplayName(pointee, hide_default_args)
-                    : std::string("void")) +
-           " *";
+    std::string pointee_name = pointee
+                                   ? BuildDisplayName(pointee, hide_default_args)
+                                   : std::string("void");
+    // Clang omits the space between a pointer/reference sigil and a following
+    // '*' (e.g. "int **", "void **", "int &*"), but keeps it after a plain
+    // type name ("int *").
+    const bool tight = !pointee_name.empty() &&
+                       (pointee_name.back() == '*' || pointee_name.back() == '&');
+    return pointee_name + (tight ? "*" : " *");
   }
   if (auto *ref = llvm::dyn_cast<ReferenceType>(t)) {
     cpp_typesystem::Type *pointee = ref->GetPointeeType();
     if (auto *fn = llvm::dyn_cast_or_null<FunctionType>(pointee))
       return BuildFunctionName(fn, ref->IsRValue() ? "(&&)" : "(&)");
-    return (pointee ? BuildDisplayName(pointee, hide_default_args)
-                    : std::string("void")) +
-           (ref->IsRValue() ? " &&" : " &");
+    std::string pointee_name = pointee
+                                   ? BuildDisplayName(pointee, hide_default_args)
+                                   : std::string("void");
+    const bool tight = !pointee_name.empty() &&
+                       (pointee_name.back() == '*' || pointee_name.back() == '&');
+    llvm::StringRef sigil = ref->IsRValue() ? "&&" : "&";
+    return pointee_name + (tight ? sigil.str() : (" " + sigil.str()));
   }
   if (auto *fn = llvm::dyn_cast<FunctionType>(t))
     return BuildFunctionName(fn, "");
@@ -878,7 +888,19 @@ bool TypeSystemCpp::IsIntegerType(opaque_compiler_type_t type,
   is_signed = false;
   if (!type)
     return false;
-  switch (GetCppType(type)->GetEncoding()) {
+  // Only builtin integer types (and enumerations, matching TypeSystemCpp's
+  // existing treatment) are integers. Pointers report an unsigned encoding for
+  // value extraction but must NOT be classified as integers, or e.g. DIL
+  // array-subscript index checking would accept a pointer index.
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+  if (!llvm::isa<cpp_typesystem::BuiltinType, cpp_typesystem::EnumType>(t))
+    return false;
+  // std::nullptr_t is a builtin with an unsigned (pointer-width) encoding but
+  // is not an integer type.
+  if (auto *bt = llvm::dyn_cast<cpp_typesystem::BuiltinType>(t))
+    if (bt->GetBuiltinKind() == cpp_typesystem::BuiltinKind::NullPtr)
+      return false;
+  switch (t->GetEncoding()) {
   case eEncodingSint:
     is_signed = true;
     return true;
@@ -895,6 +917,19 @@ bool TypeSystemCpp::IsScopedEnumerationType(opaque_compiler_type_t type) {
   if (auto *enum_type =
           llvm::dyn_cast<cpp_typesystem::EnumType>(Desugar(GetCppType(type))))
     return enum_type->IsScoped();
+  return false;
+}
+
+bool TypeSystemCpp::IsEnumerationType(opaque_compiler_type_t type,
+                                      bool &is_signed) {
+  is_signed = false;
+  if (!type)
+    return false;
+  if (auto *enum_type =
+          llvm::dyn_cast<cpp_typesystem::EnumType>(Desugar(GetCppType(type)))) {
+    is_signed = enum_type->IsSigned();
+    return true;
+  }
   return false;
 }
 
@@ -1111,7 +1146,17 @@ uint32_t TypeSystemCpp::GetPointerByteSize() {
 }
 
 CompilerType TypeSystemCpp::GetPointerDiffType(bool is_signed) {
-  return CompilerType();
+  // The result of pointer subtraction. Clang spells this builtin `__ptrdiff_t`
+  // (and its unsigned counterpart), sized as a pointer. Model it as a bespoke
+  // builtin of pointer width so value objects created from it show that name.
+  const uint64_t byte_size =
+      m_context.GetLanguageOpts().GetBuiltinSizes().pointer_size;
+  cpp_typesystem::Builder builder(*this);
+  if (is_signed)
+    return builder.GetBuiltinType(ConstString("__ptrdiff_t"), byte_size,
+                                  lldb::eEncodingSint, lldb::eFormatDecimal);
+  return builder.GetBuiltinType(ConstString("__ptrdiff_t unsigned"), byte_size,
+                                lldb::eEncodingUint, lldb::eFormatUnsigned);
 }
 
 unsigned TypeSystemCpp::GetPtrAuthKey(opaque_compiler_type_t type) {
@@ -1212,7 +1257,12 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
       return ConstString(BuildDisplayName(t));
     std::string pointee_name =
         pointee ? GetTypeName(pointee, BaseOnly).GetStringRef().str() : "void";
-    return ConstString(llvm::formatv("{0} *", pointee_name).str());
+    // Clang omits the space before '*' when the pointee already ends in a
+    // pointer/reference sigil ("void **", "int *&"), so keep the two tight.
+    const bool tight =
+        !pointee_name.empty() &&
+        (pointee_name.back() == '*' || pointee_name.back() == '&');
+    return ConstString(pointee_name + (tight ? "*" : " *"));
   }
   // References likewise: "<pointee> &" or "<pointee> &&".
   if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t)) {
@@ -1221,9 +1271,11 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
       return ConstString(BuildDisplayName(t));
     std::string pointee_name =
         pointee ? GetTypeName(pointee, BaseOnly).GetStringRef().str() : "void";
-    return ConstString(
-        llvm::formatv("{0} {1}", pointee_name, ref->IsRValue() ? "&&" : "&")
-            .str());
+    const bool tight =
+        !pointee_name.empty() &&
+        (pointee_name.back() == '*' || pointee_name.back() == '&');
+    llvm::StringRef sigil = ref->IsRValue() ? "&&" : "&";
+    return ConstString(pointee_name + (tight ? sigil.str() : (" " + sigil.str())));
   }
   // cv-qualified types render as "const"/"volatile" prefixing the unqualified
   // name. Matching TypeSystemClang's GetTypeName: the cv-qualifiers are only
@@ -1494,8 +1546,15 @@ CompilerType TypeSystemCpp::GetPointeeType(opaque_compiler_type_t type) {
   if (!type)
     return CompilerType();
   if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(
-          Desugar(GetCppType(type))))
-    return GetCompilerType(ptr->GetPointeeType());
+          Desugar(GetCppType(type)))) {
+    // A null pointee models `void *` (see PointerType). Surface the canonical
+    // void builtin so callers (e.g. CompilerType::IsPointerToVoid) can identify
+    // it via GetBasicTypeEnumeration().
+    if (cpp_typesystem::Type *pointee = ptr->GetPointeeType())
+      return GetCompilerType(pointee);
+    return GetCompilerType(
+        m_context.GetBuiltinType(cpp_typesystem::BuiltinKind::Void));
+  }
   return CompilerType();
 }
 
@@ -1848,11 +1907,127 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
 }
 
 BasicType TypeSystemCpp::GetBasicTypeEnumeration(opaque_compiler_type_t type) {
-  // void is queried by IsPointerToVoid (via GetPointeeType) to reject
-  // `--element-count` on `void *`.
-  if (IsVoidType(type))
-    return eBasicTypeVoid;
+  using cpp_typesystem::BuiltinKind;
+  if (!type)
+    return eBasicTypeInvalid;
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+  auto *builtin = llvm::dyn_cast<cpp_typesystem::BuiltinType>(t);
+  if (!builtin)
+    return eBasicTypeInvalid;
+
+  if (std::optional<BuiltinKind> kind = builtin->GetBuiltinKind()) {
+    switch (*kind) {
+    case BuiltinKind::Void:            return eBasicTypeVoid;
+    case BuiltinKind::Bool:            return eBasicTypeBool;
+    case BuiltinKind::Char:            return eBasicTypeChar;
+    case BuiltinKind::SignedChar:      return eBasicTypeSignedChar;
+    case BuiltinKind::UnsignedChar:    return eBasicTypeUnsignedChar;
+    case BuiltinKind::WCharT:          return eBasicTypeWChar;
+    case BuiltinKind::Char8:           return eBasicTypeChar8;
+    case BuiltinKind::Char16:          return eBasicTypeChar16;
+    case BuiltinKind::Char32:          return eBasicTypeChar32;
+    case BuiltinKind::Short:           return eBasicTypeShort;
+    case BuiltinKind::UnsignedShort:   return eBasicTypeUnsignedShort;
+    case BuiltinKind::Int:             return eBasicTypeInt;
+    case BuiltinKind::UnsignedInt:     return eBasicTypeUnsignedInt;
+    case BuiltinKind::Long:            return eBasicTypeLong;
+    case BuiltinKind::UnsignedLong:    return eBasicTypeUnsignedLong;
+    case BuiltinKind::LongLong:        return eBasicTypeLongLong;
+    case BuiltinKind::UnsignedLongLong:return eBasicTypeUnsignedLongLong;
+    case BuiltinKind::Int128:          return eBasicTypeInt128;
+    case BuiltinKind::UnsignedInt128:  return eBasicTypeUnsignedInt128;
+    case BuiltinKind::Float:           return eBasicTypeFloat;
+    case BuiltinKind::Double:          return eBasicTypeDouble;
+    case BuiltinKind::LongDouble:      return eBasicTypeLongDouble;
+    case BuiltinKind::NullPtr:         return eBasicTypeNullPtr;
+    case BuiltinKind::NumKinds:        break;
+    }
+  }
   return eBasicTypeInvalid;
+}
+
+bool TypeSystemCpp::IsPromotableIntegerType(opaque_compiler_type_t type) {
+  // Follows C++ [conv.prom]: integer types with a conversion rank less than
+  // int, plus bool/character/unscoped-enum types, promote to int/unsigned int.
+  switch (GetBasicTypeEnumeration(type)) {
+  case eBasicTypeBool:
+  case eBasicTypeChar:
+  case eBasicTypeSignedChar:
+  case eBasicTypeUnsignedChar:
+  case eBasicTypeShort:
+  case eBasicTypeUnsignedShort:
+  case eBasicTypeWChar:
+  case eBasicTypeSignedWChar:
+  case eBasicTypeUnsignedWChar:
+  case eBasicTypeChar8:
+  case eBasicTypeChar16:
+  case eBasicTypeChar32:
+    return true;
+  default:
+    break;
+  }
+  // Unscoped enumerations also promote.
+  bool enum_is_signed = false;
+  return IsEnumerationType(type, enum_is_signed) &&
+         !IsScopedEnumerationType(type);
+}
+
+CompilerType
+TypeSystemCpp::GetPromotedIntegerType(opaque_compiler_type_t type) {
+  if (!IsPromotableIntegerType(type))
+    return CompilerType();
+
+  CompilerType int_type = GetBasicTypeFromAST(eBasicTypeInt);
+  std::optional<uint64_t> int_size =
+      GetCppType(int_type.GetOpaqueQualType())->GetByteSize();
+
+  // Unscoped enumerations without a fixed underlying type promote to the first
+  // of {int, unsigned int, long, ...} that can represent all enumerator values.
+  // For the common case where the values fit in int, that is int -- regardless
+  // of whether the DWARF underlying integer happens to be unsigned. Match
+  // Clang, which computes the promotion type from the value range.
+  if (auto *enum_type = llvm::dyn_cast<cpp_typesystem::EnumType>(
+          Desugar(GetCppType(type)))) {
+    bool needs_unsigned = false;
+    if (int_size) {
+      const uint64_t int_bits = *int_size * 8;
+      // int can represent [-2^(n-1), 2^(n-1) - 1].
+      const int64_t int_min = -(int64_t(1) << (int_bits - 1));
+      const uint64_t int_max = (uint64_t(1) << (int_bits - 1)) - 1;
+      const bool enum_signed = enum_type->IsSigned();
+      for (const cpp_typesystem::Enumerator &e : enum_type->GetEnumerators()) {
+        if (enum_signed) {
+          int64_t v = static_cast<int64_t>(e.value);
+          if (v < int_min || (v >= 0 && static_cast<uint64_t>(v) > int_max)) {
+            needs_unsigned = true;
+            break;
+          }
+        } else if (e.value > int_max) {
+          needs_unsigned = true;
+          break;
+        }
+      }
+    }
+    if (needs_unsigned)
+      return GetBasicTypeFromAST(eBasicTypeUnsignedInt);
+    return int_type;
+  }
+
+  // The result of integer promotion is `int` if int can represent all values
+  // of the source type, otherwise `unsigned int`. Compare byte sizes and
+  // signedness against int.
+  std::optional<uint64_t> src_size = GetCppType(type)->GetByteSize();
+
+  bool is_signed = false;
+  bool src_is_integer = IsIntegerType(type, is_signed);
+
+  if (src_size && int_size && *src_size >= *int_size && src_is_integer &&
+      !is_signed) {
+    // An unsigned source that is at least as wide as int cannot be represented
+    // by int; promote to unsigned int instead.
+    return GetBasicTypeFromAST(eBasicTypeUnsignedInt);
+  }
+  return int_type;
 }
 
 uint32_t TypeSystemCpp::GetNumFields(opaque_compiler_type_t type) {
@@ -1937,6 +2112,12 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetDereferencedType(
   if (!IsPointerOrReferenceType(type, nullptr) &&
       !IsArrayType(type, nullptr, nullptr, nullptr))
     return llvm::createStringError("not a pointer, reference or array type");
+
+  // A `void *` cannot be dereferenced. Report a specific error (matching
+  // TypeSystemClang) rather than falling through to a zero-sized child, which
+  // would surface a generic "dereference failed" message.
+  if (IsPointerType(type, nullptr) && GetPointeeType(type).IsVoidType())
+    return llvm::createStringError("cannot dereference void *");
 
   // The dereferenced value is child 0. Ask for it non-transparently so a
   // pointer-to-aggregate yields the pointee itself rather than its members.
@@ -2723,6 +2904,9 @@ CompilerType TypeSystemCpp::GetBasicTypeFromAST(BasicType basic_type) {
     break;
   case eBasicTypeLongDouble:
     kind = BuiltinKind::LongDouble;
+    break;
+  case eBasicTypeNullPtr:
+    kind = BuiltinKind::NullPtr;
     break;
   default:
     break;
