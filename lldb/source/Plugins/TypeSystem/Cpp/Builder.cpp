@@ -176,6 +176,12 @@ void Builder::SetRecordAnonymousStructOrUnion(
   m_ts.m_context.SetAnonymousStructOrUnion(record);
 }
 
+void Builder::SetRecordArgPassingKind(
+    cpp_typesystem::RecordType &record,
+    cpp_typesystem::RecordType::ArgPassingKind kind) {
+  m_ts.m_context.SetArgPassingKind(record, kind);
+}
+
 void Builder::SetRecordMemberFunctionsParsed(
     cpp_typesystem::RecordType &record) {
   m_ts.m_context.SetMemberFunctionsParsed(record);

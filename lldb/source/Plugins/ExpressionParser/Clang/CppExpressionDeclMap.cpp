@@ -379,7 +379,14 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
       // `target.experimental.inject-local-vars` setting is off). This mirrors
       // ClangExpressionDeclMap, which always performs a local-variable lookup
       // for unqualified names before falling back to globals.
-      if (LookupLocalVariable(dc, ConstString(sname), decls))
+      //
+      // Skip this for a context-object evaluation
+      // (SBValue::EvaluateExpression): there the expression is scoped to the
+      // object, not the frame, so a frame local must never shadow a member of
+      // the context object (e.g. `field` should be `this->field`, not a local
+      // named `field`). ClangExpressionSourceCode likewise omits locals from
+      // the wrapper when `m_ctx_obj` is set.
+      if (!m_ctx_obj && LookupLocalVariable(dc, ConstString(sname), decls))
         return true;
       // Unqualified name: first honor the frame's enclosing namespace scope
       // (an expression in `A::B::f` should see names in `A::B`, then `A`), then
@@ -801,37 +808,59 @@ CppExpressionDeclMap::GetOperatorDeclContext(Function *function) {
 void CppExpressionDeclMap::LookUpLldbClass(
     clang::DeclarationName name,
     llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
-  StackFrame *frame = m_exe_ctx.GetFramePtr();
-  if (!frame)
-    return;
+  CompilerType class_cpp_type;
 
-  // The enclosing method's object type is the pointee of the frame's `this`.
-  VariableListSP vars = frame->GetInScopeVariableList(true);
-  VariableSP this_var =
-      vars ? vars->FindVariable(ConstString("this")) : VariableSP();
-  if (!this_var)
-    return;
-  Type *this_type = this_var->GetType();
-  if (!this_type)
-    return;
-  CompilerType class_cpp_type =
-      this_type->GetForwardCompilerType().GetPointeeType();
+  // A context-object evaluation (SBValue::EvaluateExpression) supplies the
+  // enclosing object directly via `m_ctx_obj`; the injected wrapper method
+  // gets an implicit `this` of that object's type so unqualified names resolve
+  // as members of it (e.g. evaluating `field` against a struct value finds the
+  // struct's member, not a same-named local). Mirrors
+  // ClangExpressionDeclMap::LookUpLldbClass's `m_ctx_obj` branch.
+  if (m_ctx_obj) {
+    // The wrapper's implicit `this` is bound to the context object's live
+    // address at materialization time; a computed rvalue (e.g. the result of
+    // `GetCppStruct()`) has no address, so evaluating a member expression
+    // against it must fail rather than silently succeed. Refuse to provide
+    // `$__lldb_class` in that case so the wrapper fails to compile, matching
+    // ClangExpressionDeclMap (which returns early when `AddressOf` fails).
+    Status status;
+    lldb::ValueObjectSP ctx_obj_ptr = m_ctx_obj->AddressOf(status);
+    if (!ctx_obj_ptr || status.Fail())
+      return;
+    class_cpp_type = m_ctx_obj->GetCompilerType();
+  } else {
+    StackFrame *frame = m_exe_ctx.GetFramePtr();
+    if (!frame)
+      return;
 
-  // Inside a lambda that captured `this`, the frame's `this` is the (unnamed)
-  // lambda closure object, whose captured `this` is a member named `this`
-  // (DWARF) / `__this` (CodeView). Use the captured object's class as
-  // `$__lldb_class` so unqualified member lookups resolve against the enclosing
-  // class, mirroring ClangExpressionDeclMap::LookUpLldbClass and the captured-
-  // `this` handling in ClangExpressionSourceCode.
-  if (ValueObjectSP this_valobj = ValueObjectVariable::Create(frame, this_var)) {
-    ValueObjectSP captured = this_valobj->GetChildMemberWithName("this");
-    if (!captured)
-      captured = this_valobj->GetChildMemberWithName("__this");
-    if (captured) {
-      CompilerType captured_pointee =
-          captured->GetCompilerType().GetPointeeType();
-      if (captured_pointee)
-        class_cpp_type = captured_pointee;
+    // The enclosing method's object type is the pointee of the frame's `this`.
+    VariableListSP vars = frame->GetInScopeVariableList(true);
+    VariableSP this_var =
+        vars ? vars->FindVariable(ConstString("this")) : VariableSP();
+    if (!this_var)
+      return;
+    Type *this_type = this_var->GetType();
+    if (!this_type)
+      return;
+    class_cpp_type = this_type->GetForwardCompilerType().GetPointeeType();
+
+    // Inside a lambda that captured `this`, the frame's `this` is the (unnamed)
+    // lambda closure object, whose captured `this` is a member named `this`
+    // (DWARF) / `__this` (CodeView). Use the captured object's class as
+    // `$__lldb_class` so unqualified member lookups resolve against the
+    // enclosing class, mirroring ClangExpressionDeclMap::LookUpLldbClass and the
+    // captured-`this` handling in ClangExpressionSourceCode.
+    if (ValueObjectSP this_valobj =
+            ValueObjectVariable::Create(frame, this_var)) {
+      ValueObjectSP captured = this_valobj->GetChildMemberWithName("this");
+      if (!captured)
+        captured = this_valobj->GetChildMemberWithName("__this");
+      if (captured) {
+        CompilerType captured_pointee =
+            captured->GetCompilerType().GetPointeeType();
+        if (captured_pointee)
+          class_cpp_type = captured_pointee;
+      }
     }
   }
 
@@ -873,45 +902,54 @@ void CppExpressionDeclMap::LookUpLldbClass(
   clang::QualType class_qt = GetGenerator().Generate(class_cpp_type);
   if (class_qt.isNull())
     return;
-  auto *record = class_qt->getAsCXXRecordDecl();
-  if (!record)
-    return;
-  // Make sure members are available for unqualified lookup.
-  GetGenerator().CompleteRecord(record);
 
   clang::ASTContext &ast = *m_ast_context;
 
-  // Declare `void $__lldb_expr(void *)` in the class so the wrapper's
-  // out-of-line `$__lldb_class::$__lldb_expr` definition has a matching
-  // declaration (and thus an implicit `this`). Mirror the cv-qualifiers of the
-  // frame's actual method so the implicit `this` is `const`/`volatile` too.
-  clang::FunctionProtoType::ExtProtoInfo epi;
-  if (this_is_const || this_is_volatile) {
-    clang::Qualifiers quals = epi.TypeQuals;
-    if (this_is_const)
-      quals.addConst();
-    if (this_is_volatile)
-      quals.addVolatile();
-    epi.TypeQuals = quals;
+  // Only a class/struct/union has members and can host the injected
+  // `$__lldb_expr` method. For a non-record context object (e.g. a scalar,
+  // pointer or array supplied to SBValue::EvaluateExpression), still emit the
+  // `$__lldb_class` typedef but add no method: the wrapper is then
+  // `<non-record>::$__lldb_expr`, which fails to compile, matching
+  // TypeSystemClang (a bare expression like `1` against a scalar object is
+  // expected to error rather than silently evaluate).
+  if (auto *record = class_qt->getAsCXXRecordDecl()) {
+    // Make sure members are available for unqualified lookup.
+    GetGenerator().CompleteRecord(record);
+
+    // Declare `void $__lldb_expr(void *)` in the class so the wrapper's
+    // out-of-line `$__lldb_class::$__lldb_expr` definition has a matching
+    // declaration (and thus an implicit `this`). Mirror the cv-qualifiers of
+    // the frame's actual method so the implicit `this` is `const`/`volatile`
+    // too.
+    clang::FunctionProtoType::ExtProtoInfo epi;
+    if (this_is_const || this_is_volatile) {
+      clang::Qualifiers quals = epi.TypeQuals;
+      if (this_is_const)
+        quals.addConst();
+      if (this_is_volatile)
+        quals.addVolatile();
+      epi.TypeQuals = quals;
+    }
+    clang::QualType param_types[] = {ast.VoidPtrTy};
+    clang::QualType method_qt =
+        ast.getFunctionType(ast.VoidTy, param_types, epi);
+    auto *method =
+        clang::CXXMethodDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+    method->setDeclContext(record);
+    method->setDeclName(&ast.Idents.get("$__lldb_expr"));
+    method->setType(method_qt);
+    method->setStorageClass(clang::SC_None);
+    method->setConstexprKind(clang::ConstexprSpecKind::Unspecified);
+    method->setAccess(clang::AS_public);
+    method->addAttr(clang::UsedAttr::CreateImplicit(ast));
+    auto *param =
+        clang::ParmVarDecl::CreateDeserialized(ast, clang::GlobalDeclID());
+    param->setDeclContext(method);
+    param->setType(ast.VoidPtrTy);
+    param->setStorageClass(clang::SC_None);
+    method->setParams({param});
+    record->addDecl(method);
   }
-  clang::QualType param_types[] = {ast.VoidPtrTy};
-  clang::QualType method_qt = ast.getFunctionType(ast.VoidTy, param_types, epi);
-  auto *method =
-      clang::CXXMethodDecl::CreateDeserialized(ast, clang::GlobalDeclID());
-  method->setDeclContext(record);
-  method->setDeclName(&ast.Idents.get("$__lldb_expr"));
-  method->setType(method_qt);
-  method->setStorageClass(clang::SC_None);
-  method->setConstexprKind(clang::ConstexprSpecKind::Unspecified);
-  method->setAccess(clang::AS_public);
-  method->addAttr(clang::UsedAttr::CreateImplicit(ast));
-  auto *param =
-      clang::ParmVarDecl::CreateDeserialized(ast, clang::GlobalDeclID());
-  param->setDeclContext(method);
-  param->setType(ast.VoidPtrTy);
-  param->setStorageClass(clang::SC_None);
-  method->setParams({param});
-  record->addDecl(method);
 
   // Provide the `$__lldb_class` typedef the wrapper names.
   clang::TypeSourceInfo *ti = ast.getTrivialTypeSourceInfo(class_qt);
@@ -924,32 +962,53 @@ void CppExpressionDeclMap::LookUpLldbClass(
 void CppExpressionDeclMap::LookUpLldbObjCClass(
     clang::DeclarationName name,
     llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
-  StackFrame *frame = m_exe_ctx.GetFramePtr();
-  if (!frame)
-    return;
+  CompilerType class_cpp_type;
 
-  // The enclosing Objective-C method's object type is the pointee of the
-  // frame's implicit `self` parameter. Mirrors
-  // ClangExpressionDeclMap::LookUpLldbObjCClass, but instead of consulting a
-  // clang ObjCMethodDecl we go straight through the `self` variable (whose
-  // pointee is the method's ObjCInterfaceType). Returning that interface for
-  // the wrapper's `$__lldb_objc_class` gives the injected method an implicit
-  // `self` of the right type, so unqualified ivar names resolve as ObjC ivar
-  // accesses on `self` (just as C++ members resolve through `this`).
-  VariableListSP vars = frame->GetInScopeVariableList(true);
-  VariableSP self_var =
-      vars ? vars->FindVariable(ConstString("self")) : VariableSP();
-  if (!self_var)
-    return;
-  Type *self_type = self_var->GetType();
-  if (!self_type)
-    return;
+  // A context-object evaluation (SBValue::EvaluateExpression) supplies the
+  // enclosing object directly via `m_ctx_obj`; use its interface so the
+  // wrapper's `$__lldb_objc_class` context gives the injected method an
+  // implicit `self` of the right type. Mirrors LookUpLldbClass's `m_ctx_obj`
+  // branch.
+  if (m_ctx_obj) {
+    // A computed rvalue has no live address to bind `self` to; refuse so the
+    // wrapper fails to compile rather than silently evaluating.
+    Status status;
+    lldb::ValueObjectSP ctx_obj_ptr = m_ctx_obj->AddressOf(status);
+    if (!ctx_obj_ptr || status.Fail())
+      return;
+    // The context object is the ObjC object itself; its type is the interface
+    // (or a pointer to it). Take the pointee when it is a pointer.
+    CompilerType ctx_type = m_ctx_obj->GetCompilerType();
+    class_cpp_type =
+        ctx_type.IsPointerType(nullptr) ? ctx_type.GetPointeeType() : ctx_type;
+  } else {
+    StackFrame *frame = m_exe_ctx.GetFramePtr();
+    if (!frame)
+      return;
 
-  CompilerType self_cpp_type = self_type->GetForwardCompilerType();
-  // `self` is a pointer to the interface (an ObjC object pointer); the class is
-  // its pointee. This runs only for an instance (`-`) method (see
-  // ClangUserExpression::ScanContext), so `self`'s pointee is the interface.
-  CompilerType class_cpp_type = self_cpp_type.GetPointeeType();
+    // The enclosing Objective-C method's object type is the pointee of the
+    // frame's implicit `self` parameter. Mirrors
+    // ClangExpressionDeclMap::LookUpLldbObjCClass, but instead of consulting a
+    // clang ObjCMethodDecl we go straight through the `self` variable (whose
+    // pointee is the method's ObjCInterfaceType). Returning that interface for
+    // the wrapper's `$__lldb_objc_class` gives the injected method an implicit
+    // `self` of the right type, so unqualified ivar names resolve as ObjC ivar
+    // accesses on `self` (just as C++ members resolve through `this`).
+    VariableListSP vars = frame->GetInScopeVariableList(true);
+    VariableSP self_var =
+        vars ? vars->FindVariable(ConstString("self")) : VariableSP();
+    if (!self_var)
+      return;
+    Type *self_type = self_var->GetType();
+    if (!self_type)
+      return;
+
+    CompilerType self_cpp_type = self_type->GetForwardCompilerType();
+    // `self` is a pointer to the interface (an ObjC object pointer); the class
+    // is its pointee. This runs only for an instance (`-`) method (see
+    // ClangUserExpression::ScanContext), so `self`'s pointee is the interface.
+    class_cpp_type = self_cpp_type.GetPointeeType();
+  }
   if (!class_cpp_type || !class_cpp_type.GetTypeSystem<TypeSystemCpp>())
     return;
 

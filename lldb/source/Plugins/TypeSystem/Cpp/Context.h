@@ -144,6 +144,10 @@ public:
   void SetAnonymousStructOrUnion(RecordType &record) {
     record.SetIsAnonymousStructOrUnion(true);
   }
+  void SetArgPassingKind(RecordType &record,
+                         RecordType::ArgPassingKind kind) {
+    record.SetArgPassingKind(kind);
+  }
   void AddField(RecordType &record, Identifier name, TypeRef type,
                 uint64_t byte_offset, uint32_t bitfield_bit_size = 0,
                 uint32_t bitfield_bit_offset = 0) {

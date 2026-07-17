@@ -2715,13 +2715,16 @@ LLVM_DUMP_METHOD void TypeSystemCpp::dump(opaque_compiler_type_t type) const {}
 /// TypeSystemClang's DumpEnumValue.
 static bool DumpEnumValue(const cpp_typesystem::EnumType &enum_type, Stream &s,
                           const DataExtractor &data, lldb::offset_t byte_offset,
-                          size_t byte_size) {
+                          size_t byte_size, uint32_t bitfield_bit_offset,
+                          uint32_t bitfield_bit_size) {
   lldb::offset_t offset = byte_offset;
   const bool is_signed = enum_type.IsSigned();
   const uint64_t enum_svalue =
-      is_signed ? static_cast<uint64_t>(
-                      data.GetMaxS64Bitfield(&offset, byte_size, 0, 0))
-                : data.GetMaxU64Bitfield(&offset, byte_size, 0, 0);
+      is_signed
+          ? static_cast<uint64_t>(data.GetMaxS64Bitfield(
+                &offset, byte_size, bitfield_bit_size, bitfield_bit_offset))
+          : data.GetMaxU64Bitfield(&offset, byte_size, bitfield_bit_size,
+                                   bitfield_bit_offset);
 
   bool can_be_bitfield = true;
   uint64_t covered_bits = 0;
@@ -2742,7 +2745,7 @@ static bool DumpEnumValue(const cpp_typesystem::EnumType &enum_type, Stream &s,
       can_be_bitfield = false;
     covered_bits |= val;
     ++num_enumerators;
-    if (enumerator.value == enum_svalue) {
+    if (val == enum_svalue) {
       s.PutCString(enumerator.name.GetName());
       return true;
     }
@@ -2750,8 +2753,8 @@ static bool DumpEnumValue(const cpp_typesystem::EnumType &enum_type, Stream &s,
 
   // Unsigned values make more sense for flags.
   offset = byte_offset;
-  const uint64_t enum_uvalue =
-      data.GetMaxU64Bitfield(&offset, byte_size, 0, 0);
+  const uint64_t enum_uvalue = data.GetMaxU64Bitfield(
+      &offset, byte_size, bitfield_bit_size, bitfield_bit_offset);
 
   // No exact match and this isn't a flag enum: print the value numerically.
   if (!can_be_bitfield) {
@@ -2816,9 +2819,9 @@ bool TypeSystemCpp::DumpTypeValue(opaque_compiler_type_t type, Stream &s,
   // Enumerations: show the enumerator name when possible rather than the raw
   // integer value.
   if (auto *enum_type = llvm::dyn_cast<cpp_typesystem::EnumType>(t)) {
-    if ((format == eFormatEnum || format == eFormatDefault) &&
-        bitfield_bit_size == 0)
-      return DumpEnumValue(*enum_type, s, data, data_offset, data_byte_size);
+    if (format == eFormatEnum || format == eFormatDefault)
+      return DumpEnumValue(*enum_type, s, data, data_offset, data_byte_size,
+                           bitfield_bit_offset, bitfield_bit_size);
   }
   // Some formats dump the value as a sequence of smaller items rather than one
   // scalar: e.g. the char/bytes formats print each byte, and the unicode

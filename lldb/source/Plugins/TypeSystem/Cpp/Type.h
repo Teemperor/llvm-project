@@ -314,6 +314,23 @@ public:
   /// RecordDecl::isAnonymousStructOrUnion(); set by the DWARF parser.
   bool IsAnonymousStructOrUnion() const { return m_is_anonymous_struct_union; }
 
+  /// How this record is passed as a function argument / returned, derived from
+  /// DWARF's DW_AT_calling_convention (DW_CC_pass_by_value /
+  /// DW_CC_pass_by_reference). This governs the ABI clang uses for calls that
+  /// pass or return the record by value (see ClangASTGenerator), which matters
+  /// for expression evaluation calling such functions.
+  enum class ArgPassingKind : uint8_t {
+    /// No DW_AT_calling_convention was recorded; let clang decide.
+    Unspecified,
+    /// DW_CC_pass_by_value: the record has a trivial-for-call ABI even if it
+    /// has non-trivial special members (clang: setHasTrivialSpecialMemberForCall).
+    PassByValue,
+    /// DW_CC_pass_by_reference: the record cannot be passed in registers
+    /// (clang: RecordArgPassingKind::CannotPassInRegs).
+    CannotPassInRegs,
+  };
+  ArgPassingKind GetArgPassingKind() const { return m_arg_passing; }
+
   uint32_t GetTypeInfo() const override {
     return lldb::eTypeHasChildren | lldb::eTypeIsStructUnion;
   }
@@ -398,6 +415,7 @@ private:
     m_is_template = is_template;
   }
   void SetIsAnonymousStructOrUnion(bool v) { m_is_anonymous_struct_union = v; }
+  void SetArgPassingKind(ArgPassingKind kind) { m_arg_passing = kind; }
   void SetMemberFunctionsParsed() { m_member_functions_parsed = true; }
   void AddField(Identifier name, TypeRef type, uint64_t byte_offset,
                 uint32_t bitfield_bit_size = 0,
@@ -428,6 +446,7 @@ private:
   bool m_is_class_keyword = false;
   bool m_is_template = false;
   bool m_is_anonymous_struct_union = false;
+  ArgPassingKind m_arg_passing = ArgPassingKind::Unspecified;
   bool m_member_functions_parsed = false;
   std::vector<Field> m_fields;
   std::vector<TemplateArgument> m_template_args;

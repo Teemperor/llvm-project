@@ -127,6 +127,10 @@ public:
   /// an unnamed member of its parent; see
   /// RecordType::IsAnonymousStructOrUnion).
   void SetRecordAnonymousStructOrUnion(RecordType &record);
+  /// Record how \p record is passed/returned by value (from DWARF's
+  /// DW_AT_calling_convention); see RecordType::ArgPassingKind.
+  void SetRecordArgPassingKind(RecordType &record,
+                               RecordType::ArgPassingKind kind);
   /// Mark \p record's member functions as parsed (they are filled in lazily,
   /// after completion; see DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF).
   void SetRecordMemberFunctionsParsed(RecordType &record);

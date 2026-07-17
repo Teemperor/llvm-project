@@ -133,9 +133,35 @@ void ClangUserExpression::ScanContext(DiagnosticManager &diagnostic_manager,
   if (!decl_context) {
     LLDB_LOGF(log, "  [CUE::SC] Null decl context");
     // TypeSystemCpp does not model function decl contexts, so the CXXMethodDecl
-    // detection below can't fire. Detect a C++ instance method from the frame's
-    // `this` pointer instead; the object pointer and $__lldb_class context are
-    // then handled the same way as for the Clang path.
+    // detection below can't fire. A context-object evaluation
+    // (SBValue::EvaluateExpression) supplies the enclosing object directly via
+    // `m_ctx_obj`; treat it like the corresponding member/method context so the
+    // wrapper is emitted as a member function with an implicit `this`/`self`
+    // (see the `m_ctx_obj` branch further below, which is unreachable here
+    // because this branch returns early). Otherwise detect a C++ instance
+    // method from the frame's `this` pointer.
+    if (m_ctx_obj) {
+      switch (m_ctx_obj->GetObjectRuntimeLanguage()) {
+      case lldb::eLanguageTypeC:
+      case lldb::eLanguageTypeC89:
+      case lldb::eLanguageTypeC99:
+      case lldb::eLanguageTypeC11:
+      case lldb::eLanguageTypeC_plus_plus:
+      case lldb::eLanguageTypeC_plus_plus_03:
+      case lldb::eLanguageTypeC_plus_plus_11:
+      case lldb::eLanguageTypeC_plus_plus_14:
+        m_in_cplusplus_method = true;
+        break;
+      case lldb::eLanguageTypeObjC:
+      case lldb::eLanguageTypeObjC_plus_plus:
+        m_in_objectivec_method = true;
+        break;
+      default:
+        break;
+      }
+      m_needs_object_ptr = true;
+      return;
+    }
     if (m_allow_cxx && !m_ctx_obj) {
       if (lldb::VariableListSP vars = function_block->GetBlockVariableList(true))
         if (lldb::VariableSP this_var =
