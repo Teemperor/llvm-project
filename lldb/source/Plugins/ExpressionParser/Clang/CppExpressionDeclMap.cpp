@@ -9,6 +9,7 @@
 #include "CppExpressionDeclMap.h"
 
 #include "ClangExpressionUtil.h"
+#include "ClangTypeConverter.h"
 
 #include "Plugins/TypeSystem/Cpp/Type.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
@@ -196,7 +197,7 @@ CompilerType CppExpressionDeclMap::WrapType(clang::QualType qt) {
   TypeSystemCpp *scratch = GetScratchCpp(m_exe_ctx.GetTargetPtr());
   if (!scratch)
     return {};
-  CompilerType mapped = GetGenerator().MapClangTypeToCpp(qt, *scratch);
+  CompilerType mapped = ClangTypeConverter(GetGenerator(), *scratch).Convert(qt);
   if (!mapped)
     return {};
   return mapped;
