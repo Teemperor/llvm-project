@@ -956,11 +956,25 @@ bool TypeSystemCpp::IsFunctionPointerType(opaque_compiler_type_t type) {
 }
 
 bool TypeSystemCpp::IsMemberFunctionPointerType(opaque_compiler_type_t type) {
-  return false;
+  if (!type)
+    return false;
+  auto *mp = llvm::dyn_cast<cpp_typesystem::MemberPointerType>(
+      Desugar(GetCppType(type)));
+  if (!mp)
+    return false;
+  cpp_typesystem::Type *pointee = mp->GetPointeeType();
+  return pointee && llvm::isa<cpp_typesystem::FunctionType>(Desugar(pointee));
 }
 
 bool TypeSystemCpp::IsMemberDataPointerType(opaque_compiler_type_t type) {
-  return false;
+  if (!type)
+    return false;
+  auto *mp = llvm::dyn_cast<cpp_typesystem::MemberPointerType>(
+      Desugar(GetCppType(type)));
+  if (!mp)
+    return false;
+  cpp_typesystem::Type *pointee = mp->GetPointeeType();
+  return pointee && !llvm::isa<cpp_typesystem::FunctionType>(Desugar(pointee));
 }
 
 bool TypeSystemCpp::IsBlockPointerType(

@@ -12,6 +12,7 @@ char ObjCInterfaceType::ID = 0;
 char ArrayType::ID = 0;
 char PointerType::ID = 0;
 char ReferenceType::ID = 0;
+char MemberPointerType::ID = 0;
 char SugarType::ID = 0;
 char TypedefType::ID = 0;
 char CVQualifiedType::ID = 0;

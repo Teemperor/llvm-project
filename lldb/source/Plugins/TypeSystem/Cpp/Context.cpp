@@ -129,6 +129,24 @@ ReferenceType *Context::CreateReferenceType(TypeRef pointee_type,
   return Track(std::move(type));
 }
 
+MemberPointerType *Context::CreateMemberPointerType(TypeRef pointee_type,
+                                                    TypeRef containing_type) {
+  assert(pointee_type && "a pointer-to-member must point to a type");
+  assert(containing_type && "a pointer-to-member must have a containing type");
+  auto type = std::make_unique<MemberPointerType>();
+  type->SetPointeeType(pointee_type);
+  type->SetContainingType(containing_type);
+  // Itanium ABI: a pointer to a non-static member function is two pointers
+  // wide (the function pointer, or vtable-offset-tagged equivalent, plus the
+  // `this` adjustment); a pointer to a non-static data member is one pointer
+  // wide (the byte offset of the member).
+  uint64_t pointer_size = m_opts.GetBuiltinSizes().pointer_size;
+  type->SetByteSize(llvm::isa<FunctionType>(pointee_type.Get())
+                        ? 2 * pointer_size
+                        : pointer_size);
+  return Track(std::move(type));
+}
+
 TypedefType *Context::CreateTypedefType(llvm::StringRef name,
                                         TypeRef underlying_type) {
   // A typedef always aliases a type. A `typedef void Foo;` is represented by
