@@ -23,12 +23,20 @@ namespace cpp_typesystem {
 class IdentifierMap;
 
 /// This type represents builtin types like int/long/char/etc.
+enum class BuiltinKind : uint8_t;
+
 class BuiltinType : public llvm::RTTIExtends<BuiltinType, Type> {
 public:
   static char ID;
 
   void SetEncoding(lldb::Encoding encoding) { m_encoding = encoding; }
   lldb::Encoding GetEncoding() const override { return m_encoding; }
+
+  /// The canonical builtin kind, if this instance is one of the shared
+  /// canonical builtin types (see KnownBuiltinTypes). Bespoke builtin types
+  /// created from raw DWARF attributes have no known kind.
+  void SetBuiltinKind(BuiltinKind kind) { m_kind = kind; }
+  std::optional<BuiltinKind> GetBuiltinKind() const { return m_kind; }
 
   /// The display format for values of this type. Unlike the encoding, this
   /// cannot always be derived from the encoding alone (e.g. char and bool
@@ -40,27 +48,12 @@ public:
     return lldb::eTypeClassBuiltin;
   }
 
-  uint32_t GetTypeInfo() const override {
-    uint32_t info = lldb::eTypeIsBuiltIn | lldb::eTypeHasValue;
-    switch (m_encoding) {
-    case lldb::eEncodingSint:
-      info |= lldb::eTypeIsScalar | lldb::eTypeIsInteger | lldb::eTypeIsSigned;
-      break;
-    case lldb::eEncodingUint:
-      info |= lldb::eTypeIsScalar | lldb::eTypeIsInteger;
-      break;
-    case lldb::eEncodingIEEE754:
-      info |= lldb::eTypeIsScalar | lldb::eTypeIsFloat | lldb::eTypeIsSigned;
-      break;
-    default:
-      break;
-    }
-    return info;
-  }
+  uint32_t GetTypeInfo() const override;
 
 private:
   lldb::Encoding m_encoding = lldb::eEncodingInvalid;
   lldb::Format m_format = lldb::eFormatDefault;
+  std::optional<BuiltinKind> m_kind;
 };
 
 /// Enumerates the builtin types of C, C++ and Objective-C.
@@ -87,6 +80,7 @@ enum class BuiltinKind : uint8_t {
   Float,
   Double,
   LongDouble,
+  NullPtr,
   NumKinds
 };
 

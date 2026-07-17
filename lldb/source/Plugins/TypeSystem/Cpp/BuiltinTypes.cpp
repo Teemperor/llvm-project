@@ -15,6 +15,29 @@ using namespace lldb_private::cpp_typesystem;
 // LLVM RTTI discriminator; see Type.cpp for details.
 char lldb_private::cpp_typesystem::BuiltinType::ID = 0;
 
+uint32_t BuiltinType::GetTypeInfo() const {
+  // std::nullptr_t is neither a scalar nor an integer (matching Clang, whose
+  // GetTypeInfo returns 0 for it), even though its representation uses an
+  // unsigned pointer-width encoding. It still has a value.
+  if (m_kind == BuiltinKind::NullPtr)
+    return lldb::eTypeHasValue;
+  uint32_t info = lldb::eTypeIsBuiltIn | lldb::eTypeHasValue;
+  switch (m_encoding) {
+  case lldb::eEncodingSint:
+    info |= lldb::eTypeIsScalar | lldb::eTypeIsInteger | lldb::eTypeIsSigned;
+    break;
+  case lldb::eEncodingUint:
+    info |= lldb::eTypeIsScalar | lldb::eTypeIsInteger;
+    break;
+  case lldb::eEncodingIEEE754:
+    info |= lldb::eTypeIsScalar | lldb::eTypeIsFloat | lldb::eTypeIsSigned;
+    break;
+  default:
+    break;
+  }
+  return info;
+}
+
 namespace {
 /// Static description of one builtin kind. Byte sizes are target-dependent and
 /// therefore not part of this table; they are computed from the triple.
@@ -53,6 +76,7 @@ constexpr BuiltinDesc kDescs[] = {
     {BuiltinKind::Float,            lldb::eEncodingIEEE754, lldb::eFormatFloat,     {"float", nullptr, nullptr}},
     {BuiltinKind::Double,           lldb::eEncodingIEEE754, lldb::eFormatFloat,     {"double", nullptr, nullptr}},
     {BuiltinKind::LongDouble,       lldb::eEncodingIEEE754, lldb::eFormatFloat,     {"long double", nullptr, nullptr}},
+    {BuiltinKind::NullPtr,          lldb::eEncodingUint,    lldb::eFormatHex,       {"std::nullptr_t", "decltype(nullptr)", "nullptr_t"}},
 };
 // clang-format on
 
@@ -103,6 +127,8 @@ std::optional<uint64_t> ByteSizeFor(BuiltinKind kind,
     return sizes.double_size;
   case BuiltinKind::LongDouble:
     return sizes.long_double_size;
+  case BuiltinKind::NullPtr:
+    return sizes.pointer_size;
   case BuiltinKind::NumKinds:
     break;
   }
@@ -120,6 +146,7 @@ KnownBuiltinTypes::KnownBuiltinTypes(const LanguageOpts &opts,
     type->SetName(identifiers.getWithStaticStorageStr(desc.spellings[0]));
     type->SetEncoding(desc.encoding);
     type->SetFormat(desc.format);
+    type->SetBuiltinKind(desc.kind);
     type->SetByteSize(ByteSizeFor(desc.kind, sizes));
     m_by_kind[static_cast<size_t>(desc.kind)] = type.get();
     m_storage.push_back(std::move(type));
