@@ -15,7 +15,6 @@
 
 #include "TestingSupport/SubsystemRAII.h"
 #include "lldb/Host/FileSystem.h"
-#include "lldb/Utility/ConstString.h"
 
 #include "clang/AST/ASTContext.h"
 #include "clang/Basic/Builtins.h"
@@ -75,7 +74,7 @@ public:
   }
 
   CompilerType GetInt() {
-    return builder.GetBuiltinType(ConstString("int"), 4, lldb::eEncodingSint,
+    return builder.GetBuiltinType("int", 4, lldb::eEncodingSint,
                                   lldb::eFormatDecimal);
   }
 };

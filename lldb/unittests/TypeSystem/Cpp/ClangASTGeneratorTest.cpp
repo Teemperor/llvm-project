@@ -35,7 +35,7 @@ TEST_F(ClangASTGeneratorTest, GenerateBuiltinInt) {
 // (the generator caches by cpp type).
 TEST_F(ClangASTGeneratorTest, GenerateIsCached) {
   ClangASTGenerator generator(ast);
-  CompilerType record = builder.CreateRecordType(ConstString("Foo"), 4, false);
+  CompilerType record = builder.CreateRecordType("Foo", 4, false);
   clang::QualType a = generator.Generate(record);
   clang::QualType b = generator.Generate(record);
   EXPECT_EQ(a, b);
@@ -47,7 +47,7 @@ TEST_F(ClangASTGeneratorTest, GenerateIsCached) {
 TEST_F(ClangASTGeneratorTest, GenerateRecordForwardDeclaration) {
   ClangASTGenerator generator(ast);
   CompilerType record =
-      builder.CreateRecordType(ConstString("MyStruct"), 4, /*is_cpp_class=*/false);
+      builder.CreateRecordType("MyStruct", 4, /*is_cpp_class=*/false);
   clang::QualType qt = generator.Generate(record);
   ASSERT_FALSE(qt.isNull());
   clang::CXXRecordDecl *decl = qt->getAsCXXRecordDecl();
@@ -57,7 +57,7 @@ TEST_F(ClangASTGeneratorTest, GenerateRecordForwardDeclaration) {
   EXPECT_FALSE(decl->isCompleteDefinition());
 
   CompilerType cls =
-      builder.CreateRecordType(ConstString("MyClass"), 4, /*is_cpp_class=*/true);
+      builder.CreateRecordType("MyClass", 4, /*is_cpp_class=*/true);
   clang::QualType cls_qt = generator.Generate(cls);
   EXPECT_EQ(cls_qt->getAsCXXRecordDecl()->getTagKind(),
            clang::TagTypeKind::Class);
@@ -67,7 +67,7 @@ TEST_F(ClangASTGeneratorTest, GenerateRecordForwardDeclaration) {
 // one int field), matching the source cpp record's layout.
 TEST_F(ClangASTGeneratorTest, CompleteRecordAddsFields) {
   ClangASTGenerator generator(ast);
-  CompilerType record = builder.CreateRecordType(ConstString("Foo"), 4, false);
+  CompilerType record = builder.CreateRecordType("Foo", 4, false);
   auto *r =
       llvm::cast<RecordType>(static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
   builder.AddField(*r, builder.GetIdentifier("x"),
@@ -91,8 +91,8 @@ TEST_F(ClangASTGeneratorTest, CompleteRecordAddsFields) {
 // the same type.
 TEST_F(ClangASTGeneratorTest, RecordsUnifiedByName) {
   ClangASTGenerator generator(ast);
-  CompilerType a = builder.CreateRecordType(ConstString("Shared"), 4, false);
-  CompilerType b = builder.CreateRecordType(ConstString("Shared"), 4, false);
+  CompilerType a = builder.CreateRecordType("Shared", 4, false);
+  CompilerType b = builder.CreateRecordType("Shared", 4, false);
   clang::QualType qa = generator.Generate(a);
   clang::QualType qb = generator.Generate(b);
   EXPECT_EQ(qa, qb);
@@ -147,7 +147,7 @@ TEST_F(ClangASTGeneratorTest, GenerateArrays) {
 // generated) underlying type, with its own name preserved.
 TEST_F(ClangASTGeneratorTest, GenerateTypedef) {
   ClangASTGenerator generator(ast);
-  CompilerType alias = builder.CreateTypedefType(ConstString("MyInt"), GetInt());
+  CompilerType alias = builder.CreateTypedefType("MyInt", GetInt());
   clang::QualType qt = generator.Generate(alias);
   auto *tdt = llvm::dyn_cast<clang::TypedefType>(qt.getTypePtr());
   ASSERT_NE(tdt, nullptr);

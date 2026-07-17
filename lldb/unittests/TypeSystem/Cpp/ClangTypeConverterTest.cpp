@@ -28,7 +28,7 @@ TEST_F(ClangTypeConverterTest, RoundTripGeneratedType) {
   ClangASTGenerator generator(ast);
   ClangTypeConverter converter(generator, *ts);
 
-  CompilerType record = builder.CreateRecordType(ConstString("Foo"), 4, false);
+  CompilerType record = builder.CreateRecordType("Foo", 4, false);
   clang::QualType qt = generator.Generate(record);
 
   CompilerType back = converter.Convert(qt);

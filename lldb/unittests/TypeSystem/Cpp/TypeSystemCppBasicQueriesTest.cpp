@@ -9,8 +9,6 @@
 #include "Plugins/TypeSystem/Cpp/Builder.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
-#include "lldb/Utility/ConstString.h"
-
 #include "gtest/gtest.h"
 
 using namespace lldb_private;
@@ -23,11 +21,11 @@ struct TypeSystemCppBasicQueriesTest : public testing::Test {
   Builder builder{*ts};
 
   CompilerType GetInt() {
-    return builder.GetBuiltinType(ConstString("int"), 4, lldb::eEncodingSint,
+    return builder.GetBuiltinType("int", 4, lldb::eEncodingSint,
                                   lldb::eFormatDecimal);
   }
   CompilerType GetChar() {
-    return builder.GetBuiltinType(ConstString("char"), 1, lldb::eEncodingSint,
+    return builder.GetBuiltinType("char", 1, lldb::eEncodingSint,
                                   lldb::eFormatChar);
   }
   CompilerType GetVoid() { return builder.GetVoidType(); }
@@ -36,7 +34,7 @@ struct TypeSystemCppBasicQueriesTest : public testing::Test {
 
 // A record is an aggregate type, a builtin is not.
 TEST_F(TypeSystemCppBasicQueriesTest, IsAggregateType) {
-  CompilerType record = builder.CreateRecordType(ConstString("Foo"), 4, false);
+  CompilerType record = builder.CreateRecordType("Foo", 4, false);
   EXPECT_TRUE(record.IsAggregateType());
   EXPECT_FALSE(GetInt().IsAggregateType());
 }
@@ -60,7 +58,7 @@ TEST_F(TypeSystemCppBasicQueriesTest, IsCharTypeThroughSugar) {
 // A floating point builtin reports IsFloatingPointType; an integer builtin
 // does not.
 TEST_F(TypeSystemCppBasicQueriesTest, IsFloatingPointType) {
-  CompilerType f = builder.GetBuiltinType(ConstString("float"), 4,
+  CompilerType f = builder.GetBuiltinType("float", 4,
                                           lldb::eEncodingIEEE754,
                                           lldb::eFormatFloat);
   EXPECT_TRUE(f.IsFloatingPointType());
@@ -71,7 +69,7 @@ TEST_F(TypeSystemCppBasicQueriesTest, IsFloatingPointType) {
 TEST_F(TypeSystemCppBasicQueriesTest, IsFunctionType) {
   CompilerType fn = builder.CreateFunctionType(GetVoid(), /*is_variadic=*/false);
   EXPECT_TRUE(fn.IsFunctionType());
-  CompilerType alias = builder.CreateTypedefType(ConstString("Fn"), fn);
+  CompilerType alias = builder.CreateTypedefType("Fn", fn);
   EXPECT_TRUE(alias.IsFunctionType());
   EXPECT_FALSE(GetInt().IsFunctionType());
 }
@@ -109,13 +107,13 @@ TEST_F(TypeSystemCppBasicQueriesTest, IsIntegerType) {
   EXPECT_TRUE(is_signed);
 
   CompilerType unsigned_int = builder.GetBuiltinType(
-      ConstString("unsigned int"), 4, lldb::eEncodingUint,
+      "unsigned int", 4, lldb::eEncodingUint,
       lldb::eFormatUnsigned);
   EXPECT_TRUE(ts->IsIntegerType(unsigned_int.GetOpaqueQualType(), is_signed));
   EXPECT_FALSE(is_signed);
 
   CompilerType nullptr_t = builder.GetBuiltinType(
-      ConstString("std::nullptr_t"), 8, lldb::eEncodingUint, lldb::eFormatHex);
+      "std::nullptr_t", 8, lldb::eEncodingUint, lldb::eFormatHex);
   EXPECT_FALSE(ts->IsIntegerType(nullptr_t.GetOpaqueQualType(), is_signed));
 }
 
@@ -124,9 +122,9 @@ TEST_F(TypeSystemCppBasicQueriesTest, IsIntegerType) {
 // type.
 TEST_F(TypeSystemCppBasicQueriesTest, EnumerationQueries) {
   CompilerType plain_enum =
-      builder.CreateEnumType(ConstString("E"), 4, GetInt(), /*is_scoped=*/false);
+      builder.CreateEnumType("E", 4, GetInt(), /*is_scoped=*/false);
   CompilerType scoped_enum = builder.CreateEnumType(
-      ConstString("ScopedE"), 4, GetInt(), /*is_scoped=*/true);
+      "ScopedE", 4, GetInt(), /*is_scoped=*/true);
 
   EXPECT_FALSE(ts->IsScopedEnumerationType(plain_enum.GetOpaqueQualType()));
   EXPECT_TRUE(ts->IsScopedEnumerationType(scoped_enum.GetOpaqueQualType()));
@@ -149,7 +147,7 @@ TEST_F(TypeSystemCppBasicQueriesTest, IsPointerType) {
 // A builtin int is a scalar type; a record is not.
 TEST_F(TypeSystemCppBasicQueriesTest, IsScalarType) {
   EXPECT_TRUE(GetInt().IsScalarType());
-  CompilerType record = builder.CreateRecordType(ConstString("Foo"), 4, false);
+  CompilerType record = builder.CreateRecordType("Foo", 4, false);
   EXPECT_FALSE(record.IsScalarType());
 }
 
@@ -157,7 +155,7 @@ TEST_F(TypeSystemCppBasicQueriesTest, IsScalarType) {
 // typedef sugar, but not other builtins.
 TEST_F(TypeSystemCppBasicQueriesTest, IsVoidType) {
   EXPECT_TRUE(GetVoid().IsVoidType());
-  CompilerType alias = builder.CreateTypedefType(ConstString("MyVoid"), GetVoid());
+  CompilerType alias = builder.CreateTypedefType("MyVoid", GetVoid());
   EXPECT_TRUE(alias.IsVoidType());
   EXPECT_FALSE(GetInt().IsVoidType());
 }
@@ -165,7 +163,7 @@ TEST_F(TypeSystemCppBasicQueriesTest, IsVoidType) {
 // A pointer to a polymorphic class is a possible dynamic type when checking
 // C++; a pointer to a non-polymorphic class is not.
 TEST_F(TypeSystemCppBasicQueriesTest, IsPossibleDynamicTypePolymorphic) {
-  CompilerType poly = builder.CreateRecordType(ConstString("Poly"), 8, true);
+  CompilerType poly = builder.CreateRecordType("Poly", 8, true);
   auto *poly_class =
       llvm::cast<ClassType>(static_cast<cpp_typesystem::Type *>(poly.GetOpaqueQualType()));
   builder.SetRecordComplete(*poly_class);
@@ -178,7 +176,7 @@ TEST_F(TypeSystemCppBasicQueriesTest, IsPossibleDynamicTypePolymorphic) {
                                         /*check_objc=*/false));
   EXPECT_EQ(target.GetOpaqueQualType(), poly.GetOpaqueQualType());
 
-  CompilerType plain = builder.CreateRecordType(ConstString("Plain"), 4, true);
+  CompilerType plain = builder.CreateRecordType("Plain", 4, true);
   builder.SetRecordComplete(
       *llvm::cast<ClassType>(static_cast<cpp_typesystem::Type *>(plain.GetOpaqueQualType())));
   CompilerType plain_ptr = builder.CreatePointerType(plain);

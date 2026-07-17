@@ -9,8 +9,6 @@
 #include "Plugins/TypeSystem/Cpp/Builder.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
-#include "lldb/Utility/ConstString.h"
-
 #include "llvm/Support/Casting.h"
 
 #include "gtest/gtest.h"
@@ -25,7 +23,7 @@ struct TypeSystemCppNameTest : public testing::Test {
   Builder builder{*ts};
 
   CompilerType GetInt() {
-    return builder.GetBuiltinType(ConstString("int"), 4, lldb::eEncodingSint,
+    return builder.GetBuiltinType("int", 4, lldb::eEncodingSint,
                                   lldb::eFormatDecimal);
   }
 };
@@ -76,7 +74,7 @@ TEST_F(TypeSystemCppNameTest, CVQualifiedNames) {
       builder.CreateCVQualifiedType(GetInt(), false, true);
   EXPECT_EQ(volatile_int.GetTypeName().GetStringRef(), "volatile int");
 
-  CompilerType record = builder.CreateRecordType(ConstString("Foo"), 4, false);
+  CompilerType record = builder.CreateRecordType("Foo", 4, false);
   CompilerType const_record =
       builder.CreateCVQualifiedType(record, true, false);
   EXPECT_EQ(const_record.GetTypeName().GetStringRef(), "Foo");
@@ -84,10 +82,10 @@ TEST_F(TypeSystemCppNameTest, CVQualifiedNames) {
 
 // A named leaf type (record, typedef) reports its stored spelling verbatim.
 TEST_F(TypeSystemCppNameTest, NamedLeafTypes) {
-  CompilerType record = builder.CreateRecordType(ConstString("MyStruct"), 4, false);
+  CompilerType record = builder.CreateRecordType("MyStruct", 4, false);
   EXPECT_EQ(record.GetTypeName().GetStringRef(), "MyStruct");
 
-  CompilerType alias = builder.CreateTypedefType(ConstString("MyAlias"), GetInt());
+  CompilerType alias = builder.CreateTypedefType("MyAlias", GetInt());
   EXPECT_EQ(alias.GetTypeName().GetStringRef(), "MyAlias");
 }
 
@@ -95,11 +93,11 @@ TEST_F(TypeSystemCppNameTest, NamedLeafTypes) {
 // clang's anonymous-tag spelling.
 TEST_F(TypeSystemCppNameTest, UnnamedRecordName) {
   CompilerType anon_struct =
-      builder.CreateRecordType(ConstString(""), 4, /*is_cpp_class=*/false);
+      builder.CreateRecordType("", 4, /*is_cpp_class=*/false);
   EXPECT_EQ(anon_struct.GetTypeName().GetStringRef(), "(unnamed struct)");
 
   CompilerType anon_union = builder.CreateRecordType(
-      ConstString(""), 4, /*is_cpp_class=*/false, /*is_union=*/true);
+      "", 4, /*is_cpp_class=*/false, /*is_union=*/true);
   EXPECT_EQ(anon_union.GetTypeName().GetStringRef(), "(unnamed union)");
 }
 
@@ -108,14 +106,14 @@ TEST_F(TypeSystemCppNameTest, UnnamedRecordName) {
 // still displays as `std::foo`.
 TEST_F(TypeSystemCppNameTest, DisplayNameSkipsInlineNamespace) {
   const Namespace *std_ns =
-      builder.GetNamespace(ConstString("std"), nullptr, /*is_inline=*/false);
+      builder.GetNamespace("std", nullptr, /*is_inline=*/false);
   const Namespace *inline_ns = builder.GetNamespace(
-      ConstString("__1"), std_ns, /*is_inline=*/true);
+      "__1", std_ns, /*is_inline=*/true);
 
   CompilerType record =
-      builder.CreateRecordType(ConstString("std::__1::basic_string"), 32, true);
+      builder.CreateRecordType("std::__1::basic_string", 32, true);
   builder.SetDeclContext(record, inline_ns);
-  builder.SetUnqualifiedName(record, ConstString("basic_string"));
+  builder.SetUnqualifiedName(record, "basic_string");
 
   EXPECT_EQ(ts->GetDisplayTypeName(record.GetOpaqueQualType()).GetStringRef(),
            "std::basic_string");
@@ -126,14 +124,14 @@ TEST_F(TypeSystemCppNameTest, DisplayNameSkipsInlineNamespace) {
 // while GetTypeName (the fully-qualified/DWARF-matching name) keeps them.
 TEST_F(TypeSystemCppNameTest, TemplateDisplayNameHidesDefaultArgs) {
   CompilerType record = builder.CreateRecordType(
-      ConstString("vector<int, allocator<int> >"), 24, true);
+      "vector<int, allocator<int> >", 24, true);
   auto *r =
       llvm::cast<RecordType>(static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
   builder.SetRecordTemplateInstantiation(*r);
-  builder.SetUnqualifiedName(record, ConstString("vector<int, allocator<int> >"));
+  builder.SetUnqualifiedName(record, "vector<int, allocator<int> >");
 
   CompilerType allocator =
-      builder.CreateRecordType(ConstString("allocator<int>"), 1, true);
+      builder.CreateRecordType("allocator<int>", 1, true);
 
   builder.AddTemplateArgument(*r, lldb::eTemplateArgumentKindType,
                               static_cast<cpp_typesystem::Type *>(GetInt().GetOpaqueQualType()),

@@ -205,9 +205,9 @@ TypeSP DWARFASTParserCpp::ParseBaseType(const DWARFDIE &die) {
     CompilerType element;
     if (is_complex_float)
       element = builder.GetBuiltinType(
-          ConstString(element_bytes == 4   ? "float"
-                      : element_bytes == 8 ? "double"
-                                           : "long double"),
+          element_bytes == 4   ? "float"
+          : element_bytes == 8 ? "double"
+                               : "long double",
           element_bytes, lldb::eEncodingIEEE754, lldb::eFormatFloat);
     else {
       // The vendor complex-integer encoding doesn't record the element type, so
@@ -219,7 +219,7 @@ TypeSP DWARFASTParserCpp::ParseBaseType(const DWARFDIE &die) {
                                  : element_bytes == 4 ? "int"
                                  : element_bytes == 8 ? "long"
                                                       : "__int128";
-      element = builder.GetBuiltinType(ConstString(int_name), element_bytes,
+      element = builder.GetBuiltinType(int_name, element_bytes,
                                        lldb::eEncodingSint, lldb::eFormatDecimal);
     }
     CompilerType complex_type = builder.CreateComplexType(element);
@@ -233,7 +233,7 @@ TypeSP DWARFASTParserCpp::ParseBaseType(const DWARFDIE &die) {
   // to a bespoke type (using the format derived above) if it is not one of the
   // enumerated builtins.
   CompilerType compiler_type = cpp_typesystem::Builder(m_ts).GetBuiltinType(
-      name, byte_size, encoding, format);
+      name.GetStringRef(), byte_size, encoding, format);
 
   Declaration decl;
   return dwarf->MakeType(die.GetID(), name, byte_size, /*context=*/nullptr,
@@ -254,7 +254,7 @@ TypeSP DWARFASTParserCpp::ParseUnspecifiedType(const DWARFDIE &die) {
   const uint64_t ptr_size = m_ts.GetPointerByteSize();
   cpp_typesystem::Builder builder(m_ts);
   CompilerType compiler_type =
-      builder.GetBuiltinType(ConstString("decltype(nullptr)"), ptr_size,
+      builder.GetBuiltinType("decltype(nullptr)", ptr_size,
                              lldb::eEncodingUint, lldb::eFormatHex);
   Declaration decl;
   return dwarf->MakeType(die.GetID(), name, ptr_size, /*context=*/nullptr,
@@ -419,8 +419,7 @@ BuildDeclNamespace(const DWARFDIE &die, cpp_typesystem::Builder &builder) {
     const char *ns_name = ns_die.GetName();
     bool is_inline =
         ns_die.GetAttributeValueAsUnsigned(DW_AT_export_symbols, 0) != 0;
-    ns = builder.GetNamespace(ConstString(ns_name ? ns_name : ""), ns,
-                              is_inline);
+    ns = builder.GetNamespace(ns_name ? ns_name : "", ns, is_inline);
   }
   return ns;
 }
@@ -437,7 +436,7 @@ BuildNamespaceForDIE(const DWARFDIE &ns_die, cpp_typesystem::Builder &builder) {
   const char *name = ns_die.GetName();
   bool is_inline =
       ns_die.GetAttributeValueAsUnsigned(DW_AT_export_symbols, 0) != 0;
-  return builder.GetNamespace(ConstString(name ? name : ""), parent, is_inline);
+  return builder.GetNamespace(name ? name : "", parent, is_inline);
 }
 
 /// The unqualified spelling of a named type DIE, including any reconstructed
@@ -472,7 +471,7 @@ static void SetTypeNameInfo(const DWARFDIE &die, CompilerType type,
                             cpp_typesystem::Builder &builder) {
   builder.SetDeclContext(type, BuildDeclNamespace(die, builder));
   if (die.GetName())
-    builder.SetUnqualifiedName(type, ConstString(GetDIEUnqualifiedName(die)));
+    builder.SetUnqualifiedName(type, GetDIEUnqualifiedName(die));
 }
 
 CompilerDeclContext
@@ -746,7 +745,7 @@ TypeSP DWARFASTParserCpp::ParseStructureType(const DWARFDIE &die) {
     CompilerType compiler_type;
     {
       cpp_typesystem::Builder builder(m_ts);
-      compiler_type = builder.CreateObjCInterfaceType(name, byte_size);
+      compiler_type = builder.CreateObjCInterfaceType(name.GetStringRef(), byte_size);
       SetTypeNameInfo(die, compiler_type, builder);
     }
 
@@ -775,8 +774,8 @@ TypeSP DWARFASTParserCpp::ParseStructureType(const DWARFDIE &die) {
   {
     cpp_typesystem::Builder builder(m_ts);
     compiler_type =
-        builder.CreateRecordType(name, byte_size, is_cpp_class, is_union,
-                                 is_class_keyword);
+        builder.CreateRecordType(name.GetStringRef(), byte_size, is_cpp_class,
+                                 is_union, is_class_keyword);
     SetTypeNameInfo(die, compiler_type, builder);
   }
 
@@ -960,7 +959,7 @@ TypeSP DWARFASTParserCpp::ParseTypedef(const DWARFDIE &die) {
     // A missing DW_AT_type means the aliased type is `void`.
     if (!underlying_type)
       underlying_type = ts.GetVoidType();
-    typedef_type = ts.CreateTypedefType(name, underlying_type);
+    typedef_type = ts.CreateTypedefType(name.GetStringRef(), underlying_type);
     SetTypeNameInfo(die, typedef_type, ts);
   }
 
@@ -1110,7 +1109,7 @@ TypeSP DWARFASTParserCpp::ParseEnum(const DWARFDIE &die) {
   CompilerType enum_type;
   {
     cpp_typesystem::Builder ts(m_ts);
-    enum_type = ts.CreateEnumType(name, byte_size, underlying_type, is_scoped);
+    enum_type = ts.CreateEnumType(name.GetStringRef(), byte_size, underlying_type, is_scoped);
     cpp_typesystem::Type *cpp_type =
         TypeSystemCpp::GetCppType(enum_type.GetOpaqueQualType());
     auto &enum_node = *llvm::cast<cpp_typesystem::EnumType>(cpp_type);
@@ -1650,7 +1649,7 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   // uses a signed word-width builtin). Fetch it once.
   constexpr uint64_t word_width = 32;
   auto *padding_type = static_cast<cpp_typesystem::Type *>(
-      ts.GetBuiltinType(ConstString("int"), word_width / 8, lldb::eEncodingSint,
+      ts.GetBuiltinType("int", word_width / 8, lldb::eEncodingSint,
                         lldb::eFormatDecimal)
           .GetOpaqueQualType());
   // State of the previous field, in absolute bits from the start of the record.
@@ -1780,8 +1779,8 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
         const char *mangled =
             member.referencing_die.GetMangledName(
                 /*substitute_name_allowed=*/false);
-        ts.AddStaticDataMember(*record, ConstString(member.name), member_type,
-                               ConstString(mangled ? mangled : ""),
+        ts.AddStaticDataMember(*record, member.name, member_type,
+                               mangled ? mangled : "",
                                member.const_value);
       }
       break;
@@ -1918,10 +1917,10 @@ void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
       kind = cpp_typesystem::MemberFunctionKind::Constructor;
 
 
-    ts.AddMemberFunction(record, ConstString(method_name),
+    ts.AddMemberFunction(record, method_name,
                          func_type->GetForwardCompilerType(),
-                         ConstString(asm_label),
-                         ConstString(mangled_name ? mangled_name : ""),
+                         asm_label,
+                         mangled_name ? mangled_name : "",
                          is_static, is_const, is_volatile, is_virtual,
                          ref_qualifier, kind);
   }
@@ -1965,9 +1964,9 @@ void DWARFASTParserCpp::CompleteObjCMethodsFromDWARF(
 
     const std::string asm_label = MakeFuncAsmLabel(method_die);
 
-    ts.AddObjCMethod(iface, ConstString(name),
+    ts.AddObjCMethod(iface, name,
                      func_type->GetForwardCompilerType(),
-                     ConstString(asm_label), objc_name->IsClassMethod(),
+                     asm_label, objc_name->IsClassMethod(),
                      is_variadic);
   };
 

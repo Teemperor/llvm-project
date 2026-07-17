@@ -9,8 +9,6 @@
 #include "Plugins/TypeSystem/Cpp/Builder.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
-#include "lldb/Utility/ConstString.h"
-
 #include "gtest/gtest.h"
 
 using namespace lldb_private;
@@ -23,7 +21,7 @@ struct TypeSystemCppRecordQueriesTest : public testing::Test {
   Builder builder{*ts};
 
   CompilerType GetInt() {
-    return builder.GetBuiltinType(ConstString("int"), 4, lldb::eEncodingSint,
+    return builder.GetBuiltinType("int", 4, lldb::eEncodingSint,
                                   lldb::eFormatDecimal);
   }
 
@@ -31,7 +29,7 @@ struct TypeSystemCppRecordQueriesTest : public testing::Test {
   CompilerType MakeRecordWithField(llvm::StringRef record_name,
                                    llvm::StringRef field_name) {
     CompilerType record =
-        builder.CreateRecordType(ConstString(record_name), 4, false);
+        builder.CreateRecordType(record_name, 4, false);
     auto *r =
         llvm::cast<RecordType>(static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
     builder.AddField(*r, builder.GetIdentifier(field_name),
@@ -64,7 +62,7 @@ TEST_F(TypeSystemCppRecordQueriesTest, FieldsBasic) {
 // A bitfield's bit offset combines the storage-unit byte offset and the
 // bitfield's own bit offset within it, and reports is_bitfield.
 TEST_F(TypeSystemCppRecordQueriesTest, BitfieldOffsets) {
-  CompilerType record = builder.CreateRecordType(ConstString("BF"), 4, false);
+  CompilerType record = builder.CreateRecordType("BF", 4, false);
   auto *r =
       llvm::cast<RecordType>(static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
   builder.AddField(*r, builder.GetIdentifier("flag"),
@@ -87,12 +85,12 @@ TEST_F(TypeSystemCppRecordQueriesTest, BitfieldOffsets) {
 // GetNumDirectBaseClasses/GetDirectBaseClassAtIndex report a ClassType's base
 // classes, with the bit offset derived from the base's byte offset.
 TEST_F(TypeSystemCppRecordQueriesTest, DirectBaseClasses) {
-  CompilerType base = builder.CreateRecordType(ConstString("Base"), 4, true);
+  CompilerType base = builder.CreateRecordType("Base", 4, true);
   builder.SetRecordComplete(
       *llvm::cast<ClassType>(static_cast<cpp_typesystem::Type *>(base.GetOpaqueQualType())));
 
   CompilerType derived =
-      builder.CreateRecordType(ConstString("Derived"), 8, true);
+      builder.CreateRecordType("Derived", 8, true);
   auto *derived_class = llvm::cast<ClassType>(
       static_cast<cpp_typesystem::Type *>(derived.GetOpaqueQualType()));
   builder.AddBaseClass(*derived_class,
@@ -127,12 +125,12 @@ TEST_F(TypeSystemCppRecordQueriesTest, NoVirtualBaseClasses) {
 // GetStaticFieldWithName finds a static data member by name and returns an
 // (invalid) empty decl when there is none by that name.
 TEST_F(TypeSystemCppRecordQueriesTest, StaticFieldLookup) {
-  CompilerType record = builder.CreateRecordType(ConstString("Foo"), 4, true);
+  CompilerType record = builder.CreateRecordType("Foo", 4, true);
   auto *r =
       llvm::cast<RecordType>(static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
-  builder.AddStaticDataMember(*r, ConstString("s_count"),
+  builder.AddStaticDataMember(*r, "s_count",
                               static_cast<cpp_typesystem::Type *>(GetInt().GetOpaqueQualType()),
-                              ConstString("_ZN3Foo7s_countE"), std::nullopt);
+                              "_ZN3Foo7s_countE", std::nullopt);
   builder.SetRecordComplete(*r);
 
   CompilerDecl decl =
@@ -149,7 +147,7 @@ TEST_F(TypeSystemCppRecordQueriesTest, StaticFieldLookup) {
 // (its members are injected into the enclosing scope), not an ordinary named
 // or unnamed-but-not-anonymous record.
 TEST_F(TypeSystemCppRecordQueriesTest, IsAnonymousType) {
-  CompilerType record = builder.CreateRecordType(ConstString(""), 4, false,
+  CompilerType record = builder.CreateRecordType("", 4, false,
                                                  /*is_union=*/true);
   auto *r =
       llvm::cast<RecordType>(static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));

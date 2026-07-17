@@ -26,12 +26,12 @@ TypeRef Builder::ToTypeRef(Type *type) const {
   return TypeRef(m_ts.m_context, type);
 }
 
-CompilerType Builder::GetBuiltinType(ConstString name,
+CompilerType Builder::GetBuiltinType(llvm::StringRef name,
                                      std::optional<uint64_t> byte_size,
                                      lldb::Encoding encoding,
                                      lldb::Format format) {
-  return m_ts.GetCompilerType(m_ts.m_context.GetBuiltinType(
-      name.GetStringRef(), byte_size, encoding, format));
+  return m_ts.GetCompilerType(
+      m_ts.m_context.GetBuiltinType(name, byte_size, encoding, format));
 }
 
 CompilerType Builder::GetVoidType() {
@@ -39,20 +39,19 @@ CompilerType Builder::GetVoidType() {
       m_ts.m_context.GetBuiltinType(cpp_typesystem::BuiltinKind::Void));
 }
 
-CompilerType Builder::CreateRecordType(ConstString name,
+CompilerType Builder::CreateRecordType(llvm::StringRef name,
                                        std::optional<uint64_t> byte_size,
                                        bool is_cpp_class, bool is_union,
                                        bool is_class_keyword) {
   return m_ts.GetCompilerType(m_ts.m_context.CreateRecordType(
-      name.GetStringRef(), byte_size, is_cpp_class, is_union,
-      is_class_keyword));
+      name, byte_size, is_cpp_class, is_union, is_class_keyword));
 }
 
 CompilerType
-Builder::CreateObjCInterfaceType(ConstString name,
+Builder::CreateObjCInterfaceType(llvm::StringRef name,
                                  std::optional<uint64_t> byte_size) {
   return m_ts.GetCompilerType(
-      m_ts.m_context.CreateObjCInterfaceType(name.GetStringRef(), byte_size));
+      m_ts.m_context.CreateObjCInterfaceType(name, byte_size));
 }
 
 CompilerType Builder::CreateArrayType(CompilerType element_type,
@@ -73,10 +72,10 @@ CompilerType Builder::CreateReferenceType(CompilerType pointee_type,
       m_ts.m_context.CreateReferenceType(ToTypeRef(pointee_type), is_rvalue));
 }
 
-CompilerType Builder::CreateTypedefType(ConstString name,
+CompilerType Builder::CreateTypedefType(llvm::StringRef name,
                                         CompilerType underlying_type) {
-  return m_ts.GetCompilerType(m_ts.m_context.CreateTypedefType(
-      name.GetStringRef(), ToTypeRef(underlying_type)));
+  return m_ts.GetCompilerType(
+      m_ts.m_context.CreateTypedefType(name, ToTypeRef(underlying_type)));
 }
 
 CompilerType Builder::CreateCVQualifiedType(CompilerType underlying_type,
@@ -93,18 +92,18 @@ CompilerType Builder::CreatePtrAuthType(CompilerType underlying_type,
       extra_discriminator));
 }
 
-CompilerType Builder::CreateElaboratedType(ConstString spelling,
+CompilerType Builder::CreateElaboratedType(llvm::StringRef spelling,
                                            CompilerType underlying_type) {
   return m_ts.GetCompilerType(m_ts.m_context.CreateElaboratedType(
-      spelling.GetStringRef(), ToTypeRef(underlying_type)));
+      spelling, ToTypeRef(underlying_type)));
 }
 
-CompilerType Builder::CreateEnumType(ConstString name,
+CompilerType Builder::CreateEnumType(llvm::StringRef name,
                                      std::optional<uint64_t> byte_size,
                                      CompilerType underlying_type,
                                      bool is_scoped) {
   return m_ts.GetCompilerType(m_ts.m_context.CreateEnumType(
-      name.GetStringRef(), byte_size, ToTypeRef(underlying_type), is_scoped));
+      name, byte_size, ToTypeRef(underlying_type), is_scoped));
 }
 
 CompilerType Builder::CreateFunctionType(CompilerType return_type,
@@ -127,16 +126,17 @@ void Builder::AddParameter(CompilerType function_type,
 }
 
 void Builder::AddMemberFunction(cpp_typesystem::RecordType &record,
-                                ConstString name, CompilerType function_type,
-                                ConstString asm_label, ConstString mangled_name,
-                                bool is_static, bool is_const, bool is_volatile,
+                                llvm::StringRef name, CompilerType function_type,
+                                llvm::StringRef asm_label,
+                                llvm::StringRef mangled_name, bool is_static,
+                                bool is_const, bool is_volatile,
                                 bool is_virtual, RefQualifier ref_qualifier,
                                 MemberFunctionKind kind) {
   cpp_typesystem::MemberFunction method;
-  method.name = GetIdentifier(name.GetStringRef());
+  method.name = GetIdentifier(name);
   method.type = ToTypeRef(function_type);
-  method.asm_label = GetIdentifier(asm_label.GetStringRef());
-  method.mangled_name = GetIdentifier(mangled_name.GetStringRef());
+  method.asm_label = GetIdentifier(asm_label);
+  method.mangled_name = GetIdentifier(mangled_name);
   method.is_static = is_static;
   method.is_const = is_const;
   method.is_volatile = is_volatile;
@@ -147,13 +147,13 @@ void Builder::AddMemberFunction(cpp_typesystem::RecordType &record,
 }
 
 void Builder::AddStaticDataMember(cpp_typesystem::RecordType &record,
-                                  ConstString name, cpp_typesystem::Type *type,
-                                  ConstString mangled_name,
+                                  llvm::StringRef name, cpp_typesystem::Type *type,
+                                  llvm::StringRef mangled_name,
                                   std::optional<uint64_t> const_value) {
   cpp_typesystem::StaticDataMember member;
-  member.name = GetIdentifier(name.GetStringRef());
+  member.name = GetIdentifier(name);
   member.type = ToTypeRef(type);
-  member.mangled_name = GetIdentifier(mangled_name.GetStringRef());
+  member.mangled_name = GetIdentifier(mangled_name);
   member.const_value = const_value;
   m_ts.m_context.AddStaticDataMember(record, member);
 }
@@ -214,13 +214,13 @@ void Builder::SetObjCSuperClass(cpp_typesystem::ObjCInterfaceType &record,
 }
 
 void Builder::AddObjCMethod(cpp_typesystem::ObjCInterfaceType &record,
-                            ConstString name, CompilerType function_type,
-                            ConstString asm_label, bool is_class_method,
+                            llvm::StringRef name, CompilerType function_type,
+                            llvm::StringRef asm_label, bool is_class_method,
                             bool is_variadic) {
   cpp_typesystem::ObjCMethod method;
-  method.name = GetIdentifier(name.GetStringRef());
+  method.name = GetIdentifier(name);
   method.type = ToTypeRef(function_type);
-  method.asm_label = GetIdentifier(asm_label.GetStringRef());
+  method.asm_label = GetIdentifier(asm_label);
   method.is_class_method = is_class_method;
   method.is_variadic = is_variadic;
   m_ts.m_context.AddObjCMethod(record, std::move(method));
@@ -254,10 +254,9 @@ void Builder::AddTemplateTemplateArgument(cpp_typesystem::RecordType &record,
 }
 
 const cpp_typesystem::Namespace *
-Builder::GetNamespace(ConstString name, const cpp_typesystem::Namespace *parent,
+Builder::GetNamespace(llvm::StringRef name, const cpp_typesystem::Namespace *parent,
                       bool is_inline) {
-  return m_ts.m_context.GetNamespace(GetIdentifier(name.GetStringRef()), parent,
-                                     is_inline);
+  return m_ts.m_context.GetNamespace(GetIdentifier(name), parent, is_inline);
 }
 
 void Builder::SetDeclContext(CompilerType type,
@@ -266,9 +265,9 @@ void Builder::SetDeclContext(CompilerType type,
     t->SetDeclContext(ns);
 }
 
-void Builder::SetUnqualifiedName(CompilerType type, ConstString name) {
+void Builder::SetUnqualifiedName(CompilerType type, llvm::StringRef name) {
   if (auto *t = static_cast<cpp_typesystem::Type *>(type.GetOpaqueQualType()))
-    t->SetUnqualifiedName(GetIdentifier(name.GetStringRef()));
+    t->SetUnqualifiedName(GetIdentifier(name));
 }
 
 void Builder::AddNestedType(cpp_typesystem::RecordType &record,
