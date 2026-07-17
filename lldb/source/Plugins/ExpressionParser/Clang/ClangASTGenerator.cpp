@@ -1290,6 +1290,27 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   if (!decl->isCompleteDefinition())
     decl->completeDefinition();
 
+  // Reproduce the record's by-value argument-passing ABI from DWARF's
+  // DW_AT_calling_convention (see DWARFASTParserCpp). Without this, a struct
+  // that must be passed by reference / returned via sret (e.g. one with a
+  // non-trivial copy constructor) would be miscompiled when an expression
+  // calls a function taking/returning it by value, corrupting the result
+  // pointer. Mirrors DWARFASTParserClang's setArgPassingRestrictions /
+  // setHasTrivialSpecialMemberForCall.
+  if (auto *cxx = llvm::dyn_cast<clang::CXXRecordDecl>(decl)) {
+    switch (rec->GetArgPassingKind()) {
+    case ct::RecordType::ArgPassingKind::PassByValue:
+      cxx->setHasTrivialSpecialMemberForCall();
+      break;
+    case ct::RecordType::ArgPassingKind::CannotPassInRegs:
+      cxx->setArgPassingRestrictions(
+          clang::RecordArgPassingKind::CannotPassInRegs);
+      break;
+    case ct::RecordType::ArgPassingKind::Unspecified:
+      break;
+    }
+  }
+
   // Clear the external-storage flags before iterating the members below: the
   // members were added directly (addDecl), so no external source is needed to
   // enumerate them, and leaving the flags set would make `decl->methods()`
@@ -2013,12 +2034,18 @@ CompilerType ClangASTGenerator::MapClangTypeToCpp(clang::QualType qt,
     // / the DWARF parser).
     if (objc_ptr->isObjCIdType() || objc_ptr->isObjCClassType()) {
       cpp_typesystem::Builder builder(result_ts);
+      const bool is_class = objc_ptr->isObjCClassType();
       CompilerType opaque = builder.CreateRecordType(
-          ConstString(objc_ptr->isObjCClassType() ? "objc_class"
-                                                   : "objc_object"),
+          ConstString(is_class ? "objc_class" : "objc_object"),
           /*byte_size=*/std::nullopt, /*is_cpp_class=*/false,
           /*is_union=*/false);
-      return builder.CreatePointerType(opaque);
+      CompilerType ptr = builder.CreatePointerType(opaque);
+      // `id` / `Class` are typedefs over `objc_object *` / `objc_class *`;
+      // preserve that spelling so an expression result prints as `(id)` /
+      // `(Class)` rather than the underlying `objc_object *` (matching how the
+      // DWARF parser models `id` and TypeSystemClang's result type).
+      return builder.CreateTypedefType(ConstString(is_class ? "Class" : "id"),
+                                       ptr);
     }
     // A pointer to an Objective-C class (`Foo *`) the parser formed. Map the
     // pointee interface and wrap it in a cpp pointer.

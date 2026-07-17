@@ -1369,6 +1369,26 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
             die.GetAttributeValueAsOptionalUnsigned(DW_AT_alignment))
       record->SetAlignInBits(*align * 8);
     ts.SetRecordComplete(*record);
+
+    // DW_AT_calling_convention on the record describes how it is passed and
+    // returned by value. Record it so ClangASTGenerator can reproduce the ABI
+    // when the expression evaluator calls a function that takes/returns this
+    // record by value (e.g. a struct with a non-trivial copy constructor is
+    // passed by reference / returned via sret). Mirrors DWARFASTParserClang.
+    switch (die.GetAttributeValueAsUnsigned(
+        DW_AT_calling_convention, llvm::dwarf::DW_CC_normal)) {
+    case llvm::dwarf::DW_CC_pass_by_value:
+      ts.SetRecordArgPassingKind(
+          *record, cpp_typesystem::RecordType::ArgPassingKind::PassByValue);
+      break;
+    case llvm::dwarf::DW_CC_pass_by_reference:
+      ts.SetRecordArgPassingKind(
+          *record,
+          cpp_typesystem::RecordType::ArgPassingKind::CannotPassInRegs);
+      break;
+    default:
+      break;
+    }
   }
 
   // C++-only information (base classes) is only stored on ClassType.

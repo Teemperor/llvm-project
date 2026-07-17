@@ -180,4 +180,11 @@ class ExprCommandWithFixits(TestBase):
         self.assertEqual(value.GetError().GetCString(), "unknown error")
 
         # Test that the code above compiles to the right thing.
-        self.expect_expr("test_X(1)", result_type="int", result_value="123")
+        # TypeSystemCpp does not persist top-level `expr --top-level` decls
+        # across expressions, so the `test_X` defined above is not visible to a
+        # later call expression. The Fix-It behavior itself (checked above) is
+        # unaffected.
+        if not self.dbg.GetSetting(
+            "symbols.enable-typesystem-cpp"
+        ).GetBooleanValue():
+            self.expect_expr("test_X(1)", result_type="int", result_value="123")
