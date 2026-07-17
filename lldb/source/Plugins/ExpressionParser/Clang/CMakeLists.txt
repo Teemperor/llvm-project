@@ -17,6 +17,7 @@ add_lldb_library(lldbPluginExpressionParserClang
   ClangHost.cpp
   ClangModulesDeclVendor.cpp
   ClangPersistentVariables.cpp
+  ClangTypeConverter.cpp
   ClangUserExpression.cpp
   ClangUtil.cpp
   ClangUtilityFunction.cpp
