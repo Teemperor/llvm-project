@@ -1289,6 +1289,15 @@ bool TypeSystemCpp::GetCompleteType(opaque_compiler_type_t type) {
     CompilerType ct = GetCompilerType(t);
     sym_file->CompleteType(ct);
   }
+  // A record/enum that is still incomplete after asking the SymbolFile means
+  // no definition could be found anywhere (e.g. -flimit-debug-info stripped it
+  // from this module). We intentionally leave it incomplete rather than
+  // forcefully completing it as an empty definition (unlike TypeSystemClang's
+  // RequireCompleteType), but still record the same statistics signal
+  // (GetHasForcefullyCompletedTypes) so `debugInfoHadIncompleteTypes` is
+  // reported correctly.
+  if (!t->IsComplete())
+    m_has_forcefully_completed_types = true;
   return t->IsComplete();
 }
 
@@ -1650,6 +1659,15 @@ LanguageType TypeSystemCpp::GetMinimumLanguage(opaque_compiler_type_t type) {
   // Pointers to records keep reporting C++ so class data formatters still fire.
   if (type) {
     cpp_typesystem::Type *t = Desugar(GetCppType(type));
+    // Resolve through a reference to what it refers to first, matching
+    // TypeSystemClang's GetCanonicalQualType(type).getNonReferenceType():
+    // `Shape &` must report C++ (so e.g. GetVTable's language-runtime lookup
+    // and class formatters fire) exactly like `Shape` does, not fall through
+    // to the "plain non-record type" C default below (a reference is never
+    // itself the "plain scalar" case that default exists for).
+    if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t))
+      if (cpp_typesystem::Type *referent = ref->GetPointeeType())
+        t = Desugar(referent);
     // An Objective-C interface (or a pointer to one, i.e. an ObjC object like
     // `NSObject *`) is an Objective-C construct. Reporting ObjC is what routes
     // it to the ObjC language runtime for dynamic-type resolution (see
@@ -1676,6 +1694,13 @@ LanguageType TypeSystemCpp::GetMinimumLanguage(opaque_compiler_type_t type) {
       if (!pointee ||
           !llvm::isa<cpp_typesystem::RecordType>(Desugar(pointee)))
         return eLanguageTypeC;
+    } else if (!llvm::isa<cpp_typesystem::RecordType>(t)) {
+      // A plain (non-pointer, non-record, non-ObjC) type -- e.g. `int` -- is
+      // a C construct, matching TypeSystemClang's default fallthrough
+      // (eLanguageTypeC) for anything that isn't a CXXRecordDecl/ObjC
+      // construct/pointer-to-record. Records themselves keep falling through
+      // to eLanguageTypeC_plus_plus below so C++ class formatters still fire.
+      return eLanguageTypeC;
     }
   }
   return eLanguageTypeC_plus_plus;
@@ -1862,8 +1887,8 @@ TypeSystemCpp::GetMemberFunctionAtIndex(opaque_compiler_type_t type,
 CompilerType TypeSystemCpp::GetPointeeType(opaque_compiler_type_t type) {
   if (!type)
     return CompilerType();
-  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(
-          Desugar(GetCppType(type)))) {
+  cpp_typesystem::Type *desugared = Desugar(GetCppType(type));
+  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(desugared)) {
     // A null pointee models `void *` (see PointerType). Surface the canonical
     // void builtin so callers (e.g. CompilerType::IsPointerToVoid) can identify
     // it via GetBasicTypeEnumeration().
@@ -1872,6 +1897,14 @@ CompilerType TypeSystemCpp::GetPointeeType(opaque_compiler_type_t type) {
     return GetCompilerType(
         m_context.GetBuiltinType(cpp_typesystem::BuiltinKind::Void));
   }
+  // A reference's "pointee" is the referenced type, matching
+  // TypeSystemClang::GetPointeeType (clang::Type::getPointeeType() answers
+  // both pointers and references). Unlike a pointer, a reference always
+  // refers to a concrete type (there is no `void &`), so no void fallback is
+  // needed here.
+  if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(desugared))
+    if (cpp_typesystem::Type *referent = ref->GetPointeeType())
+      return GetCompilerType(referent);
   return CompilerType();
 }
 
@@ -2205,6 +2238,13 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
   if (CompilerType rt = GetRuntimeCompletedObjCType(t, exe_ctx))
     return rt.GetNumChildren(omit_empty_base_classes, exe_ctx);
   GetCompleteType(type);
+  // A type with no debug info defining it anywhere (e.g. a forward-declared
+  // `struct Opaque;` that is never defined) stays incomplete even after
+  // GetCompleteType; surface that as an error instead of silently reporting
+  // zero fields, matching TypeSystemClang's Record case.
+  if (!t->IsComplete())
+    return llvm::createStringError(
+        "incomplete type \"" + GetDisplayTypeName(type).GetString() + "\"");
   // Children of a record are its direct base classes followed by its fields.
   // Empty base classes (no data members, recursively) are omitted when
   // requested, matching TypeSystemClang.
@@ -2572,8 +2612,14 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
     // (this is the explicit access that is allowed to force completion of an
     // otherwise-lazy pointee).
     GetCompleteType(GetCompilerType(pointee).GetOpaqueQualType());
-    if (std::optional<uint64_t> byte_size = pointee->GetByteSize())
-      child_byte_size = *byte_size;
+    std::optional<uint64_t> byte_size = pointee->GetByteSize();
+    if (!byte_size)
+      return llvm::createStringError(
+          "incomplete type \"" +
+          GetDisplayTypeName(GetCompilerType(pointee).GetOpaqueQualType())
+              .GetString() +
+          "\"");
+    child_byte_size = *byte_size;
     child_byte_offset = 0;
     return GetCompilerType(pointee);
   }
@@ -3047,10 +3093,53 @@ static void AppendMemberDecl(Stream &s, TypeSystemCpp &ts,
   s << dims;
 }
 
+// Append a clang-like member-function declaration ("<ret> <name>(<params>)
+// <cv-qualifiers> <ref-qualifier>;") for a record's method, mirroring how
+// clang::RecordDecl::print renders a CXXMethodDecl. Reuses BuildFunctionName's
+// return-type/parameter rendering.
+static void AppendMemberFunctionDecl(Stream &s,
+                                     const cpp_typesystem::MemberFunction &m) {
+  using namespace cpp_typesystem;
+  if (m.is_static)
+    s << "static ";
+  FunctionType *fn = llvm::dyn_cast_or_null<FunctionType>(m.type.Get());
+  std::string name = m.name.GetName().str();
+  if (fn) {
+    s << BuildFunctionName(fn, name);
+  } else {
+    s << name << "()";
+  }
+  if (m.is_const)
+    s << " const";
+  if (m.is_volatile)
+    s << " volatile";
+  switch (m.ref_qualifier) {
+  case RefQualifier::None:
+    break;
+  case RefQualifier::LValue:
+    s << " &";
+    break;
+  case RefQualifier::RValue:
+    s << " &&";
+    break;
+  }
+  s.PutCString(";\n");
+}
+
 void TypeSystemCpp::DumpTypeDescription(opaque_compiler_type_t type, Stream &s,
                                         DescriptionLevel level) {
   if (!type)
     return;
+  // A typedef is checked before desugaring (unlike the record/enum/ObjC
+  // branches below, which want the canonical type): clang's equivalent dump
+  // only special-cases a type that IS itself a TypedefType, printing
+  // "typedef <name>" and leaving the underlying type alone, matching
+  // TypeSystemClang::DumpTypeDescription's `case clang::Type::Typedef`.
+  if (llvm::isa<cpp_typesystem::TypedefType>(GetCppType(type))) {
+    s.PutCString("typedef ");
+    s.PutCString(GetTypeName(type, /*BaseOnly=*/true).GetStringRef());
+    return;
+  }
   cpp_typesystem::Type *t = Desugar(GetCppType(type));
 
   if (auto *enum_type = llvm::dyn_cast<cpp_typesystem::EnumType>(t)) {
@@ -3073,14 +3162,47 @@ void TypeSystemCpp::DumpTypeDescription(opaque_compiler_type_t type, Stream &s,
     return;
   }
 
+  if (auto *iface = llvm::dyn_cast<cpp_typesystem::ObjCInterfaceType>(t)) {
+    GetCompleteType(type);
+    // An ObjC interface is a RecordType (ivars modeled as fields, superclass
+    // as its one base class), but its source-level spelling is `@interface`,
+    // not `struct`/`class` -- dump it separately from the generic RecordType
+    // branch below (which it would otherwise also match).
+    s.Printf("@interface %s", GetTypeName(t, /*BaseOnly=*/true).GetCString());
+    if (const cpp_typesystem::BaseClass *super = iface->GetBaseClassAtIndex(0))
+      s.Printf(" : %s",
+               GetTypeName(super->type.Get(), /*BaseOnly=*/true).GetCString());
+    s.PutCString(" {\n");
+    for (uint32_t i = 0, e = iface->GetNumFields(); i != e; ++i) {
+      const cpp_typesystem::Field *field = iface->GetFieldAtIndex(i);
+      if (!field)
+        continue;
+      s.PutCString("    ");
+      AppendMemberDecl(s, *this, field->type.Get(), field->name.GetName());
+      s.PutCString(";\n");
+    }
+    s.PutCString("}\n");
+    CompleteMemberFunctions(iface);
+    for (uint32_t i = 0, e = iface->GetNumObjCMethods(); i != e; ++i) {
+      if (const cpp_typesystem::ObjCMethod *m = iface->GetObjCMethodAtIndex(i))
+        s.Printf("%s;\n", m->name.GetName().str().c_str());
+    }
+    return;
+  }
+
   if (auto *record = llvm::dyn_cast<cpp_typesystem::RecordType>(t)) {
     GetCompleteType(type);
-    const char *tag =
-        record->IsUnion()
-            ? "union"
-            : (llvm::isa<cpp_typesystem::ClassType>(record) ? "class"
-                                                            : "struct");
-    s.Printf("%s %s {\n", tag, GetTypeName(t, /*BaseOnly=*/false).GetCString());
+    // `struct` and `class` both map onto the same ClassType C++ class (the
+    // keyword doesn't affect layout); the actual source-spelling keyword is
+    // tracked separately via IsClassKeyword(). Consult that instead of the
+    // C++ type hierarchy so `struct Foo` prints "struct Foo", not "class Foo".
+    const char *tag = record->IsUnion()
+                          ? "union"
+                          : (record->IsClassKeyword() ? "class" : "struct");
+    // This dump context matches clang's printer, which uses the bare
+    // (unqualified) tag name here, not the fully-qualified name.
+    s.Printf("%s %s {\n", tag,
+             GetTypeName(t, /*BaseOnly=*/true).GetCString());
     for (uint32_t i = 0, e = record->GetNumFields(); i != e; ++i) {
       const cpp_typesystem::Field *field = record->GetFieldAtIndex(i);
       if (!field)
@@ -3090,6 +3212,15 @@ void TypeSystemCpp::DumpTypeDescription(opaque_compiler_type_t type, Stream &s,
       if (field->IsBitfield())
         s.Printf(" : %u", field->bitfield_bit_size);
       s.PutCString(";\n");
+    }
+    CompleteMemberFunctions(record);
+    for (uint32_t i = 0, e = record->GetNumMemberFunctions(); i != e; ++i) {
+      const cpp_typesystem::MemberFunction *m =
+          record->GetMemberFunctionAtIndex(i);
+      if (!m)
+        continue;
+      s.PutCString("    ");
+      AppendMemberFunctionDecl(s, *m);
     }
     s.PutCString("}");
     return;
@@ -3332,6 +3463,19 @@ CompilerType TypeSystemCpp::GetBasicTypeFromAST(BasicType basic_type) {
   return GetCompilerType(m_context.GetBuiltinType(*kind));
 }
 
+CompilerType TypeSystemCpp::CreateGenericFunctionPrototype() {
+  // An unprototyped `void ()` function type, used by ValueObjectVTable to give
+  // a vtable slot that doesn't resolve to a known function a displayable
+  // (hex address + description) function-pointer type. Mirrors
+  // TypeSystemClang::CreateGenericFunctionPrototype's
+  // ast.getFunctionNoProtoType(ast.VoidTy, ...): a variadic function with no
+  // declared parameters is the closest match to "no prototype" in this
+  // parameter-list-based model (there is no separate K&R/no-prototype bit).
+  cpp_typesystem::Builder builder(*this);
+  return builder.CreateFunctionType(builder.GetVoidType(),
+                                    /*is_variadic=*/true);
+}
+
 CompilerType
 TypeSystemCpp::GetBuiltinTypeForEncodingAndBitSize(Encoding encoding,
                                                    size_t bit_size) {
@@ -3387,12 +3531,83 @@ bool TypeSystemCpp::IsConst(opaque_compiler_type_t type) {
 
 uint32_t TypeSystemCpp::IsHomogeneousAggregate(opaque_compiler_type_t type,
                                                CompilerType *base_type_ptr) {
-  return 0;
+  // Port of TypeSystemClang::IsHomogeneousAggregate: a Homogeneous
+  // Floating-point/Vector Aggregate is a record with no base classes, that is
+  // not a dynamic (polymorphic) class, and whose *direct* fields are all
+  // either the same scalar floating-point type (HFA) or all the same vector
+  // type with matching bit width (HVA) -- never a mix of the two, and never
+  // any other kind of field (in particular, no recursion into nested
+  // aggregate fields: a struct-typed field always disqualifies the record,
+  // matching clang's field_qual_type->isFloatingType()/isVectorType() checks).
+  if (!type)
+    return 0;
+  auto *record =
+      llvm::dyn_cast_or_null<cpp_typesystem::RecordType>(Desugar(GetCppType(type)));
+  if (!record)
+    return 0;
+  if (!GetCompleteType(type))
+    return 0;
+  if (record->GetNumBaseClasses() > 0 || record->IsPolymorphic())
+    return 0;
+
+  uint32_t num_fields = 0;
+  bool is_hva = false;
+  bool is_hfa = false;
+  cpp_typesystem::Type *base_type = nullptr;
+  uint64_t base_bitwidth = 0;
+  for (uint32_t i = 0, e = record->GetNumFields(); i != e; ++i) {
+    const cpp_typesystem::Field *field = record->GetFieldAtIndex(i);
+    if (!field || !field->type.Get())
+      return 0;
+    cpp_typesystem::Type *field_type = Desugar(field->type.Get());
+    std::optional<uint64_t> field_bitwidth_opt = field_type->GetByteSize();
+    uint64_t field_bitwidth = field_bitwidth_opt.value_or(0) * 8;
+
+    if (field_type->GetEncoding() == lldb::eEncodingIEEE754) {
+      if (num_fields == 0)
+        base_type = field_type;
+      else {
+        if (is_hva)
+          return 0;
+        is_hfa = true;
+        if (field_type != base_type)
+          return 0;
+      }
+    } else if (auto *array =
+                   llvm::dyn_cast<cpp_typesystem::ArrayType>(field_type);
+               array && array->IsVector()) {
+      if (num_fields == 0) {
+        base_type = field_type;
+        base_bitwidth = field_bitwidth;
+      } else {
+        if (is_hfa)
+          return 0;
+        is_hva = true;
+        if (base_bitwidth != field_bitwidth)
+          return 0;
+        if (field_type != base_type)
+          return 0;
+      }
+    } else
+      return 0;
+    ++num_fields;
+  }
+  if (num_fields == 0)
+    return 0;
+  if (base_type_ptr)
+    *base_type_ptr = GetCompilerType(base_type);
+  return num_fields;
 }
 
 bool TypeSystemCpp::IsPolymorphicClass(opaque_compiler_type_t type) {
   if (!type)
     return false;
+  // A forward-declared/incomplete polymorphic record doesn't get
+  // SetRecordPolymorphic applied until DWARF completion runs, so complete
+  // the type first (matching the other predicates in this file, e.g.
+  // IsTemplateType / GetNumTemplateArguments), otherwise IsPolymorphic()
+  // reads the not-yet-populated default of false.
+  GetCompleteType(type);
   cpp_typesystem::Type *t = Desugar(GetCppType(type));
   return t && t->IsPolymorphic();
 }
