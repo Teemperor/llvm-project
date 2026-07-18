@@ -1802,14 +1802,21 @@ bool ClangASTGenerator::LayoutRecord(
   uint64_t byte_size = rec->GetByteSize().value_or(0);
   size = byte_size * 8;
 
-  // The cpp_typesystem model doesn't carry alignment; derive a value that is
-  // consistent with the record's size (Clang requires size % align == 0). For
-  // the standard-layout types produced from debug info this reproduces the
-  // natural alignment.
-  uint64_t align_bytes = 1;
-  while (align_bytes * 2 <= 8 && byte_size % (align_bytes * 2) == 0)
-    align_bytes *= 2;
-  alignment = align_bytes * 8;
+  // Prefer an explicitly-recorded alignment (e.g. from `alignas(...)` /
+  // `__attribute__((aligned(N)))`, which DWARFASTParserCpp stores on the
+  // record from DW_AT_alignment -- see TypeSystemCpp::GetTypeBitAlign, which
+  // does the same for the non-expression-evaluator query path). Otherwise
+  // derive a value consistent with the record's size (Clang requires
+  // size % align == 0); for the standard-layout types produced from debug
+  // info this reproduces the natural alignment.
+  if (std::optional<uint64_t> align = rec->GetAlignInBits(); align && *align)
+    alignment = *align;
+  else {
+    uint64_t align_bytes = 1;
+    while (align_bytes * 2 <= 8 && byte_size % (align_bytes * 2) == 0)
+      align_bytes *= 2;
+    alignment = align_bytes * 8;
+  }
 
   // Field offsets (in bits). PopulateRecord recorded the offset of every field
   // decl it added -- including the synthetic unnamed bitfields -- so report
