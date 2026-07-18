@@ -8,6 +8,7 @@
 
 #include "ClangASTGenerator.h"
 
+#include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
 #include "Plugins/TypeSystem/Cpp/Builder.h"
 #include "Plugins/TypeSystem/Cpp/Context.h"
 #include "Plugins/TypeSystem/Cpp/Namespace.h"
@@ -891,6 +892,42 @@ bool ClangASTGenerator::RedirectToCrossModuleDefinition(
   return false;
 }
 
+bool ClangASTGenerator::RedirectObjCInterfaceToRuntimeDefinition(
+    TypeSystemCpp *&ts, ct::ObjCInterfaceType *&iface) {
+  if (!m_target || !iface)
+    return false;
+  lldb::ProcessSP process_sp = m_target->GetProcessSP();
+  if (!process_sp)
+    return false;
+  ObjCLanguageRuntime *runtime = ObjCLanguageRuntime::Get(*process_sp);
+  if (!runtime)
+    return false;
+
+  CompilerType cpp_ct = ts->GetCompilerType(iface);
+  std::optional<CompilerType> runtime_ct = runtime->GetRuntimeType(cpp_ct);
+  if (!runtime_ct || !*runtime_ct)
+    return false;
+  auto runtime_ts = runtime_ct->GetTypeSystem<TypeSystemCpp>();
+  if (!runtime_ts)
+    return false;
+  auto *runtime_iface = llvm::dyn_cast_or_null<ct::ObjCInterfaceType>(
+      TypeSystemCpp::GetCppType(runtime_ct->GetOpaqueQualType()));
+  // Only redirect when the runtime's answer actually has more to offer than
+  // what debug info already gave us; otherwise keep answering directly from
+  // (potentially better-typed) debug info.
+  if (!runtime_iface || runtime_iface == iface ||
+      runtime_iface->GetNumFields() <= iface->GetNumFields())
+    return false;
+
+  LLDB_LOG(GetLog(LLDBLog::Expressions),
+           "ClangASTGenerator: completing Objective-C interface '{0}' from "
+           "the ObjC runtime (ivars hidden from this module's debug info)",
+           iface->GetName().GetName());
+  ts = runtime_ts.get();
+  iface = runtime_iface;
+  return true;
+}
+
 void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   auto it = m_records.find(record_decl);
   if (it == m_records.end())
@@ -1485,6 +1522,14 @@ void ClangASTGenerator::PopulateObjCInterface(
   // Make sure the interface's ivars/superclass are parsed from debug info.
   CompilerType cpp_ct = ts->GetCompilerType(iface);
   cpp_ct.GetCompleteType();
+
+  // Some of this class's ivars may only be visible in the debug info of a
+  // different image/module (e.g. a class extension implemented in a shared
+  // library, with the main executable only seeing a stub) -- no same-module
+  // or debug-map DWARF search finds those. Ask the ObjC runtime, which knows
+  // the class's full ivar layout regardless of which image defined it.
+  if (RedirectObjCInterfaceToRuntimeDefinition(ts, iface))
+    info.cpp_iface = iface;
 
   // Turn the forward declaration into a definition. Clang lays out the ivars
   // itself using the Objective-C runtime ABI (non-fragile), so -- unlike C++

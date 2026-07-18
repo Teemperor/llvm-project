@@ -483,7 +483,23 @@ ObjCLanguageRuntime::GetRuntimeType(CompilerType base_type) {
   CompilerType class_type;
   bool is_pointer_type = false;
 
-  if (TypeSystemClang::IsObjCObjectPointerType(base_type, &class_type))
+  // Prefer the TypeSystem-neutral check (eTypeIsObjC) so this also covers
+  // TypeSystemCpp's ObjCInterfaceType, which is not a clang type and so never
+  // matches TypeSystemClang::IsObjCObjectPointerType /
+  // IsObjCObjectOrInterfaceType (both bail out immediately on a non-clang
+  // CompilerType). `id`/`Class` are excluded (as the clang check above did
+  // via isObjCClassType()/isObjCIdType()): there is no concrete interface to
+  // look up a complete definition for.
+  CompilerType pointee;
+  if (base_type.IsPointerType(&pointee) && pointee.IsValid() &&
+      (pointee.GetTypeInfo() & lldb::eTypeIsObjC) &&
+      (pointee.GetTypeInfo() & lldb::eTypeIsStructUnion)) {
+    class_type = pointee;
+    is_pointer_type = true;
+  } else if ((base_type.GetTypeInfo() & lldb::eTypeIsObjC) &&
+             (base_type.GetTypeInfo() & lldb::eTypeIsStructUnion)) {
+    class_type = base_type;
+  } else if (TypeSystemClang::IsObjCObjectPointerType(base_type, &class_type))
     is_pointer_type = true;
   else if (TypeSystemClang::IsObjCObjectOrInterfaceType(base_type))
     class_type = base_type;

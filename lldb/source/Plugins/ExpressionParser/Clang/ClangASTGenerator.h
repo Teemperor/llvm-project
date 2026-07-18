@@ -234,6 +234,21 @@ private:
   bool RedirectToCrossModuleDefinition(TypeSystemCpp *&ts,
                                        cpp_typesystem::RecordType *&rec);
 
+  /// Like RedirectToCrossModuleDefinition, but for an Objective-C interface
+  /// (\p iface, owned by \p ts): if the ObjC runtime knows about more ivars
+  /// than \p iface currently has (e.g. some are only visible in the debug
+  /// info of a class extension defined in a *different* image/module -- the
+  /// "hidden ivars" scenario -- so no same-module or debug-map DWARF search
+  /// finds them), rebind \p ts / \p iface to a scratch-context copy completed
+  /// from the runtime. Mirrors TypeSystemCpp::GetRuntimeCompletedObjCType,
+  /// which ValueObject::GetCompilerType() applies transparently on the
+  /// frame-variable/DIL path (via ObjCLanguageRuntime::GetRuntimeType) but
+  /// which this expression-evaluator path must apply explicitly since it
+  /// operates on the bare cpp_typesystem::Type, not a ValueObject. Returns
+  /// true if \p ts / \p iface were rebound.
+  bool RedirectObjCInterfaceToRuntimeDefinition(
+      TypeSystemCpp *&ts, cpp_typesystem::ObjCInterfaceType *&iface);
+
   /// Build a clang::ClassTemplateSpecializationDecl (backed by a synthesized
   /// ClassTemplateDecl) for the class-template instantiation \p rec, so a
   /// template-id such as `TestObj<int>` written in an expression resolves: the

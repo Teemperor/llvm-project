@@ -2113,6 +2113,25 @@ TypeSystemCpp::CreateRuntimeObjCInterface(ConstString class_name,
   // Publish before filling so a self-referential ivar can't recurse forever.
   m_runtime_objc_types[class_name.GetStringRef()] = iface;
 
+  // Chase the runtime's own superclass chain (rather than relying on any
+  // debug info) so a class whose ivars are recovered from the runtime still
+  // reports its inheritance -- e.g. `NSObject` as a child -- matching the
+  // DWARF-derived case. Recursing here is safe: the class-name map above
+  // guards against infinite recursion for any cycle, and a real ObjC
+  // hierarchy is never cyclic.
+  if (ObjCLanguageRuntime::ClassDescriptorSP super_descriptor =
+          descriptor->GetSuperclass()) {
+    ConstString super_name = super_descriptor->GetClassName();
+    if (super_name && super_name != class_name) {
+      CompilerType super_ct =
+          CreateRuntimeObjCInterface(super_name, process, runtime);
+      if (super_ct) {
+        auto *super_iface = GetCppType(super_ct.GetOpaqueQualType());
+        builder.SetObjCSuperClass(*iface, super_iface);
+      }
+    }
+  }
+
   descriptor->Describe(
       /*superclass_func=*/nullptr, /*instance_method_func=*/nullptr,
       /*class_method_func=*/nullptr,
@@ -2147,10 +2166,11 @@ CompilerType
 TypeSystemCpp::GetRuntimeCompletedObjCType(cpp_typesystem::Type *t,
                                            const ExecutionContext *exe_ctx) {
   auto *objc = llvm::dyn_cast_or_null<cpp_typesystem::ObjCInterfaceType>(t);
-  // Only redirect a module interface that has no debug-info ivars; a type that
-  // already has fields (a DWARF-described class, or a runtime-built scratch
-  // type) is answered directly.
-  if (!objc || objc->GetNumFields() != 0 || !exe_ctx)
+  if (!objc || !exe_ctx)
+    return CompilerType();
+  // A runtime-built scratch type is already authoritative; asking the runtime
+  // again would just rebuild an identical copy.
+  if (llvm::is_contained(llvm::make_second_range(m_runtime_objc_types), objc))
     return CompilerType();
   Process *process = exe_ctx->GetProcessPtr();
   if (!process)
@@ -2173,7 +2193,23 @@ TypeSystemCpp::GetRuntimeCompletedObjCType(cpp_typesystem::Type *t,
   ConstString class_name(objc->GetName().GetName());
   if (!class_name)
     return CompilerType();
-  return scratch->CreateRuntimeObjCInterface(class_name, *process, *runtime);
+  CompilerType runtime_ct =
+      scratch->CreateRuntimeObjCInterface(class_name, *process, *runtime);
+  if (!runtime_ct)
+    return CompilerType();
+  // Some (or all) of a class's ivars may live outside the debug info this
+  // module type was completed from -- e.g. ivars added in a class extension
+  // defined in a different image/CU than the one that produced this stub, so
+  // no same-module or same-debug-map DWARF search finds them (see
+  // DWARFASTParserCpp::ParseStructureType). Only prefer the runtime's answer
+  // when it actually knows about more ivars than debug info did; otherwise
+  // keep answering from the (potentially richer, e.g. better-typed) debug-info
+  // fields directly.
+  auto *runtime_iface = llvm::cast<cpp_typesystem::ObjCInterfaceType>(
+      GetCppType(runtime_ct.GetOpaqueQualType()));
+  if (runtime_iface->GetNumFields() <= objc->GetNumFields())
+    return CompilerType();
+  return runtime_ct;
 }
 
 llvm::Expected<uint32_t>
