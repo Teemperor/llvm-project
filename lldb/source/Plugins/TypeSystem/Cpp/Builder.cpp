@@ -113,9 +113,10 @@ CompilerType Builder::CreateEnumType(llvm::StringRef name,
 }
 
 CompilerType Builder::CreateFunctionType(CompilerType return_type,
-                                         bool is_variadic) {
+                                         bool is_variadic,
+                                         bool use_void_for_empty_params) {
   return m_ts.GetCompilerType(m_ts.m_context.CreateFunctionType(
-      ToTypeRef(return_type), is_variadic));
+      ToTypeRef(return_type), is_variadic, use_void_for_empty_params));
 }
 
 CompilerType Builder::CreateComplexType(CompilerType element_type) {

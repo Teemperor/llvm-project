@@ -1005,6 +1005,20 @@ public:
   bool IsVariadic() const { return m_is_variadic; }
   void SetIsVariadic(bool is_variadic) { m_is_variadic = is_variadic; }
 
+  /// Whether an empty, non-variadic parameter list should be spelled `(void)`
+  /// instead of `()`. This mirrors clang's `PrintingPolicy::UseVoidForZeroParams`,
+  /// which is true for a prototyped C function (`int foo(void);`) and false for
+  /// C++ (where `int foo();` already means an empty prototype). TypeSystemCpp
+  /// has a single Context shared across C and C++ compile units (unlike
+  /// TypeSystemClang, which gets one ASTContext/LangOptions per language), so
+  /// this can't be a global printing-policy setting -- it has to be decided per
+  /// DW_TAG_subroutine_type/subprogram at parse time from DW_AT_prototyped plus
+  /// the owning compile unit's language and stored here.
+  bool UseVoidForEmptyParams() const { return m_use_void_for_empty_params; }
+  void SetUseVoidForEmptyParams(bool value) {
+    m_use_void_for_empty_params = value;
+  }
+
   lldb::TypeClass GetTypeClass() const override {
     return lldb::eTypeClassFunction;
   }
@@ -1021,6 +1035,7 @@ private:
   TypeRef m_return_type;
   std::vector<TypeRef> m_params;
   bool m_is_variadic = false;
+  bool m_use_void_for_empty_params = false;
 };
 } // namespace cpp_typesystem
 } // namespace lldb_private

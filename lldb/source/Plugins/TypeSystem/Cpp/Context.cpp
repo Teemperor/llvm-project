@@ -215,10 +215,12 @@ EnumType *Context::CreateEnumType(llvm::StringRef name,
 }
 
 FunctionType *Context::CreateFunctionType(TypeRef return_type,
-                                          bool is_variadic) {
+                                          bool is_variadic,
+                                          bool use_void_for_empty_params) {
   auto type = std::make_unique<FunctionType>();
   type->SetReturnType(return_type);
   type->SetIsVariadic(is_variadic);
+  type->SetUseVoidForEmptyParams(use_void_for_empty_params);
   return Track(std::move(type));
 }
 
