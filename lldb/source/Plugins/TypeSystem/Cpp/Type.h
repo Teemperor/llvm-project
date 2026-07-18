@@ -314,6 +314,16 @@ public:
   /// RecordDecl::isAnonymousStructOrUnion(); set by the DWARF parser.
   bool IsAnonymousStructOrUnion() const { return m_is_anonymous_struct_union; }
 
+  /// The record this type is anonymously embedded in as an unnamed member (set
+  /// alongside IsAnonymousStructOrUnion()); null if this is not an anonymous
+  /// struct/union. Since an anonymous struct/union has no name of its own to
+  /// qualify (see DeclContext, which only models enclosing namespaces, never
+  /// classes), this is how its display name recovers the enclosing class scope
+  /// (e.g. `MySock::(anonymous union)`), mirroring clang's
+  /// NamedDecl::printNestedNameSpecifier walking the DeclContext chain (which,
+  /// unlike this model, treats a RecordDecl as a DeclContext too).
+  const RecordType *GetAnonymousParent() const { return m_anonymous_parent; }
+
   /// How this record is passed as a function argument / returned, derived from
   /// DWARF's DW_AT_calling_convention (DW_CC_pass_by_value /
   /// DW_CC_pass_by_reference). This governs the ABI clang uses for calls that
@@ -415,6 +425,9 @@ private:
     m_is_template = is_template;
   }
   void SetIsAnonymousStructOrUnion(bool v) { m_is_anonymous_struct_union = v; }
+  void SetAnonymousParent(const RecordType *parent) {
+    m_anonymous_parent = parent;
+  }
   void SetArgPassingKind(ArgPassingKind kind) { m_arg_passing = kind; }
   void SetMemberFunctionsParsed() { m_member_functions_parsed = true; }
   void AddField(Identifier name, TypeRef type, uint64_t byte_offset,
@@ -446,6 +459,7 @@ private:
   bool m_is_class_keyword = false;
   bool m_is_template = false;
   bool m_is_anonymous_struct_union = false;
+  const RecordType *m_anonymous_parent = nullptr;
   ArgPassingKind m_arg_passing = ArgPassingKind::Unspecified;
   bool m_member_functions_parsed = false;
   std::vector<Field> m_fields;

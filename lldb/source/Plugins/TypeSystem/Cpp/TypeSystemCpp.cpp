@@ -206,19 +206,24 @@ static void AppendClassScopePrefix(llvm::StringRef qualified_name,
 // An unnamed record/enum (e.g. a function-local `struct { ... } x;`) has no
 // spelling in the debug info. Match clang's TagDecl printing, which renders
 // such a type as "(unnamed struct)" / "(unnamed union)" / "(unnamed class)" /
-// "(unnamed enum)" (see TagDecl::printName). Returns an empty string for any
-// other (named or non-tag) type.
+// "(unnamed enum)" (see TagDecl::printName) -- except an *anonymous*
+// struct/union (RecordType::IsAnonymousStructOrUnion, e.g. `struct { int x; };`
+// with no member name) prints "(anonymous struct)"/"(anonymous union)" instead,
+// matching clang's TagDecl::printAnonymousTagDecl, which special-cases
+// RecordDecl::isAnonymousStructOrUnion() to say "anonymous" rather than
+// "unnamed". Returns an empty string for any other (named or non-tag) type.
 static std::string BuildUnnamedTagName(cpp_typesystem::Type *t) {
   using namespace cpp_typesystem;
   if (!t->GetName().GetName().empty() ||
       !t->GetUnqualifiedName().GetName().empty())
     return {};
   if (auto *rec = llvm::dyn_cast<RecordType>(t)) {
+    std::string adj = rec->IsAnonymousStructOrUnion() ? "anonymous" : "unnamed";
     if (rec->IsUnion())
-      return "(unnamed union)";
+      return "(" + adj + " union)";
     if (rec->IsClassKeyword())
-      return "(unnamed class)";
-    return "(unnamed struct)";
+      return "(" + adj + " class)";
+    return "(" + adj + " struct)";
   }
   if (llvm::isa<EnumType>(t))
     return "(unnamed enum)";
@@ -228,6 +233,30 @@ static std::string BuildUnnamedTagName(cpp_typesystem::Type *t) {
 static std::string BuildDisplayName(cpp_typesystem::Type *t,
                                     bool hide_default_args = true,
                                     bool keep_inline_namespaces = false);
+
+// An anonymous struct/union (RecordType::IsAnonymousStructOrUnion) has no name
+// of its own to qualify -- its DeclContext (which only models enclosing
+// *namespaces*, never enclosing classes) is therefore useless for recovering
+// its enclosing scope. Instead it carries a direct pointer to the record it is
+// embedded in (GetAnonymousParent()); use that record's own (already fully
+// qualified) display name as the prefix, e.g. "MySock::" for the union in
+// `struct MySock { union { ... }; };`. This mirrors clang's
+// NamedDecl::printNestedNameSpecifier, which walks the DeclContext chain and,
+// unlike this model, treats an enclosing RecordDecl as a DeclContext too. Does
+// nothing if `t` is not an anonymous struct/union (e.g. a function-local
+// unnamed struct, which has no anonymous parent and clang likewise never
+// prefixes: printNestedNameSpecifier returns early for a function DeclContext).
+static void AppendAnonymousParentPrefix(cpp_typesystem::Type *t,
+                                        std::string &out) {
+  auto *rec = llvm::dyn_cast<cpp_typesystem::RecordType>(t);
+  if (!rec)
+    return;
+  const cpp_typesystem::RecordType *parent = rec->GetAnonymousParent();
+  if (!parent)
+    return;
+  out += BuildDisplayName(const_cast<cpp_typesystem::RecordType *>(parent));
+  out += "::";
+}
 
 // Render an ARMv8.3 pointer-auth qualifier as `__ptrauth(key,addr_disc,extra)`,
 // matching clang's TypePrinter / TypeSystemClang spelling.
@@ -609,9 +638,15 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
   llvm::StringRef unqualified = t->GetUnqualifiedName().GetName();
   if (unqualified.empty()) {
     // An unnamed record/enum prints as "(unnamed struct)" etc. (matching clang);
-    // builtins have no unqualified name but do carry a stored name.
-    if (std::string unnamed = BuildUnnamedTagName(t); !unnamed.empty())
-      return unnamed;
+    // builtins have no unqualified name but do carry a stored name. An
+    // anonymous struct/union additionally gets its enclosing record's name
+    // prefixed (e.g. "MySock::(anonymous union)"), since clang's own printer
+    // qualifies it that way (see AppendAnonymousParentPrefix).
+    if (std::string unnamed = BuildUnnamedTagName(t); !unnamed.empty()) {
+      std::string result;
+      AppendAnonymousParentPrefix(t, result);
+      return result + unnamed;
+    }
     return t->GetName().GetName().str();
   }
 
@@ -1555,9 +1590,16 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
       return ConstString(unqualified);
   }
   // An unnamed record/enum has no spelling in the debug info; render it as
-  // "(unnamed struct)" etc. to match clang / TypeSystemClang.
-  if (std::string unnamed = BuildUnnamedTagName(t); !unnamed.empty())
-    return ConstString(unnamed);
+  // "(unnamed struct)" etc. to match clang / TypeSystemClang. An anonymous
+  // struct/union additionally gets its enclosing record's name prefixed (e.g.
+  // "MySock::(anonymous union)"); see AppendAnonymousParentPrefix. `BaseOnly`
+  // asks for the unqualified spelling, so skip the prefix in that case.
+  if (std::string unnamed = BuildUnnamedTagName(t); !unnamed.empty()) {
+    std::string result;
+    if (!BaseOnly)
+      AppendAnonymousParentPrefix(t, result);
+    return ConstString(result + unnamed);
+  }
   return ConstString(t->GetName().GetName());
 }
 

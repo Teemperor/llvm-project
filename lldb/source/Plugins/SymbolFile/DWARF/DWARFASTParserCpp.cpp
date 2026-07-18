@@ -1821,12 +1821,16 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
         // members are injected into this record's scope. Mark the member's
         // record type so SBType::IsAnonymousType reports it (mirroring clang's
         // RecordDecl::isAnonymousStructOrUnion). A merely unnamed record given a
-        // member name (`struct { int x; } m;`) is not anonymous.
+        // member name (`struct { int x; } m;`) is not anonymous. Also record
+        // `record` (the enclosing MySock-like type) as its anonymous parent, so
+        // TypeSystemCpp::BuildDisplayName/GetTypeName can qualify the otherwise
+        // nameless "(unnamed union)" spelling as "MySock::(anonymous union)",
+        // matching clang's NamedDecl::printNestedNameSpecifier.
         if (!is_bitfield && member.name.empty())
           if (auto *field_record =
                   llvm::dyn_cast<cpp_typesystem::RecordType>(member_type))
             if (field_record->GetName().GetName().empty())
-              ts.SetRecordAnonymousStructOrUnion(*field_record);
+              ts.SetRecordAnonymousStructOrUnion(*field_record, *record);
         // Advance the running field-end used for gap detection.
         uint64_t this_end = abs_bit_offset + this_bit_size;
         if (this_end > last_field_end || !seen_field)

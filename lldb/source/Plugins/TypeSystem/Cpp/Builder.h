@@ -130,6 +130,12 @@ public:
   /// an unnamed member of its parent; see
   /// RecordType::IsAnonymousStructOrUnion).
   void SetRecordAnonymousStructOrUnion(RecordType &record);
+  /// Like the above, but also records \p parent as the enclosing record (see
+  /// RecordType::GetAnonymousParent), used to recover a display-name scope
+  /// prefix (e.g. `MySock::(anonymous union)`) for a type with no name of its
+  /// own to qualify.
+  void SetRecordAnonymousStructOrUnion(RecordType &record,
+                                       const RecordType &parent);
   /// Record how \p record is passed/returned by value (from DWARF's
   /// DW_AT_calling_convention); see RecordType::ArgPassingKind.
   void SetRecordArgPassingKind(RecordType &record,
