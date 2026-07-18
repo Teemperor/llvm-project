@@ -130,8 +130,11 @@ public:
                            TypeRef underlying_type, bool is_scoped);
 
   /// Create a function type with the given return type. Parameters are added
-  /// afterwards via AddParameter.
-  FunctionType *CreateFunctionType(TypeRef return_type, bool is_variadic);
+  /// afterwards via AddParameter. \p use_void_for_empty_params controls how an
+  /// empty, non-variadic parameter list is later rendered -- see
+  /// FunctionType::UseVoidForEmptyParams.
+  FunctionType *CreateFunctionType(TypeRef return_type, bool is_variadic,
+                                   bool use_void_for_empty_params = false);
 
   /// Create a `_Complex` type over \p element_type. Its byte size is twice the
   /// element's.

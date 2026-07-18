@@ -90,7 +90,10 @@ public:
                               std::optional<uint64_t> byte_size,
                               CompilerType underlying_type, bool is_scoped);
   /// Create a function type. Parameters are added afterwards via AddParameter.
-  CompilerType CreateFunctionType(CompilerType return_type, bool is_variadic);
+  /// \p use_void_for_empty_params controls how an empty, non-variadic
+  /// parameter list is later rendered -- see FunctionType::UseVoidForEmptyParams.
+  CompilerType CreateFunctionType(CompilerType return_type, bool is_variadic,
+                                  bool use_void_for_empty_params = false);
   /// Create a `_Complex` type over \p element_type.
   CompilerType CreateComplexType(CompilerType element_type);
   /// Append a parameter type to a FunctionType created by CreateFunctionType.

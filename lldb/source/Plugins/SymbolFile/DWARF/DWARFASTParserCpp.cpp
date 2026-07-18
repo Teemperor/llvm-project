@@ -1244,12 +1244,34 @@ TypeSP DWARFASTParserCpp::ParseFunctionType(const DWARFDIE &die) {
     }
   }
 
+  // An empty, non-variadic parameter list should be spelled `(void)` rather
+  // than `()` when the function is explicitly prototyped (DW_AT_prototyped)
+  // and the owning compile unit's language is C, not C++: in C++ `int foo();`
+  // already means an empty prototype, but in C it means "unspecified
+  // parameters" (K&R), so `(void)` is needed to say "takes no arguments".
+  // Mirrors clang's PrintingPolicy::UseVoidForZeroParams (true iff !CPlusPlus),
+  // just decided per-DIE here since TypeSystemCpp has one Context shared across
+  // languages instead of TypeSystemClang's one ASTContext per language.
+  // DW_AT_prototyped is looked up with check_elaborating_dies=true (bypassing
+  // the DWARFBaseDIE convenience wrapper, which hardcodes it to false) because
+  // it commonly lives on an out-of-line DW_AT_specification DIE rather than the
+  // DW_TAG_subprogram actually being parsed here (see
+  // DWARFASTParserClang::GetObjectParameter for the same pattern).
+  DWARFFormValue prototyped_form_value;
+  bool is_prototyped = die.GetDIE()->GetAttributeValue(
+      die.GetCU(), DW_AT_prototyped, prototyped_form_value,
+      /*end_attr_offset_ptr=*/nullptr, /*check_elaborating_dies=*/true);
+  bool use_void_for_empty_params =
+      !is_variadic && params.empty() && is_prototyped &&
+      !Language::LanguageIsCPlusPlus(SymbolFileDWARF::GetLanguage(*die.GetCU()));
+
   CompilerType function_type;
   {
     cpp_typesystem::Builder builder(m_ts);
     if (!return_type)
       return_type = builder.GetVoidType();
-    function_type = builder.CreateFunctionType(return_type, is_variadic);
+    function_type = builder.CreateFunctionType(return_type, is_variadic,
+                                               use_void_for_empty_params);
     for (const CompilerType &param : params)
       builder.AddParameter(function_type, param);
   }

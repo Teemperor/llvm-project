@@ -306,10 +306,15 @@ static std::string BuildFunctionName(cpp_typesystem::FunctionType *fn,
   }
   if (fn->IsVariadic())
     params += params.empty() ? "..." : ", ...";
-  // An empty, prototyped parameter list is rendered as `()` (matching clang's
-  // TypePrinter and TypeSystemClang) -- not `(void)`. An unprototyped (K&R)
-  // function has a DW_TAG_unspecified_parameters child and is modelled as
-  // variadic above, so it prints as `(...)`.
+  // An empty, prototyped parameter list is rendered as `()` in C++ (matching
+  // clang's TypePrinter with UseVoidForZeroParams=false) but as `(void)` in C,
+  // where an empty parameter list without `void` instead means "unspecified
+  // parameters" (K&R). See FunctionType::UseVoidForEmptyParams for how that bit
+  // is determined at parse time. An unprototyped (K&R) function has a
+  // DW_TAG_unspecified_parameters child and is modelled as variadic above, so
+  // it prints as `(...)` regardless.
+  else if (params.empty() && fn->UseVoidForEmptyParams())
+    params = "void";
   return ret + " " + decl.str() + "(" + params + ")";
 }
 
