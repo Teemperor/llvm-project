@@ -215,6 +215,17 @@ static void noteReverse(llvm::DenseMap<void *, ct::Type *> &reverse,
     reverse[canonical.getAsOpaquePtr()] = cpp_type;
 }
 
+/// Peel typedef/cv-qualifier "sugar" off a cpp_typesystem type to reach its
+/// canonical type. A pointee reached through a typedef (e.g. `typedef
+/// BaseClass TypedefBaseClass; TypedefBaseClass *p;`) must still be recognized
+/// as, say, an Objective-C interface so `p` is generated as a real
+/// ObjCObjectPointerType rather than a plain pointer.
+static ct::Type *Desugar(ct::Type *t) {
+  while (auto *sugar = llvm::dyn_cast_or_null<ct::SugarType>(t))
+    t = sugar->GetUnderlyingType();
+  return t;
+}
+
 void ClangASTGenerator::RegisterNamespace(const ct::Namespace *cpp_ns,
                                           clang::NamespaceDecl *clang_ns) {
   if (cpp_ns)
@@ -683,7 +694,12 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
       // A pointer to an Objective-C class (`Foo *`) must be a clang
       // ObjCObjectPointerType, not a plain PointerType, so member access
       // (`obj->ivar` / `obj.prop`) and messaging resolve through the ObjC path.
-      if (llvm::isa_and_nonnull<ct::ObjCInterfaceType>(ptr->GetPointeeType()) &&
+      // The pointee may be reached through a typedef (`typedef BaseClass
+      // TypedefBaseClass; TypedefBaseClass *`), so desugar before checking --
+      // otherwise the pointer stays a plain PointerType and `.`/`->` member
+      // access fails with "not a structure or union".
+      if (llvm::isa_and_nonnull<ct::ObjCInterfaceType>(
+              Desugar(ptr->GetPointeeType())) &&
           pointee->isObjCObjectType())
         result = ast.getObjCObjectPointerType(pointee);
       // An Apple "blocks" pointer (`int (^)(int)`) wraps a function type but
