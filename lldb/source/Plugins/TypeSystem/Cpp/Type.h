@@ -917,11 +917,13 @@ public:
     return lldb::eTypeClassEnumeration;
   }
   uint32_t GetTypeInfo() const override {
-    uint32_t info = lldb::eTypeIsEnumeration | lldb::eTypeHasValue |
-                    lldb::eTypeIsScalar | lldb::eTypeIsInteger;
-    if (IsSigned())
-      info |= lldb::eTypeIsSigned;
-    return info;
+    // Note: TypeSystemClang deliberately does NOT set eTypeIsScalar (or
+    // eTypeIsInteger/eTypeIsSigned) here, even though an enum is a scalar in
+    // the C++ sense. DIL's cast-verification logic (and other callers) check
+    // IsScalarType() before IsEnumerationType(), so setting eTypeIsScalar
+    // would misroute enums into the scalar-cast branch instead of the
+    // enumeration-cast branch. Match TypeSystemClang's flags exactly.
+    return lldb::eTypeIsEnumeration | lldb::eTypeHasValue;
   }
 
 private:
