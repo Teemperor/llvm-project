@@ -177,6 +177,45 @@ static lldb::Format GetFormatFromDWARF(uint64_t dw_ate) {
   }
 }
 
+/// Build a populated lldb_private::Declaration (source file/line/column) for
+/// \p die from its DW_AT_decl_file/DW_AT_decl_line/DW_AT_decl_column
+/// attributes. Mirrors the generic handling in
+/// DWARFASTParserClang::ParsedDWARFTypeAttributes: walk the *flattened*
+/// attribute list from \p die.GetAttributes(), which also follows
+/// DW_AT_specification/DW_AT_abstract_origin chains (so a subprogram that only
+/// carries decl info on its out-of-line specification DIE still gets it
+/// here), and resolve DW_AT_decl_file against the compile unit that attribute
+/// actually came from (attributes.CompileUnitAtIndex(i)) rather than die's own
+/// CU -- they can differ when DW_AT_specification uses DW_FORM_ref_addr to
+/// point into another compile unit. Returns a default (empty) Declaration if
+/// \p die is invalid or carries none of these attributes.
+static Declaration GetDIEDeclaration(const DWARFDIE &die) {
+  Declaration decl;
+  if (!die)
+    return decl;
+  DWARFAttributes attributes = die.GetAttributes();
+  for (size_t i = 0; i < attributes.Size(); ++i) {
+    DWARFFormValue form_value;
+    if (!attributes.ExtractFormValueAtIndex(i, form_value))
+      continue;
+    switch (attributes.AttributeAtIndex(i)) {
+    case DW_AT_decl_file:
+      if (DWARFUnit *cu = attributes.CompileUnitAtIndex(i))
+        decl.SetFile(cu->GetFile(form_value.Unsigned()));
+      break;
+    case DW_AT_decl_line:
+      decl.SetLine(form_value.Unsigned());
+      break;
+    case DW_AT_decl_column:
+      decl.SetColumn(form_value.Unsigned());
+      break;
+    default:
+      break;
+    }
+  }
+  return decl;
+}
+
 TypeSP DWARFASTParserCpp::ParseBaseType(const DWARFDIE &die) {
   SymbolFileDWARF *dwarf = die.GetDWARF();
   ConstString name(die.GetName());
@@ -223,7 +262,7 @@ TypeSP DWARFASTParserCpp::ParseBaseType(const DWARFDIE &die) {
                                        lldb::eEncodingSint, lldb::eFormatDecimal);
     }
     CompilerType complex_type = builder.CreateComplexType(element);
-    Declaration decl;
+    Declaration decl = GetDIEDeclaration(die);
     return dwarf->MakeType(die.GetID(), name, byte_size, /*context=*/nullptr,
                            LLDB_INVALID_UID, Type::eEncodingIsUID, decl,
                            complex_type, Type::ResolveState::Full);
@@ -235,7 +274,7 @@ TypeSP DWARFASTParserCpp::ParseBaseType(const DWARFDIE &die) {
   CompilerType compiler_type = cpp_typesystem::Builder(m_ts).GetBuiltinType(
       name.GetStringRef(), byte_size, encoding, format);
 
-  Declaration decl;
+  Declaration decl = GetDIEDeclaration(die);
   return dwarf->MakeType(die.GetID(), name, byte_size, /*context=*/nullptr,
                          LLDB_INVALID_UID, Type::eEncodingIsUID, decl,
                          compiler_type, Type::ResolveState::Full);
@@ -256,7 +295,7 @@ TypeSP DWARFASTParserCpp::ParseUnspecifiedType(const DWARFDIE &die) {
   CompilerType compiler_type =
       builder.GetBuiltinType("decltype(nullptr)", ptr_size,
                              lldb::eEncodingUint, lldb::eFormatHex);
-  Declaration decl;
+  Declaration decl = GetDIEDeclaration(die);
   return dwarf->MakeType(die.GetID(), name, ptr_size, /*context=*/nullptr,
                          LLDB_INVALID_UID, Type::eEncodingIsUID, decl,
                          compiler_type, Type::ResolveState::Full);
@@ -749,7 +788,7 @@ TypeSP DWARFASTParserCpp::ParseStructureType(const DWARFDIE &die) {
       SetTypeNameInfo(die, compiler_type, builder);
     }
 
-    Declaration decl;
+    Declaration decl = GetDIEDeclaration(die);
     TypeSP type_sp = dwarf->MakeType(
         die.GetID(), name, byte_size, /*context=*/nullptr, LLDB_INVALID_UID,
         Type::eEncodingIsUID, decl, compiler_type, Type::ResolveState::Forward);
@@ -779,7 +818,7 @@ TypeSP DWARFASTParserCpp::ParseStructureType(const DWARFDIE &die) {
     SetTypeNameInfo(die, compiler_type, builder);
   }
 
-  Declaration decl;
+  Declaration decl = GetDIEDeclaration(die);
   // The lldb_private::Type record (unlike the cpp_typesystem::Type above) is
   // named with the bare, unqualified DW_AT_name spelling -- e.g. "valarray"
   // rather than "std::__1::valarray<int>" -- to match TypeSystemClang (whose
@@ -843,7 +882,7 @@ TypeSP DWARFASTParserCpp::ParseArrayType(const DWARFDIE &die) {
   std::optional<uint64_t> byte_size =
       llvm::expectedToOptional(array_type.GetByteSize(nullptr));
 
-  Declaration decl;
+  Declaration decl = GetDIEDeclaration(die);
   ConstString empty_name;
   return dwarf->MakeType(die.GetID(), empty_name, byte_size,
                          /*context=*/nullptr, element_die.GetID(),
@@ -906,7 +945,7 @@ TypeSP DWARFASTParserCpp::ParsePointerType(const DWARFDIE &die) {
   CompilerType pointer_type =
       cpp_typesystem::Builder(m_ts).CreatePointerType(pointee_type, is_block);
 
-  Declaration decl;
+  Declaration decl = GetDIEDeclaration(die);
   ConstString empty_name;
   return dwarf->MakeType(die.GetID(), empty_name, byte_size,
                          /*context=*/nullptr, pointee_die.GetID(),
@@ -937,7 +976,7 @@ TypeSP DWARFASTParserCpp::ParseReferenceType(const DWARFDIE &die) {
       cpp_typesystem::Builder(m_ts).CreateReferenceType(pointee_type,
                                                         is_rvalue);
 
-  Declaration decl;
+  Declaration decl = GetDIEDeclaration(die);
   ConstString empty_name;
   return dwarf->MakeType(die.GetID(), empty_name, byte_size,
                          /*context=*/nullptr, pointee_die.GetID(),
@@ -971,7 +1010,7 @@ TypeSP DWARFASTParserCpp::ParsePointerToMemberType(const DWARFDIE &die) {
   std::optional<uint64_t> byte_size =
       llvm::expectedToOptional(member_pointer_type.GetByteSize(nullptr));
 
-  Declaration decl;
+  Declaration decl = GetDIEDeclaration(die);
   ConstString empty_name;
   return dwarf->MakeType(die.GetID(), empty_name, byte_size,
                          /*context=*/nullptr, pointee_die.GetID(),
@@ -1007,7 +1046,7 @@ TypeSP DWARFASTParserCpp::ParseTypedef(const DWARFDIE &die) {
   std::optional<uint64_t> byte_size =
       llvm::expectedToOptional(typedef_type.GetByteSize(nullptr));
 
-  Declaration decl;
+  Declaration decl = GetDIEDeclaration(die);
   return dwarf->MakeType(die.GetID(), name, byte_size, /*context=*/nullptr,
                          underlying_die.GetID(), Type::eEncodingIsUID, decl,
                          typedef_type, Type::ResolveState::Full);
@@ -1044,7 +1083,7 @@ TypeSP DWARFASTParserCpp::ParseCVQualifiedType(const DWARFDIE &die) {
   std::optional<uint64_t> byte_size =
       llvm::expectedToOptional(cv_type.GetByteSize(nullptr));
 
-  Declaration decl;
+  Declaration decl = GetDIEDeclaration(die);
   ConstString empty_name;
   return dwarf->MakeType(die.GetID(), empty_name, byte_size,
                          /*context=*/nullptr, underlying_die.GetID(),
@@ -1075,7 +1114,7 @@ TypeSP DWARFASTParserCpp::ParseAtomicType(const DWARFDIE &die) {
   std::optional<uint64_t> byte_size =
       llvm::expectedToOptional(underlying_type.GetByteSize(nullptr));
 
-  Declaration decl;
+  Declaration decl = GetDIEDeclaration(die);
   ConstString empty_name;
   return dwarf->MakeType(die.GetID(), empty_name, byte_size,
                          /*context=*/nullptr, underlying_die.GetID(),
@@ -1113,7 +1152,7 @@ TypeSP DWARFASTParserCpp::ParsePtrAuthType(const DWARFDIE &die) {
   std::optional<uint64_t> byte_size =
       llvm::expectedToOptional(ptrauth_type.GetByteSize(nullptr));
 
-  Declaration decl;
+  Declaration decl = GetDIEDeclaration(die);
   ConstString empty_name;
   return dwarf->MakeType(die.GetID(), empty_name, byte_size,
                          /*context=*/nullptr, underlying_die.GetID(),
@@ -1171,7 +1210,7 @@ TypeSP DWARFASTParserCpp::ParseEnum(const DWARFDIE &die) {
     SetTypeNameInfo(die, enum_type, ts);
   }
 
-  Declaration decl;
+  Declaration decl = GetDIEDeclaration(die);
   return dwarf->MakeType(die.GetID(), name, byte_size, /*context=*/nullptr,
                          underlying_die.GetID(), Type::eEncodingIsUID, decl,
                          enum_type, Type::ResolveState::Full);
@@ -1215,7 +1254,7 @@ TypeSP DWARFASTParserCpp::ParseFunctionType(const DWARFDIE &die) {
       builder.AddParameter(function_type, param);
   }
 
-  Declaration decl;
+  Declaration decl = GetDIEDeclaration(die);
   ConstString empty_name;
   return dwarf->MakeType(die.GetID(), empty_name, /*byte_size=*/std::nullopt,
                          /*context=*/nullptr, LLDB_INVALID_UID,
