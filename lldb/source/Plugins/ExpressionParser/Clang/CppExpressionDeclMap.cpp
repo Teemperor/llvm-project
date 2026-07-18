@@ -11,6 +11,7 @@
 #include "ClangExpressionUtil.h"
 #include "ClangTypeConverter.h"
 
+#include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
 #include "Plugins/TypeSystem/Cpp/Type.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
@@ -1268,8 +1269,58 @@ bool CppExpressionDeclMap::LookupType(
     target->GetImages().FindTypes(nullptr, query, results);
   }
   lldb::TypeSP type_sp = results.GetFirstType();
-  if (!type_sp)
+  if (!type_sp) {
+    // No debug info at all defines this name (e.g. an Objective-C
+    // @implementation compiled with -g0, so it has no DWARF type in any
+    // module for FindTypes to find -- see TestObjCiVarIMP). Ask the ObjC
+    // runtime by class name as a last resort, building the interface's ivar
+    // list from its ClassDescriptor (mirrors
+    // TypeSystemCpp::GetRuntimeCompletedObjCType, which does the same for a
+    // value whose *static* type is already known but incomplete; here there
+    // is no static type at all, only the bare name).
+    //
+    // Cheaply gate on an `OBJC_CLASS_$_<name>` symbol existing at all before
+    // asking the runtime: ObjCLanguageRuntime::GetClassDescriptorFromClassName
+    // (called by CreateRuntimeObjCInterface) triggers a full class-list scan
+    // the first time it runs, which is itself a nested JIT'd expression
+    // evaluation -- doing that for every plain, non-ObjC identifier that
+    // merely lacks a debug-info type (e.g. a global C++ function looked up
+    // before its FunctionDecl is found) corrupted unrelated, concurrent
+    // expression-parser state (TestNamespaceLookup's `foo()` started
+    // resolving to the wrong candidate once this ran for it).
+    if (!scope.IsValid()) {
+      ConstString class_symbol(("OBJC_CLASS_$_" + name.GetStringRef()).str());
+      SymbolContextList sc_list;
+      target->GetImages().FindSymbolsWithNameAndType(
+          class_symbol, lldb::eSymbolTypeObjCClass, sc_list);
+      if (!sc_list.IsEmpty()) {
+        if (lldb::ProcessSP process_sp = target->GetProcessSP()) {
+          if (ObjCLanguageRuntime *runtime =
+                  ObjCLanguageRuntime::Get(*process_sp)) {
+            if (TypeSystemCpp *scratch = GetScratchCpp(target)) {
+              CompilerType runtime_ct = scratch->CreateRuntimeObjCInterface(
+                  name, *process_sp, *runtime);
+              if (runtime_ct) {
+                clang::QualType qt = GetGenerator().Generate(runtime_ct);
+                if (!qt.isNull()) {
+                  if (const auto *obj_type =
+                          qt->getAs<clang::ObjCObjectType>()) {
+                    if (clang::ObjCInterfaceDecl *iface_decl =
+                            obj_type->getInterface()) {
+                      GetGenerator().CompleteObjCInterface(iface_decl);
+                      decls.push_back(iface_decl);
+                      return true;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
     return false;
+  }
   // Skip types that live in a JIT'd expression / utility-function module: those
   // are LLDB-internal artifacts (a previous expression's own structs, emitted
   // with debug info), not real program types. Surfacing one makes a later
@@ -2069,6 +2120,20 @@ lldb::addr_t CppExpressionDeclMap::GetSymbolAddress(ConstString name,
       lldb::addr_t load_addr = addr.GetLoadAddress(m_target.get());
       if (load_addr != LLDB_INVALID_ADDRESS)
         return load_addr;
+    }
+  }
+  // No symbol table entry (e.g. a stripped binary debugged via a separate
+  // dSYM: the loaded image's own symtab has no `OBJC_IVAR_$_Class.ivar`
+  // entry, even though the dSYM's debug info still describes the ivar) --
+  // ask the ObjC runtime, which can resolve some symbols (indirect ivar
+  // offset globals in particular) directly from the loaded class's runtime
+  // metadata instead of a static symbol table. Mirrors
+  // ClangExpressionDeclMap::GetSymbolAddress's fallback.
+  if (lldb::ProcessSP process_sp = m_exe_ctx.GetProcessSP()) {
+    if (ObjCLanguageRuntime *runtime = ObjCLanguageRuntime::Get(*process_sp)) {
+      lldb::addr_t runtime_addr = runtime->LookupRuntimeSymbol(name);
+      if (runtime_addr != LLDB_INVALID_ADDRESS)
+        return runtime_addr;
     }
   }
   return LLDB_INVALID_ADDRESS;

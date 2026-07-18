@@ -325,6 +325,17 @@ public:
   CompilerType GetDirectNestedTypeWithName(lldb::opaque_compiler_type_t type,
                                            llvm::StringRef name) override;
 
+  /// Get-or-create (in this scratch context) an ObjCInterfaceType for
+  /// \p class_name whose ivars are populated from the ObjC runtime. Exposed
+  /// publicly (beyond the frame-variable/DIL path, which reaches this via the
+  /// private GetRuntimeCompletedObjCType) for CppExpressionDeclMap::LookupType,
+  /// which needs to resolve a bare Objective-C class name that has NO debug
+  /// info at all (e.g. an @implementation compiled with -g0): there is no
+  /// cpp_typesystem::Type to redirect from in that case, only a name.
+  CompilerType CreateRuntimeObjCInterface(ConstString class_name,
+                                          Process &process,
+                                          ObjCLanguageRuntime &runtime);
+
 private:
   friend class cpp_typesystem::Builder;
 
@@ -364,11 +375,6 @@ private:
   /// already has fields, or this already is the scratch context).
   CompilerType GetRuntimeCompletedObjCType(cpp_typesystem::Type *t,
                                            const ExecutionContext *exe_ctx);
-  /// Get-or-create (in this scratch context) an ObjCInterfaceType for
-  /// \p class_name whose ivars are populated from the ObjC runtime.
-  CompilerType CreateRuntimeObjCInterface(ConstString class_name,
-                                          Process &process,
-                                          ObjCLanguageRuntime &runtime);
   /// Realize a single Objective-C type-encoding (e.g. "i", "f", "^v", "@") into
   /// a cpp type created through \p builder, advancing \p enc past what it
   /// consumed. Returns an empty CompilerType for an unrecognized encoding.
