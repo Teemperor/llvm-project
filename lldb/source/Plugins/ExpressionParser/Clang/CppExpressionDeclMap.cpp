@@ -290,6 +290,21 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
     return false;
   llvm::StringRef sname = ii->getName();
 
+  // When compiling Objective-C, clang provides id/Class/SEL/Protocol
+  // intrinsically. Never answer a lookup for these reserved names -- from the
+  // debug info, from a namespace, or (importantly) from the synthetic
+  // `$__lldb_local_vars` namespace a same-named local variable is injected
+  // into (`using $__lldb_local_vars::id;`). Answering from any of those would
+  // either make the reference ambiguous or let a local variable shadow the
+  // builtin type, breaking `id`/`Class` as type-ids in the expression. Let
+  // clang use its builtin instead. This mirrors ClangASTSource::IgnoreName's
+  // unconditional (namespace-independent) suppression. (In non-ObjC code
+  // these are ordinary identifiers, so only suppress them in ObjC mode.)
+  if (m_ast_context->getLangOpts().ObjC &&
+      (sname == "id" || sname == "Class" || sname == "SEL" ||
+       sname == "Protocol"))
+    return false;
+
   if (const auto *nsd = llvm::dyn_cast<clang::NamespaceDecl>(dc)) {
     if (nsd->getName() == "$__lldb_local_vars")
       return LookupLocalVariable(dc, ConstString(sname), decls);
@@ -361,17 +376,7 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
     // A free function or global variable referenced by the expression
     // (e.g. `globalFuncCall()` or `g_global`).
     if (!sname.starts_with("$")) {
-      // When compiling Objective-C, clang provides id/Class/SEL/Protocol
-      // intrinsically. Never answer a lookup for these reserved names from the
-      // debug info: doing so gives the parser a second, conflicting decl and
-      // makes the reference ambiguous ("reference to 'Class' is ambiguous",
-      // e.g. in the ObjC runtime's own utility functions). Let clang use its
-      // builtin. (In non-ObjC code these are ordinary identifiers, so only
-      // suppress them in ObjC mode.)
-      if (m_ast_context->getLangOpts().ObjC &&
-          (sname == "id" || sname == "Class" || sname == "SEL" ||
-           sname == "Protocol"))
-        return false;
+      // (id/Class/SEL/Protocol are already suppressed above.)
       // Skip the whole-module function search while we are synthesizing decls:
       // adding a named decl to the (external-visible) TU makes clang look that
       // name up here, but those are internal reconciliation lookups, not
