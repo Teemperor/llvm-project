@@ -151,6 +151,11 @@ public:
   void SetAnonymousStructOrUnion(RecordType &record) {
     record.SetIsAnonymousStructOrUnion(true);
   }
+  void SetAnonymousStructOrUnion(RecordType &record,
+                                 const RecordType &parent) {
+    record.SetIsAnonymousStructOrUnion(true);
+    record.SetAnonymousParent(&parent);
+  }
   void SetArgPassingKind(RecordType &record,
                          RecordType::ArgPassingKind kind) {
     record.SetArgPassingKind(kind);
