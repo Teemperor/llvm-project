@@ -161,7 +161,8 @@ public:
   /// resolves through.
   void AddObjCMethod(ObjCInterfaceType &record, llvm::StringRef name,
                      CompilerType function_type, llvm::StringRef asm_label,
-                     bool is_class_method, bool is_variadic);
+                     bool is_class_method, bool is_variadic,
+                     bool is_direct = false);
   void AddTemplateArgument(RecordType &record,
                            lldb::TemplateArgumentKind kind, Type *type,
                            uint64_t integral_value, bool is_default);
