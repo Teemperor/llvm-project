@@ -2049,12 +2049,16 @@ void DWARFASTParserCpp::CompleteObjCMethodsFromDWARF(
       if (param.Tag() == DW_TAG_unspecified_parameters)
         is_variadic = true;
 
+    const bool is_direct =
+        method_die.GetAttributeValueAsUnsigned(DW_AT_APPLE_objc_direct, 0) !=
+        0;
+
     const std::string asm_label = MakeFuncAsmLabel(method_die);
 
     ts.AddObjCMethod(iface, name,
                      func_type->GetForwardCompilerType(),
                      asm_label, objc_name->IsClassMethod(),
-                     is_variadic);
+                     is_variadic, is_direct);
   };
 
   // Method declarations that are children of the class DIE.

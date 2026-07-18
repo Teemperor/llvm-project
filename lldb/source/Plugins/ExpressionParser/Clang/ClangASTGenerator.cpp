@@ -1688,6 +1688,21 @@ void ClangASTGenerator::AddObjCMethod(clang::ObjCInterfaceDecl *iface_decl,
     method_decl->setMethodParams(ast, params, {});
   }
 
+  if (method.is_direct) {
+    // Mirrors TypeSystemClang::AddMethodToObjCObjectType: mark the method
+    // `objc_direct` so the expression parser's message-send codegen emits a
+    // direct call to this implementation instead of an objc_msgSend dynamic
+    // dispatch. A direct method is never registered with the ObjC runtime, so
+    // dispatching it dynamically fails at runtime ("attempted to ... send it
+    // an unrecognized selector"). Sema normally synthesizes the method's
+    // implicit self/_cmd parameters while parsing; since there is no parsing
+    // Sema here, create them manually (createImplicitParams) so direct-call
+    // codegen (which reads them) doesn't crash.
+    method_decl->addAttr(
+        clang::ObjCDirectAttr::CreateImplicit(ast, clang::SourceLocation()));
+    method_decl->createImplicitParams(ast, iface_decl);
+  }
+
   iface_decl->addDecl(method_decl);
 }
 

@@ -203,6 +203,14 @@ struct ObjCMethod {
   /// True for a class method (`+[...]`), false for an instance method.
   bool is_class_method = false;
   bool is_variadic = false;
+  /// True for an `objc_direct` method: the compiler resolved every call
+  /// statically to this implementation rather than going through
+  /// objc_msgSend. The synthesized clang::ObjCMethodDecl must carry an
+  /// ObjCDirectAttr so the expression parser's message-send codegen emits a
+  /// direct call instead of a dynamic dispatch (which would send an
+  /// unrecognized selector, since a direct method is never registered with
+  /// the ObjC runtime).
+  bool is_direct = false;
 };
 
 /// Represents everything needed to understand a type.
