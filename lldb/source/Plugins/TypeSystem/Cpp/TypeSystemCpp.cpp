@@ -166,6 +166,31 @@ static void AppendQualifiedNamespacePrefix(const cpp_typesystem::Namespace *ns,
   }
 }
 
+// Like AppendNamespacePrefix, but for an *unnamed* tag type (e.g. a lambda
+// closure), which has no name of its own to make an elided anonymous
+// namespace unambiguous. Clang's printer elides `(anonymous namespace)` when
+// qualifying a *named* entity (nothing else identifies the entity within its
+// TU, so the extra scope is noise) but keeps the literal "(anonymous
+// namespace)" marker when qualifying an unnamed one printed as e.g.
+// "(unnamed class)" -- otherwise the qualification would be dropped entirely.
+// `keep_inline_namespaces` has the same meaning as for
+// AppendNamespacePrefix/AppendQualifiedNamespacePrefix.
+static void AppendUnnamedTagNamespacePrefix(const cpp_typesystem::Namespace *ns,
+                                            std::string &out,
+                                            bool keep_inline_namespaces) {
+  if (!ns)
+    return;
+  AppendUnnamedTagNamespacePrefix(ns->GetParent(), out, keep_inline_namespaces);
+  if (ns->IsInline() && !keep_inline_namespaces)
+    return;
+  if (ns->IsAnonymous())
+    out += "(anonymous namespace)::";
+  else {
+    out += ns->GetName().GetName().str();
+    out += "::";
+  }
+}
+
 // Count the enclosing namespaces of `ns` (including inline ones), i.e. how many
 // leading scope components of a qualified name are namespaces rather than
 // enclosing classes.
@@ -646,10 +671,17 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
     // builtins have no unqualified name but do carry a stored name. An
     // anonymous struct/union additionally gets its enclosing record's name
     // prefixed (e.g. "MySock::(anonymous union)"), since clang's own printer
-    // qualifies it that way (see AppendAnonymousParentPrefix).
+    // qualifies it that way (see AppendAnonymousParentPrefix). Otherwise (e.g.
+    // a lambda closure type, which has no DW_AT_name but does have a DeclContext)
+    // qualify by the enclosing namespace chain instead, same as a named type --
+    // this is what makes a lambda defined in an anonymous namespace print as
+    // "(anonymous namespace)::(unnamed class)".
     if (std::string unnamed = BuildUnnamedTagName(t); !unnamed.empty()) {
       std::string result;
       AppendAnonymousParentPrefix(t, result);
+      if (result.empty())
+        AppendUnnamedTagNamespacePrefix(t->GetDeclContext(), result,
+                                        keep_inline_namespaces);
       return result + unnamed;
     }
     return t->GetName().GetName().str();
@@ -1606,12 +1638,20 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
   // An unnamed record/enum has no spelling in the debug info; render it as
   // "(unnamed struct)" etc. to match clang / TypeSystemClang. An anonymous
   // struct/union additionally gets its enclosing record's name prefixed (e.g.
-  // "MySock::(anonymous union)"); see AppendAnonymousParentPrefix. `BaseOnly`
-  // asks for the unqualified spelling, so skip the prefix in that case.
+  // "MySock::(anonymous union)"); see AppendAnonymousParentPrefix. Otherwise
+  // (e.g. a lambda closure type) qualify by the enclosing namespace chain
+  // instead, same as the named-type case above (keeping inline namespaces,
+  // matching the raw-spelling convention this function otherwise uses).
+  // `BaseOnly` asks for the unqualified spelling, so skip both prefixes in
+  // that case.
   if (std::string unnamed = BuildUnnamedTagName(t); !unnamed.empty()) {
     std::string result;
-    if (!BaseOnly)
+    if (!BaseOnly) {
       AppendAnonymousParentPrefix(t, result);
+      if (result.empty())
+        AppendUnnamedTagNamespacePrefix(t->GetDeclContext(), result,
+                                        /*keep_inline_namespaces=*/true);
+    }
     return ConstString(result + unnamed);
   }
   return ConstString(t->GetName().GetName());

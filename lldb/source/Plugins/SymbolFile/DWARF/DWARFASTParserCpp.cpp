@@ -491,10 +491,18 @@ BuildNamespaceForDIE(const DWARFDIE &ns_die, cpp_typesystem::Builder &builder) {
 /// `FwdTemplateClass<int>`, whose declaration DIE is named "FwdTemplateClass"
 /// with separate DW_TAG_template_*_parameter children).
 static std::string GetDIEUnqualifiedName(const DWARFDIE &die) {
+  // A DIE with no DW_AT_name is an unnamed type (e.g. a lambda closure or a
+  // function-local unnamed struct/union/enum). llvm::DWARFTypePrinter would
+  // emit a bogus bare tag keyword (e.g. "class ") for it -- mirrors the same
+  // guard in GetDIEQualifiedName. Let the type system supply an
+  // "(unnamed ...)" display name instead.
+  if (!die.GetName())
+    return std::string();
+
   // If the DW_AT_name already carries the template arguments, use it verbatim
   // so we don't reconstruct and duplicate them.
   const char *name = die.GetName();
-  if (name && llvm::StringRef(name).contains('<'))
+  if (llvm::StringRef(name).contains('<'))
     return name;
 
   std::string result;
