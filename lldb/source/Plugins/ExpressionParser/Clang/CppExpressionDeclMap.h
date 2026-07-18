@@ -284,6 +284,15 @@ private:
   bool LookupPersistentVariable(const clang::DeclContext *dc, ConstString name,
                                 llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
+  /// Fallback for a `$`-prefixed name that isn't a known persistent variable:
+  /// treat it as a register name (e.g. `$arg1`, `$pc`, `$sp`) and, if the
+  /// current execution context's RegisterContext knows it, create a VarDecl
+  /// of a builtin type matching the register's encoding/size, bound to the
+  /// register's value so the materializer can read it. Mirrors
+  /// ClangExpressionDeclMap::AddOneRegister.
+  bool LookupRegister(const clang::DeclContext *dc, ConstString name,
+                      llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
   const lldb::TargetSP m_target;
   ValueObject *m_ctx_obj;
   Materializer::PersistentVariableDelegate *m_result_delegate;

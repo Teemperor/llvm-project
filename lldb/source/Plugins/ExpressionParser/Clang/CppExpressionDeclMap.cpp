@@ -30,6 +30,7 @@
 #include "lldb/Symbol/Type.h"
 #include "lldb/Symbol/Variable.h"
 #include "lldb/Symbol/VariableList.h"
+#include "lldb/Target/RegisterContext.h"
 #include "lldb/Target/StackFrame.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/LLDBLog.h"
@@ -349,8 +350,13 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
     }
     // A persistent expression variable ($0, $1, $foo, ...) referenced by the
     // expression, but not one of the internal $__lldb_* names.
-    if (sname.starts_with("$") && !sname.starts_with("$__lldb"))
-      return LookupPersistentVariable(dc, ConstString(sname), decls);
+    if (sname.starts_with("$") && !sname.starts_with("$__lldb")) {
+      if (LookupPersistentVariable(dc, ConstString(sname), decls))
+        return true;
+      // Not a persistent variable: fall back to treating it as a register
+      // name (e.g. `$arg1`, `$pc`, `$sp`), mirroring ClangExpressionDeclMap.
+      return LookupRegister(dc, ConstString(sname), decls);
+    }
     // A free function or global variable referenced by the expression
     // (e.g. `globalFuncCall()` or `g_global`).
     if (!sname.starts_with("$")) {
@@ -1794,6 +1800,66 @@ bool CppExpressionDeclMap::LookupPersistentVariable(
   return true;
 }
 
+bool CppExpressionDeclMap::LookupRegister(
+    const clang::DeclContext *dc, ConstString name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  Log *log = GetLog(LLDBLog::Expressions);
+
+  RegisterContext *reg_ctx = m_exe_ctx.GetRegisterContext();
+  if (!reg_ctx)
+    return false;
+
+  assert(name.GetStringRef().starts_with("$"));
+  llvm::StringRef reg_name = name.GetStringRef().substr(1);
+
+  const RegisterInfo *reg_info = reg_ctx->GetRegisterInfoByName(reg_name);
+  if (!reg_info)
+    return false;
+
+  TypeSystemCpp *scratch = GetScratchCpp(m_exe_ctx.GetTargetPtr());
+  if (!scratch)
+    return false;
+
+  CompilerType cpp_type = scratch->GetBuiltinTypeForEncodingAndBitSize(
+      reg_info->encoding, reg_info->byte_size * 8);
+  if (!cpp_type) {
+    LLDB_LOG(log, "CppEDM: couldn't get a builtin type for register {0}",
+             reg_info->name);
+    return false;
+  }
+
+  clang::QualType qt = GetGenerator().Generate(cpp_type);
+  if (qt.isNull()) {
+    LLDB_LOG(log, "CppEDM: couldn't generate a parser type for register {0}",
+             reg_info->name);
+    return false;
+  }
+
+  auto *vd = clang::VarDecl::Create(
+      *m_ast_context, const_cast<clang::DeclContext *>(dc),
+      clang::SourceLocation(), clang::SourceLocation(),
+      &m_ast_context->Idents.get(name.GetStringRef()), qt, nullptr,
+      clang::SC_Static);
+  decls.push_back(vd);
+
+  auto *entity = new ClangExpressionVariable(
+      m_exe_ctx.GetBestExecutionContextScope(), m_byte_order,
+      m_addr_byte_size);
+  m_found_entities.AddNewlyConstructedVariable(entity);
+  entity->SetName(name.GetStringRef());
+  entity->SetRegisterInfo(reg_info);
+  entity->EnableParserVars(GetParserID());
+  ClangExpressionVariable::ParserVars *parser_vars =
+      entity->GetParserVars(GetParserID());
+  parser_vars->m_named_decl = vd;
+  parser_vars->m_llvm_value = nullptr;
+  parser_vars->m_lldb_value.Clear();
+  entity->m_flags |= ClangExpressionVariable::EVBareRegister;
+
+  LLDB_LOG(log, "CppEDM: Added register {0}", reg_info->name);
+  return true;
+}
+
 bool CppExpressionDeclMap::AddPersistentVariable(const clang::NamedDecl *decl,
                                                  ConstString name,
                                                  TypeFromParser type,
@@ -1929,6 +1995,8 @@ bool CppExpressionDeclMap::AddValueToStruct(const clang::NamedDecl *decl,
           m_materializer->AddPersistentVariable(var_sp, nullptr, err);
     } else if (parser_vars->m_lldb_sym)
       member_offset = m_materializer->AddSymbol(*parser_vars->m_lldb_sym, err);
+    else if (const RegisterInfo *reg_info = var->GetRegisterInfo())
+      member_offset = m_materializer->AddRegister(*reg_info, err);
     else if (parser_vars->m_lldb_var)
       member_offset = m_materializer->AddVariable(parser_vars->m_lldb_var, err);
     else if (parser_vars->m_lldb_valobj_provider)

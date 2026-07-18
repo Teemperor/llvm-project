@@ -56,8 +56,10 @@ TEST_F(ClangASTGeneratorTest, GenerateRecordForwardDeclaration) {
   EXPECT_EQ(decl->getTagKind(), clang::TagTypeKind::Struct);
   EXPECT_FALSE(decl->isCompleteDefinition());
 
-  CompilerType cls =
-      builder.CreateRecordType("MyClass", 4, /*is_cpp_class=*/true);
+  CompilerType cls = builder.CreateRecordType("MyClass", 4,
+                                              /*is_cpp_class=*/true,
+                                              /*is_union=*/false,
+                                              /*is_class_keyword=*/true);
   clang::QualType cls_qt = generator.Generate(cls);
   EXPECT_EQ(cls_qt->getAsCXXRecordDecl()->getTagKind(),
            clang::TagTypeKind::Class);

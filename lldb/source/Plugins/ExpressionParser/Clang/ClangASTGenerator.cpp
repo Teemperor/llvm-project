@@ -588,7 +588,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     // PopulateRecord). This mirrors lazy DWARF parsing and keeps cycles finite.
     clang::TagTypeKind kind = rec->IsUnion()
                                   ? clang::TagTypeKind::Union
-                                  : (llvm::isa<ct::ClassType>(rec)
+                                  : (rec->IsClassKeyword()
                                          ? clang::TagTypeKind::Class
                                          : clang::TagTypeKind::Struct);
     // A class-template instantiation must be modeled as a
