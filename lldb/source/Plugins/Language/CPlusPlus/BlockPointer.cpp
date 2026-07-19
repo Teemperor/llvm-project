@@ -43,16 +43,14 @@ public:
       return;
     }
 
-    auto type_system_or_err = target_sp->GetScratchTypeSystemForLanguage(
-        lldb::eLanguageTypeC_plus_plus);
-    if (auto err = type_system_or_err.takeError()) {
-      LLDB_LOG_ERROR(GetLog(LLDBLog::DataFormatters), std::move(err),
-                     "Failed to get scratch TypeSystemClang: {0}");
-      return;
-    }
-
-    auto clang_ast_context =
-        block_pointer_type.GetTypeSystem<TypeSystemClang>();
+    // The block-literal struct we synthesize below (__isa/__flags/
+    // __reserved/__FuncPtr) is an Apple/Clang ABI detail, not something
+    // derived from the value's own type, so always build it via the
+    // target's (possibly auxiliary) Clang scratch AST rather than the
+    // block pointer's own type system -- that may be TypeSystemCpp when
+    // TypeSystemCpp owns the target's scratch slot.
+    TypeSystemClangSP clang_ast_context =
+        ScratchTypeSystemClang::GetForTarget(*target_sp);
     if (!clang_ast_context)
       return;
 

@@ -10,7 +10,6 @@
 #include "DynamicLoaderDarwin.h"
 #include "DynamicLoaderMacOS.h"
 #include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 #include "lldb/Breakpoint/StoppointCallbackContext.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Module.h"
@@ -362,8 +361,17 @@ bool DynamicLoaderMacOSXDYLD::NotifyBreakpointHit(
     // Build up the value array to store the three arguments given above, then
     // get the values from the ABI:
 
-    TypeSystemClangSP scratch_ts_sp =
-        ScratchTypeSystemClang::GetForTarget(process->GetTarget());
+    // Read the notifier's arguments using whatever C scratch type system the
+    // target provides (TypeSystemClang or TypeSystemCpp) rather than requiring
+    // a Clang one -- otherwise, with TypeSystemCpp enabled, this would bail and
+    // newly dlopen'd images would never be registered.
+    auto scratch_ts_or_err =
+        process->GetTarget().GetScratchTypeSystemForLanguage(eLanguageTypeC);
+    if (!scratch_ts_or_err) {
+      llvm::consumeError(scratch_ts_or_err.takeError());
+      return false;
+    }
+    auto scratch_ts_sp = *scratch_ts_or_err;
     if (!scratch_ts_sp)
       return false;
 
@@ -371,7 +379,7 @@ bool DynamicLoaderMacOSXDYLD::NotifyBreakpointHit(
     Value input_value;
 
     CompilerType clang_void_ptr_type =
-        scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+        scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
     CompilerType clang_uint32_type =
         scratch_ts_sp->GetBuiltinTypeForEncodingAndBitSize(lldb::eEncodingUint,
                                                            32);

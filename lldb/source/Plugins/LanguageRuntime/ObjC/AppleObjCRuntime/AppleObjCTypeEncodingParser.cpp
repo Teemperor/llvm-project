@@ -33,13 +33,24 @@ using namespace lldb_private;
 
 AppleObjCTypeEncodingParser::AppleObjCTypeEncodingParser(
     ObjCLanguageRuntime &runtime)
-    : ObjCLanguageRuntime::EncodingToType(), m_runtime(runtime) {
-  if (m_scratch_ast_ctx_sp)
-    return;
+    : ObjCLanguageRuntime::EncodingToType(), m_runtime(runtime) {}
 
-  m_scratch_ast_ctx_sp = std::make_shared<TypeSystemClang>(
-      "AppleObjCTypeEncodingParser ASTContext",
-      runtime.GetProcess()->GetTarget().GetArchitecture().GetTriple());
+CompilerType
+AppleObjCTypeEncodingParser::RealizeType(const char *name,
+                                          bool for_expression) {
+  if (!m_scratch_ast_ctx_sp) {
+    Target &target = m_runtime.GetProcess()->GetTarget();
+    lldb::TypeSystemSP aux_sp = target.GetOrCreateAuxiliaryClangScratchAST(
+        [&target]() -> lldb::TypeSystemSP {
+          return std::make_shared<TypeSystemClang>(
+              "AppleObjCTypeEncodingParser ASTContext",
+              target.GetArchitecture().GetTriple());
+        });
+    m_scratch_ast_ctx_sp = std::static_pointer_cast<TypeSystemClang>(aux_sp);
+  }
+
+  return ObjCLanguageRuntime::EncodingToType::RealizeType(name,
+                                                            for_expression);
 }
 
 std::string AppleObjCTypeEncodingParser::ReadStructName(llvm::StringRef &type) {
