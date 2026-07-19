@@ -1386,6 +1386,43 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   // call dispatches through a wrong/out-of-range slot and crashes.
   for (clang::CXXMethodDecl *method : decl->methods())
     AddOverridesForMethod(method);
+
+  if (auto *cxx = llvm::dyn_cast<clang::CXXRecordDecl>(decl))
+    MarkImplicitCopyOpsDeletedByUserMove(cxx);
+}
+
+void ClangASTGenerator::MarkImplicitCopyOpsDeletedByUserMove(
+    clang::CXXRecordDecl *decl) {
+  // Real Sema eagerly declares (and, if needed, deletes) a class's implicit
+  // copy constructor/assignment right when the class body closes, whenever
+  // needsOverloadResolutionFor{CopyConstructor,CopyAssignment}() is already
+  // knowable at that point (Sema::AddImplicitlyDeclaredMembersToClass). We
+  // build the whole class in one shot via addDecl() (no incremental Sema), so
+  // that eager declaration never runs; if a *different*, later-completed
+  // record embeds this class as a field/base, CXXRecordDecl::addedClassSubobject
+  // calls hasSimpleCopyConstructor(), which asserts that this has already been
+  // decided (DeclCXX.h's "this property has not yet been computed by Sema").
+  //
+  // Fully replicating Sema::ShouldDeleteSpecialMember would require running
+  // overload resolution over base/member subobjects, which needs a live Sema
+  // we don't have here (ClangASTGenerator is also used, Sema-less, to build a
+  // throwaway AST for `target modules dump ast`). Instead, replicate just the
+  // cheap, purely-syntactic rule that covers the common case (and this test):
+  // C++11 [class.copy]p7,p18/[class.copy.assign]p2 -- a class that declares a
+  // move constructor or move assignment operator implicitly deletes its copy
+  // constructor/assignment operator, no overload resolution required. A class
+  // whose "needs overload resolution" bit is set for a different reason (a
+  // subobject that itself needs overload resolution) is left alone; something
+  // that later forces Sema to actually declare the copy ctor/assignment will
+  // compute it lazily as usual.
+  if (decl->needsImplicitCopyConstructor() &&
+      decl->needsOverloadResolutionForCopyConstructor() &&
+      decl->hasUserDeclaredMoveOperation())
+    decl->setImplicitCopyConstructorIsDeleted();
+  if (decl->needsImplicitCopyAssignment() &&
+      decl->needsOverloadResolutionForCopyAssignment() &&
+      decl->hasUserDeclaredMoveOperation())
+    decl->setImplicitCopyAssignmentIsDeleted();
 }
 
 void ClangASTGenerator::BuildParams(clang::FunctionDecl *func,

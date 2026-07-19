@@ -409,6 +409,21 @@ public:
   }
   static bool classof(const TypeSystem *ts) { return ts->isA(&ID); }
 
+  /// TypeSystemMap::Clear() calls Finalize() on every TypeSystem in the map
+  /// *without* holding its mutex, then drops the map's (possibly last)
+  /// shared_ptr reference to each TypeSystem *while holding the mutex*. The
+  /// auxiliary ScratchTypeSystemClang cached below owns a ClangASTSource
+  /// whose destructor calls back into ScratchTypeSystemClang::GetForTarget(),
+  /// which re-locks that same mutex. If the auxiliary AST were only torn down
+  /// as a side effect of ~ScratchTypeSystemCpp(), that re-entrant lock would
+  /// deadlock (e.g. on process exec, which clears the target's scratch
+  /// TypeSystem map from within Process::DidExec()). Tearing it down here in
+  /// Finalize() -- which runs before the mutex is retaken -- avoids that.
+  void Finalize() override {
+    m_aux_clang_scratch_ast_sp.reset();
+    TypeSystemCpp::Finalize();
+  }
+
   // Expressions are still parsed by the Clang expression parser (which builds a
   // transient clang::ASTContext); the TypeSystemCpp-specific work -- translating
   // debug-info types into that Clang AST and mapping the result type back onto a

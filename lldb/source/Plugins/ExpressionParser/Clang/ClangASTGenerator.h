@@ -208,6 +208,15 @@ private:
   /// Complete a record's fields/bases from its cpp_typesystem description.
   void PopulateRecord(clang::RecordDecl *record_decl);
 
+  /// Delete \p decl's implicit copy constructor/assignment operator if it
+  /// declares a move constructor or move assignment operator (the cheap,
+  /// no-overload-resolution-needed rule from C++11 [class.copy]p7,p18 /
+  /// [class.copy.assign]p2). Called once a record's members are all in place,
+  /// so a *different* record that later embeds this one as a field/base gets
+  /// a correct answer from hasSimpleCopyConstructor() instead of tripping the
+  /// "not yet been computed by Sema" assert in DeclCXX.h.
+  void MarkImplicitCopyOpsDeletedByUserMove(clang::CXXRecordDecl *decl);
+
   /// Complete an Objective-C interface's ivars/superclass from its
   /// cpp_typesystem description. The ivars are added as clang::ObjCIvarDecls
   /// (not FieldDecls) and the superclass wired up via setSuperClass, so clang
