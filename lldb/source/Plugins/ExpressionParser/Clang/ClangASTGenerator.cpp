@@ -919,27 +919,57 @@ bool ClangASTGenerator::RedirectObjCInterfaceToRuntimeDefinition(
   if (!runtime)
     return false;
 
-  CompilerType cpp_ct = ts->GetCompilerType(iface);
-  std::optional<CompilerType> runtime_ct = runtime->GetRuntimeType(cpp_ct);
-  if (!runtime_ct || !*runtime_ct)
+  // Ask TypeSystemCpp's own runtime-reconstruction directly (as the
+  // frame-variable/DIL path does via GetRuntimeCompletedObjCType) rather than
+  // going through ObjCLanguageRuntime::GetRuntimeType()/LookupInRuntime(): the
+  // latter is a ValueObject-facing cache keyed off DeclVendor::FindDecls(),
+  // which CppObjCDeclVendor deliberately never answers (see
+  // CppObjCDeclVendor.h) because a runtime-reconstructed CompilerType handed
+  // back there gets used to override a *live value's* displayed type -- wrong
+  // for ivars the runtime can only type crudely (id/Class/SEL become opaque
+  // pointers). Here the reconstructed type only ever backs a throwaway
+  // per-expression synthesized clang AST, so that hazard doesn't apply, and
+  // going direct also means this doesn't depend on which DeclVendor happens
+  // to be installed.
+  auto scratch_or =
+      m_target->GetScratchTypeSystemForLanguage(lldb::eLanguageTypeObjC_plus_plus);
+  if (!scratch_or) {
+    llvm::consumeError(scratch_or.takeError());
     return false;
-  auto runtime_ts = runtime_ct->GetTypeSystem<TypeSystemCpp>();
-  if (!runtime_ts)
+  }
+  auto *scratch = llvm::dyn_cast_or_null<TypeSystemCpp>(scratch_or->get());
+  if (!scratch)
+    return false;
+  ConstString class_name(iface->GetName().GetName());
+  if (!class_name)
+    return false;
+  CompilerType runtime_ct =
+      scratch->CreateRuntimeObjCInterface(class_name, *process_sp, *runtime);
+  if (!runtime_ct)
     return false;
   auto *runtime_iface = llvm::dyn_cast_or_null<ct::ObjCInterfaceType>(
-      TypeSystemCpp::GetCppType(runtime_ct->GetOpaqueQualType()));
+      TypeSystemCpp::GetCppType(runtime_ct.GetOpaqueQualType()));
+  if (!runtime_iface || runtime_iface == iface)
+    return false;
   // Only redirect when the runtime's answer actually has more to offer than
-  // what debug info already gave us; otherwise keep answering directly from
-  // (potentially better-typed) debug info.
-  if (!runtime_iface || runtime_iface == iface ||
-      runtime_iface->GetNumFields() <= iface->GetNumFields())
+  // what debug info already gave us -- either more ivars (e.g. a class
+  // extension implemented in a different image) or, since a class like
+  // NSString may have plenty of debug info but zero *methods* in it (its
+  // methods are implemented in Foundation, without debug info), more
+  // methods; otherwise keep answering directly from (potentially
+  // better-typed) debug info. CompleteMemberFunctions() first so the
+  // comparison isn't against an as-yet-unparsed (lazy) method list.
+  ts->CompleteMemberFunctions(iface);
+  if (runtime_iface->GetNumFields() <= iface->GetNumFields() &&
+      runtime_iface->GetNumObjCMethods() <= iface->GetNumObjCMethods())
     return false;
 
   LLDB_LOG(GetLog(LLDBLog::Expressions),
            "ClangASTGenerator: completing Objective-C interface '{0}' from "
-           "the ObjC runtime (ivars hidden from this module's debug info)",
+           "the ObjC runtime (ivars/methods hidden from this module's debug "
+           "info)",
            iface->GetName().GetName());
-  ts = runtime_ts.get();
+  ts = scratch;
   iface = runtime_iface;
   return true;
 }
