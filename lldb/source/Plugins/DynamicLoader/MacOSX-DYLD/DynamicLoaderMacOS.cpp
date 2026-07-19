@@ -27,8 +27,6 @@
 #include "DynamicLoaderDarwin.h"
 #include "DynamicLoaderMacOS.h"
 
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
-
 using namespace lldb;
 using namespace lldb_private;
 
