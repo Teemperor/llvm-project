@@ -40,6 +40,7 @@
 
 #include "llvm/ADT/APFloat.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/bit.h"
 #include "llvm/Support/MathExtras.h"
 
@@ -2095,10 +2096,19 @@ CompilerType TypeSystemCpp::RealizeObjCEncoding(cpp_typesystem::Builder &builder
     return builder.CreatePointerType(
         builtin("char", 1, lldb::eEncodingSint, lldb::eFormatChar));
   case '@': // id
+    // Named (not just an anonymous pointer) so ClangASTGenerator::GenerateType
+    // recognizes it by its typedef name and maps it to clang's builtin `id`
+    // (see the comment there): a method whose return/parameter type is `id`
+    // needs real ObjC `id` semantics (e.g. implicit conversions to/from any
+    // object pointer) for Sema to accept it, not just an opaque `void *`.
+    return builder.CreateTypedefType(
+        "id", builder.CreatePointerType(CompilerType()));
   case '#': // Class
+    return builder.CreateTypedefType(
+        "Class", builder.CreatePointerType(CompilerType()));
   case ':': // SEL
-    // Modeled as an opaque pointer; the ObjC object graph is not reconstructed.
-    return builder.CreatePointerType(CompilerType());
+    return builder.CreateTypedefType(
+        "SEL", builder.CreatePointerType(CompilerType()));
   case '^': { // pointer to the following encoding
     CompilerType pointee = RealizeObjCEncoding(builder, enc);
     return builder.CreatePointerType(pointee);
@@ -2106,6 +2116,142 @@ CompilerType TypeSystemCpp::RealizeObjCEncoding(cpp_typesystem::Builder &builder
   default:
     return CompilerType();
   }
+}
+
+namespace {
+/// Splits a runtime method type-encoding string (e.g. "i16@0:8") into its
+/// per-argument type substrings, discarding the stack-offset digits that
+/// follow each one. Mirrors AppleObjCDeclVendor.cpp's ObjCRuntimeMethodType,
+/// which does the same for building a clang::ObjCMethodDecl; this is a
+/// faithful port to avoid subtly diverging on the (undocumented, encoding-
+/// specific) parsing rules -- e.g. that a digit inside a `{...}`/`[...]`/
+/// `(...)` group is part of the type (an array/bitfield count), not the
+/// argument's stack offset, so brace-depth tracking is required to tell them
+/// apart.
+class ObjCRuntimeMethodSignature {
+public:
+  explicit ObjCRuntimeMethodSignature(const char *types) {
+    if (!types)
+      return;
+    const char *cursor = types;
+    enum State { Start, InType, InPos } state = Start;
+    const char *type_start = nullptr;
+    int brace_depth = 0;
+    uint32_t steps_left = 256;
+
+    while (true) {
+      if (--steps_left == 0)
+        return;
+      switch (state) {
+      case Start:
+        if (*cursor == '\0') {
+          m_is_valid = true;
+          return;
+        }
+        if (llvm::isDigit(*cursor))
+          return; // A type-encoding can't start with a digit.
+        state = InType;
+        type_start = cursor;
+        break;
+      case InType:
+        switch (*cursor) {
+        case '\0':
+          return; // A type must be followed by its stack-offset digits.
+        case '[':
+        case '{':
+        case '(':
+          ++brace_depth;
+          ++cursor;
+          break;
+        case ']':
+        case '}':
+        case ')':
+          if (!brace_depth)
+            return;
+          --brace_depth;
+          ++cursor;
+          break;
+        default:
+          if (llvm::isDigit(*cursor) && !brace_depth) {
+            m_types.push_back(std::string(type_start, cursor - type_start));
+            type_start = nullptr;
+            state = InPos;
+          } else {
+            ++cursor;
+          }
+          break;
+        }
+        break;
+      case InPos:
+        if (*cursor == '\0') {
+          m_is_valid = true;
+          return;
+        }
+        if (llvm::isDigit(*cursor)) {
+          ++cursor;
+        } else {
+          state = InType;
+          type_start = cursor;
+        }
+        break;
+      }
+    }
+  }
+
+  explicit operator bool() const { return m_is_valid; }
+  size_t GetNumTypes() const { return m_types.size(); }
+  llvm::StringRef GetTypeAtIndex(size_t idx) const { return m_types[idx]; }
+
+private:
+  std::vector<std::string> m_types;
+  bool m_is_valid = false;
+};
+} // namespace
+
+void TypeSystemCpp::AddRuntimeObjCMethod(cpp_typesystem::Builder &builder,
+                                         cpp_typesystem::ObjCInterfaceType &iface,
+                                         llvm::StringRef class_name,
+                                         const char *selector,
+                                         const char *type_encoding,
+                                         bool is_class_method) {
+  if (!selector || !selector[0])
+    return;
+  ObjCRuntimeMethodSignature sig(type_encoding);
+  // A method's encoding is at least [return, self, _cmd]; reject anything
+  // shorter as corrupt runtime metadata.
+  if (!sig || sig.GetNumTypes() < 3)
+    return;
+
+  llvm::StringRef return_enc = sig.GetTypeAtIndex(0);
+  CompilerType return_type = RealizeObjCEncoding(builder, return_enc);
+  // A return/parameter type RealizeObjCEncoding can't decode (e.g. a
+  // struct-by-value return/argument) means the method can't be fully typed;
+  // drop it rather than synthesize a signature Sema would type-check
+  // incorrectly. Mirrors AppleObjCDeclVendor::ObjCRuntimeMethodType::
+  // BuildMethod, which likewise gives up on such a method instead of
+  // approximating it.
+  if (!return_type)
+    return;
+
+  // Indices 1 and 2 are the implicit self/_cmd parameters, which
+  // cpp_typesystem::ObjCMethod's FunctionType does not carry (matching the
+  // DWARF path -- see DWARFASTParserCpp::CompleteObjCMethodsFromDWARF).
+  CompilerType func_type = builder.CreateFunctionType(
+      return_type, /*is_variadic=*/false,
+      /*use_void_for_empty_params=*/sig.GetNumTypes() == 3);
+  for (size_t i = 3; i < sig.GetNumTypes(); ++i) {
+    llvm::StringRef param_enc = sig.GetTypeAtIndex(i);
+    CompilerType param_type = RealizeObjCEncoding(builder, param_enc);
+    if (!param_type)
+      return;
+    builder.AddParameter(func_type, param_type);
+  }
+
+  std::string full_name = (llvm::Twine(is_class_method ? "+[" : "-[") +
+                           class_name + " " + selector + "]")
+                              .str();
+  builder.AddObjCMethod(iface, full_name, func_type, /*asm_label=*/"",
+                        is_class_method, /*is_variadic=*/false);
 }
 
 CompilerType
@@ -2170,8 +2316,19 @@ TypeSystemCpp::CreateRuntimeObjCInterface(ConstString class_name,
   }
 
   descriptor->Describe(
-      /*superclass_func=*/nullptr, /*instance_method_func=*/nullptr,
-      /*class_method_func=*/nullptr,
+      /*superclass_func=*/nullptr,
+      /*instance_method_func=*/
+      [&](const char *name, const char *types) -> bool {
+        AddRuntimeObjCMethod(builder, *iface, class_name.GetStringRef(), name,
+                            types, /*is_class_method=*/false);
+        return false;
+      },
+      /*class_method_func=*/
+      [&](const char *name, const char *types) -> bool {
+        AddRuntimeObjCMethod(builder, *iface, class_name.GetStringRef(), name,
+                            types, /*is_class_method=*/true);
+        return false;
+      },
       [&](const char *name, const char *type, lldb::addr_t offset_ptr,
           uint64_t size) -> bool {
         if (!name || !name[0])

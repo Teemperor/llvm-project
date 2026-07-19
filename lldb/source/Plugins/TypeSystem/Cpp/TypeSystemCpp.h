@@ -381,6 +381,20 @@ private:
   CompilerType RealizeObjCEncoding(cpp_typesystem::Builder &builder,
                                    llvm::StringRef &enc);
 
+  /// Add \p iface's runtime-reported \p selector (as reported by
+  /// ObjCLanguageRuntime::ClassDescriptor::Describe's method callbacks) to
+  /// \p iface as a cpp_typesystem::ObjCMethod, realizing its signature from
+  /// \p type_encoding (the method's full `@encode`-style type-encoding
+  /// string, e.g. "i16@0:8"). Does nothing if \p type_encoding can't be fully
+  /// decoded (e.g. a struct-by-value parameter/return, which
+  /// RealizeObjCEncoding does not handle) -- mirrors
+  /// AppleObjCDeclVendor::ObjCRuntimeMethodType::BuildMethod, which likewise
+  /// drops a method it can't fully type rather than approximating it.
+  void AddRuntimeObjCMethod(cpp_typesystem::Builder &builder,
+                            cpp_typesystem::ObjCInterfaceType &iface,
+                            llvm::StringRef class_name, const char *selector,
+                            const char *type_encoding, bool is_class_method);
+
   std::string m_display_name;
   llvm::Triple m_triple;
   cpp_typesystem::Context m_context;
