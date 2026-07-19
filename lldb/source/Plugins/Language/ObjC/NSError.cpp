@@ -10,7 +10,6 @@
 
 #include "Plugins/Language/ObjC/NSString.h"
 #include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 #include "lldb/DataFormatters/FormattersHelpers.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/DataBufferHeap.h"
@@ -80,15 +79,21 @@ bool lldb_private::formatters::NSError_SummaryProvider(
   }
 
   InferiorSizedWord isw(domain_str_value, *process_sp);
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(process_sp->GetTarget());
-
+  // Use whatever C scratch type system the target provides (TypeSystemClang
+  // or TypeSystemCpp) rather than requiring a Clang one.
+  auto scratch_ts_or_err = process_sp->GetTarget().GetScratchTypeSystemForLanguage(
+      lldb::eLanguageTypeC);
+  if (!scratch_ts_or_err) {
+    llvm::consumeError(scratch_ts_or_err.takeError());
+    return false;
+  }
+  auto scratch_ts_sp = *scratch_ts_or_err;
   if (!scratch_ts_sp)
     return false;
   ValueObjectSP domain_str_sp = ValueObject::CreateValueObjectFromData(
       "domain_str", isw.GetAsData(process_sp->GetByteOrder()),
       valobj.GetExecutionContextRef(),
-      scratch_ts_sp->GetBasicType(lldb::eBasicTypeVoid).GetPointerType());
+      scratch_ts_sp->GetBasicTypeFromAST(lldb::eBasicTypeVoid).GetPointerType());
 
   if (!domain_str_sp)
     return false;
@@ -152,14 +157,22 @@ public:
     if (userinfo == LLDB_INVALID_ADDRESS || error.Fail())
       return lldb::ChildCacheState::eRefetch;
     InferiorSizedWord isw(userinfo, *process_sp);
-    TypeSystemClangSP scratch_ts_sp =
-        ScratchTypeSystemClang::GetForTarget(process_sp->GetTarget());
+    // Use whatever C scratch type system the target provides (TypeSystemClang
+    // or TypeSystemCpp) rather than requiring a Clang one.
+    auto scratch_ts_or_err =
+        process_sp->GetTarget().GetScratchTypeSystemForLanguage(
+            lldb::eLanguageTypeC);
+    if (!scratch_ts_or_err) {
+      llvm::consumeError(scratch_ts_or_err.takeError());
+      return lldb::ChildCacheState::eRefetch;
+    }
+    auto scratch_ts_sp = *scratch_ts_or_err;
     if (!scratch_ts_sp)
       return lldb::ChildCacheState::eRefetch;
     m_child_sp = CreateChildValueObjectFromData(
         "_userInfo", isw.GetAsData(process_sp->GetByteOrder()),
         m_backend.GetExecutionContextRef(),
-        scratch_ts_sp->GetBasicType(lldb::eBasicTypeObjCID));
+        scratch_ts_sp->GetBasicTypeFromAST(lldb::eBasicTypeObjCID));
     return lldb::ChildCacheState::eRefetch;
   }
 

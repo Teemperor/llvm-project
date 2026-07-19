@@ -23,6 +23,7 @@ public:
 
   CompilerType RealizeType(TypeSystemClang &ast_ctx, const char *name,
                            bool for_expression) override;
+  CompilerType RealizeType(const char *name, bool for_expression) override;
 
 private:
   struct StructElement {

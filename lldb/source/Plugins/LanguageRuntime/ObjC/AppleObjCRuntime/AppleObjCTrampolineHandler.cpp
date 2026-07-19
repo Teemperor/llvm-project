@@ -406,15 +406,25 @@ bool AppleObjCTrampolineHandler::AppleObjCVTables::RefreshTrampolines(
     Process *process = exe_ctx.GetProcessPtr();
     const ABI *abi = process->GetABI().get();
 
-    TypeSystemClangSP scratch_ts_sp =
-        ScratchTypeSystemClang::GetForTarget(process->GetTarget());
+    // Use the generic scratch TypeSystem for the language (this may be a
+    // TypeSystemClang or a TypeSystemCpp depending on the
+    // symbols.enable-typesystem-cpp setting). We only rely on the neutral
+    // CompilerType / TypeSystem API here so both work.
+    auto scratch_ts_or_err =
+        process->GetTarget().GetScratchTypeSystemForLanguage(
+            lldb::eLanguageTypeC);
+    if (!scratch_ts_or_err) {
+      llvm::consumeError(scratch_ts_or_err.takeError());
+      return false;
+    }
+    lldb::TypeSystemSP scratch_ts_sp = *scratch_ts_or_err;
     if (!scratch_ts_sp)
       return false;
 
     ValueList argument_values;
     Value input_value;
     CompilerType clang_void_ptr_type =
-        scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+        scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
 
     input_value.SetValueType(Value::ValueType::Scalar);
     // input_value.SetContext (Value::eContextTypeClangType,

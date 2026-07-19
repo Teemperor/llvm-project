@@ -19,8 +19,6 @@
 #include "lldb/Utility/StructuredData.h"
 #include "lldb/ValueObject/ValueObjectConstResult.h"
 
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
-
 using namespace lldb;
 using namespace lldb_private;
 
@@ -73,8 +71,19 @@ AbortWithPayloadFrameRecognizer::RecognizeFrame(lldb::StackFrameSP frame_sp) {
     LLDB_LOG(log, "abort_with_payload recognizer: invalid process.");
   }
 
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(process->GetTarget());
+  // We only need generic builtin types (void*, char*, uint32/uint64) to
+  // describe the arguments below. Any scratch type system for C will do, so
+  // don't hard-code TypeSystemClang here: when TypeSystemCpp is the enabled
+  // scratch type system, the target hands out a TypeSystemCpp instead and a
+  // TypeSystemClang-specific lookup would fail.
+  auto type_system_or_err =
+      process->GetTarget().GetScratchTypeSystemForLanguage(eLanguageTypeC);
+  if (!type_system_or_err) {
+    llvm::consumeError(type_system_or_err.takeError());
+    LLDB_LOG(log, "abort_with_payload recognizer: invalid scratch typesystem.");
+    return {};
+  }
+  lldb::TypeSystemSP scratch_ts_sp = *type_system_or_err;
   if (!scratch_ts_sp) {
     LLDB_LOG(log, "abort_with_payload recognizer: invalid scratch typesystem.");
     return {};
@@ -92,18 +101,15 @@ AbortWithPayloadFrameRecognizer::RecognizeFrame(lldb::StackFrameSP frame_sp) {
   Value input_value_char_ptr;
 
   CompilerType clang_void_ptr_type =
-      scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
   CompilerType clang_char_ptr_type =
-      scratch_ts_sp->GetBasicType(eBasicTypeChar).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeChar).GetPointerType();
   CompilerType clang_uint64_type =
       scratch_ts_sp->GetBuiltinTypeForEncodingAndBitSize(lldb::eEncodingUint,
                                                          64);
   CompilerType clang_uint32_type =
       scratch_ts_sp->GetBuiltinTypeForEncodingAndBitSize(lldb::eEncodingUint,
                                                          32);
-  CompilerType clang_char_star_type =
-      scratch_ts_sp->GetBuiltinTypeForEncodingAndBitSize(lldb::eEncodingUint,
-                                                         64);
 
   input_value_32.SetValueType(Value::ValueType::Scalar);
   input_value_32.SetCompilerType(clang_uint32_type);

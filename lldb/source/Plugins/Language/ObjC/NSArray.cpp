@@ -6,13 +6,9 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/AST/ASTContext.h"
-#include "clang/Basic/TargetInfo.h"
-
 #include "Cocoa.h"
 
 #include "Plugins/LanguageRuntime/ObjC/AppleObjCRuntime/AppleObjCRuntime.h"
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 
 #include "lldb/DataFormatters/FormattersHelpers.h"
 #include "lldb/Expression/FunctionCaller.h"
@@ -449,12 +445,16 @@ lldb_private::formatters::NSArrayMSyntheticFrontEndBase::
     NSArrayMSyntheticFrontEndBase(lldb::ValueObjectSP valobj_sp)
     : SyntheticChildrenFrontEnd(*valobj_sp), m_exe_ctx_ref(), m_id_type() {
   if (valobj_sp) {
-    TypeSystemClangSP scratch_ts_sp = ScratchTypeSystemClang::GetForTarget(
-        *valobj_sp->GetExecutionContextRef().GetTargetSP());
-    if (scratch_ts_sp)
-      m_id_type = CompilerType(
-          scratch_ts_sp->weak_from_this(),
-          scratch_ts_sp->getASTContext().ObjCBuiltinIdTy.getAsOpaquePtr());
+    // Use whatever C scratch type system the target provides (TypeSystemClang
+    // or TypeSystemCpp) rather than requiring a Clang one.
+    auto scratch_ts_or_err =
+        valobj_sp->GetExecutionContextRef().GetTargetSP()->
+            GetScratchTypeSystemForLanguage(lldb::eLanguageTypeC);
+    if (!scratch_ts_or_err) {
+      llvm::consumeError(scratch_ts_or_err.takeError());
+    } else if (auto scratch_ts_sp = *scratch_ts_or_err) {
+      m_id_type = scratch_ts_sp->GetBasicTypeFromAST(lldb::eBasicTypeObjCID);
+    }
     if (valobj_sp->GetProcessSP())
       m_ptr_size = valobj_sp->GetProcessSP()->GetAddressByteSize();
   }
@@ -579,11 +579,16 @@ lldb_private::formatters::GenericNSArrayISyntheticFrontEnd<D32, D64, Inline>::
   if (valobj_sp) {
     CompilerType type = valobj_sp->GetCompilerType();
     if (type) {
-      TypeSystemClangSP scratch_ts_sp = ScratchTypeSystemClang::GetForTarget(
-          *valobj_sp->GetExecutionContextRef().GetTargetSP());
-      if (scratch_ts_sp)
-        m_id_type = scratch_ts_sp->GetType(
-            scratch_ts_sp->getASTContext().ObjCBuiltinIdTy);
+      // Use whatever C scratch type system the target provides
+      // (TypeSystemClang or TypeSystemCpp) rather than requiring a Clang one.
+      auto scratch_ts_or_err =
+          valobj_sp->GetExecutionContextRef().GetTargetSP()->
+              GetScratchTypeSystemForLanguage(lldb::eLanguageTypeC);
+      if (!scratch_ts_or_err) {
+        llvm::consumeError(scratch_ts_or_err.takeError());
+      } else if (auto scratch_ts_sp = *scratch_ts_or_err) {
+        m_id_type = scratch_ts_sp->GetBasicTypeFromAST(lldb::eBasicTypeObjCID);
+      }
     }
   }
 }
@@ -727,10 +732,18 @@ lldb_private::formatters::NSArray1SyntheticFrontEnd::GetChildAtIndex(
   static const ConstString g_zero("[0]");
 
   if (idx == 0) {
-    TypeSystemClangSP scratch_ts_sp =
-        ScratchTypeSystemClang::GetForTarget(*m_backend.GetTargetSP());
-    if (scratch_ts_sp) {
-      CompilerType id_type(scratch_ts_sp->GetBasicType(lldb::eBasicTypeObjCID));
+    // Use whatever C scratch type system the target provides (TypeSystemClang
+    // or TypeSystemCpp) rather than requiring a Clang one.
+    auto scratch_ts_or_err =
+        m_backend.GetTargetSP()->GetScratchTypeSystemForLanguage(
+            lldb::eLanguageTypeC);
+    if (!scratch_ts_or_err) {
+      llvm::consumeError(scratch_ts_or_err.takeError());
+      return lldb::ValueObjectSP();
+    }
+    if (auto scratch_ts_sp = *scratch_ts_or_err) {
+      CompilerType id_type(
+          scratch_ts_sp->GetBasicTypeFromAST(lldb::eBasicTypeObjCID));
       return m_backend.GetSyntheticChildAtOffset(
           m_backend.GetProcessSP()->GetAddressByteSize(), id_type, true,
           g_zero);

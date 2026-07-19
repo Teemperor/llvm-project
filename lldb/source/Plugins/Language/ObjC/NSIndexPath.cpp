@@ -8,7 +8,6 @@
 
 #include "Cocoa.h"
 
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 #include "lldb/DataFormatters/FormattersHelpers.h"
 #include "lldb/DataFormatters/TypeSynthetic.h"
 #include "lldb/Target/Process.h"
@@ -55,12 +54,23 @@ public:
     if (!type_system)
       return lldb::ChildCacheState::eRefetch;
 
-    auto ast = ScratchTypeSystemClang::GetForTarget(
-        *m_backend.GetExecutionContextRef().GetTargetSP());
-    if (!ast)
+    // Use whatever C scratch type system the target provides (TypeSystemClang
+    // or TypeSystemCpp) rather than requiring a Clang one.
+    TargetSP target_sp = m_backend.GetExecutionContextRef().GetTargetSP();
+    auto scratch_ts_or_err =
+        target_sp->GetScratchTypeSystemForLanguage(lldb::eLanguageTypeC);
+    if (!scratch_ts_or_err) {
+      llvm::consumeError(scratch_ts_or_err.takeError());
+      return lldb::ChildCacheState::eRefetch;
+    }
+    auto scratch_ts_sp = *scratch_ts_or_err;
+    if (!scratch_ts_sp)
       return lldb::ChildCacheState::eRefetch;
 
-    m_uint_star_type = ast->GetPointerSizedIntType(false);
+    const uint32_t addr_byte_size =
+        target_sp->GetArchitecture().GetAddressByteSize();
+    m_uint_star_type = scratch_ts_sp->GetBuiltinTypeForEncodingAndBitSize(
+        lldb::eEncodingUint, addr_byte_size * 8);
 
     static ConstString g__indexes("_indexes");
     static ConstString g__length("_length");

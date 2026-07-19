@@ -38,8 +38,6 @@
 #include "lldb/ValueObject/ValueObjectConstResult.h"
 #include "clang/AST/Type.h"
 
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
-
 #include <vector>
 
 using namespace lldb;
@@ -530,11 +528,22 @@ ThreadSP AppleObjCRuntime::GetBacktraceThreadFromException(
   if (!reserved_dict)
     return FailExceptionParsing("Failed to get synthetic value.");
 
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(*exception_sp->GetTargetSP());
+  // Use the generic scratch TypeSystem for the language (this may be a
+  // TypeSystemClang or a TypeSystemCpp depending on the
+  // symbols.enable-typesystem-cpp setting). We only rely on the neutral
+  // CompilerType / TypeSystem API here so both work.
+  auto scratch_ts_or_err =
+      exception_sp->GetTargetSP()->GetScratchTypeSystemForLanguage(
+          lldb::eLanguageTypeObjC);
+  if (!scratch_ts_or_err) {
+    llvm::consumeError(scratch_ts_or_err.takeError());
+    return FailExceptionParsing("Failed to get scratch AST.");
+  }
+  lldb::TypeSystemSP scratch_ts_sp = *scratch_ts_or_err;
   if (!scratch_ts_sp)
     return FailExceptionParsing("Failed to get scratch AST.");
-  CompilerType objc_id = scratch_ts_sp->GetBasicType(lldb::eBasicTypeObjCID);
+  CompilerType objc_id =
+      scratch_ts_sp->GetBasicTypeFromAST(lldb::eBasicTypeObjCID);
   ValueObjectSP return_addresses;
 
   auto objc_object_from_address = [&exception_sp, &objc_id](uint64_t addr,
