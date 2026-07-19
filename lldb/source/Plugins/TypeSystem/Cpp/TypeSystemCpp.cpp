@@ -814,14 +814,6 @@ ScratchTypeSystemCpp::GetPersistentExpressionState() {
   return m_persistent_variables.get();
 }
 
-lldb::TypeSystemSP ScratchTypeSystemCpp::GetOrCreateAuxiliaryClangScratchAST(
-    llvm::function_ref<lldb::TypeSystemSP()> create_callback) {
-  std::lock_guard<std::mutex> guard(m_aux_clang_scratch_ast_mutex);
-  if (!m_aux_clang_scratch_ast_sp)
-    m_aux_clang_scratch_ast_sp = create_callback();
-  return m_aux_clang_scratch_ast_sp;
-}
-
 ConstString TypeSystemCpp::DeclGetName(void *opaque_decl) {
   // TypeSystemCpp's CompilerDecls are tagged cpp_typesystem::Decl references.
   auto *decl = static_cast<const cpp_typesystem::Decl *>(opaque_decl);

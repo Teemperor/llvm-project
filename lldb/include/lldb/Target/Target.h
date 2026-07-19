@@ -44,6 +44,7 @@
 #include "lldb/Utility/Timeout.h"
 #include "lldb/lldb-public.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringRef.h"
 
 namespace lldb_private {
@@ -1439,6 +1440,20 @@ public:
   std::vector<lldb::TypeSystemSP>
   GetScratchTypeSystems(bool create_on_demand = true);
 
+  /// Returns a persistent, target-scoped auxiliary TypeSystem, lazily created
+  /// via \a create_callback on first use. Some language-agnostic code (data
+  /// formatters, language runtimes, the register-type builder) needs a real
+  /// Clang TypeSystem to fabricate small ad-hoc helper types (e.g. a
+  /// `void *`, or a struct describing a libdispatch ABI structure) regardless
+  /// of which concrete TypeSystem currently owns this target's C/C++/ObjC
+  /// scratch slot (\a GetScratchTypeSystemForLanguage). This side channel
+  /// keeps that working even when that slot is occupied by a TypeSystem that
+  /// isn't Clang-based (e.g. TypeSystemCpp). Returned/stored as an opaque
+  /// \a TypeSystemSP since core code must not depend on a concrete
+  /// TypeSystem plugin.
+  lldb::TypeSystemSP GetOrCreateAuxiliaryClangScratchAST(
+      llvm::function_ref<lldb::TypeSystemSP()> create_callback);
+
   PersistentExpressionState *
   GetPersistentExpressionStateForLanguage(lldb::LanguageType language);
 
@@ -2108,6 +2123,21 @@ protected:
   lldb::SearchFilterSP m_search_filter_sp;
   PathMappingList m_image_search_paths;
   TypeSystemMap m_scratch_type_system_map;
+
+  /// See GetOrCreateAuxiliaryClangScratchAST. Reset in
+  /// ClearScratchTypeSystems() *before* m_scratch_type_system_map.Clear()
+  /// runs: the auxiliary AST's teardown can call back into
+  /// GetScratchTypeSystemForLanguage(), which re-locks
+  /// m_scratch_type_system_map's mutex, and Clear() drops the map's
+  /// (possibly last) shared_ptr reference to each TypeSystem *while holding*
+  /// that same mutex -- so tearing the auxiliary down only as a side effect
+  /// of that drop would deadlock.
+  std::mutex m_aux_clang_scratch_ast_mutex;
+  lldb::TypeSystemSP m_aux_clang_scratch_ast_sp;
+
+  /// Resets the auxiliary Clang scratch AST and then clears
+  /// m_scratch_type_system_map. See m_aux_clang_scratch_ast_sp.
+  void ClearScratchTypeSystems();
 
   /// Map of scripted frame provider descriptors for this target.
   /// Keys are the provider descriptor IDs, values are the descriptors.

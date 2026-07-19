@@ -9627,21 +9627,17 @@ ScratchTypeSystemClang::GetForTarget(Target &target,
   ScratchTypeSystemClang *scratch_ast =
       llvm::dyn_cast_or_null<ScratchTypeSystemClang>(ts_sp.get());
   if (!scratch_ast) {
-    // When TypeSystemCpp is enabled it owns the target's eLanguageTypeC
-    // scratch slot instead of a ScratchTypeSystemClang, so the dyn_cast above
-    // finds nothing. Generic (language-agnostic) formatters still need a
-    // persistent Clang scratch AST to fabricate small helper types (e.g. a
-    // `void *`, or an internal struct like NSDictionary's
-    // `__lldb_autogen_nspair`); serve them one via a side channel cached
-    // directly on the ScratchTypeSystemCpp. Sub-ASTs (CppModules) aren't
-    // needed on this path since TypeSystemCpp's own expression evaluation
-    // doesn't go through them.
-    if (ast_kind != DefaultAST)
+    // The target's eLanguageTypeC scratch slot isn't owned by a
+    // ScratchTypeSystemClang (e.g. TypeSystemCpp owns it instead), so the
+    // dyn_cast above finds nothing. Generic (language-agnostic) formatters
+    // still need a persistent Clang scratch AST to fabricate small helper
+    // types (e.g. a `void *`, or an internal struct like NSDictionary's
+    // `__lldb_autogen_nspair`); serve them one via a target-scoped side
+    // channel. Sub-ASTs (CppModules) aren't needed on this path since
+    // TypeSystemCpp's own expression evaluation doesn't go through them.
+    if (ast_kind != DefaultAST || !create_on_demand)
       return nullptr;
-    auto *scratch_cpp = llvm::dyn_cast_or_null<ScratchTypeSystemCpp>(ts_sp.get());
-    if (!scratch_cpp || !create_on_demand)
-      return nullptr;
-    lldb::TypeSystemSP aux_sp = scratch_cpp->GetOrCreateAuxiliaryClangScratchAST(
+    lldb::TypeSystemSP aux_sp = target.GetOrCreateAuxiliaryClangScratchAST(
         [&target]() -> lldb::TypeSystemSP {
           return std::make_shared<ScratchTypeSystemClang>(
               target, target.GetArchitecture().GetTriple());
