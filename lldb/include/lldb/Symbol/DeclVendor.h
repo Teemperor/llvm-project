@@ -23,6 +23,7 @@ public:
     eClangModuleDeclVendor,
     eAppleObjCDeclVendor,
     eLastClangDeclVendor,
+    eCppObjCDeclVendor,
   };
   // Constructors and Destructors
   DeclVendor(DeclVendorKind kind) : m_kind(kind) {}
@@ -62,7 +63,8 @@ public:
   ///
   /// \return
   ///     The vector of CompilerTypes that was found.
-  std::vector<CompilerType> FindTypes(ConstString name, uint32_t max_matches);
+  virtual std::vector<CompilerType> FindTypes(ConstString name,
+                                               uint32_t max_matches);
 
 private:
   // For DeclVendor only

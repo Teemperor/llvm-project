@@ -11,6 +11,7 @@
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/DebuggerEvents.h"
 #include "lldb/Core/Module.h"
+#include "lldb/Core/ModuleList.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/Section.h"
 #include "lldb/Expression/DiagnosticManager.h"
@@ -54,6 +55,7 @@
 #include "AppleObjCRuntimeV2.h"
 #include "AppleObjCTrampolineHandler.h"
 #include "AppleObjCTypeEncodingParser.h"
+#include "CppObjCDeclVendor.h"
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclObjC.h"
@@ -929,7 +931,7 @@ bool AppleObjCRuntimeV2::GetDynamicTypeAndAddress(
           objc_class_sp->SetType(type_sp);
           class_type_or_name.SetTypeSP(type_sp);
         } else {
-          // try to go for a CompilerType at least
+          // Try to go for a CompilerType at least.
           if (auto *vendor = GetDeclVendor()) {
             auto types = vendor->FindTypes(class_name, /*max_matches*/ 1);
             if (!types.empty())
@@ -2866,8 +2868,18 @@ void AppleObjCRuntimeV2::WarnIfNoExpandedSharedCache() {
 }
 
 DeclVendor *AppleObjCRuntimeV2::GetDeclVendor() {
-  if (!m_decl_vendor_up)
-    m_decl_vendor_up = std::make_unique<AppleObjCDeclVendor>(*this);
+  if (!m_decl_vendor_up) {
+    // CppObjCDeclVendor never instantiates a TypeSystemClang (it hands out
+    // TypeSystemCpp CompilerTypes instead), unlike AppleObjCDeclVendor. It
+    // can't serve ClangASTSource's legacy ObjC expression-parsing lookups,
+    // but those never run once symbols.enable-typesystem-cpp installs
+    // CppExpressionDeclMap instead of ClangExpressionDeclMap -- see
+    // CppObjCDeclVendor.h for details.
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp())
+      m_decl_vendor_up = std::make_unique<CppObjCDeclVendor>(*this);
+    else
+      m_decl_vendor_up = std::make_unique<AppleObjCDeclVendor>(*this);
+  }
 
   return m_decl_vendor_up.get();
 }
