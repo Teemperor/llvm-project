@@ -1254,12 +1254,15 @@ TypeSP DWARFASTParserCpp::ParseFunctionType(const DWARFDIE &die) {
 
   // An empty, non-variadic parameter list should be spelled `(void)` rather
   // than `()` when the function is explicitly prototyped (DW_AT_prototyped)
-  // and the owning compile unit's language is C, not C++: in C++ `int foo();`
+  // and the owning compile unit's language is plain C: in C++ (and
+  // Objective-C/Objective-C++, which are never K&R-style) `int foo();`
   // already means an empty prototype, but in C it means "unspecified
   // parameters" (K&R), so `(void)` is needed to say "takes no arguments".
-  // Mirrors clang's PrintingPolicy::UseVoidForZeroParams (true iff !CPlusPlus),
-  // just decided per-DIE here since TypeSystemCpp has one Context shared across
-  // languages instead of TypeSystemClang's one ASTContext per language.
+  // Mirrors clang's PrintingPolicy::UseVoidForZeroParams (true iff !CPlusPlus,
+  // but clang has a separate ASTContext per language and so never has to
+  // reconsider ObjC here); TypeSystemCpp instead has one Context shared
+  // across languages, so this is decided per-DIE and must explicitly exclude
+  // ObjC/ObjC++ via LanguageIsC rather than just negating LanguageIsCPlusPlus.
   // DW_AT_prototyped is looked up with check_elaborating_dies=true (bypassing
   // the DWARFBaseDIE convenience wrapper, which hardcodes it to false) because
   // it commonly lives on an out-of-line DW_AT_specification DIE rather than the
@@ -1271,7 +1274,7 @@ TypeSP DWARFASTParserCpp::ParseFunctionType(const DWARFDIE &die) {
       /*end_attr_offset_ptr=*/nullptr, /*check_elaborating_dies=*/true);
   bool use_void_for_empty_params =
       !is_variadic && params.empty() && is_prototyped &&
-      !Language::LanguageIsCPlusPlus(SymbolFileDWARF::GetLanguage(*die.GetCU()));
+      Language::LanguageIsC(SymbolFileDWARF::GetLanguage(*die.GetCU()));
 
   CompilerType function_type;
   {
