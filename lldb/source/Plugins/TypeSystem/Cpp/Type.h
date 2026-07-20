@@ -218,6 +218,16 @@ struct ObjCMethod {
 /// A pointer to a Type is what TypeSystemCpp hands out as its
 /// lldb::opaque_compiler_type_t, so the virtual functions below are the queries
 /// that back the CompilerType API.
+///
+/// Only a named type (a record, typedef or enum -- see the GetName() family
+/// below) carries a spelling/namespace/alignment of its own; a "structural"
+/// type (pointer, reference, array, function, sugar, ...) has none and is far
+/// more numerous in a typical program (e.g. every pointer/reference/const
+/// qualification creates a distinct instance). So that storage is NOT held
+/// here where every Type would pay for it -- it lives only on the handful of
+/// classes that use it (RecordType, EnumType, TypedefType, BuiltinType), and
+/// is reached generically through these virtual accessors (defaulting to
+/// "no name" for a structural type).
 class Type : public llvm::RTTIExtends<Type, llvm::RTTIRoot> {
 public:
   /// LLVM-style RTTI support (isa<>/cast<>/dyn_cast<>). Because Type already
@@ -227,30 +237,48 @@ public:
 
   virtual ~Type() = default;
 
-  Identifier GetName() const { return m_name; }
-  void SetName(Identifier name) { m_name = name; }
+  /// The type's own name. For a record this is the fully-qualified,
+  /// template-argument-bearing DWARF spelling (used to recover an enclosing
+  /// *class* scope that GetDeclContext() can't represent -- see
+  /// AppendClassScopePrefix); for a builtin/typedef/enum it is the plain
+  /// spelling. Empty for a structural type, which has no name of its own.
+  virtual Identifier GetName() const { return Identifier(); }
 
-  /// The namespace this type is declared in (null for the global namespace).
-  /// Used to build the qualified display name while skipping inline
-  /// namespaces. See cpp_typesystem::Namespace.
-  const Namespace *GetDeclContext() const { return m_decl_context; }
-  void SetDeclContext(const Namespace *ns) { m_decl_context = ns; }
+  /// The namespace this type is declared in (null for the global namespace,
+  /// and for a structural type, which has no declaration context). Used to
+  /// build the qualified display name while skipping inline namespaces. See
+  /// cpp_typesystem::Namespace.
+  virtual const Namespace *GetDeclContext() const { return nullptr; }
+  /// Only ever invoked (via Builder::SetDeclContext, generically through a
+  /// `Type *`) on a type that overrides GetDeclContext() with real storage.
+  virtual void SetDeclContext(const Namespace *ns) {
+    llvm_unreachable("this Type kind has no declaration context to set");
+  }
 
   /// The unqualified spelling as written in the debug info (e.g. `string` or
   /// `vector<int, std::allocator<int>>`), without any namespace qualification.
   /// Used, together with GetDeclContext() and the template arguments, to build
-  /// the (possibly simplified) display name.
-  Identifier GetUnqualifiedName() const { return m_unqualified_name; }
-  void SetUnqualifiedName(Identifier name) { m_unqualified_name = name; }
+  /// the (possibly simplified) display name. Empty for a structural type.
+  virtual Identifier GetUnqualifiedName() const { return Identifier(); }
+  /// Only ever invoked (via Builder::SetUnqualifiedName, generically through a
+  /// `Type *`) on a type that overrides GetUnqualifiedName() with real storage.
+  virtual void SetUnqualifiedName(Identifier name) {
+    llvm_unreachable("this Type kind has no unqualified name to set");
+  }
 
-  virtual std::optional<uint64_t> GetByteSize() const { return m_byte_size; }
-  void SetByteSize(std::optional<uint64_t> byte_size) { m_byte_size = byte_size; }
+  virtual std::optional<uint64_t> GetByteSize() const {
+    return m_byte_size == kNoByteSize ? std::nullopt
+                                      : std::optional<uint64_t>(m_byte_size);
+  }
+  void SetByteSize(std::optional<uint64_t> byte_size) {
+    m_byte_size = byte_size.value_or(kNoByteSize);
+  }
 
   /// An explicitly-specified alignment in bits (from `DW_AT_alignment`, e.g.
   /// `alignas(128)`), if the debug info recorded one. When absent, callers fall
-  /// back to deriving a natural alignment from the size.
-  std::optional<uint64_t> GetAlignInBits() const { return m_align_in_bits; }
-  void SetAlignInBits(std::optional<uint64_t> align) { m_align_in_bits = align; }
+  /// back to deriving a natural alignment from the size. Only a record can
+  /// carry one; every other kind reports "none".
+  virtual std::optional<uint64_t> GetAlignInBits() const { return std::nullopt; }
 
   /// True if this type has members (a struct/class/union).
   virtual bool IsAggregate() const { return false; }
@@ -285,23 +313,56 @@ public:
   virtual bool IsPolymorphic() const { return false; }
 
 private:
+  // A byte size can be any 64-bit value in principle, but never in practice
+  // (no real type is 2^64-1 bytes), so steal that value as the "unset"
+  // sentinel instead of paying for std::optional's separate bool.
+  static constexpr uint64_t kNoByteSize = UINT64_MAX;
+  uint64_t m_byte_size = kNoByteSize;
+};
+
+/// Mixin adding the name/declaration-context storage that Type declares (as
+/// virtual accessors defaulting to "no name") but does not itself store --
+/// see the comment on Type for why. Inherited by every named type (a record,
+/// typedef or enum) over whichever base it would otherwise have (`Type`
+/// directly, or `SugarType` for a typedef), so the storage and its accessor
+/// overrides are written once instead of copy-pasted per class.
+template <typename Base> class NamedType : public Base {
+public:
+  Identifier GetName() const override { return m_name; }
+  void SetName(Identifier name) { m_name = name; }
+  const Namespace *GetDeclContext() const override { return m_decl_context; }
+  void SetDeclContext(const Namespace *ns) override { m_decl_context = ns; }
+  Identifier GetUnqualifiedName() const override { return m_unqualified_name; }
+  void SetUnqualifiedName(Identifier name) override {
+    m_unqualified_name = name;
+  }
+
+private:
   Identifier m_name;
   Identifier m_unqualified_name;
   const Namespace *m_decl_context = nullptr;
-  std::optional<uint64_t> m_byte_size;
-  std::optional<uint64_t> m_align_in_bits;
 };
 
 /// Common base for C/C++ record types (struct/class/union). Owns the data
 /// members and the forward-declaration/completion state that every record
 /// shares. C++-only information (such as base classes) lives on ClassType, so
 /// a plain StructType never reserves storage for it.
-class RecordType : public llvm::RTTIExtends<RecordType, Type> {
+class RecordType : public llvm::RTTIExtends<RecordType, NamedType<Type>> {
 public:
   static char ID;
 
   bool IsAggregate() const override { return true; }
   bool IsComplete() const override { return m_complete; }
+
+  /// An explicitly-specified alignment (see Type::GetAlignInBits); only a
+  /// record can carry one, so unlike name/decl-context this isn't shared via
+  /// NamedType.
+  std::optional<uint64_t> GetAlignInBits() const override {
+    return m_align_in_bits;
+  }
+  void SetAlignInBits(std::optional<uint64_t> align) {
+    m_align_in_bits = align;
+  }
 
   /// True if this record is a `union` (all members share offset 0). Needed so
   /// the type can be reconstructed with the correct tag kind.
@@ -470,6 +531,7 @@ private:
   const RecordType *m_anonymous_parent = nullptr;
   ArgPassingKind m_arg_passing = ArgPassingKind::Unspecified;
   bool m_member_functions_parsed = false;
+  std::optional<uint64_t> m_align_in_bits;
   std::vector<Field> m_fields;
   std::vector<TemplateArgument> m_template_args;
   std::vector<std::pair<Identifier, TypeRef>> m_nested_types;
@@ -590,9 +652,13 @@ public:
   void SetElementType(TypeRef type) { m_element_type = type; }
 
   /// Number of elements, or std::nullopt for an array of unknown bound.
-  std::optional<uint64_t> GetNumElements() const { return m_num_elements; }
+  std::optional<uint64_t> GetNumElements() const {
+    return m_num_elements == kNoNumElements
+               ? std::nullopt
+               : std::optional<uint64_t>(m_num_elements);
+  }
   void SetNumElements(std::optional<uint64_t> num_elements) {
-    m_num_elements = num_elements;
+    m_num_elements = num_elements.value_or(kNoNumElements);
   }
 
   /// The UID of the DWARF DIE that produced this array, or UINT64_MAX (i.e.
@@ -621,8 +687,11 @@ public:
   }
 
 private:
+  // An array can't really have 2^64-1 elements, so steal that value as the
+  // "unbounded" sentinel instead of paying for std::optional's separate bool.
+  static constexpr uint64_t kNoNumElements = UINT64_MAX;
   TypeRef m_element_type;
-  std::optional<uint64_t> m_num_elements;
+  uint64_t m_num_elements = kNoNumElements;
   uint64_t m_die_uid = UINT64_MAX;
   bool m_is_vector = false;
 };
@@ -810,7 +879,7 @@ private:
 
 /// A typedef/using alias. It carries its own (alias) name but otherwise behaves
 /// like the type it aliases.
-class TypedefType : public llvm::RTTIExtends<TypedefType, SugarType> {
+class TypedefType : public llvm::RTTIExtends<TypedefType, NamedType<SugarType>> {
 public:
   static char ID;
 
@@ -896,7 +965,7 @@ struct Enumerator {
 /// A C/C++ enumeration type. It has an underlying integer type and a set of
 /// named constants; scoped enums (`enum class`) are distinguished so their
 /// enumerators are not treated as being in the enclosing scope.
-class EnumType : public llvm::RTTIExtends<EnumType, Type> {
+class EnumType : public llvm::RTTIExtends<EnumType, NamedType<Type>> {
 public:
   static char ID;
 

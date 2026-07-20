@@ -29,6 +29,11 @@ class BuiltinType : public llvm::RTTIExtends<BuiltinType, Type> {
 public:
   static char ID;
 
+  // A builtin is a named type (e.g. "int", "long unsigned int"); Type itself
+  // holds no name storage (see its class comment), so this is where it lives.
+  Identifier GetName() const override { return m_name; }
+  void SetName(Identifier name) { m_name = name; }
+
   void SetEncoding(lldb::Encoding encoding) { m_encoding = encoding; }
   lldb::Encoding GetEncoding() const override { return m_encoding; }
 
@@ -51,6 +56,7 @@ public:
   uint32_t GetTypeInfo() const override;
 
 private:
+  Identifier m_name;
   lldb::Encoding m_encoding = lldb::eEncodingInvalid;
   lldb::Format m_format = lldb::eFormatDefault;
   std::optional<BuiltinKind> m_kind;
