@@ -76,6 +76,15 @@ static bool RecordHasFields(cpp_typesystem::Type *t,
   complete(t);
   if (t->GetNumFields() != 0)
     return true;
+  // We always want a record with no definition anywhere in the debug info
+  // (e.g. -flimit-debug-info) to show up, so we can print a message in the
+  // summary indicating that the type is incomplete: otherwise a base class
+  // in this state would be silently hidden by the omit-empty-base-classes
+  // logic below (since it looks exactly like an empty-but-complete base),
+  // and a top-level variable of such a type would show nothing at all.
+  // Mirrors TypeSystemClang::RecordHasFields's IsForcefullyCompleted check.
+  if (!t->IsComplete())
+    return true;
   for (uint32_t i = 0, n = t->GetNumBaseClasses(); i < n; ++i) {
     const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
     if (base && RecordHasFields(base->type.Get(), complete))
@@ -1331,6 +1340,26 @@ bool TypeSystemCpp::GetCompleteType(opaque_compiler_type_t type) {
   return t->IsComplete();
 }
 
+bool TypeSystemCpp::IsForcefullyCompleted(opaque_compiler_type_t type) {
+  if (!type)
+    return false;
+  // TypeSystemCpp never force-completes a record as an empty definition the
+  // way TypeSystemClang does (see GetCompleteType above) -- a record with no
+  // definition anywhere in the debug info is left genuinely incomplete
+  // instead. So this reports the closest equivalent: a record/enum that is
+  // still incomplete after best-effort completion (i.e. -flimit-debug-info
+  // stripped its only definition). ValueObject::GetSummaryAsCString uses this
+  // to print "<incomplete type>" instead of trying to summarize a type it has
+  // no members for. Scoped to RecordType (not desugared through references
+  // etc.) to mirror TypeSystemClang::IsForcefullyCompleted, which only
+  // recognizes a plain clang::RecordType.
+  auto *record =
+      llvm::dyn_cast_or_null<cpp_typesystem::RecordType>(Desugar(GetCppType(type)));
+  if (!record)
+    return false;
+  return !GetCompleteType(type);
+}
+
 void TypeSystemCpp::CompleteMemberFunctions(cpp_typesystem::Type *type) {
   if (!type)
     return;
@@ -2494,13 +2523,22 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
   if (CompilerType rt = GetRuntimeCompletedObjCType(t, exe_ctx))
     return rt.GetNumChildren(omit_empty_base_classes, exe_ctx);
   GetCompleteType(type);
-  // A type with no debug info defining it anywhere (e.g. a forward-declared
-  // `struct Opaque;` that is never defined) stays incomplete even after
-  // GetCompleteType; surface that as an error instead of silently reporting
-  // zero fields, matching TypeSystemClang's Record case.
+  // A record/enum with no debug info defining it anywhere (e.g.
+  // -flimit-debug-info hid its only definition, or a forward-declared
+  // `struct Opaque;` that is never defined at all) stays incomplete even
+  // after GetCompleteType, since TypeSystemCpp deliberately does not
+  // force-complete it as an empty definition the way TypeSystemClang does
+  // (see GetCompleteType's comment). TypeSystemClang's completion source
+  // always leaves a Record reporting *some* field count (0, if it could only
+  // force-complete an empty definition) rather than erroring at this level --
+  // GetCompleteRecordType never returns null for a Record, so its GetNumChildren
+  // Record case practically never takes its "incomplete" branch. Match that by
+  // reporting zero children (not an error) here; a pointer/reference to such a
+  // type still surfaces the error through GetChildCompilerTypeAtIndex's pointer
+  // branch instead (see TestValueObjectErrors), which is the scenario the
+  // error string was actually meant for.
   if (!t->IsComplete())
-    return llvm::createStringError(
-        "incomplete type \"" + GetDisplayTypeName(type).GetString() + "\"");
+    return 0;
   // Children of a record are its direct base classes followed by its fields.
   // Empty base classes (no data members, recursively) are omitted when
   // requested, matching TypeSystemClang.

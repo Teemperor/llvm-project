@@ -13,6 +13,40 @@ from lldbsuite.test import lldbutil
 class LimitDebugInfoTestCase(TestBase):
     SHARED_BUILD_TESTCASE = False
 
+    def _expect_incomplete_array_subscript_error(self, command, array_type, member):
+        # Subscripting an array whose *element* type has no definition
+        # anywhere in the debug info (e.g. array::Two under STRIP_TWO) behaves
+        # differently between the two type systems. TypeSystemClang's
+        # RequireCompleteType forcefully completes such a record as an empty
+        # definition, so the subscript itself succeeds (yielding a valid, if
+        # memberless, element) and the error only surfaces once `.member` is
+        # looked up ("no member named 'member' in 'array::Two'").
+        # TypeSystemCpp deliberately does not forcefully complete records this
+        # way (see TypeSystemCpp::GetCompleteType), so the type stays honestly
+        # incomplete and clang's own array-subscript typecheck
+        # (Sema::CreateBuiltinArraySubscriptExpr) rejects the subscript before
+        # member lookup is ever reached, with clang's fixed diagnostic wording
+        # for that check ("subscript of pointer to incomplete type", used for
+        # both pointer and array subscripts -- see
+        # err_subscript_incomplete_or_sizeless_type). Both are legitimate,
+        # correct errors for a genuinely incomplete type; only the message
+        # differs, so branch on which type system is active instead of
+        # skipping the coverage entirely.
+        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+            self.expect(
+                command,
+                error=True,
+                substrs=[
+                    "subscript of pointer to incomplete type '%s'" % array_type
+                ],
+            )
+        else:
+            self.expect(
+                command,
+                error=True,
+                substrs=["no member named '%s' in '%s'" % (member, array_type)],
+            )
+
     def _check_type(self, target, name):
         exe = target.FindModule(lldb.SBFileSpec("a.out"))
         type_ = exe.FindFirstType(name)
@@ -268,10 +302,8 @@ class LimitDebugInfoTestCase(TestBase):
         )
         self.expect_expr("two_as_member.two.member", result_value="247")
 
-        self.expect(
-            "expr array_of_one[2].member",
-            error=True,
-            substrs=["no member named 'member' in 'array::One'"],
+        self._expect_incomplete_array_subscript_error(
+            "expr array_of_one[2].member", "array::One", "member"
         )
         self.expect(
             "expr array_of_two[2].one[2].member",
@@ -340,15 +372,11 @@ class LimitDebugInfoTestCase(TestBase):
         )
 
         self.expect_expr("array_of_one[2].member", result_value="174")
-        self.expect(
-            "expr array_of_two[2].one[2].member",
-            error=True,
-            substrs=["no member named 'one' in 'array::Two'"],
+        self._expect_incomplete_array_subscript_error(
+            "expr array_of_two[2].one[2].member", "array::Two", "one"
         )
-        self.expect(
-            "expr array_of_two[2].member",
-            error=True,
-            substrs=["no member named 'member' in 'array::Two'"],
+        self._expect_incomplete_array_subscript_error(
+            "expr array_of_two[2].member", "array::Two", "member"
         )
 
         self.expect_expr("get_one().member", result_value="124")
