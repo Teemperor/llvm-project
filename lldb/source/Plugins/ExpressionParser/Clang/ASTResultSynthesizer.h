@@ -11,6 +11,7 @@
 
 #include "lldb/Target/Target.h"
 #include "clang/Sema/SemaConsumer.h"
+#include "llvm/ADT/ArrayRef.h"
 
 namespace clang {
 class CompoundStmt;
@@ -100,6 +101,21 @@ public:
 
   /// The parse has succeeded, so record its persistent decls
   void CommitPersistentDecls();
+
+  /// The persistent decls collected while transforming this parse's AST (any
+  /// $-prefixed TypeDecl found in the `$__lldb_expr` function/method body, or
+  /// every top-level NamedDecl for a top-level execution). Exposed so the
+  /// TypeSystemCpp-specific half of CommitPersistentDecls (which needs the
+  /// CppExpressionDeclMap's ClangASTGenerator to convert a type, something
+  /// this class has no access to) can be driven from
+  /// ClangUserExpressionHelper::CommitPersistentDecls instead.
+  llvm::ArrayRef<clang::NamedDecl *> GetPersistentDecls() const {
+    return m_decls;
+  }
+
+  /// The clang::ASTContext this parse used (valid for the object's whole
+  /// lifetime once Initialize has run).
+  clang::ASTContext &GetASTContext() const { return *m_ast_context; }
 
 private:
   /// Hunt the given Decl for FunctionDecls named $__lldb_expr, recursing as

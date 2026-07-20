@@ -66,13 +66,27 @@ CompilerType ClangTypeConverter::Convert(clang::QualType qt) {
 
   // Preserve cv-qualifiers the parser applied but that we didn't generate
   // ourselves (e.g. the `const` of the `const char *` parameter in a function
-  // cast): map the unqualified type and re-wrap it.
+  // cast, or a `const` on a parser-defined typedef/record/builtin): map the
+  // unqualified type and re-wrap it. Must run before the TypedefType/
+  // BuiltinType/RecordType checks below, all of which use qt->getAs<T>() --
+  // that desugars through (and so silently drops) any local qualifier.
   if (qt.hasLocalQualifiers()) {
     if (CompilerType inner = Convert(qt.getLocalUnqualifiedType()))
       return cpp_typesystem::Builder(m_target).CreateCVQualifiedType(
           inner, qt.isLocalConstQualified(), qt.isLocalVolatileQualified());
     return {};
   }
+
+  // A typedef the parser defined itself (e.g. a persistent typedef, `typedef
+  // int $bar`, written directly in the expression source) has no cpp
+  // counterpart and so isn't in the reverse map. Rebuild an equivalent cpp
+  // typedef aliasing the recursively-converted underlying type. Must be
+  // checked before ConvertBuiltin/ConvertRecord below: qt->getAs<T>() desugars
+  // through typedef sugar to find a T underneath (e.g. getAs<BuiltinType>() on
+  // a `TypedefType` wrapping `int` succeeds), which would silently drop the
+  // typedef and report the aliased type instead.
+  if (const auto *tdt = qt->getAs<clang::TypedefType>())
+    return ConvertTypedef(tdt);
 
   // Builtin types (int, unsigned long, bool, ...) the parser created on its own
   // -- e.g. the result type of `1 + 1`, a `sizeof` expression, or a cast -- are
@@ -118,6 +132,18 @@ CompilerType ClangTypeConverter::ConvertViaReverseMap(clang::QualType qt,
           clang::ElaboratedTypeKeyword::None, /*Qualifier=*/std::nullopt,
           tdt->getDecl());
       find = m_generator.m_reverse.find(bare.getAsOpaquePtr());
+      // A TypedefType (bare, not through a nested-name-specifier) that isn't
+      // itself in the map is a typedef the parser defined on its own (e.g. a
+      // persistent typedef, `typedef int $bar`, or a plain `typedef int
+      // MyInt;` written in the expression) and has no known cpp origin at
+      // all. Falling through to the canonical-type lookup below would find
+      // some unrelated cpp type that merely happens to share the same
+      // canonical type (e.g. any `int` the generator already produced for
+      // this expression) and silently return that instead, discarding the
+      // typedef entirely. Bail out here so Convert()'s dedicated TypedefType
+      // case (ConvertTypedef) rebuilds it as a proper cpp typedef instead.
+      if (find == m_generator.m_reverse.end())
+        return {};
     }
   }
   if (find == m_generator.m_reverse.end())
@@ -316,6 +342,16 @@ CompilerType ClangTypeConverter::ConvertRecord(const clang::RecordType *rt) {
       name, /*byte_size=*/std::nullopt,
       /*is_cpp_class=*/llvm::isa<clang::CXXRecordDecl>(decl),
       /*is_union=*/decl->isUnion());
+}
+
+CompilerType ClangTypeConverter::ConvertTypedef(
+    const clang::TypedefType *tdt) {
+  clang::TypedefNameDecl *decl = tdt->getDecl();
+  CompilerType underlying = Convert(decl->getUnderlyingType());
+  if (!underlying)
+    return {};
+  return cpp_typesystem::Builder(m_target).CreateTypedefType(
+      decl->getName(), underlying);
 }
 
 CompilerType ClangTypeConverter::ConvertObjCObjectPointer(

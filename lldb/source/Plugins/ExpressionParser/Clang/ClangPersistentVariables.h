@@ -74,6 +74,14 @@ public:
 
   clang::NamedDecl *GetPersistentDecl(ConstString name);
 
+  /// Register a persistent type (e.g. `$foo` from `expression struct $foo
+  /// {...};`, or `$bar` from `expression typedef int $bar`) that is backed by
+  /// a CompilerType rather than a clang::NamedDecl -- used by the
+  /// TypeSystemCpp expression path, which has no shared clang::ASTContext to
+  /// keep a decl alive across expressions. GetCompilerTypeFromPersistentDecl
+  /// checks this map first.
+  void RegisterPersistentType(ConstString name, CompilerType type);
+
   void AddHandLoadedClangModule(ClangModulesDeclVendor::ModuleID module) {
     m_hand_loaded_clang_modules.push_back(module);
   }
@@ -104,6 +112,11 @@ private:
   typedef llvm::DenseMap<const char *, PersistentDecl> PersistentDeclMap;
   PersistentDeclMap
       m_persistent_decls; ///< Persistent entities declared by the user.
+
+  /// Persistent types declared by the user and backed by a CompilerType (the
+  /// TypeSystemCpp path), keyed by name (e.g. "$foo"). See
+  /// RegisterPersistentType.
+  llvm::DenseMap<const char *, CompilerType> m_persistent_types;
 
   ClangModulesDeclVendor::ModuleVector
       m_hand_loaded_clang_modules; ///< These are Clang modules we hand-loaded;
