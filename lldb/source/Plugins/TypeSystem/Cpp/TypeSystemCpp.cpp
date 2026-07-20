@@ -647,16 +647,31 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
     return "_Complex " + element;
   }
   if (auto *cv = llvm::dyn_cast<CVQualifiedType>(t)) {
-    std::string result;
+    std::string qualifier;
     if (cv->IsConst())
-      result += "const ";
+      qualifier += "const";
     if (cv->IsVolatile())
-      result += "volatile ";
-    return result + (cv->GetUnderlyingType()
-                         ? BuildDisplayName(cv->GetUnderlyingType(),
-                                            hide_default_args,
-                                            keep_inline_namespaces)
-                         : "");
+      qualifier += qualifier.empty() ? "volatile" : " volatile";
+    std::string underlying = cv->GetUnderlyingType()
+                                 ? BuildDisplayName(cv->GetUnderlyingType(),
+                                                     hide_default_args,
+                                                     keep_inline_namespaces)
+                                 : "";
+    // A cv-qualifier on a pointer itself is a declarator suffix (`T *const`),
+    // not a prefix (`const T *`, which would instead qualify the pointee) --
+    // matching the PtrAuthType case below and clang's own type printer. This
+    // only applies to the pointer directly under this qualifier: a qualified
+    // pointee (`const T *const`) has already rendered its own leading `const`
+    // as part of `underlying` (via the pointee's own CVQualifiedType), so no
+    // double-prefixing happens here.
+    if (llvm::isa_and_nonnull<PointerType>(cv->GetUnderlyingType())) {
+      // No space between the `*` and the qualifier (`T *const`), matching
+      // clang's declarator-suffix spelling.
+      const bool tight =
+          !underlying.empty() && underlying.back() == '*';
+      return underlying + (tight ? "" : " ") + qualifier;
+    }
+    return qualifier + (qualifier.empty() ? "" : " ") + underlying;
   }
   if (auto *pa = llvm::dyn_cast<PtrAuthType>(t)) {
     std::string underlying = BuildDisplayName(
