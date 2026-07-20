@@ -2022,14 +2022,40 @@ TypeSystemCpp::GetBitSize(opaque_compiler_type_t type,
                           ExecutionContextScope *exe_scope) {
   if (!type)
     return llvm::createStringError("invalid type");
-  if (std::optional<uint64_t> byte_size = GetCppType(type)->GetByteSize())
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+  // An Objective-C class's DWARF-recorded byte size is a compile-time constant
+  // baked into whichever module's debug info produced it. It can be smaller
+  // than the class's true instance size when ivars are added downstream of
+  // that module -- e.g. a class extension in a different image adds a hidden
+  // ivar to a superclass (see the hidden-ivars test): the subclass's own
+  // DW_AT_byte_size, emitted by a compile that only saw the superclass's
+  // public ivars, doesn't leave room for the hidden one. Query the ObjC
+  // runtime's authoritative instance size first, mirroring the ivar-offset
+  // override in GetChildCompilerTypeAtIndex -- getting this wrong silently
+  // undersizes the buffer used to materialize a whole-object expression
+  // result (e.g. `*k`), truncating trailing ivars.
+  if (llvm::isa<cpp_typesystem::ObjCInterfaceType>(t) && exe_scope) {
+    if (lldb::ProcessSP process_sp = exe_scope->CalculateProcess()) {
+      if (ObjCLanguageRuntime *objc_runtime =
+              ObjCLanguageRuntime::Get(*process_sp)) {
+        ConstString class_name(t->GetName().GetName());
+        if (ObjCLanguageRuntime::ClassDescriptorSP descriptor =
+                objc_runtime->GetClassDescriptorFromClassName(class_name)) {
+          uint64_t instance_size = descriptor->GetInstanceSize();
+          if (instance_size != 0)
+            return instance_size * 8;
+        }
+      }
+    }
+  }
+  if (std::optional<uint64_t> byte_size = t->GetByteSize())
     return *byte_size * 8;
   // Function types have no storage of their own. Matching TypeSystemClang
   // (clang models function types with a type size of 0), report a bit size of
   // 0 rather than an error. This keeps the dereferenced-value child of a
   // function pointer/reference from surfacing a size error (or a spurious byte
   // read) as its summary -- a zero-sized value simply has no value string.
-  if (llvm::isa<cpp_typesystem::FunctionType>(Desugar(GetCppType(type))))
+  if (llvm::isa<cpp_typesystem::FunctionType>(t))
     return 0;
   return llvm::createStringError("TypeSystemCpp::GetBitSize: unknown size");
 }
