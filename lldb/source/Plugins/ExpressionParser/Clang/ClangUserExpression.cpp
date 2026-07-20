@@ -1186,8 +1186,64 @@ ClangUserExpression::ClangUserExpressionHelper::ASTTransformer(
 }
 
 void ClangUserExpression::ClangUserExpressionHelper::CommitPersistentDecls() {
-  if (m_result_synthesizer_up) {
-    m_result_synthesizer_up->CommitPersistentDecls();
+  if (!m_result_synthesizer_up)
+    return;
+
+  // Legacy path: deport each persistent clang::NamedDecl into the target's
+  // scratch (or, under TypeSystemCpp, auxiliary side-channel) TypeSystemClang
+  // and register it by name. This keeps working even when TypeSystemCpp is
+  // enabled (ScratchTypeSystemClang::GetForTarget falls back to an auxiliary
+  // Clang AST in that case), but CppExpressionDeclMap's lookup never
+  // consults it -- see the TypeSystemCpp-specific commit below, which is what
+  // actually makes a persistent type usable from a later TypeSystemCpp
+  // expression.
+  m_result_synthesizer_up->CommitPersistentDecls();
+
+  // TypeSystemCpp path: additionally commit any `$`-prefixed persistent
+  // TypeDecl (`struct $foo {...}`, `typedef int $bar`) as a
+  // cpp_typesystem-backed CompilerType, keyed by name, in the persistent-type
+  // table CppExpressionDeclMap's lookup actually consults
+  // (ClangPersistentVariables::RegisterPersistentType /
+  // GetCompilerTypeFromPersistentDecl). This is necessary because each
+  // TypeSystemCpp expression gets a brand new clang::ASTContext -- the
+  // deported decl above lives in a different (auxiliary) ASTContext that this
+  // path never looks at -- so the only way to make the type available again
+  // is to remember it as a cpp_typesystem type, which is context-independent,
+  // and regenerate a fresh clang type for it on demand (done by
+  // CppExpressionDeclMap when the name is looked up again).
+  ExpressionDeclMap *decl_map = m_expr_decl_map_up.get();
+  if (!decl_map || !decl_map->IsCppDeclMap())
+    return;
+
+  auto *state =
+      m_target.GetPersistentExpressionStateForLanguage(lldb::eLanguageTypeC);
+  if (!state)
+    return;
+  auto *persistent_vars = llvm::cast<ClangPersistentVariables>(state);
+
+  for (clang::NamedDecl *decl : m_result_synthesizer_up->GetPersistentDecls()) {
+    if (!decl->getIdentifier())
+      continue;
+    llvm::StringRef name = decl->getName();
+    if (name.empty() || name.front() != '$')
+      continue;
+    auto *type_decl = llvm::dyn_cast<clang::TypeDecl>(decl);
+    if (!type_decl)
+      continue;
+    // A bare forward declaration (e.g. `struct $foo;` with no definition) has
+    // nothing usable to convert; only a defined tag or a typedef can round
+    // -trip through ClangTypeConverter.
+    if (const auto *tag_decl = llvm::dyn_cast<clang::TagDecl>(type_decl);
+        tag_decl && !tag_decl->getDefinition())
+      continue;
+    clang::QualType qt =
+        m_result_synthesizer_up->GetASTContext().getTypeDeclType(type_decl);
+    if (qt.isNull())
+      continue;
+    CompilerType cpp_type = decl_map->WrapType(qt);
+    if (!cpp_type)
+      continue;
+    persistent_vars->RegisterPersistentType(ConstString(name), cpp_type);
   }
 }
 

@@ -73,6 +73,11 @@ private:
   /// record.
   CompilerType ConvertRecord(const clang::RecordType *rt);
 
+  /// Rebuild a typedef the parser defined itself (e.g. a persistent typedef,
+  /// `typedef int $bar`, which has no cpp counterpart) as a TypeSystemCpp
+  /// TypedefType aliasing the recursively-converted underlying type.
+  CompilerType ConvertTypedef(const clang::TypedefType *tdt);
+
   /// Rebuild the `id` / `Class` pseudo-types or an Objective-C class pointer
   /// (`Foo *`) the parser formed, neither of which is in the reverse map.
   CompilerType
