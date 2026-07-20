@@ -353,13 +353,6 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
   }
 
   if (llvm::isa<clang::TranslationUnitDecl>(dc)) {
-    // Seeing any `$`-prefixed name (an internal `$__lldb_*` marker or a user
-    // persistent variable/register) means the expression's own wrapper text
-    // is now in play, so it's safe to start answering free
-    // function/variable/type/namespace lookups too. See the `!m_lookups_enabled`
-    // check below for why this is gated in the first place.
-    if (sname.starts_with("$"))
-      m_lookups_enabled = true;
     if (sname == "$__lldb_class") {
       LookUpLldbClass(name, decls);
       return !decls.empty();
@@ -377,29 +370,46 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
     if (sname.starts_with("$") && !sname.starts_with("$__lldb")) {
       if (LookupPersistentVariable(dc, ConstString(sname), decls))
         return true;
-      // Not a persistent variable: fall back to treating it as a register
-      // name (e.g. `$arg1`, `$pc`, `$sp`), mirroring ClangExpressionDeclMap.
+      // Skip the persistent-type lookup while we are synthesizing decls:
+      // placing a persistent type's decl into the (external-visible) TU makes
+      // clang reconcile that name here too, but that is an internal
+      // reconciliation lookup for the very name we are currently generating,
+      // not a reference from the expression -- servicing it would call back
+      // into GetGenerator().Generate() for the same type and recurse without
+      // end (e.g. a nested persistent type whose field references another
+      // persistent type, or simply a name being generated referencing
+      // itself). A genuine reference to the name resolves once the parser
+      // itself asks (outside generation).
+      if (IsGeneratingDecls())
+        return false;
+      // Not a persistent variable: maybe it's a persistent TYPE (`struct
+      // $foo`, a persistent typedef `$bar`) declared by an earlier
+      // expression.
+      if (LookupPersistentType(dc, ConstString(sname), decls))
+        return true;
+      // Not a persistent variable or type: fall back to treating it as a
+      // register name (e.g. `$arg1`, `$pc`, `$sp`), mirroring
+      // ClangExpressionDeclMap.
       return LookupRegister(dc, ConstString(sname), decls);
     }
     // A free function or global variable referenced by the expression
     // (e.g. `globalFuncCall()` or `g_global`).
     if (!sname.starts_with("$")) {
-      // Don't search the target for a free function/variable/type/namespace
-      // until we've seen a `$`-prefixed name (mirroring
-      // ClangASTSource::FindExternalVisibleDeclsByName's "wait for $" gate).
-      // Before the expression's own persistent-var/result-var/local-var
-      // marker shows up, any identifier lookup here is Sema probing an
+      // m_lookups_enabled is on by default (an ordinary `expr`/`frame
+      // variable` must resolve every free name from the start) but is turned
+      // off for a self-contained ClangUtilityFunction decl map (see
+      // ClangUtilityFunctionHelper::ResetDeclMap). Those utility functions
+      // (e.g. PlatformPOSIX's dlopen/dlsym/dlclose/dlerror wrapper) are
+      // plain, self-sufficient C programs with no `$`-prefixed marker ever
+      // appearing in their text, so this gate simply never opens for them:
+      // every name resolves from the function's own text, mirroring the
+      // legacy ClangExpressionDeclMap path. Without the gate, Sema probing an
       // ordinary identifier while parsing a declarator (e.g. classifying
       // whether `dlopen` names a type before parsing
-      // `extern "C" void *dlopen(const char*, int);`), not a genuine
-      // reference from the expression -- servicing it can synthesize a decl
-      // for a name the expression's own text is about to declare properly
+      // `extern "C" void *dlopen(const char*, int);`) would synthesize a decl
+      // for a name the function's own text is about to declare properly
       // moments later (a symbol-only fallback decl for `dlerror`, say),
       // leaving both visible and making a later matching call ambiguous.
-      // Utility functions (e.g. the dlopen/dlsym/dlclose/dlerror wrapper in
-      // PlatformPOSIX) never reference a `$`-name, so for them this gate
-      // simply never opens and every name resolves from the expression's own
-      // text, exactly like the legacy ClangExpressionDeclMap path.
       if (!m_lookups_enabled)
         return false;
       // (id/Class/SEL/Protocol are already suppressed above.)
@@ -1454,19 +1464,19 @@ bool CppExpressionDeclMap::LookupNamespace(
   // TypeSystemCpp-backed CompilerDeclContext.
   NamespaceMap map;
 
-  auto is_global_reachable = [](const CompilerDeclContext &found) {
-    // True if `found` is reachable from the global scope: a top-level
-    // namespace, or one nested only inside transparent (anonymous/inline)
-    // namespaces.
-    for (auto *ns = static_cast<const cpp_typesystem::Namespace *>(
-             found.GetOpaqueDeclContext())
-                        ->GetParent();
-         ns; ns = ns->GetParent()) {
-      if (!ns->IsInline() && !ns->GetName().GetName().empty())
-        return false;
-    }
-    return true;
-  };
+  // True if `parent_dc` (the TU, for a top-level namespace lookup) is
+  // currently the target of a *qualified* lookup -- i.e. this call is
+  // resolving an explicitly global-qualified name (`::B::Bar`), not the
+  // unqualified head of a nested-name-specifier (`B::Bar`, no leading `::`).
+  // Sema sets this flag on the DeclContext for the duration of
+  // LookupQualifiedName (see QualifiedLookupInScope in SemaLookup.cpp).
+  // Mirrors ClangASTSource::FillNamespaceMap's
+  // `context.m_decl_context->shouldUseQualifiedLookup()` check. A
+  // global-qualified `::B` must only ever find a namespace that is a direct
+  // child of the global namespace (never some nested `A::B` of the same
+  // name, even if `A::B` is the only candidate -- see TestNamespace's
+  // `::B::Bar`, which must NOT pick up the unrelated nested `A::B::Bar`).
+  const bool qualified_lookup = parent_dc->shouldUseQualifiedLookup();
 
   auto add_from_module = [&](const lldb::ModuleSP &module_sp,
                              const CompilerDeclContext &parent_ctx,
@@ -1478,18 +1488,23 @@ bool CppExpressionDeclMap::LookupNamespace(
       return;
     CompilerDeclContext found;
     if (top_level) {
-      // Prefer a root (directly top-level) namespace so an unqualified `B`
-      // never resolves to a nested `A::B` (only its parent `A` should). Fall
-      // back to any global-reachable namespace (e.g. one inside an anonymous
-      // namespace at file scope, like `InAnon1`).
+      // Always prefer a root (directly top-level) namespace, so an
+      // unqualified `NS2` doesn't spuriously pick up a nested `NS1::NS2` when
+      // a root `NS2` also exists (TestNamespace).
       found = sf->FindNamespace(name, CompilerDeclContext(),
                                 /*only_root_namespaces=*/true);
-      if (!found.IsValid()) {
-        CompilerDeclContext any = sf->FindNamespace(name, CompilerDeclContext());
-        if (any.IsValid() &&
-            llvm::isa_and_nonnull<TypeSystemCpp>(any.GetTypeSystem()) &&
-            is_global_reachable(any))
-          found = any;
+      // A global-qualified `::B` stops here: no root namespace named `B`
+      // means `::B` doesn't exist, full stop.
+      if (!found.IsValid() && !qualified_lookup) {
+        // No root candidate: fall back to ordinary (bare) unqualified
+        // lookup's actual behavior -- clang accepts the first namespace with
+        // this name found anywhere, with no notion of "reachable from the
+        // global scope" (an inline namespace's *name* is not specially
+        // promoted into its parent's scope by the standard, but lldb's
+        // debug-info namespace search has always been this lenient for
+        // debugging convenience -- see TestInlineNamespace's `B::other_var`,
+        // which must resolve to the non-root, non-anonymous `A::B`).
+        found = sf->FindNamespace(name, CompilerDeclContext());
       }
     } else {
       found = sf->FindNamespace(name, parent_ctx);
@@ -1522,11 +1537,11 @@ bool CppExpressionDeclMap::LookupNamespace(
   if (map.empty())
     return false;
 
-  return MaterializeNamespaceMap(parent_dc, name, std::move(map), decls);
+  return MaterializeNamespaceMap(name, std::move(map), decls);
 }
 
 bool CppExpressionDeclMap::MaterializeNamespaceMap(
-    const clang::DeclContext *parent_dc, ConstString name, NamespaceMap map,
+    ConstString name, NamespaceMap map,
     llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
   if (map.empty() || !m_ast_context)
     return false;
@@ -1560,15 +1575,29 @@ bool CppExpressionDeclMap::MaterializeNamespaceMap(
   // so makes clang reconcile the namespace's name, which routes a lookup for it
   // straight back here; having it registered first lets that reentrant lookup
   // reuse this decl (above) instead of recursing without end.
+  //
+  // Parent it under the generator's decl context for cpp_ns's actual parent
+  // namespace, NOT the raw `parent_dc` this function was called with: a
+  // top-level (unqualified) namespace lookup calls this with `parent_dc` set
+  // to the TranslationUnitDecl even when the namespace found is nested (e.g.
+  // `B` resolving unqualified to `A::B`, mirroring how clang itself resolves
+  // the head of a nested-name-specifier -- see LookupNamespace). Parenting
+  // `B` directly under the TU there would make clang's diagnostics print it
+  // as plain `B` instead of `A::B`, and would incorrectly make it reachable
+  // via `::B`. GetDeclContextForNamespace recursively materializes (or
+  // reuses) the whole enclosing chain, so the resulting NamespaceDecl nests
+  // correctly regardless of where the lookup that found it started.
+  clang::DeclContext *real_parent =
+      GetGenerator().GetDeclContextForNamespace(cpp_ns->GetParent());
   auto *nsd = clang::NamespaceDecl::Create(
-      ast, const_cast<clang::DeclContext *>(parent_dc), /*Inline=*/false,
+      ast, real_parent, /*Inline=*/false,
       clang::SourceLocation(), clang::SourceLocation(),
       &ast.Idents.get(name.GetStringRef()), /*PrevDecl=*/nullptr,
       /*Nested=*/false);
   clang::Decl::castToDeclContext(nsd)->setHasExternalVisibleStorage(true);
   GetGenerator().RegisterNamespace(cpp_ns, nsd);
   m_namespace_maps.insert({nsd, std::move(map)});
-  const_cast<clang::DeclContext *>(parent_dc)->addDecl(nsd);
+  real_parent->addDecl(nsd);
 
   decls.push_back(nsd);
   return true;
@@ -1913,6 +1942,47 @@ bool CppExpressionDeclMap::LookupPersistentVariable(
   parser_vars->m_llvm_value = nullptr;
   parser_vars->m_lldb_value.Clear();
   return true;
+}
+
+bool CppExpressionDeclMap::LookupPersistentType(
+    const clang::DeclContext *dc, ConstString name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  Log *log = GetLog(LLDBLog::Expressions);
+  if (!m_persistent_vars)
+    return false;
+
+  std::optional<CompilerType> pvar_type =
+      m_persistent_vars->GetCompilerTypeFromPersistentDecl(name);
+  if (!pvar_type || !*pvar_type || !pvar_type->GetTypeSystem<TypeSystemCpp>())
+    return false;
+
+  // Regenerate a fresh clang type for the current expression's ASTContext --
+  // the type was registered by a previous, now-destroyed expression's parse,
+  // so any clang type it was originally converted from is long gone. Only the
+  // cpp_typesystem CompilerType (which is context-independent) survived.
+  clang::QualType qt = GetGenerator().Generate(*pvar_type);
+  if (qt.isNull()) {
+    LLDB_LOG(log, "CppEDM: couldn't generate a parser type for persistent "
+                  "type {0}",
+             name);
+    return false;
+  }
+
+  // A persistent typedef (`$bar`) must surface its own TypedefDecl (whose
+  // name is the alias, e.g. `$bar`), not the decl of the type it aliases --
+  // mirrors LookupType's handling of a debug-info typedef.
+  if (const auto *tdt = qt->getAs<clang::TypedefType>()) {
+    decls.push_back(tdt->getDecl());
+    return true;
+  }
+  if (clang::TagDecl *tag = qt->getAsTagDecl()) {
+    // Make sure the members are available (e.g. for `$my_foo.a` or sizeof).
+    if (auto *record = llvm::dyn_cast<clang::RecordDecl>(tag))
+      GetGenerator().CompleteRecord(record);
+    decls.push_back(tag);
+    return true;
+  }
+  return false;
 }
 
 bool CppExpressionDeclMap::LookupRegister(

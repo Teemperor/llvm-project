@@ -242,13 +242,15 @@ private:
   bool LookupNamespace(const clang::DeclContext *parent_dc, ConstString name,
                        llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
-  /// Materialize (or reuse) a clang::NamespaceDecl in \p parent_dc for the
-  /// namespace described by \p map (its representative cpp namespace is the
-  /// first entry's decl context), give it external visible storage, cache its
-  /// NamespaceMap, and push it into \p decls. Shared by the top-level, nested
-  /// and frame-scope namespace lookups.
-  bool MaterializeNamespaceMap(const clang::DeclContext *parent_dc,
-                               ConstString name, NamespaceMap map,
+  /// Materialize (or reuse) a clang::NamespaceDecl for the namespace
+  /// described by \p map (its representative cpp namespace is the first
+  /// entry's decl context), parented under the generator's decl context for
+  /// its actual cpp parent namespace (NOT necessarily the DeclContext the
+  /// lookup that found it started from -- see the comment in the .cpp file),
+  /// give it external visible storage, cache its NamespaceMap, and push it
+  /// into \p decls. Shared by the top-level, nested and frame-scope namespace
+  /// lookups.
+  bool MaterializeNamespaceMap(ConstString name, NamespaceMap map,
                                llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
   /// Resolve a name looked up inside a namespace decl \p nsd we created: fan
@@ -289,6 +291,15 @@ private:
   bool LookupPersistentVariable(const clang::DeclContext *dc, ConstString name,
                                 llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
+  /// Look up a persistent TYPE (e.g. \c struct $foo declared by an earlier
+  /// `expression struct $foo {...};`, or a persistent typedef \c $bar from
+  /// `expression typedef int $bar`) and generate a fresh decl for it in the
+  /// current expression's ASTContext so it can be named again (e.g. `struct
+  /// $foo $my_foo;` or `$bar i;`). Mirrors LookupType's "generate, then
+  /// surface the TypedefDecl vs the TagDecl, and complete a record" dance.
+  bool LookupPersistentType(const clang::DeclContext *dc, ConstString name,
+                            llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
   /// Fallback for a `$`-prefixed name that isn't a known persistent variable:
   /// treat it as a register name (e.g. `$arg1`, `$pc`, `$sp`) and, if the
   /// current execution context's RegisterContext knows it, create a VarDecl
@@ -326,7 +337,16 @@ private:
   /// overload set.
   llvm::DenseMap<lldb::user_id_t, clang::FunctionDecl *> m_generated_functions;
 
-  bool m_lookups_enabled = false;
+  /// Whether a free function/variable/type/namespace lookup at TU scope is
+  /// serviced at all (see the `!m_lookups_enabled` check in
+  /// FindExternalVisibleDecls). On by default: an ordinary `expr ...`/`frame
+  /// variable` needs every name resolved from the moment parsing starts (it
+  /// has no equivalent of the "wait for a $-marker" moment the legacy
+  /// ClangASTSource gate relies on -- see the comment at that check for why
+  /// the gate exists at all). ClangUtilityFunctionHelper::ResetDeclMap turns
+  /// this off for its self-contained utility-function decl maps, the one
+  /// case that actually needs the gate.
+  bool m_lookups_enabled = true;
   /// Set while LookupOperatorFunctions is running. Adding a generated operator
   /// decl into its (external-visible) namespace makes clang reconcile that
   /// name, which routes an operator lookup back here; this guard stops that
