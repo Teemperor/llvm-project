@@ -190,6 +190,16 @@ void ClangUtilityFunction::ClangUtilityFunctionHelper::ResetDeclMap(
         keep_result_in_memory, /*result_delegate=*/nullptr,
         exe_ctx.GetTargetSP(), /*ctx_obj=*/nullptr,
         /*ignore_context_qualifiers=*/false);
+    // A utility function's free-name lookups default to disabled (unlike a
+    // user expression's, which default to enabled -- see the
+    // m_lookups_enabled comment in CppExpressionDeclMap.h): a utility
+    // function's own text never contains a `$`-prefixed marker, so servicing
+    // an ordinary identifier lookup here would only ever be Sema probing a
+    // declarator while parsing the function's own prototype (e.g. classifying
+    // whether `dlopen` names a type), which can create a spurious duplicate
+    // decl and break a later call. See the `!m_lookups_enabled` comment in
+    // CppExpressionDeclMap::FindExternalVisibleDecls for the full story.
+    m_expr_decl_map_up->SetLookupsEnabled(false);
     return;
   }
   std::shared_ptr<ClangASTImporter> ast_importer;
