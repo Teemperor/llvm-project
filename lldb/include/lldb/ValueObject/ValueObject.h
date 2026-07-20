@@ -490,6 +490,15 @@ public:
   virtual lldb::ValueObjectSP GetChildAtIndex(uint32_t idx,
                                               bool can_create = true);
 
+  /// Returns the reason the child at \p idx could not be created, if
+  /// GetChildAtIndex(idx) returned nullptr because child creation failed
+  /// (as opposed to \p idx simply being out of range). Returns a success
+  /// Status if the child was created successfully or was never attempted.
+  /// Only valid to call after a GetChildAtIndex(idx) call.
+  Status GetChildErrorAtIndex(uint32_t idx) {
+    return m_children.GetChildErrorAtIndex(idx);
+  }
+
   // The method always creates missing children in the path, if necessary.
   lldb::ValueObjectSP GetChildAtNamePath(llvm::ArrayRef<llvm::StringRef> names);
 
@@ -1022,6 +1031,24 @@ protected:
       m_children.insert(pair);
     }
 
+    /// Records the reason a child at \p idx could not be created (i.e.
+    /// CreateChildAtIndex returned nullptr). Callers that want to surface
+    /// this (e.g. the value object printer) can retrieve it via
+    /// GetChildErrorAtIndex instead of silently treating a null child as
+    /// "no child".
+    void SetChildErrorAtIndex(size_t idx, Status error) {
+      std::lock_guard<std::recursive_mutex> guard(m_mutex);
+      m_children_errors.insert_or_assign(idx, std::move(error));
+    }
+
+    Status GetChildErrorAtIndex(size_t idx) {
+      std::lock_guard<std::recursive_mutex> guard(m_mutex);
+      const auto iter = m_children_errors.find(idx);
+      if (iter == m_children_errors.end())
+        return Status();
+      return iter->second.Clone();
+    }
+
     void SetChildrenCount(size_t count) { Clear(count); }
 
     size_t GetChildrenCount() { return m_children_count; }
@@ -1030,6 +1057,7 @@ protected:
       std::lock_guard<std::recursive_mutex> guard(m_mutex);
       m_children_count = new_count;
       m_children.clear();
+      m_children_errors.clear();
     }
 
   private:
@@ -1038,6 +1066,7 @@ protected:
     typedef ChildrenMap::value_type ChildrenPair;
     std::recursive_mutex m_mutex;
     ChildrenMap m_children;
+    std::map<size_t, Status> m_children_errors;
     size_t m_children_count = 0;
   };
 
