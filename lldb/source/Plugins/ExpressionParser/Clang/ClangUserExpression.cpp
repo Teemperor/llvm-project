@@ -182,14 +182,21 @@ void ClangUserExpression::ScanContext(DiagnosticManager &diagnostic_manager,
     // from the frame's implicit `self` and the mangled `-[Class sel]` function
     // name. The class context and `self` object pointer are then wired up the
     // same way as for the Clang path so unqualified ivar references resolve as
-    // an access on `self` (see LookUpLldbObjCClass). Only an instance (`-`)
-    // method is treated this way: a class (`+`) method has no ivars to reach,
-    // and the plain generic wrapper resolves the globals such a method uses
-    // (using the ObjC class-method wrapper there would require the runtime
-    // metaclass and just complicates codegen for no benefit).
+    // an access on `self` (see LookUpLldbObjCClass).
+    //
+    // A class (`+`) method is handled the same way: even though it has no
+    // ivars to reach, an unqualified self-send (`[self someOtherClassMethod]`)
+    // still needs the synthesized wrapper to be a genuine `+` ObjCMethodDecl so
+    // that clang's Sema resolves it via the current method's class interface
+    // (SemaObjC::getCurMethodDecl()->getClassInterface(), taken when the
+    // receiver's static type is exactly `Class`). A plain C function wrapper's
+    // DeclContext isn't an ObjCMethodDecl, so that resolution path can't fire,
+    // and the receiver falls back to being treated as an untyped `Class` --
+    // hence `m_in_static_method` distinguishes the two wrapper shapes below.
     if (m_allow_objc && !m_ctx_obj && !m_in_cplusplus_method) {
       llvm::StringRef fname(sym_ctx.function->GetName().GetStringRef());
-      if (fname.starts_with("-[")) {
+      bool is_class_method = fname.starts_with("+[");
+      if (is_class_method || fname.starts_with("-[")) {
         if (lldb::VariableListSP vars =
                 function_block->GetBlockVariableList(true)) {
           lldb::VariableSP self_var = vars->FindVariable(ConstString("self"));
@@ -197,6 +204,52 @@ void ClangUserExpression::ScanContext(DiagnosticManager &diagnostic_manager,
               self_var->LocationIsValidForFrame(frame)) {
             m_in_objectivec_method = true;
             m_needs_object_ptr = true;
+            if (is_class_method)
+              m_in_static_method = true;
+          }
+        }
+      } else if (fname.contains("_block_invoke")) {
+        // A compiler-synthesized Apple block-invoke function (e.g.
+        // "__25-[IAmBlocky makeBlockPtr]_block_invoke"). Its DeclContext is a
+        // plain function, not an ObjCMethodDecl, but when the block captured
+        // the enclosing ObjC method's `self`, the compiler emits a synthetic
+        // local variable literally named "self" whose *declared* type is
+        // already the real captured pointer (an interface pointer for an
+        // instance method's block, or `Class` for a class method's block) --
+        // see DW_AT_object_pointer on the block-invoke DIE, which points at
+        // this synthetic variable. Its location expression reads the field
+        // out of the block literal struct (the captured closure), so reading
+        // its value at runtime (see GetObjectPointer) yields the real object
+        // pointer, not the block literal's own address.
+        //
+        // Only handle the instance-method case here: unlike the mangled-name
+        // branch above, LookUpLldbObjCClass's class-method branch requires
+        // the *function* name to parse strictly as "+[Class sel]" to recover
+        // the class, which a block-invoke name doesn't -- so treating this as
+        // a static method would leave `$__lldb_objc_class` unresolved. The
+        // class-method-block case has no ivars to reach anyway; expressions
+        // that don't need `self` (the common case) already work today via the
+        // plain C-function wrapper path.
+        if (lldb::VariableListSP vars =
+                function_block->GetBlockVariableList(true)) {
+          lldb::VariableSP self_var = vars->FindVariable(ConstString("self"));
+          if (self_var && self_var->IsInScope(frame) &&
+              self_var->LocationIsValidForFrame(frame)) {
+            Type *self_type = self_var->GetType();
+            if (self_type) {
+              CompilerType self_cpp_type = self_type->GetForwardCompilerType();
+              CompilerType pointee;
+              // A class method's block captures `self` typed exactly `Class`
+              // (a metaclass pointer, not a pointer to the interface) -- see
+              // the comment above. That case is intentionally excluded here
+              // (compare the pointer type's own name, not its pointee's,
+              // since `Class` desugars to a pointer to `objc_class`).
+              if (self_cpp_type.IsPointerType(&pointee) && pointee &&
+                  self_cpp_type.GetTypeName() != ConstString("Class")) {
+                m_in_objectivec_method = true;
+                m_needs_object_ptr = true;
+              }
+            }
           }
         }
       }

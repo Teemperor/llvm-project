@@ -11,6 +11,7 @@
 #include "ClangExpressionUtil.h"
 #include "ClangTypeConverter.h"
 
+#include "Plugins/Language/ObjC/ObjCLanguage.h"
 #include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
 #include "Plugins/TypeSystem/Cpp/Type.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
@@ -999,8 +1000,42 @@ void CppExpressionDeclMap::LookUpLldbObjCClass(
     if (!frame)
       return;
 
-    // The enclosing Objective-C method's object type is the pointee of the
-    // frame's implicit `self` parameter. Mirrors
+    // Determine whether the enclosing method is a class (`+`) method from its
+    // mangled `+[Class sel]` / `-[Class sel]` name (mirrors the detection in
+    // ClangUserExpression::ScanContext, which set up `m_in_static_method` the
+    // same way). For a class method, `self`'s static type is `Class` (a
+    // metaclass pointer, not a pointer to the interface), so it can't be used
+    // to recover the interface the way the instance-method branch below does;
+    // instead resolve the interface by name via LookupType, which already
+    // handles both the debug-info and ObjC-runtime (no debug info) cases.
+    SymbolContext sym_ctx =
+        frame->GetSymbolContext(lldb::eSymbolContextFunction);
+    llvm::StringRef fname = sym_ctx.function
+                                ? sym_ctx.function->GetName().GetStringRef()
+                                : llvm::StringRef();
+    std::optional<ObjCLanguage::ObjCMethodName> method_name =
+        ObjCLanguage::ObjCMethodName::Create(fname, /*strict=*/true);
+    if (method_name && method_name->IsClassMethod()) {
+      llvm::StringRef class_name = method_name->GetClassName();
+      if (class_name.empty())
+        return;
+      llvm::SmallVector<clang::NamedDecl *, 1> type_decls;
+      if (!LookupType(m_ast_context->getTranslationUnitDecl(),
+                      ConstString(class_name), /*module=*/nullptr,
+                      CompilerDeclContext(), type_decls))
+        return;
+      for (clang::NamedDecl *type_decl : type_decls) {
+        if (auto *iface_decl =
+                llvm::dyn_cast<clang::ObjCInterfaceDecl>(type_decl)) {
+          decls.push_back(iface_decl);
+          return;
+        }
+      }
+      return;
+    }
+
+    // The enclosing Objective-C instance method's object type is the pointee
+    // of the frame's implicit `self` parameter. Mirrors
     // ClangExpressionDeclMap::LookUpLldbObjCClass, but instead of consulting a
     // clang ObjCMethodDecl we go straight through the `self` variable (whose
     // pointee is the method's ObjCInterfaceType). Returning that interface for
@@ -1018,8 +1053,7 @@ void CppExpressionDeclMap::LookUpLldbObjCClass(
 
     CompilerType self_cpp_type = self_type->GetForwardCompilerType();
     // `self` is a pointer to the interface (an ObjC object pointer); the class
-    // is its pointee. This runs only for an instance (`-`) method (see
-    // ClangUserExpression::ScanContext), so `self`'s pointee is the interface.
+    // is its pointee.
     class_cpp_type = self_cpp_type.GetPointeeType();
   }
   if (!class_cpp_type || !class_cpp_type.GetTypeSystem<TypeSystemCpp>())

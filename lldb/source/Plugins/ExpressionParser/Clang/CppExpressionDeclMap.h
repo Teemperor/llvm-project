@@ -133,9 +133,14 @@ private:
                        llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
   /// Provide `$__lldb_objc_class` (the Objective-C interface of the enclosing
-  /// method's object, i.e. the pointee of the frame's implicit `self`) so an
-  /// expression evaluated in an ObjC method can reach ivars unqualified as an
-  /// access on `self`. Mirrors ClangExpressionDeclMap::LookUpLldbObjCClass.
+  /// method's class) so an expression evaluated in an ObjC method can reach
+  /// ivars unqualified as an access on `self`, and so a class-method self-send
+  /// (`[self someOtherClassMethod]`) resolves via clang's current-method-class
+  /// lookup. For an instance (`-`) method this is the pointee of the frame's
+  /// implicit `self`; for a class (`+`) method `self` is a `Class` (metaclass)
+  /// value instead, so the interface is looked up by name from the enclosing
+  /// method's mangled `+[Class sel]` name. Mirrors
+  /// ClangExpressionDeclMap::LookUpLldbObjCClass.
   void LookUpLldbObjCClass(clang::DeclarationName name,
                            llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
