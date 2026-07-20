@@ -147,6 +147,7 @@ public:
 
   // Type Completion
   bool GetCompleteType(lldb::opaque_compiler_type_t type) override;
+  bool IsForcefullyCompleted(lldb::opaque_compiler_type_t type) override;
 
   /// Parse \p type's member functions from debug info if they haven't been
   /// already. Member functions are only needed by the expression evaluator (to
