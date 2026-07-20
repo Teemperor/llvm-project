@@ -353,6 +353,13 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
   }
 
   if (llvm::isa<clang::TranslationUnitDecl>(dc)) {
+    // Seeing any `$`-prefixed name (an internal `$__lldb_*` marker or a user
+    // persistent variable/register) means the expression's own wrapper text
+    // is now in play, so it's safe to start answering free
+    // function/variable/type/namespace lookups too. See the `!m_lookups_enabled`
+    // check below for why this is gated in the first place.
+    if (sname.starts_with("$"))
+      m_lookups_enabled = true;
     if (sname == "$__lldb_class") {
       LookUpLldbClass(name, decls);
       return !decls.empty();
@@ -377,6 +384,24 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
     // A free function or global variable referenced by the expression
     // (e.g. `globalFuncCall()` or `g_global`).
     if (!sname.starts_with("$")) {
+      // Don't search the target for a free function/variable/type/namespace
+      // until we've seen a `$`-prefixed name (mirroring
+      // ClangASTSource::FindExternalVisibleDeclsByName's "wait for $" gate).
+      // Before the expression's own persistent-var/result-var/local-var
+      // marker shows up, any identifier lookup here is Sema probing an
+      // ordinary identifier while parsing a declarator (e.g. classifying
+      // whether `dlopen` names a type before parsing
+      // `extern "C" void *dlopen(const char*, int);`), not a genuine
+      // reference from the expression -- servicing it can synthesize a decl
+      // for a name the expression's own text is about to declare properly
+      // moments later (a symbol-only fallback decl for `dlerror`, say),
+      // leaving both visible and making a later matching call ambiguous.
+      // Utility functions (e.g. the dlopen/dlsym/dlclose/dlerror wrapper in
+      // PlatformPOSIX) never reference a `$`-name, so for them this gate
+      // simply never opens and every name resolves from the expression's own
+      // text, exactly like the legacy ClangExpressionDeclMap path.
+      if (!m_lookups_enabled)
+        return false;
       // (id/Class/SEL/Protocol are already suppressed above.)
       // Skip the whole-module function search while we are synthesizing decls:
       // adding a named decl to the (external-visible) TU makes clang look that
