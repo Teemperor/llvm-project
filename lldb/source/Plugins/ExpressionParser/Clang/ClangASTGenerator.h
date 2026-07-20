@@ -332,6 +332,20 @@ private:
   /// cpp_typesystem::Type, so cv-qualified variants stay distinct.
   llvm::DenseMap<void *, cpp_typesystem::Type *> m_reverse;
 
+  /// The TypeSystemCpp that actually owns each cpp_typesystem::Type reachable
+  /// through m_reverse (i.e. the `ts` GenerateType was called with for it).
+  /// ConvertViaReverseMap must build the returned CompilerType against this
+  /// TypeSystem rather than always m_target: a type that merely passed through
+  /// the expression (e.g. the plain DeclRefExpr type of a local variable) keeps
+  /// pointing at the same cpp_typesystem::Type node its owning module parsed,
+  /// and that node's completion state lives in that module's TypeSystemCpp
+  /// (SymbolFile, forward-decl map, etc.) -- tagging it with m_target instead
+  /// would silently make it uncompletable (m_target, the scratch TypeSystemCpp,
+  /// has no SymbolFile of its own). Only a type the parser or this generator
+  /// actually synthesized into the scratch TS (ConvertRecord et al., which don't
+  /// go through this map) should carry m_target.
+  llvm::DenseMap<cpp_typesystem::Type *, TypeSystemCpp *> m_type_owner;
+
   /// For a record that was only forward-declared in the module it was parsed
   /// from but completed from a *different* module (see
   /// RedirectToCrossModuleDefinition), maps that incomplete cpp record to the

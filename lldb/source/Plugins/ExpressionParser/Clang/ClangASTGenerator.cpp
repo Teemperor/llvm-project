@@ -205,11 +205,20 @@ static void AddOverridesForMethod(clang::CXXMethodDecl *decl) {
 /// type would be wrong: a generated typedef (e.g. `int32_t`, whose canonical
 /// type is `int`) would claim the canonical `int` mapping, and an unrelated
 /// `int` result would then be reported as `int32_t`.
-static void noteReverse(llvm::DenseMap<void *, ct::Type *> &reverse,
-                        clang::QualType qt, ct::Type *cpp_type) {
+///
+/// Also records \p cpp_type's true owning TypeSystemCpp (\p ts, the same one
+/// GenerateType was called with for it) in \p owner, so ConvertViaReverseMap
+/// can later rebuild the CompilerType against the TypeSystem that can actually
+/// complete it, instead of always the scratch TypeSystemCpp that owns
+/// expression result types.
+static void
+noteReverse(llvm::DenseMap<void *, ct::Type *> &reverse,
+           llvm::DenseMap<ct::Type *, TypeSystemCpp *> &owner,
+           TypeSystemCpp &ts, clang::QualType qt, ct::Type *cpp_type) {
   if (qt.isNull())
     return;
   reverse[qt.getAsOpaquePtr()] = cpp_type;
+  owner[cpp_type] = &ts;
   clang::QualType canonical = qt.getCanonicalType();
   if (canonical.getAsOpaquePtr() == qt.getAsOpaquePtr())
     reverse[canonical.getAsOpaquePtr()] = cpp_type;
@@ -640,6 +649,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
           m_records[spec] = std::move(info);
           m_generated[cpp_type] = result.getAsOpaquePtr();
           m_reverse[result.getAsOpaquePtr()] = cpp_type;
+          m_type_owner[cpp_type] = &ts;
           return result;
         }
       }
@@ -853,7 +863,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
   }
 
   m_generated[cpp_type] = result.getAsOpaquePtr();
-  noteReverse(m_reverse, result, cpp_type);
+  noteReverse(m_reverse, m_type_owner, ts, result, cpp_type);
   return result;
 }
 

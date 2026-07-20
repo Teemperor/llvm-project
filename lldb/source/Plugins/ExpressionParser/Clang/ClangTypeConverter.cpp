@@ -137,13 +137,27 @@ CompilerType ClangTypeConverter::ConvertViaReverseMap(clang::QualType qt,
       redirect != m_generator.m_cross_module_complete.end())
     return redirect->second;
 
-  // Map the recovered type into m_target (the scratch TypeSystemCpp that
-  // owns expression result/persistent types). Keeping result types in the
-  // scratch TS -- rather than their parsing module's TS -- means a type
-  // reachable only through a pointer in the result stays a forward
-  // declaration (it has no SymbolFile in the scratch TS to complete it),
-  // matching the lazy-completion contract.
-  CompilerType mapped = m_target.GetCompilerType(find->second);
+  // Map the recovered type back into the TypeSystemCpp that actually owns it
+  // (the module it was parsed from), not always m_target (the scratch
+  // TypeSystemCpp that owns expression result/persistent types). A type that
+  // merely passed through the expression unchanged (e.g. the plain
+  // DeclRefExpr type of a local variable, or any record/field reachable from
+  // it) still needs its completion state -- forward-decl-to-DIE map,
+  // SymbolFile -- which lives on its owning module's TypeSystemCpp; the
+  // scratch TypeSystemCpp has no SymbolFile of its own, so tagging the result
+  // with it would silently make the type (and everything nested inside it,
+  // e.g. a member whose own type is only discovered/completed for the first
+  // time via this very access) permanently uncompletable. This does not
+  // affect the lazy-completion contract: reusing the module's TypeSystemCpp
+  // does not force anything complete by itself, it just makes on-demand
+  // completion (e.g. GetCompleteType, or a formatter's Cast()+child access)
+  // possible when something actually asks for it, exactly as it would be had
+  // the value never passed through the expression evaluator. Fall back to
+  // m_target for a type the generator doesn't have a recorded owner for
+  // (shouldn't normally happen for anything reachable via m_reverse, but stay
+  // defensive).
+  TypeSystemCpp *owner = m_generator.m_type_owner.lookup(find->second);
+  CompilerType mapped = (owner ? *owner : m_target).GetCompilerType(find->second);
 
   // The parser may have kept elaborated/spelling sugar around the type the
   // user wrote (e.g. `::Struct`, `$V< ::Struct>`). It only reached us via the
