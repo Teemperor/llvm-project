@@ -473,6 +473,14 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
       found |= LookupType(dc, ConstString(sname), /*module=*/nullptr,
                           CompilerDeclContext(), decls);
       found |= LookupNamespace(dc, ConstString(sname), decls);
+      // A persistent type declared by an earlier top-level expression (`expr
+      // --top-level -- struct Foo {...};`) is not `$`-prefixed but still only
+      // lives in ClangPersistentVariables (there is no debug-info Type for
+      // it). Only tried once every debug-info candidate above missed, so a
+      // real same-named class/global is never shadowed by a stale persistent
+      // one.
+      if (!found)
+        found = LookupPersistentType(dc, ConstString(sname), decls);
       // Last resort: a call to a code symbol that has no debug info (e.g. a
       // libc function like `strlen`). Only when nothing with debug info
       // matched, so a real function / variable / type / namespace is never
