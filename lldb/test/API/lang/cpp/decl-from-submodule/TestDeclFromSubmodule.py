@@ -15,6 +15,13 @@ class DeclFromSubmoduleTestCase(TestBase):
     # Lookup for decls in submodules fails in Linux
     @expectedFailureAll(oslist=["linux"])
     def test_expr(self):
+        if self.dbg.GetSetting(
+            "symbols.enable-typesystem-cpp"
+        ).GetBooleanValue():
+            self.skipTest(
+                "TypeSystemCpp does not implement the ClangModulesDeclVendor "
+                "(@import/submodule) decl lookup path"
+            )
         self.build()
         lldbutil.run_to_source_breakpoint(self, "return 0", lldb.SBFileSpec("main.cpp"))
 
