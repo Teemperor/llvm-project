@@ -361,14 +361,26 @@ void ClangASTGenerator::DumpRecords(TypeSystemCpp &ts,
           ast.getDiagnostics(), *target_options))
     ast.InitBuiltinTypes(*target_info);
 
-  // Synthesize a full definition for each record into the throwaway context.
+  // Synthesize a definition for each record into the throwaway context.
   // Generate() only hands out a forward declaration (completion is normally
   // driven lazily by clang's external source, which this standalone context
-  // has none of), so complete each record explicitly.
+  // has none of), so complete each record explicitly -- but ONLY the records
+  // that are already complete in the cpp_typesystem model. A record parsed
+  // from DWARF stays a forward declaration until something actually needs its
+  // definition (lazy completion); a record reachable only through a pointer or
+  // reference member is never completed. Force-completing every record here
+  // (EnsureComplete -> GetCompleteType) would defeat that laziness and load
+  // every referenced type into the dump, which is exactly what the
+  // lazy-loading test guards against. Checking ct::RecordType::IsComplete()
+  // reads the record's current completeness flag without forcing it.
   ClangASTGenerator generator(ast);
   for (const CompilerType &record : records) {
     clang::QualType qt = generator.Generate(record);
-    generator.EnsureComplete(qt);
+    ct::Type *cpp_type =
+        TypeSystemCpp::GetCppType(record.GetOpaqueQualType());
+    auto *cpp_rec = llvm::dyn_cast_or_null<ct::RecordType>(cpp_type);
+    if (cpp_rec && cpp_rec->IsComplete())
+      generator.EnsureComplete(qt);
   }
 
   // Completing a record only forward-declares the records it points to (a
@@ -380,12 +392,24 @@ void ClangASTGenerator::DumpRecords(TypeSystemCpp &ts,
   // expression path can route `Record::Nested` lookups back through the decl
   // map), but here every member is already materialized and there is no
   // external source, so a lookup into it (e.g. the dumper's implicit
-  // getDestructor()) would likewise assert. Clear both flags on every generated
+  // getDestructor()) would likewise assert. Clear both flags on every completed
   // record so the dumper treats each as fully self-contained.
+  //
+  // A record left as a forward declaration (info.completed == false: never
+  // populated because its cpp record is still incomplete -- e.g. it is only
+  // reachable through a pointer/reference and lazy completion never touched it)
+  // is a different case. It has no fields/bases and no lookups, so the dumper
+  // will not deserialize anything for it; keeping HasExternalLexicalStorage set
+  // makes the dumper print it with a "<undeserialized declarations>" marker
+  // instead of as a bare (and thus apparently "completed") empty struct. This
+  // mirrors how TypeSystemClang renders its lazily-loaded forward declarations
+  // and is what the lazy-loading test uses to distinguish a loaded-but-not-
+  // completed decl from a fully completed one.
   for (auto &entry : generator.m_records) {
     clang::CXXRecordDecl *decl = entry.second->clang_decl;
-    decl->setHasExternalLexicalStorage(false);
     decl->setHasExternalVisibleStorage(false);
+    if (entry.second->completed)
+      decl->setHasExternalLexicalStorage(false);
   }
 
   std::unique_ptr<clang::ASTConsumer> consumer = clang::CreateASTDumper(
