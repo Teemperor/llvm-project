@@ -11,6 +11,7 @@
 #include "ClangExpressionUtil.h"
 #include "ClangTypeConverter.h"
 
+#include "Plugins/ExpressionParser/Clang/CppModuleHandler.h"
 #include "Plugins/Language/ObjC/ObjCLanguage.h"
 #include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
 #include "Plugins/TypeSystem/Cpp/Type.h"
@@ -1589,6 +1590,25 @@ bool CppExpressionDeclMap::MaterializeNamespaceMap(
   // correctly regardless of where the lookup that found it started.
   clang::DeclContext *real_parent =
       GetGenerator().GetDeclContextForNamespace(cpp_ns->GetParent());
+
+  // A real C++ module (`@import std;`, see CxxModuleHandler/
+  // target.import-std-module) may have already materialized a namespace of
+  // this name directly into `real_parent` -- e.g. `std`, referenced both by a
+  // debug-info type (`std::vector<int>`) and by code the imported module
+  // itself defines. Reuse that namespace rather than create a second,
+  // unrelated NamespaceDecl of the same name: two independent decls make
+  // Sema report an unqualified reference to the name as ambiguous (see
+  // CppModuleHandler).
+  if (clang::NamespaceDecl *existing = CppModuleHandler::FindImportedNamespace(
+          real_parent, name.GetStringRef())) {
+    clang::Decl::castToDeclContext(existing)->setHasExternalVisibleStorage(
+        true);
+    GetGenerator().RegisterNamespace(cpp_ns, existing);
+    m_namespace_maps.try_emplace(existing, std::move(map));
+    decls.push_back(existing);
+    return true;
+  }
+
   auto *nsd = clang::NamespaceDecl::Create(
       ast, real_parent, /*Inline=*/false,
       clang::SourceLocation(), clang::SourceLocation(),
