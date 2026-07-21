@@ -224,7 +224,25 @@ private:
   };
 
   /// Generate the clang type for \p cpp_type, which is owned by \p ts.
-  clang::QualType GenerateType(TypeSystemCpp &ts, cpp_typesystem::Type *cpp_type);
+  ///
+  /// \p build_template_spec controls whether a template-instantiation record
+  /// (a name containing `<`) is eagerly force-completed to read its template
+  /// arguments and built as a ClassTemplateSpecializationDecl. This is required
+  /// only when the record is the type directly requested by the expression
+  /// parser (via Generate()), so that a template-id named in the expression
+  /// source resolves through template-id name lookup. It defaults to false: for
+  /// every type reached *transitively* (a field/base/pointee/reference/template
+  /// argument/member-function signature of the requested type) a plain record
+  /// suffices, and force-completing such a record just to build a specialization
+  /// decl would break lazy completion and, on a densely cross-referenced type
+  /// graph (e.g. clang's own Sema), cascade into completing nearly every
+  /// reachable template type. A transitively-reached record is still completed
+  /// on demand (via the CompleteType callback) if it is ever actually used by
+  /// value or dereferenced, and a plain complete record supports `.`/`->` member
+  /// access without needing the specialization decl.
+  clang::QualType GenerateType(TypeSystemCpp &ts,
+                               cpp_typesystem::Type *cpp_type,
+                               bool build_template_spec = false);
 
   /// Complete a record's fields/bases from its cpp_typesystem description.
   void PopulateRecord(clang::RecordDecl *record_decl);
