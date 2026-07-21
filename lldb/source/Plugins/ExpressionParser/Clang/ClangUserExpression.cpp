@@ -546,7 +546,24 @@ void ClangUserExpression::CreateSourceCode(
 
   if (m_options.GetExecutionPolicy() == eExecutionPolicyTopLevel) {
     m_transformed_text = m_expr_text;
+    // Remember this top-level source so a later expression can re-inject any
+    // function/variable it declares (see StoreTopLevelSource /
+    // ClangPersistentVariables::GetInjectedTopLevelSource). Only meaningful
+    // under TypeSystemCpp, which can't round-trip a top-level function/variable
+    // into a persistent CompilerType the way it does a type.
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp())
+      m_type_system_helper.SetPendingTopLevelSource(m_expr_text);
   } else {
+    // Under TypeSystemCpp, prepend the sources of any previously declared
+    // top-level function/variable this expression refers to, so they are
+    // compiled (and JITed) together with it.
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp() &&
+        m_clang_state) {
+      std::string injected =
+          m_clang_state->GetInjectedTopLevelSource(m_expr_text);
+      if (!injected.empty())
+        prefix = prefix + "\n" + injected;
+    }
     m_source_code.reset(ClangExpressionSourceCode::CreateWrapped(
         m_filename, prefix, m_expr_text, GetWrapKind()));
 
@@ -1221,12 +1238,37 @@ void ClangUserExpression::ClangUserExpressionHelper::CommitPersistentDecls() {
     return;
   auto *persistent_vars = llvm::cast<ClangPersistentVariables>(state);
 
+  // Function/variable names declared by this top-level expression. These
+  // aren't round-tripped into a CompilerType below (only types are); instead
+  // the raw top-level source is stashed under these names so a later
+  // expression referencing one of them re-injects and recompiles the source
+  // (see the m_pending_top_level_source handling after the loop).
+  std::vector<std::string> top_level_func_var_names;
+
   for (clang::NamedDecl *decl : m_result_synthesizer_up->GetPersistentDecls()) {
     if (!decl->getIdentifier())
       continue;
     llvm::StringRef name = decl->getName();
-    if (name.empty() || name.front() != '$')
+    if (name.empty())
       continue;
+    // Only a type (class/struct/union/enum/typedef) is round-tripped into a
+    // persistent CompilerType here. Unlike the plain (non-top-level)
+    // `$__lldb_expr`-body case -- where MaybeRecordPersistentType only records
+    // a `$`-prefixed TypeDecl, so m_decls never contains a non-`$` name to
+    // begin with -- a *top-level* parse's RecordPersistentDecl records every
+    // top-level NamedDecl unfiltered by name (see
+    // ASTResultSynthesizer::TransformTopLevelDecl). Dropping the `$`-only
+    // filter here lets an ordinary (non-`$`) top-level class/struct/enum/
+    // typedef declared via `expr --top-level -- struct Foo {...};` be looked
+    // up again from a later TypeSystemCpp expression (see
+    // CppExpressionDeclMap::LookupPersistentType's non-top-level-friendly
+    // caller). A top-level function or variable, by contrast, cannot become a
+    // self-contained CompilerType (its *body* would have to be re-emitted into
+    // a new expression's IR every time it's referenced); instead we remember
+    // its source text (below) and textually re-inject it into any later
+    // expression that names it.
+    if (llvm::isa<clang::FunctionDecl>(decl) || llvm::isa<clang::VarDecl>(decl))
+      top_level_func_var_names.push_back(name.str());
     auto *type_decl = llvm::dyn_cast<clang::TypeDecl>(decl);
     if (!type_decl)
       continue;
@@ -1245,6 +1287,12 @@ void ClangUserExpression::ClangUserExpressionHelper::CommitPersistentDecls() {
       continue;
     persistent_vars->RegisterPersistentType(ConstString(name), cpp_type);
   }
+
+  // Stash the raw top-level source keyed by the function/variable names it
+  // declares, so a later expression referencing one of them can re-inject it.
+  if (!top_level_func_var_names.empty() && !m_pending_top_level_source.empty())
+    persistent_vars->RegisterTopLevelSource(std::move(top_level_func_var_names),
+                                            m_pending_top_level_source);
 }
 
 ConstString ClangUserExpression::ResultDelegate::GetName() {

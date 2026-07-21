@@ -19,7 +19,9 @@
 
 #include "clang/AST/Decl.h"
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 #include <optional>
 #include <memory>
 
@@ -99,6 +101,82 @@ ClangPersistentVariables::GetCompilerTypeFromPersistentDecl(
 void ClangPersistentVariables::RegisterPersistentType(ConstString name,
                                                       CompilerType type) {
   m_persistent_types[name.GetCString()] = type;
+}
+
+/// Collect the set of C identifier tokens (letters/digits/underscore, and `$`
+/// so persistent names like `$foo` are recognized) appearing in \p text.
+static void CollectIdentifierTokens(llvm::StringRef text,
+                                    llvm::StringSet<> &tokens) {
+  auto is_ident_start = [](char c) {
+    return llvm::isAlpha(c) || c == '_' || c == '$';
+  };
+  auto is_ident_body = [](char c) {
+    return llvm::isAlnum(c) || c == '_' || c == '$';
+  };
+  for (size_t i = 0, n = text.size(); i < n;) {
+    if (!is_ident_start(text[i])) {
+      ++i;
+      continue;
+    }
+    size_t start = i;
+    while (i < n && is_ident_body(text[i]))
+      ++i;
+    tokens.insert(text.substr(start, i - start));
+  }
+}
+
+void ClangPersistentVariables::RegisterTopLevelSource(
+    std::vector<std::string> names, std::string source) {
+  if (names.empty() || source.empty())
+    return;
+  m_top_level_sources.push_back({std::move(names), std::move(source)});
+}
+
+std::string ClangPersistentVariables::GetInjectedTopLevelSource(
+    llvm::StringRef expr_text) const {
+  if (m_top_level_sources.empty())
+    return {};
+
+  // The set of names the (growing) expression refers to. We seed it from the
+  // expression itself and then, each time we pull in a top-level source,
+  // fold in the identifiers *it* references so a chain of top-level functions
+  // calling each other is injected transitively.
+  llvm::StringSet<> wanted;
+  CollectIdentifierTokens(expr_text, wanted);
+
+  std::vector<bool> included(m_top_level_sources.size(), false);
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (size_t i = 0; i < m_top_level_sources.size(); ++i) {
+      if (included[i])
+        continue;
+      const TopLevelSource &tls = m_top_level_sources[i];
+      bool referenced = false;
+      for (const std::string &name : tls.names) {
+        if (wanted.contains(name)) {
+          referenced = true;
+          break;
+        }
+      }
+      if (!referenced)
+        continue;
+      included[i] = true;
+      changed = true;
+      CollectIdentifierTokens(tls.source, wanted);
+    }
+  }
+
+  // Emit in declaration order so an earlier top-level decl is visible to a
+  // later one that uses it (matters for C).
+  std::string result;
+  for (size_t i = 0; i < m_top_level_sources.size(); ++i) {
+    if (!included[i])
+      continue;
+    result += m_top_level_sources[i].source;
+    result += '\n';
+  }
+  return result;
 }
 
 void ClangPersistentVariables::RegisterPersistentDecl(
