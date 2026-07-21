@@ -463,18 +463,39 @@ BuildDeclNamespace(const DWARFDIE &die, cpp_typesystem::Builder &builder) {
   return ns;
 }
 
+/// Resolve a DW_TAG_imported_declaration namespace alias (e.g.
+/// `namespace C = B::C;`) to the actual DW_TAG_namespace DIE it ultimately
+/// refers to, following chains of aliases (`namespace G = F;` where `F` is
+/// itself an alias). Returns an invalid DIE if \p die is not an alias that
+/// resolves to a namespace.
+static DWARFDIE ResolveNamespaceAliasDIE(DWARFDIE die) {
+  // Guard against pathological cycles in the debug info.
+  for (unsigned depth = 0; die && depth < 64; ++depth) {
+    if (die.Tag() == DW_TAG_namespace)
+      return die;
+    if (die.Tag() != DW_TAG_imported_declaration)
+      return DWARFDIE();
+    die = die.GetAttributeValueAsReferenceDIE(DW_AT_import);
+  }
+  return DWARFDIE();
+}
+
 /// Build the interned Namespace for a DW_TAG_namespace DIE \p ns_die itself
-/// (i.e. including \p ns_die, not just its parents). Returns null if \p ns_die
-/// is not a namespace.
+/// (i.e. including \p ns_die, not just its parents). Also accepts a
+/// DW_TAG_imported_declaration namespace alias, transparently building the
+/// namespace it aliases (mirroring Clang, where an alias resolves to the
+/// aliased NamespaceDecl). Returns null if \p ns_die is not (or does not alias)
+/// a namespace.
 static const cpp_typesystem::Namespace *
 BuildNamespaceForDIE(const DWARFDIE &ns_die, cpp_typesystem::Builder &builder) {
-  if (!ns_die || ns_die.Tag() != DW_TAG_namespace)
+  DWARFDIE resolved = ResolveNamespaceAliasDIE(ns_die);
+  if (!resolved)
     return nullptr;
   const cpp_typesystem::Namespace *parent =
-      BuildDeclNamespace(ns_die, builder);
-  const char *name = ns_die.GetName();
+      BuildDeclNamespace(resolved, builder);
+  const char *name = resolved.GetName();
   bool is_inline =
-      ns_die.GetAttributeValueAsUnsigned(DW_AT_export_symbols, 0) != 0;
+      resolved.GetAttributeValueAsUnsigned(DW_AT_export_symbols, 0) != 0;
   return builder.GetNamespace(name ? name : "", parent, is_inline);
 }
 
@@ -531,8 +552,10 @@ DWARFASTParserCpp::GetDeclContextForUIDFromDWARF(const DWARFDIE &die) {
   // The wrapped opaque pointer is the interned cpp_typesystem::Namespace.
   cpp_typesystem::Builder builder(m_ts);
   const cpp_typesystem::Namespace *ns =
-      die.Tag() == DW_TAG_namespace ? BuildNamespaceForDIE(die, builder)
-                                    : BuildDeclNamespace(die, builder);
+      (die.Tag() == DW_TAG_namespace ||
+       die.Tag() == DW_TAG_imported_declaration)
+          ? BuildNamespaceForDIE(die, builder)
+          : BuildDeclNamespace(die, builder);
   if (!ns)
     return CompilerDeclContext();
   return CompilerDeclContext(&m_ts,
