@@ -21,6 +21,21 @@ class TestCase(TestBase):
         # then this should be done this way.
         self.expect_expr("s", result_type="DummyStruct")
 
+        # This last check assumes an implementation detail of TypeSystemClang:
+        # evaluating `expr s` deports (via the ASTImporter) a copy of DummyStruct
+        # into the *scratch* AST, which is what `target dump typesystem` prints.
+        # TypeSystemCpp has no ASTImporter; by design the expression result maps
+        # back onto the DummyStruct type owned by the *module's* TypeSystemCpp
+        # (to preserve lazy completion -- see ClangTypeConverter::
+        # ConvertViaReverseMap), so nothing is ever copied into the scratch
+        # TypeSystemCpp and it correctly stays empty. Skip this scratch-AST
+        # assertion under TypeSystemCpp.
+        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+            self.skipTest(
+                "TypeSystemCpp does not deport expression result types into the "
+                "scratch type system (no ASTImporter)"
+            )
+
         # Dump the scratch AST and make sure DummyStruct is in there.
         self.expect("target dump typesystem", substrs=["struct DummyStruct"])
 
