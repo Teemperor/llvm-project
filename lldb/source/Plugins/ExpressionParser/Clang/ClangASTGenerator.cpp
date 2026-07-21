@@ -818,6 +818,26 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
         underlying.addVolatile();
       result = underlying;
     }
+  } else if (auto *pa = llvm::dyn_cast<ct::PtrAuthType>(cpp_type)) {
+    // A `__ptrauth`-qualified pointer. Generate the underlying (signed) type
+    // and re-attach a matching clang PointerAuthQualifier so that clang's
+    // codegen authenticates the loaded pointer before dereferencing/calling it
+    // (using SignAndAuth, the mode clang applies to a source `__ptrauth`
+    // attribute). Without this the sugar would fall through to GenerateBuiltin
+    // and collapse to a plain pointer-sized integer, so e.g. calling a
+    // `__ptrauth`-signed function pointer would fail with "called object type
+    // 'unsigned long long' is not a function or function pointer".
+    clang::QualType underlying = GenerateType(ts, pa->GetUnderlyingType());
+    if (!underlying.isNull() && !underlying.getPointerAuth()) {
+      clang::PointerAuthQualifier qual = clang::PointerAuthQualifier::Create(
+          pa->GetKey(), pa->IsAddressDiscriminated(),
+          pa->GetExtraDiscriminator(),
+          clang::PointerAuthenticationMode::SignAndAuth,
+          /*IsIsaPointer=*/false, /*AuthenticatesNullValues=*/false);
+      result = ast.getPointerAuthType(underlying, qual);
+    } else {
+      result = underlying;
+    }
   } else if (auto *elab = llvm::dyn_cast<ct::ElaboratedType>(cpp_type)) {
     // ElaboratedType is pure display sugar (a preserved source spelling like
     // `::Struct` or the elaborated `A` a result/persistent type kept). It is
