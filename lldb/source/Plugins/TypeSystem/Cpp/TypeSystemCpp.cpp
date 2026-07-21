@@ -103,13 +103,30 @@ static bool RecordHasFields(cpp_typesystem::Type *t,
 // the (static, possibly wrong) byte_offset. Mirrors
 // TypeSystemClang::GetVBaseBitOffset.
 static std::optional<int64_t>
-ReadVirtualBaseOffset(const cpp_typesystem::BaseClass &base,
+ReadVirtualBaseOffset(TypeSystemCpp &ts, cpp_typesystem::RecordType *derived,
+                      const cpp_typesystem::BaseClass &base,
                       ValueObject *valobj) {
-  if (!valobj || !base.vbase_offset_offset)
+  if (!valobj)
     return std::nullopt;
   ExecutionContext exe_ctx(valobj->GetExecutionContextRef());
   Process *process = exe_ctx.GetProcessPtr();
   if (!process)
+    return std::nullopt;
+
+  // The vbase-offset-offset is normally recovered from the DWARF location
+  // expression on the inheritance DIE (base.vbase_offset_offset). Darwin's
+  // dsymutil strips that expression from the .dSYM, so when it's missing
+  // recompute it the way TypeSystemClang does -- from a synthesized Clang
+  // vtable layout of the derived record (see
+  // ClangASTGenerator::ComputeVBaseOffsetOffset). This lives in the
+  // Clang-permitted expression-parser plugin and returns a plain byte value, so
+  // TypeSystemCpp never touches a clang::Decl.
+  std::optional<uint64_t> vbase_offset_offset = base.vbase_offset_offset;
+  if (!vbase_offset_offset && derived)
+    vbase_offset_offset = ClangASTGenerator::ComputeVBaseOffsetOffset(
+        ts, ts.GetTriple(), ts.GetCompilerType(derived),
+        ts.GetCompilerType(base.type.Get()));
+  if (!vbase_offset_offset)
     return std::nullopt;
 
   // The vtable pointer sits at the start of the (derived) object. When the
@@ -139,7 +156,7 @@ ReadVirtualBaseOffset(const cpp_typesystem::BaseClass &base,
 
   const uint32_t addr_size = process->GetAddressByteSize();
   int64_t offset = process->ReadSignedIntegerFromMemory(
-      vtable_ptr - *base.vbase_offset_offset, addr_size, INT64_MAX, err);
+      vtable_ptr - *vbase_offset_offset, addr_size, INT64_MAX, err);
   if (err.Fail() || offset == INT64_MAX)
     return std::nullopt;
   return offset;
@@ -3023,8 +3040,9 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
       // Joiner1.Derived1.VBase and Joiner1.Derived2.VBase resolve to the one
       // shared subobject. Falls back to byte_offset (0) if no live object.
       if (base->is_virtual) {
+        auto *derived_rec = llvm::dyn_cast<cpp_typesystem::RecordType>(t);
         if (std::optional<int64_t> vbase_off =
-                ReadVirtualBaseOffset(*base, valobj))
+                ReadVirtualBaseOffset(*this, derived_rec, *base, valobj))
           child_byte_offset = *vbase_off;
       }
       if (std::optional<uint64_t> byte_size = base->type.Get()->GetByteSize())

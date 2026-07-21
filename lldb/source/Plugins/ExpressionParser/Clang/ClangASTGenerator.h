@@ -90,6 +90,27 @@ public:
                           llvm::raw_ostream &output, llvm::StringRef filter,
                           bool show_color);
 
+  /// Compute the Itanium virtual-base-offset-offset for the virtual base \p
+  /// vbase of the derived record \p derived, in bytes. This is the (positive)
+  /// value that, subtracted from the derived object's vtable pointer, yields the
+  /// address of the slot holding the vbase's runtime offset (see
+  /// cpp_typesystem::BaseClass::vbase_offset_offset and
+  /// TypeSystemCpp::ReadVirtualBaseOffset). It is normally recovered directly
+  /// from the DWARF DW_AT_data_member_location expression on the inheritance
+  /// DIE, but Darwin's dsymutil strips that expression from the .dSYM. This
+  /// recomputes it the way TypeSystemClang does: build a throwaway
+  /// clang::ASTContext for \p triple, synthesize + lay out the derived record
+  /// into it (which makes clang compute the Itanium vtable layout, including
+  /// virtual bases -- see LayoutRecord, which omits virtual bases so clang lays
+  /// them out itself), and query clang::ItaniumVTableContext. \p derived and
+  /// \p vbase must be record CompilerTypes owned by \p ts, with \p vbase a
+  /// (direct or indirect) virtual base of \p derived. Returns std::nullopt when
+  /// the layout can't be built or the target ABI isn't Itanium.
+  static std::optional<uint64_t>
+  ComputeVBaseOffsetOffset(TypeSystemCpp &ts, const llvm::Triple &triple,
+                           const CompilerType &derived,
+                           const CompilerType &vbase);
+
   /// Translate \p cpp_type (a CompilerType owned by a TypeSystemCpp) into a
   /// clang::QualType. Returns a null QualType on failure.
   clang::QualType Generate(const CompilerType &cpp_type);

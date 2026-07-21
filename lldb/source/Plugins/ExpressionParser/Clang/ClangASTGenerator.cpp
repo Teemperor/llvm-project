@@ -37,6 +37,7 @@
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/RecordLayout.h"
+#include "clang/AST/VTableBuilder.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticOptions.h"
@@ -418,6 +419,82 @@ void ClangASTGenerator::DumpRecords(TypeSystemCpp &ts,
   consumer->HandleTranslationUnit(ast);
 }
 
+std::optional<uint64_t> ClangASTGenerator::ComputeVBaseOffsetOffset(
+    TypeSystemCpp &ts, const llvm::Triple &triple, const CompilerType &derived,
+    const CompilerType &vbase) {
+  // Build a throwaway clang::ASTContext for the target, exactly as DumpRecords
+  // does. Everything here is owned locally and torn down on return.
+  clang::LangOptions lang_opts;
+  lang_opts.CPlusPlus = true;
+  lang_opts.CPlusPlus11 = true;
+
+  clang::IdentifierTable idents(lang_opts, nullptr);
+  clang::Builtin::Context builtins;
+  clang::SelectorTable selectors;
+
+  clang::FileSystemOptions file_system_options;
+  clang::FileManager file_manager(
+      file_system_options, FileSystem::Instance().GetVirtualFileSystem());
+
+  auto diag_options = std::make_shared<clang::DiagnosticOptions>();
+  clang::DiagnosticsEngine diagnostics(clang::DiagnosticIDs::create(),
+                                       *diag_options);
+  clang::SourceManager source_manager(diagnostics, file_manager);
+
+  clang::ASTContext ast(lang_opts, source_manager, idents, selectors, builtins,
+                        clang::TranslationUnitKind::TU_Complete);
+
+  auto target_options = std::make_shared<clang::TargetOptions>();
+  target_options->Triple = triple.str();
+  clang::TargetInfo *target_info =
+      clang::TargetInfo::CreateTargetInfo(ast.getDiagnostics(), *target_options);
+  if (!target_info)
+    return std::nullopt;
+  ast.InitBuiltinTypes(*target_info);
+
+  // Synthesize + fully lay out the derived record. EnsureComplete completes its
+  // bases (including the virtual base) too, so clang can compute the Itanium
+  // vtable layout. LayoutRecord deliberately omits virtual bases from the base
+  // offsets it reports, so clang lays them out itself -- which is exactly the
+  // vtable layout we want to query below.
+  ClangASTGenerator generator(ast);
+  clang::QualType derived_qt = generator.Generate(derived);
+  if (derived_qt.isNull())
+    return std::nullopt;
+  generator.EnsureComplete(derived_qt);
+
+  // The vbase decl must live in the same context; generating it just returns
+  // the record already created while completing the derived record (identity is
+  // keyed on the cpp record), so this does not create a second decl.
+  clang::QualType vbase_qt = generator.Generate(vbase);
+  if (vbase_qt.isNull())
+    return std::nullopt;
+
+  const auto *derived_decl = derived_qt->getAsCXXRecordDecl();
+  const auto *vbase_decl = vbase_qt->getAsCXXRecordDecl();
+  if (!derived_decl || !vbase_decl || !derived_decl->isCompleteDefinition())
+    return std::nullopt;
+  // A vtable-relative vbase offset only exists when the derived type has a
+  // vtable. A class with a virtual base is a "dynamic class" (it needs a vtable
+  // to store the vbase offset) even if it declares no virtual member functions,
+  // so query isDynamicClass() rather than isPolymorphic().
+  if (!derived_decl->isDynamicClass())
+    return std::nullopt;
+
+  clang::VTableContextBase *vtable_ctx = ast.getVTableContext();
+  if (!vtable_ctx || vtable_ctx->isMicrosoft())
+    return std::nullopt;
+  auto &itanium = static_cast<clang::ItaniumVTableContext &>(*vtable_ctx);
+
+  clang::CharUnits ooo =
+      itanium.getVirtualBaseOffsetOffset(derived_decl, vbase_decl);
+  // getVirtualBaseOffsetOffset returns a negative offset from the vtable
+  // pointer; TypeSystemCpp's ReadVirtualBaseOffset subtracts a positive value.
+  int64_t q = ooo.getQuantity();
+  if (q >= 0)
+    return std::nullopt;
+  return static_cast<uint64_t>(-q);
+}
 
 clang::QualType ClangASTGenerator::GenerateBuiltin(ct::Type *cpp_type) {
   clang::ASTContext &ast = m_ast;

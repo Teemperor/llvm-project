@@ -65,11 +65,14 @@ public:
   CompilerType GetOwningClassForFunction(Block &function_block);
 
   /// Wrap one of our own Type nodes into a CompilerType owned by this system.
-  CompilerType GetCompilerType(cpp_typesystem::Type *type);
-  /// Recover the Type node backing a CompilerType created by this system.
+  CompilerType GetCompilerType(cpp_typesystem::Type *type);  /// Recover the Type node backing a CompilerType created by this system.
   static cpp_typesystem::Type *GetCppType(lldb::opaque_compiler_type_t type) {
     return static_cast<cpp_typesystem::Type *>(type);
   }
+
+  /// The target triple this type system was created for (used e.g. to build a
+  /// throwaway Clang AST for ABI/vtable-layout queries).
+  const llvm::Triple &GetTriple() const { return m_triple; }
 
   // Plugin lifecycle
   static void Initialize();

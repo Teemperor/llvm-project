@@ -10,6 +10,7 @@ add_lldb_unittest(TypeSystemCppUnitTests
   TypeSystemCppChildrenTest.cpp
   TypeSystemCppNameTest.cpp
   ClangASTGeneratorTest.cpp
+  ClangASTGeneratorVBaseTest.cpp
   ClangTypeConverterTest.cpp
 
   LINK_LIBS

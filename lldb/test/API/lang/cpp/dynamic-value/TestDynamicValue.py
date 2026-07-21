@@ -126,21 +126,11 @@ class DynamicValueTestCase(TestBase):
         # The "frame var" code uses another path to get into children, so let's
         # make sure that works as well:
 
-        # `m_client_A` lives in the virtual base `A` of the dynamic type `B`.
-        # Reaching it requires the vtable-relative virtual-base offset, which
-        # dsymutil strips from the .dSYM's virtual-base inheritance DIE.
-        # TypeSystemCpp has no Clang AST to recompute it from (see the comment in
-        # examine_value_object_of_this_ptr), so this navigation cannot locate the
-        # virtual-base subobject. Documented nested-virtual-base value-resolution
-        # gap; skip just this check under TypeSystemCpp.
-        if not self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
-        ).GetBooleanValue():
-            self.expect(
-                "frame var -d run-target --ptr-depth=2 --show-types anotherA.m_client_A",
-                "frame var finds its way into a child member",
-                patterns=[r"\(B \*\)"],
-            )
+        self.expect(
+            "frame var -d run-target --ptr-depth=2 --show-types anotherA.m_client_A",
+            "frame var finds its way into a child member",
+            patterns=[r"\(B \*\)"],
+        )
 
         # Now make sure we also get it right for a reference as well:
 
@@ -274,22 +264,6 @@ class DynamicValueTestCase(TestBase):
 
         contained_b_addr = int(contained_b.GetValue(), 16)
         contained_b_static_addr = int(contained_b_static.GetValue(), 16)
-
-        # This member (m_client_A) lives in the virtual base `A` of the dynamic
-        # type `B`. Reaching it requires the vtable-relative virtual-base offset.
-        # TypeSystemCpp recovers that offset from the DWARF
-        # DW_AT_data_member_location location expression on the virtual-base
-        # inheritance DIE, but Darwin's dsymutil strips that expression from the
-        # .dSYM. Unlike TypeSystemClang (which recomputes the offset from its own
-        # Clang AST vtable layout), TypeSystemCpp has no Clang AST and cannot
-        # reconstruct it, so the virtual-base subobject cannot be located and the
-        # dynamic child address is not adjusted. This is the documented
-        # nested-virtual-base value-resolution gap; skip just this assertion when
-        # TypeSystemCpp is active (every other check in this test stays live).
-        if self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
-        ).GetBooleanValue():
-            return
 
         self.assertLess(contained_b_addr, contained_b_static_addr)
 
