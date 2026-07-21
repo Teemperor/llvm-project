@@ -297,6 +297,20 @@ private:
   /// current expression's ASTContext so it can be named again (e.g. `struct
   /// $foo $my_foo;` or `$bar i;`). Mirrors LookupType's "generate, then
   /// surface the TypedefDecl vs the TagDecl, and complete a record" dance.
+  ///
+  /// Also used for an ordinary (non-`$`-prefixed) class/struct/union/enum/
+  /// typedef declared by an earlier *top-level* expression (`expr
+  /// --top-level -- struct Foo {...};`): ClangUserExpressionHelper::
+  /// CommitPersistentDecls persists every top-level TypeDecl regardless of
+  /// name (only a function/variable top-level decl is excluded -- its body
+  /// would need to be re-emitted into a new expression's IR every time it's
+  /// referenced, which this path does not do). A plain (non-top-level)
+  /// `expr struct Foo {...};` is unaffected: MaybeRecordPersistentType still
+  /// only records a `$`-prefixed TypeDecl declared inside the `$__lldb_expr`
+  /// body, matching TypeSystemClang. The caller (FindExternalVisibleDecls'
+  /// free-name branch) only tries this after every debug-info candidate
+  /// misses, so a persistent type never shadows a same-named real type/
+  /// global.
   bool LookupPersistentType(const clang::DeclContext *dc, ConstString name,
                             llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
