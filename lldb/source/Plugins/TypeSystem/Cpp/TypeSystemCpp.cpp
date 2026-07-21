@@ -2430,13 +2430,25 @@ CompilerType
 TypeSystemCpp::GetRuntimeCompletedObjCType(cpp_typesystem::Type *t,
                                            const ExecutionContext *exe_ctx) {
   auto *objc = llvm::dyn_cast_or_null<cpp_typesystem::ObjCInterfaceType>(t);
-  if (!objc || !exe_ctx)
+  if (!objc)
     return CompilerType();
   // A runtime-built scratch type is already authoritative; asking the runtime
   // again would just rebuild an identical copy.
   if (llvm::is_contained(llvm::make_second_range(m_runtime_objc_types), objc))
     return CompilerType();
-  Process *process = exe_ctx->GetProcessPtr();
+  // Prefer the caller's execution context, but fall back to the most recent
+  // process seen through any exe_ctx-carrying query (see m_last_seen_process_wp)
+  // -- the SBFrame::GetValueForVariablePath name-lookup path calls
+  // GetIndexOfChildMemberWithName with no exe_ctx at all, yet must still resolve
+  // a hidden ivar reconstructed from the runtime.
+  Process *process = exe_ctx ? exe_ctx->GetProcessPtr() : nullptr;
+  lldb::ProcessSP process_sp;
+  if (process)
+    m_last_seen_process_wp = process->shared_from_this();
+  else {
+    process_sp = m_last_seen_process_wp.lock();
+    process = process_sp.get();
+  }
   if (!process)
     return CompilerType();
   ObjCLanguageRuntime *runtime = ObjCLanguageRuntime::Get(*process);
@@ -3062,7 +3074,12 @@ TypeSystemCpp::GetIndexOfChildWithName(opaque_compiler_type_t type,
     return llvm::createStringError("invalid type");
   GetCompleteType(type);
   cpp_typesystem::Type *t = Desugar(GetCppType(type));
-  // A pointer is transparent, mirroring the reference case below (and
+  // See GetIndexOfChildMemberWithNameImpl: redirect an ObjC interface whose
+  // ivars come from the runtime (e.g. a hidden ivar in a stripped image) to the
+  // runtime-completed scratch type so a by-name lookup finds it.
+  if (CompilerType rt = GetRuntimeCompletedObjCType(t, /*exe_ctx=*/nullptr))
+    return rt.GetTypeSystem()->GetIndexOfChildWithName(
+        rt.GetOpaqueQualType(), name, omit_empty_base_classes);
   // TypeSystemClang): its named children are the aggregate pointee's members,
   // so forward the lookup. A pointer to a non-aggregate has only its (unnamed)
   // deref child, so no named member is directly addressable.
@@ -3135,7 +3152,17 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithNameImpl(
     return 0;
   GetCompleteType(type);
   cpp_typesystem::Type *t = Desugar(GetCppType(type));
-  // A pointer or reference forwards member lookup to its (aggregate) pointee,
+  // An ObjC interface whose ivars are not in the debug info (e.g. a hidden ivar
+  // declared in a class extension in a stripped image) is completed from the
+  // runtime into the scratch context; forward the member lookup to that
+  // completed type. This mirrors the child-enumeration paths (GetNumChildren /
+  // GetChildCompilerTypeAtIndex), which also redirect -- keeping name->index
+  // consistent with the child layout. No exe_ctx is available here (the
+  // SBFrame::GetValueForVariablePath path doesn't provide one), so
+  // GetRuntimeCompletedObjCType falls back to the last-seen process.
+  if (CompilerType rt = GetRuntimeCompletedObjCType(t, /*exe_ctx=*/nullptr))
+    return rt.GetTypeSystem()->GetIndexOfChildMemberWithName(
+        rt.GetOpaqueQualType(), name, omit_empty_base_classes, child_indexes);
   // so that e.g. `ptr->member` / `ref.member` resolves against the pointed-to
   // record. A pointer is now transparent (see GetNumChildren): its children are
   // the pointee aggregate's members directly, with no intervening deref child,

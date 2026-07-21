@@ -406,6 +406,15 @@ private:
   /// so process-specific runtime layout never leaks into a shared module type.
   llvm::StringMap<cpp_typesystem::Type *> m_runtime_objc_types;
 
+  /// The most recent live process seen through an ExecutionContext (e.g. in
+  /// GetChildCompilerTypeAtIndex/GetNumChildren). Used as a fallback source of
+  /// the ObjC runtime when an exe_ctx-less query needs to complete an ObjC
+  /// interface from the runtime -- notably GetIndexOfChildMemberWithName, which
+  /// the SBFrame::GetValueForVariablePath path calls without any exe_ctx, yet
+  /// must still resolve a hidden ivar reconstructed from the runtime (see the
+  /// hidden-ivars test). Only a fallback: an explicit exe_ctx always wins.
+  lldb::ProcessWP m_last_seen_process_wp;
+
   // Serializes all mutation of m_context (and the Type nodes it owns) so the
   // DWARF parser can resolve referenced types on worker threads. Recursive so
   // that a locked resolution can nest further locked operations on the same
