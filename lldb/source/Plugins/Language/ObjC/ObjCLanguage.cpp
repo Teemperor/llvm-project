@@ -896,7 +896,16 @@ ObjCLanguage::GetPossibleFormattersMatches(ValueObject &valobj,
   bool canBeObjCDynamic =
       compiler_type.IsPossibleDynamicType(nullptr, check_cpp, check_objc);
 
-  if (canBeObjCDynamic && ClangUtil::IsClangType(compiler_type)) {
+  // NOTE: this used to additionally require `ClangUtil::IsClangType(compiler_type)`,
+  // which excluded types backed by TypeSystemCpp (so ObjC data formatters were
+  // never matched against the runtime class hierarchy under
+  // symbols.enable-typesystem-cpp -- e.g. an NSException's NSString-typed ivars
+  // wouldn't get their string summary). The body below only uses TypeSystem-
+  // neutral APIs (the ObjC runtime class descriptor and CompilerType), and
+  // `canBeObjCDynamic` already rejects any type that isn't a valid possible-
+  // dynamic ObjC type from whatever TypeSystem produced it, so the extra guard
+  // is unnecessary and is dropped here.
+  if (canBeObjCDynamic) {
     do {
       lldb::ProcessSP process_sp = valobj.GetProcessSP();
       if (!process_sp)
