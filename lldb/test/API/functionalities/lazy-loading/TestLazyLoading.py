@@ -215,7 +215,16 @@ class TestCase(TestBase):
         # FIXME: The first member was behind a pointer so it shouldn't be
         # completed. Somehow LLDB really wants to load the first member, so
         # that is why have it defined here.
-        self.assert_decl_loaded(self.struct_first_member_decl)
+        #
+        # TypeSystemCpp does the correct thing here and only forward-declares
+        # the pointee behind the pointer instead of completing it, so under
+        # that TypeSystem the member is loaded but not completed.
+        if self.dbg.GetSetting(
+            "symbols.enable-typesystem-cpp"
+        ).GetBooleanValue():
+            self.assert_decl_not_completed(self.struct_first_member_decl)
+        else:
+            self.assert_decl_loaded(self.struct_first_member_decl)
 
         # FIXME: We don't use these variables, but we seem to load all local
         # local variables.
