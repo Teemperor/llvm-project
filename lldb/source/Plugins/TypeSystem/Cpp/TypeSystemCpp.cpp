@@ -1279,9 +1279,13 @@ bool TypeSystemCpp::IsPossibleDynamicType(opaque_compiler_type_t type,
     is_reference = true;
   }
 
-  if (pointee && check_cplusplus) {
+  if (pointee) {
     // `void *` -- accept as a possible (watered-down) dynamic pointer, matching
-    // TypeSystemClang. A reference can't be to void.
+    // TypeSystemClang. This is accepted regardless of the check_cplusplus /
+    // check_objc flags (clang's Builtin::Void / UnknownAny pointee case is not
+    // gated on them): an opaque pointer may point at either a polymorphic C++
+    // object or an ObjC object, and the ObjC runtime relies on this to
+    // dynamic-type a `void *` exception pointer. A reference can't be to void.
     if (!is_reference) {
       if (auto *bt = llvm::dyn_cast<cpp_typesystem::BuiltinType>(pointee)) {
         if (bt->GetEncoding() == lldb::eEncodingInvalid &&
@@ -1295,7 +1299,7 @@ bool TypeSystemCpp::IsPossibleDynamicType(opaque_compiler_type_t type,
     // Complete the (possibly forward-declared) record first, since the vtable
     // fact is only known after completion -- this mirrors clang's
     // GetCompleteType() -> isDynamicClass() fallback.
-    if (llvm::isa<cpp_typesystem::ClassType>(pointee)) {
+    if (check_cplusplus && llvm::isa<cpp_typesystem::ClassType>(pointee)) {
       GetCompleteType(static_cast<opaque_compiler_type_t>(pointee));
       if (pointee->IsPolymorphic()) {
         set_target(pointee);
@@ -2133,6 +2137,9 @@ Format TypeSystemCpp::GetFormat(opaque_compiler_type_t type) {
   return GetCppType(type)->GetFormat();
 }
 
+static CompilerType CreateOpaqueObjCRecordType(cpp_typesystem::Builder &builder,
+                                               llvm::StringRef name);
+
 CompilerType TypeSystemCpp::RealizeObjCEncoding(cpp_typesystem::Builder &builder,
                                                 llvm::StringRef &enc) {
   // Skip leading method/ivar qualifier characters (const, in/out, byref, ...).
@@ -2188,14 +2195,22 @@ CompilerType TypeSystemCpp::RealizeObjCEncoding(cpp_typesystem::Builder &builder
     // (see the comment there): a method whose return/parameter type is `id`
     // needs real ObjC `id` semantics (e.g. implicit conversions to/from any
     // object pointer) for Sema to accept it, not just an opaque `void *`.
+    // The pointee is the opaque `objc_object` record (not a null/empty
+    // pointee) so that the ObjC language runtime recognizes a value of this
+    // type as a possible dynamic type (see IsPossibleDynamicType) and resolves
+    // its real class -- e.g. NSException's `id`-typed ivars showing their
+    // NSString/NSDictionary summaries.
     return builder.CreateTypedefType(
-        "id", builder.CreatePointerType(CompilerType()));
+        "id", builder.CreatePointerType(
+                  CreateOpaqueObjCRecordType(builder, "objc_object")));
   case '#': // Class
     return builder.CreateTypedefType(
-        "Class", builder.CreatePointerType(CompilerType()));
+        "Class", builder.CreatePointerType(
+                     CreateOpaqueObjCRecordType(builder, "objc_class")));
   case ':': // SEL
     return builder.CreateTypedefType(
-        "SEL", builder.CreatePointerType(CompilerType()));
+        "SEL", builder.CreatePointerType(
+                   CreateOpaqueObjCRecordType(builder, "objc_selector")));
   case '^': { // pointer to the following encoding
     CompilerType pointee = RealizeObjCEncoding(builder, enc);
     return builder.CreatePointerType(pointee);
