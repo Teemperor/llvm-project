@@ -1362,38 +1362,58 @@ bool CppExpressionDeclMap::LookupType(
     // value whose *static* type is already known but incomplete; here there
     // is no static type at all, only the bare name).
     //
-    // Cheaply gate on an `OBJC_CLASS_$_<name>` symbol existing at all before
-    // asking the runtime: ObjCLanguageRuntime::GetClassDescriptorFromClassName
-    // (called by CreateRuntimeObjCInterface) triggers a full class-list scan
-    // the first time it runs, which is itself a nested JIT'd expression
-    // evaluation -- doing that for every plain, non-ObjC identifier that
-    // merely lacks a debug-info type (e.g. a global C++ function looked up
-    // before its FunctionDecl is found) corrupted unrelated, concurrent
-    // expression-parser state (TestNamespaceLookup's `foo()` started
-    // resolving to the wrong candidate once this ran for it).
+    // Gate the runtime lookup so it never fires for a plain C++ identifier:
+    // ObjCLanguageRuntime::GetClassDescriptorFromClassName (called by
+    // CreateRuntimeObjCInterface) triggers a full class-list scan the first
+    // time it runs, which is itself a nested JIT'd expression evaluation --
+    // doing that for every non-ObjC identifier that merely lacks a debug-info
+    // type (e.g. a global C++ function looked up before its FunctionDecl is
+    // found) corrupted unrelated, concurrent expression-parser state
+    // (TestNamespaceLookup's `foo()` started resolving to the wrong candidate
+    // once this ran for it). Two things open the gate:
+    //   * The expression is compiled in Objective-C mode. This mirrors the
+    //     legacy ClangASTSource::FindDeclInObjCRuntime, which consults the
+    //     runtime DeclVendor whenever `getLangOpts().ObjC` is set and debug
+    //     info missed -- no symbol required. Needed for a system-framework
+    //     class like `NSString` whose `OBJC_CLASS_$_` symbol lives in a
+    //     framework that isn't loaded/searchable yet (see
+    //     TestObjCFromCppFramesWithoutDebugInfo).
+    //   * Otherwise, only when an `OBJC_CLASS_$_<name>` symbol actually exists
+    //     (cheap check), so a non-ObjC expression that happens to reference an
+    //     ObjC class by name still resolves it without paying the scan for
+    //     every identifier (see TestObjCiVarIMP).
+    bool objc_mode =
+        m_ast_context && m_ast_context->getLangOpts().ObjC;
+    bool try_runtime = false;
     if (!scope.IsValid()) {
-      ConstString class_symbol(("OBJC_CLASS_$_" + name.GetStringRef()).str());
-      SymbolContextList sc_list;
-      target->GetImages().FindSymbolsWithNameAndType(
-          class_symbol, lldb::eSymbolTypeObjCClass, sc_list);
-      if (!sc_list.IsEmpty()) {
-        if (lldb::ProcessSP process_sp = target->GetProcessSP()) {
-          if (ObjCLanguageRuntime *runtime =
-                  ObjCLanguageRuntime::Get(*process_sp)) {
-            if (TypeSystemCpp *scratch = GetScratchCpp(target)) {
-              CompilerType runtime_ct = scratch->CreateRuntimeObjCInterface(
-                  name, *process_sp, *runtime);
-              if (runtime_ct) {
-                clang::QualType qt = GetGenerator().Generate(runtime_ct);
-                if (!qt.isNull()) {
-                  if (const auto *obj_type =
-                          qt->getAs<clang::ObjCObjectType>()) {
-                    if (clang::ObjCInterfaceDecl *iface_decl =
-                            obj_type->getInterface()) {
-                      GetGenerator().CompleteObjCInterface(iface_decl);
-                      decls.push_back(iface_decl);
-                      return true;
-                    }
+      if (objc_mode) {
+        try_runtime = true;
+      } else {
+        ConstString class_symbol(
+            ("OBJC_CLASS_$_" + name.GetStringRef()).str());
+        SymbolContextList sc_list;
+        target->GetImages().FindSymbolsWithNameAndType(
+            class_symbol, lldb::eSymbolTypeObjCClass, sc_list);
+        try_runtime = !sc_list.IsEmpty();
+      }
+    }
+    if (try_runtime) {
+      if (lldb::ProcessSP process_sp = target->GetProcessSP()) {
+        if (ObjCLanguageRuntime *runtime =
+                ObjCLanguageRuntime::Get(*process_sp)) {
+          if (TypeSystemCpp *scratch = GetScratchCpp(target)) {
+            CompilerType runtime_ct = scratch->CreateRuntimeObjCInterface(
+                name, *process_sp, *runtime);
+            if (runtime_ct) {
+              clang::QualType qt = GetGenerator().Generate(runtime_ct);
+              if (!qt.isNull()) {
+                if (const auto *obj_type =
+                        qt->getAs<clang::ObjCObjectType>()) {
+                  if (clang::ObjCInterfaceDecl *iface_decl =
+                          obj_type->getInterface()) {
+                    GetGenerator().CompleteObjCInterface(iface_decl);
+                    decls.push_back(iface_decl);
+                    return true;
                   }
                 }
               }
