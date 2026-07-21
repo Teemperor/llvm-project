@@ -3691,9 +3691,27 @@ CompilerType TypeSystemCpp::GetBuiltinTypeByName(ConstString name) {
   return CompilerType();
 }
 
+// The opaque Objective-C runtime records (`objc_object`, `objc_class`,
+// `objc_selector`) are declared but never defined in debug info. TypeSystemClang
+// maps `id`/`Class`/`SEL` onto complete builtin types, so a value of these
+// types (e.g. `*_cmd` where `_cmd` is a `SEL`) can be dereferenced without
+// hitting an "incomplete type" error. Mirror that here by making the opaque
+// pointee a complete, empty record rather than a forward declaration. Give it
+// a one-byte size (the minimum for a complete record, matching an empty C++
+// class) so that dereferencing a pointer to it succeeds -- ValueObject treats
+// a zero byte size as "no deref child".
+static CompilerType CreateOpaqueObjCRecordType(cpp_typesystem::Builder &builder,
+                                               llvm::StringRef name) {
+  CompilerType record = builder.CreateRecordType(
+      name, /*byte_size=*/1, /*is_cpp_class=*/false, /*is_union=*/false);
+  if (auto *rt = llvm::dyn_cast_or_null<cpp_typesystem::RecordType>(
+          TypeSystemCpp::GetCppType(record.GetOpaqueQualType())))
+    builder.SetRecordComplete(*rt);
+  return record;
+}
+
 CompilerType TypeSystemCpp::GetBasicTypeFromAST(BasicType basic_type) {
   using cpp_typesystem::BuiltinKind;
-  // Map the language-neutral BasicType onto one of our enumerated builtin
   // kinds. Only the kinds TypeSystemCpp models are listed; anything else has
   // no basic type here.
   std::optional<BuiltinKind> kind;
@@ -3775,20 +3793,15 @@ CompilerType TypeSystemCpp::GetBasicTypeFromAST(BasicType basic_type) {
     // in TypeSystemCpp.
     const bool is_class = basic_type == eBasicTypeObjCClass;
     cpp_typesystem::Builder builder(*this);
-    CompilerType opaque = builder.CreateRecordType(
-        is_class ? "objc_class" : "objc_object",
-        /*byte_size=*/std::nullopt, /*is_cpp_class=*/false,
-        /*is_union=*/false);
-    CompilerType ptr = builder.CreatePointerType(opaque);
+    CompilerType ptr = builder.CreatePointerType(CreateOpaqueObjCRecordType(
+        builder, is_class ? "objc_class" : "objc_object"));
     return builder.CreateTypedefType(is_class ? "Class" : "id", ptr);
   }
   case eBasicTypeObjCSel: {
     // `SEL` is a typedef over a pointer to the opaque `objc_selector` record.
     cpp_typesystem::Builder builder(*this);
-    CompilerType opaque = builder.CreateRecordType(
-        "objc_selector", /*byte_size=*/std::nullopt, /*is_cpp_class=*/false,
-        /*is_union=*/false);
-    CompilerType ptr = builder.CreatePointerType(opaque);
+    CompilerType ptr = builder.CreatePointerType(
+        CreateOpaqueObjCRecordType(builder, "objc_selector"));
     return builder.CreateTypedefType("SEL", ptr);
   }
   default:
