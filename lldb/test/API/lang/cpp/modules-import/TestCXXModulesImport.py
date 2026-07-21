@@ -23,6 +23,13 @@ class CXXModulesImportTestCase(TestBase):
     @skipIf(macos_version=["<", "10.12"])
     @skipIf(compiler="clang", compiler_version=["<", "14.0"])
     def test_expr(self):
+        # This test relies on clang `@import` module support
+        # (ClangModulesDeclVendor), which TypeSystemCpp intentionally does not
+        # implement, so skip it in that configuration.
+        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+            self.skipTest(
+                "clang @import modules are not supported by TypeSystemCpp"
+            )
         self.build()
         target, process, thread, bkpt = lldbutil.run_to_source_breakpoint(
             self, "break here", lldb.SBFileSpec("main.cpp")
@@ -38,6 +45,13 @@ class CXXModulesImportTestCase(TestBase):
     @skipIf(macos_version=["<", "10.12"])
     @skipIf(compiler="clang", compiler_version=["<", "14.0"])
     def test_expr_failing_import(self):
+        # This test relies on clang `@import` module support
+        # (ClangModulesDeclVendor), which TypeSystemCpp intentionally does not
+        # implement, so skip it in that configuration.
+        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+            self.skipTest(
+                "clang @import modules are not supported by TypeSystemCpp"
+            )
         self.build()
         shutil.rmtree(self.getBuildArtifact("include"))
         target, process, thread, bkpt = lldbutil.run_to_source_breakpoint(
