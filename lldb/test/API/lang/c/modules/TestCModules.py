@@ -22,6 +22,13 @@ class CModulesTestCase(TestBase):
     @skipIf(macos_version=["<", "10.12"])
     @expectedFailureNetBSD
     def test_expr(self):
+        if self.dbg.GetSetting(
+            "symbols.enable-typesystem-cpp"
+        ).GetBooleanValue():
+            self.skipTest(
+                "TypeSystemCpp does not support clang @import modules "
+                "(ClangModulesDeclVendor)"
+            )
         self.build()
         exe = self.getBuildArtifact("a.out")
         self.runCmd("file " + exe, CURRENT_EXECUTABLE_SET)
