@@ -16,6 +16,8 @@
 
 #include "lldb/Expression/ExpressionVariable.h"
 #include <optional>
+#include <string>
+#include <vector>
 
 namespace lldb_private {
 
@@ -75,12 +77,34 @@ public:
   clang::NamedDecl *GetPersistentDecl(ConstString name);
 
   /// Register a persistent type (e.g. `$foo` from `expression struct $foo
-  /// {...};`, or `$bar` from `expression typedef int $bar`) that is backed by
-  /// a CompilerType rather than a clang::NamedDecl -- used by the
-  /// TypeSystemCpp expression path, which has no shared clang::ASTContext to
-  /// keep a decl alive across expressions. GetCompilerTypeFromPersistentDecl
-  /// checks this map first.
+  /// {...};`, `$bar` from `expression typedef int $bar`, or an ordinary
+  /// non-`$` name from a top-level `expression --top-level -- struct Foo
+  /// {...};`) that is backed by a CompilerType rather than a clang::NamedDecl
+  /// -- used by the TypeSystemCpp expression path, which has no shared
+  /// clang::ASTContext to keep a decl alive across expressions.
+  /// GetCompilerTypeFromPersistentDecl checks this map first.
   void RegisterPersistentType(ConstString name, CompilerType type);
+
+  /// Remember the raw source text of a `expression --top-level -- ...` that
+  /// declared one or more functions/variables, keyed by the names it defines
+  /// (\p names). Used only by the TypeSystemCpp expression path: a top-level
+  /// function/variable cannot be round-tripped into a context-independent
+  /// CompilerType the way a type can (its *body* would have to be re-emitted
+  /// into every later expression's IR), so instead we stash the original
+  /// source and textually re-inject it as a translation-unit-level prefix into
+  /// any later expression that references one of \p names (see
+  /// GetInjectedTopLevelSource). Nothing is stored for a top-level expression
+  /// that only declares types -- those go through RegisterPersistentType.
+  void RegisterTopLevelSource(std::vector<std::string> names,
+                              std::string source);
+
+  /// Build the translation-unit-level prefix to inject before parsing
+  /// \p expr_text: scan the expression for identifier tokens and return the
+  /// concatenation (in declaration order) of every stored top-level source
+  /// (see RegisterTopLevelSource) that defines a referenced name, pulling in
+  /// transitively-referenced top-level sources as well. Returns an empty
+  /// string when nothing matches.
+  std::string GetInjectedTopLevelSource(llvm::StringRef expr_text) const;
 
   void AddHandLoadedClangModule(ClangModulesDeclVendor::ModuleID module) {
     m_hand_loaded_clang_modules.push_back(module);
@@ -117,6 +141,16 @@ private:
   /// TypeSystemCpp path), keyed by name (e.g. "$foo"). See
   /// RegisterPersistentType.
   llvm::DenseMap<const char *, CompilerType> m_persistent_types;
+
+  /// A top-level expression's raw source plus the function/variable names it
+  /// declares. See RegisterTopLevelSource / GetInjectedTopLevelSource.
+  struct TopLevelSource {
+    std::vector<std::string> names;
+    std::string source;
+  };
+  /// Stored top-level sources, in declaration order (the order the user
+  /// declared them, which is the order they must be re-emitted for C).
+  std::vector<TopLevelSource> m_top_level_sources;
 
   ClangModulesDeclVendor::ModuleVector
       m_hand_loaded_clang_modules; ///< These are Clang modules we hand-loaded;

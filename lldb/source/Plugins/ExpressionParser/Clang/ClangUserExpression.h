@@ -85,6 +85,14 @@ public:
 
     void CommitPersistentDecls() override;
 
+    /// Remember the raw source of the top-level expression currently being
+    /// parsed, so CommitPersistentDecls can stash it (keyed by the
+    /// function/variable names it declared) for later textual re-injection.
+    /// See ClangPersistentVariables::RegisterTopLevelSource.
+    void SetPendingTopLevelSource(std::string source) {
+      m_pending_top_level_source = std::move(source);
+    }
+
   private:
     Target &m_target;
     std::unique_ptr<ExpressionDeclMap> m_expr_decl_map_up;
@@ -94,6 +102,9 @@ public:
                                                                ///struct layout.
     std::unique_ptr<ASTResultSynthesizer> m_result_synthesizer_up;
     bool m_top_level;
+    /// Raw source of the top-level expression being parsed (see
+    /// SetPendingTopLevelSource); consumed by CommitPersistentDecls.
+    std::string m_pending_top_level_source;
   };
 
   /// Constructor
