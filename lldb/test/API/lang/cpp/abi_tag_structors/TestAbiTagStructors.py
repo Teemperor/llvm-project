@@ -20,6 +20,14 @@ class AbiTagStructorsTestCase(TestBase):
     @expectedFailureAll(oslist=["windows"])
     @skipIfWasm  # no expression evaluation
     def test_with_structor_linkage_names(self):
+        # Calling ABI-tagged constructors/destructors requires mangling structor
+        # names with their ABI tags, which TypeSystemCpp intentionally does not
+        # implement (an out-of-scope divergence from TypeSystemClang).
+        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+            self.skipTest(
+                "ABI-tagged structor mangling is not supported by TypeSystemCpp"
+            )
+
         self.build(dictionary={"CXXFLAGS_EXTRAS": "-gstructor-decl-linkage-names"})
 
         lldbutil.run_to_source_breakpoint(
@@ -113,6 +121,15 @@ class AbiTagStructorsTestCase(TestBase):
         Test that calling ABI-tagged ctors of function local classes is not supported,
         but calling un-tagged functions is.
         """
+        # Calling constructors of function-local classes requires function-local
+        # class structor name mangling, which TypeSystemCpp intentionally does not
+        # implement (an out-of-scope divergence from TypeSystemClang).
+        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+            self.skipTest(
+                "function-local class structor mangling is not supported by "
+                "TypeSystemCpp"
+            )
+
         lldbutil.run_to_source_breakpoint(
             self, "Break nested", lldb.SBFileSpec("main.cpp", False)
         )
