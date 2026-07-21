@@ -323,7 +323,11 @@ clang::QualType ClangASTGenerator::Generate(const CompilerType &cpp_type) {
   auto *type = static_cast<ct::Type *>(cpp_type.GetOpaqueQualType());
   if (!type)
     return {};
-  return GenerateType(*ts, type);
+  // This is the type directly requested by the expression parser, so build a
+  // full template specialization decl for it if it is a template-id (needed for
+  // template-id name lookup). Everything reached transitively from here stays
+  // lazy (build_template_spec defaults to false).
+  return GenerateType(*ts, type, /*build_template_spec=*/true);
 }
 
 void ClangASTGenerator::DumpRecords(TypeSystemCpp &ts,
@@ -598,7 +602,14 @@ clang::CXXRecordDecl *ClangASTGenerator::BuildClassTemplateSpecializationDecl(
     if (!arg)
       return nullptr;
     if (arg->kind == lldb::eTemplateArgumentKindType) {
-      clang::QualType arg_qt = GenerateType(ts, arg->type.Get());
+      // A type argument only needs to be a type name in the specialization; it
+      // does not have to be a complete specialization decl itself. Generating
+      // it lazily (build_template_spec=false) stops a nested template argument
+      // (e.g. the `SmallVector<V>` in `DenseMap<K, SmallVector<V>>`) from being
+      // force-completed just to name it here -- which would otherwise cascade
+      // through the whole template-argument graph.
+      clang::QualType arg_qt =
+          GenerateType(ts, arg->type.Get(), /*build_template_spec=*/false);
       if (arg_qt.isNull())
         return nullptr;
       args.push_back(clang::TemplateArgument(arg_qt));
@@ -675,7 +686,8 @@ clang::CXXRecordDecl *ClangASTGenerator::BuildClassTemplateSpecializationDecl(
 }
 
 clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
-                                                ct::Type *cpp_type) {
+                                                ct::Type *cpp_type,
+                                                bool build_template_spec) {
   if (!cpp_type)
     return {};
 
@@ -758,7 +770,8 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     llvm::StringRef last_component = full_name;
     if (size_t scope = full_name.rfind("::"); scope != llvm::StringRef::npos)
       last_component = full_name.substr(scope + 2);
-    if (name.contains('<') || last_component.contains('<')) {
+    if (build_template_spec &&
+        (name.contains('<') || last_component.contains('<'))) {
       ts.GetCompilerType(rec).GetCompleteType();
       if (rec->IsTemplateInstantiation()) {
         llvm::StringRef base_name = name.substr(0, name.find('<'));
@@ -820,7 +833,10 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
   } else if (auto *ptr = llvm::dyn_cast<ct::PointerType>(cpp_type)) {
     clang::QualType pointee;
     if (ct::Type *p = ptr->GetPointeeType())
-      pointee = GenerateType(ts, p);
+      // A pointee stays a lazy forward declaration: don't force-complete it
+      // (and don't build a template specialization decl for it) just to form
+      // the pointer type. See GenerateType's build_template_spec doc.
+      pointee = GenerateType(ts, p, /*build_template_spec=*/false);
     else
       pointee = ast.VoidTy;
     if (!pointee.isNull()) {
@@ -844,7 +860,10 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
         result = ast.getPointerType(pointee);
     }
   } else if (auto *ref = llvm::dyn_cast<ct::ReferenceType>(cpp_type)) {
-    clang::QualType pointee = GenerateType(ts, ref->GetPointeeType());
+    // Like a pointer pointee, a reference's referent stays a lazy forward
+    // declaration (completed on demand if actually dereferenced).
+    clang::QualType pointee =
+        GenerateType(ts, ref->GetPointeeType(), /*build_template_spec=*/false);
     if (!pointee.isNull())
       result = ref->IsRValue() ? ast.getRValueReferenceType(pointee)
                                : ast.getLValueReferenceType(pointee);
@@ -1183,7 +1202,10 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     std::vector<clang::CXXBaseSpecifier *> bases;
     for (uint32_t i = 0; i < rec->GetNumBaseClasses(); ++i) {
       const ct::BaseClass *base = rec->GetBaseClassAtIndex(i);
-      clang::QualType base_qt = GenerateType(*ts, base->type.Get());
+      // A base only needs completing for layout (EnsureComplete below), not a
+      // template specialization decl -- build it lazily.
+      clang::QualType base_qt =
+          GenerateType(*ts, base->type.Get(), /*build_template_spec=*/false);
       if (base_qt.isNull())
         continue;
       EnsureComplete(base_qt);
@@ -1218,7 +1240,11 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
 
   for (uint32_t i = 0; i < rec->GetNumFields(); ++i) {
     const ct::Field *field = rec->GetFieldAtIndex(i);
-    clang::QualType field_qt = GenerateType(*ts, field->type.Get());
+    // A by-value field is completed for layout (EnsureComplete below) but does
+    // not need a template specialization decl of its own here; build it lazily
+    // so a template-typed field doesn't drag its whole specialization graph in.
+    clang::QualType field_qt =
+        GenerateType(*ts, field->type.Get(), /*build_template_spec=*/false);
     if (field_qt.isNull())
       continue;
     // A field held by value (directly or as an array element) is embedded in
