@@ -78,6 +78,14 @@ private:
   /// TypedefType aliasing the recursively-converted underlying type.
   CompilerType ConvertTypedef(const clang::TypedefType *tdt);
 
+  /// Record \p decl's enclosing namespace chain (skipping non-namespace decl
+  /// contexts, e.g. a linkage-spec) and unqualified name on \p type, mirroring
+  /// DWARFASTParserCpp::SetTypeNameInfo. Without this a type reconstructed
+  /// from real module code (e.g. `std::size_t`, resolved by the parser rather
+  /// than found in the reverse map) has no DeclContext, so its display name
+  /// prints unqualified (`size_t` instead of `std::size_t`).
+  void SetTypeNameInfo(const clang::NamedDecl *decl, CompilerType type);
+
   /// Rebuild the `id` / `Class` pseudo-types or an Objective-C class pointer
   /// (`Foo *`) the parser formed, neither of which is in the reverse map.
   CompilerType

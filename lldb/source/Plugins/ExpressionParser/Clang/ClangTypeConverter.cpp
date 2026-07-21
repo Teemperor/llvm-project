@@ -330,6 +330,7 @@ CompilerType ClangTypeConverter::ConvertRecord(const clang::RecordType *rt) {
           bit_offset / 8);
     }
     builder.SetRecordComplete(*cpp_record);
+    SetTypeNameInfo(rd, record);
     return record;
   }
   // A record the parser only forward-declared (e.g. `struct S;` written in
@@ -338,10 +339,12 @@ CompilerType ClangTypeConverter::ConvertRecord(const clang::RecordType *rt) {
   // build a `S *` pointee out of. Rebuild it as an incomplete record (no
   // byte size, no SetRecordComplete) so the pointer can be sized/stored.
   std::string name = decl->getNameAsString();
-  return cpp_typesystem::Builder(m_target).CreateRecordType(
+  CompilerType fwd_record = cpp_typesystem::Builder(m_target).CreateRecordType(
       name, /*byte_size=*/std::nullopt,
       /*is_cpp_class=*/llvm::isa<clang::CXXRecordDecl>(decl),
       /*is_union=*/decl->isUnion());
+  SetTypeNameInfo(decl, fwd_record);
+  return fwd_record;
 }
 
 CompilerType ClangTypeConverter::ConvertTypedef(
@@ -350,8 +353,35 @@ CompilerType ClangTypeConverter::ConvertTypedef(
   CompilerType underlying = Convert(decl->getUnderlyingType());
   if (!underlying)
     return {};
-  return cpp_typesystem::Builder(m_target).CreateTypedefType(
+  CompilerType result = cpp_typesystem::Builder(m_target).CreateTypedefType(
       decl->getName(), underlying);
+  SetTypeNameInfo(decl, result);
+  return result;
+}
+
+/// Build the interned Namespace chain enclosing \p decl_ctx (outermost
+/// first), skipping any non-namespace decl context (e.g. a linkage-spec),
+/// mirroring DWARFASTParserCpp::BuildDeclNamespace but walking clang
+/// DeclContexts instead of DWARFDIEs.
+static const cpp_typesystem::Namespace *
+BuildDeclNamespace(const clang::DeclContext *decl_ctx,
+                   cpp_typesystem::Builder &builder) {
+  llvm::SmallVector<const clang::NamespaceDecl *, 4> namespaces;
+  for (const clang::DeclContext *ctx = decl_ctx; ctx; ctx = ctx->getParent())
+    if (const auto *nsd = llvm::dyn_cast<clang::NamespaceDecl>(ctx))
+      namespaces.push_back(nsd);
+  const cpp_typesystem::Namespace *ns = nullptr;
+  for (const clang::NamespaceDecl *nsd : llvm::reverse(namespaces))
+    ns = builder.GetNamespace(nsd->getName(), ns, nsd->isInline());
+  return ns;
+}
+
+void ClangTypeConverter::SetTypeNameInfo(const clang::NamedDecl *decl,
+                                         CompilerType type) {
+  cpp_typesystem::Builder builder(m_target);
+  builder.SetDeclContext(type, BuildDeclNamespace(decl->getDeclContext(),
+                                                   builder));
+  builder.SetUnqualifiedName(type, decl->getName());
 }
 
 CompilerType ClangTypeConverter::ConvertObjCObjectPointer(

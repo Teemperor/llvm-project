@@ -23,6 +23,7 @@ add_lldb_library(lldbPluginExpressionParserClang
   ClangUtilityFunction.cpp
   CppExpressionDeclMap.cpp
   CppModuleConfiguration.cpp
+  CppModuleHandler.cpp
   CxxModuleHandler.cpp
   IRDynamicChecks.cpp
   IRForTarget.cpp

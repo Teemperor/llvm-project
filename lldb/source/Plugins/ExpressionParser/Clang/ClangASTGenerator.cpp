@@ -8,6 +8,7 @@
 
 #include "ClangASTGenerator.h"
 
+#include "Plugins/ExpressionParser/Clang/CppModuleHandler.h"
 #include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
 #include "Plugins/TypeSystem/Cpp/Builder.h"
 #include "Plugins/TypeSystem/Cpp/Context.h"
@@ -275,6 +276,27 @@ ClangASTGenerator::GetDeclContextForNamespace(const ct::Namespace *cpp_ns) {
   clang::IdentifierInfo *ident = nullptr;
   if (!cpp_ns->IsAnonymous())
     ident = &m_ast.Idents.get(cpp_ns->GetName().GetName());
+
+  // A real C++ module (`@import std;`, see CxxModuleHandler/
+  // target.import-std-module) may have already materialized a namespace of
+  // this name directly into `parent` -- e.g. `std`, referenced both by a
+  // debug-info type (`std::vector<int>`) and by code the imported module
+  // itself defines. Reuse that namespace rather than create a second,
+  // unrelated NamespaceDecl of the same name: two independent decls make
+  // Sema report an unqualified reference to the name as ambiguous (see
+  // CppModuleHandler).
+  if (ident) {
+    if (clang::NamespaceDecl *existing =
+            CppModuleHandler::FindImportedNamespace(
+                parent, cpp_ns->GetName().GetName())) {
+      clang::Decl::castToDeclContext(existing)->setHasExternalVisibleStorage(
+          true);
+      RegisterNamespace(cpp_ns, existing);
+      m_namespace_decls[existing] = cpp_ns;
+      return clang::Decl::castToDeclContext(existing);
+    }
+  }
+
   auto *nsd = clang::NamespaceDecl::Create(
       m_ast, parent, cpp_ns->IsInline(), clang::SourceLocation(),
       clang::SourceLocation(), ident, /*PrevDecl=*/nullptr, /*Nested=*/false);
@@ -1273,6 +1295,17 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
           llvm::StringRef token = rest.ltrim();
           bool had_space = rest.size() != token.size();
           oo = GetOverloadedOperatorKind(token);
+          // An explicitly-instantiated templated operator (e.g.
+          // `unique_ptr<int>::operator*<int *, 0>()`) has its explicit
+          // template argument list appended directly after the operator
+          // token with no separator in the DWARF spelling (`operator*<int
+          // *, 0>`), so the exact match above fails. Strip the trailing
+          // `<...>` and retry so `*s`/`v[i]`-style syntax still binds to it.
+          if (oo == clang::OO_None) {
+            if (size_t lt = token.find('<');
+                lt != llvm::StringRef::npos && lt != 0)
+              oo = GetOverloadedOperatorKind(token.substr(0, lt));
+          }
           // A word-spelled operator (`operator new`, `operator co_await`) is
           // only an operator when spelled with a space; without one it is an
           // ordinary method whose name happens to start with "operator" (e.g.
