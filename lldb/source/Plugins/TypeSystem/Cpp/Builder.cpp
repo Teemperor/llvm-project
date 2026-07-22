@@ -60,10 +60,14 @@ CompilerType Builder::CreateArrayType(CompilerType element_type,
       m_ts.m_context.CreateArrayType(ToTypeRef(element_type), num_elements));
 }
 
-CompilerType Builder::CreatePointerType(CompilerType pointee_type,
-                                        bool is_block) {
+CompilerType Builder::CreatePointerType(CompilerType pointee_type) {
   return m_ts.GetCompilerType(
-      m_ts.m_context.CreatePointerType(ToTypeRef(pointee_type), is_block));
+      m_ts.m_context.CreatePointerType(ToTypeRef(pointee_type)));
+}
+
+CompilerType Builder::CreateBlockPointerType(CompilerType pointee_type) {
+  return m_ts.GetCompilerType(
+      m_ts.m_context.CreateBlockPointerType(ToTypeRef(pointee_type)));
 }
 
 CompilerType Builder::CreateReferenceType(CompilerType pointee_type,

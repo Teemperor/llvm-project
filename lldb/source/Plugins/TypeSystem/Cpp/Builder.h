@@ -60,9 +60,11 @@ public:
   CompilerType CreateArrayType(CompilerType element_type,
                                std::optional<uint64_t> num_elements);
   /// Create a pointer to \p pointee_type (an empty CompilerType denotes a
-  /// `void *`). \p is_block marks an Apple "blocks" pointer (`int (^)(int)`).
-  CompilerType CreatePointerType(CompilerType pointee_type,
-                                 bool is_block = false);
+  /// `void *`).
+  CompilerType CreatePointerType(CompilerType pointee_type);
+  /// Create an Apple "blocks" pointer (`int (^)(int)`) over \p pointee_type
+  /// (a FunctionType).
+  CompilerType CreateBlockPointerType(CompilerType pointee_type);
   /// Create an lvalue or rvalue reference to \p pointee_type.
   CompilerType CreateReferenceType(CompilerType pointee_type, bool is_rvalue);
   /// Create a pointer-to-member of \p containing_type, pointing at a data

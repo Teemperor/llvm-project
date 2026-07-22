@@ -95,19 +95,32 @@ ArrayType *Context::CreateArrayType(TypeRef element_type,
   return Track(std::move(type));
 }
 
-PointerType *Context::CreatePointerType(TypeRef pointee_type, bool is_block) {
-  // Unique pointer types by (pointee, is_block) so that two independently-formed
+PointerType *Context::CreatePointerType(TypeRef pointee_type) {
+  // Unique pointer types by (pointee, is-block) so that two independently-formed
   // `T *` (e.g. a variable's type and `SBType::GetPointerType()`) are the same
   // instance and thus compare equal (SBType/CompilerType equality is identity of
   // the opaque type). This mirrors clang, whose ASTContext uniques pointer types.
-  auto key = std::make_pair(pointee_type.Get(), is_block);
+  auto key = std::make_pair(pointee_type.Get(), /*is_block=*/false);
   if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
     return it->second;
   auto type = std::make_unique<PointerType>();
   type->SetPointeeType(pointee_type);
-  type->SetIsBlockPointer(is_block);
   type->SetByteSize(m_opts.GetBuiltinSizes().pointer_size);
   PointerType *result = Track(std::move(type));
+  m_pointer_map[key] = result;
+  return result;
+}
+
+BlockPointerType *Context::CreateBlockPointerType(TypeRef pointee_type) {
+  // Uniqued like a plain pointer (see CreatePointerType), but the is-block bit
+  // in the key keeps a block `T (^)` distinct from a plain `T *`.
+  auto key = std::make_pair(pointee_type.Get(), /*is_block=*/true);
+  if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
+    return llvm::cast<BlockPointerType>(it->second);
+  auto type = std::make_unique<BlockPointerType>();
+  type->SetPointeeType(pointee_type);
+  type->SetByteSize(m_opts.GetBuiltinSizes().pointer_size);
+  BlockPointerType *result = Track(std::move(type));
   m_pointer_map[key] = result;
   return result;
 }

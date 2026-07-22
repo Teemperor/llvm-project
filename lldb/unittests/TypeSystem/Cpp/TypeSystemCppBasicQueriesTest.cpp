@@ -89,7 +89,7 @@ TEST_F(TypeSystemCppBasicQueriesTest, IsFunctionPointerType) {
 // the equivalent plain function-pointer type; a plain pointer does not.
 TEST_F(TypeSystemCppBasicQueriesTest, IsBlockPointerType) {
   CompilerType fn = builder.CreateFunctionType(GetVoid(), false);
-  CompilerType block_ptr = builder.CreatePointerType(fn, /*is_block=*/true);
+  CompilerType block_ptr = builder.CreateBlockPointerType(fn);
   CompilerType function_pointer_type;
   EXPECT_TRUE(ts->IsBlockPointerType(block_ptr.GetOpaqueQualType(),
                                      &function_pointer_type));

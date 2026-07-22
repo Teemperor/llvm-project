@@ -854,7 +854,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
       // An Apple "blocks" pointer (`int (^)(int)`) wraps a function type but
       // must be a real clang BlockPointerType so it stays callable and prints
       // with `^` rather than `*`.
-      else if (ptr->IsBlockPointer())
+      else if (llvm::isa<ct::BlockPointerType>(ptr))
         result = ast.getBlockPointerType(pointee);
       else
         result = ast.getPointerType(pointee);

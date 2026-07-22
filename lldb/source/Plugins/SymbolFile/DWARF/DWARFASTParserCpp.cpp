@@ -974,7 +974,9 @@ TypeSP DWARFASTParserCpp::ParsePointerType(const DWARFDIE &die) {
   }
 
   CompilerType pointer_type =
-      cpp_typesystem::Builder(m_ts).CreatePointerType(pointee_type, is_block);
+      is_block ? cpp_typesystem::Builder(m_ts).CreateBlockPointerType(
+                     pointee_type)
+               : cpp_typesystem::Builder(m_ts).CreatePointerType(pointee_type);
 
   Declaration decl = GetDIEDeclaration(die);
   ConstString empty_name;

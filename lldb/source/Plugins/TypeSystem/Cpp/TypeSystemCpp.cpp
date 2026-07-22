@@ -626,8 +626,9 @@ static std::string BuildDisplayName(cpp_typesystem::Type *t,
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
     cpp_typesystem::Type *pointee = ptr->GetPointeeType();
     if (auto *fn = llvm::dyn_cast_or_null<FunctionType>(pointee))
-      return BuildFunctionName(fn, ptr->IsBlockPointer() ? "(^)" : "(*)",
-                               keep_inline_namespaces);
+      return BuildFunctionName(
+          fn, llvm::isa<BlockPointerType>(ptr) ? "(^)" : "(*)",
+          keep_inline_namespaces);
     std::string pointee_name =
         pointee ? BuildDisplayName(pointee, hide_default_args,
                                    keep_inline_namespaces)
@@ -1123,7 +1124,7 @@ bool TypeSystemCpp::IsFunctionPointerType(opaque_compiler_type_t type) {
     return false;
   // A block pointer (`int (^)(int)`) is not a function-pointer type, matching
   // clang's isFunctionPointerType().
-  if (ptr->IsBlockPointer())
+  if (llvm::isa<cpp_typesystem::BlockPointerType>(ptr))
     return false;
   cpp_typesystem::Type *pointee = ptr->GetPointeeType();
   return pointee && llvm::isa<cpp_typesystem::FunctionType>(Desugar(pointee));
@@ -1155,9 +1156,9 @@ bool TypeSystemCpp::IsBlockPointerType(
     opaque_compiler_type_t type, CompilerType *function_pointer_type_ptr) {
   if (!type)
     return false;
-  auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(
+  auto *ptr = llvm::dyn_cast<cpp_typesystem::BlockPointerType>(
       Desugar(GetCppType(type)));
-  if (!ptr || !ptr->IsBlockPointer())
+  if (!ptr)
     return false;
   // Report the corresponding function-pointer type (a plain pointer to the
   // block's function type), mirroring TypeSystemClang.
