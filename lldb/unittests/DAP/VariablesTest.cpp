@@ -62,6 +62,10 @@ protected:
 
   void CreateDebugger() {
     debugger = lldb::SBDebugger::Create(/*source_init_files=*/false);
+    // This test checks child counts produced via the classic TypeSystemClang
+    // path; force it on regardless of the default TypeSystemCpp setting.
+    lldb::SBDebugger::SetInternalVariable("symbols.enable-typesystem-cpp",
+                                          "false", debugger.GetInstanceName());
   }
 
   void LoadCore() {

@@ -2,7 +2,7 @@
 
 // Itanium ABI:
 // RUN: %clangxx --target=x86_64-pc-linux -gdwarf -c -o %t_linux.o %s
-// RUN: %lldb -f %t_linux.o -b -o "target variable s1 s2 m1 m2 v1 v2 v3 v4" | FileCheck --check-prefix=CHECK-GNU %s
+// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" -f %t_linux.o -b -o "target variable s1 s2 m1 m2 v1 v2 v3 v4" | FileCheck --check-prefix=CHECK-GNU %s
 //
 // CHECK-GNU: (void (Single1::*)()) s1 = 0x00000000000000000000000000000000
 // CHECK-GNU: (void (Single2::*)()) s2 = 0x00000000000000000000000000000000
@@ -16,7 +16,7 @@
 // Microsoft ABI:
 // RUN: %clang_cl --target=x86_64-windows-msvc -c -gdwarf -o %t_win.obj /GS- -- %s
 // RUN: lld-link /out:%t_win.exe %t_win.obj /entry:main /debug /nodefaultlib
-// RUN: %lldb -f %t_win.exe -b -o "target variable s1 s2 m1 m2 v1 v2 v3 v4" | FileCheck --check-prefix=CHECK-MSVC %s
+// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" -f %t_win.exe -b -o "target variable s1 s2 m1 m2 v1 v2 v3 v4" | FileCheck --check-prefix=CHECK-MSVC %s
 //
 // CHECK-MSVC: (void (Single1::*)()) s1 = 0x0000000000000000
 // CHECK-MSVC: (void (Single2::*)()) s2 = 0x0000000000000000

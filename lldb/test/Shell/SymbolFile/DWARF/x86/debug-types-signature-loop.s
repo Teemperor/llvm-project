@@ -2,7 +2,7 @@
 
 # RUN: llvm-mc -filetype=obj -triple x86_64-pc-linux -o %t.o %s
 # RUN: ld.lld %t.o -o %t
-# RUN: %lldb %t -o "target variable e" -b | FileCheck %s
+# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t -o "target variable e" -b | FileCheck %s
 
 # CHECK: error: invalid type: cannot determine size
 

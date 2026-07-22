@@ -1,6 +1,6 @@
 # RUN: llvm-mc --filetype=obj --triple x86_64-pc-linux %s -o %t --defsym MAIN=0
 # RUN: llvm-mc --filetype=obj --triple x86_64-pc-linux %s -o %t.dwp --defsym DWP=0
-# RUN: %lldb %t -o "type lookup ENUM0" -o "target variable A" -b | FileCheck %s
+# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t -o "type lookup ENUM0" -o "target variable A" -b | FileCheck %s
 # RUN: lldb-test symbols %t | FileCheck %s --check-prefix=SYMBOLS
 
 # CHECK-LABEL: type lookup ENUM0

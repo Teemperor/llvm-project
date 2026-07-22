@@ -10,7 +10,7 @@
 // RUN: llvm-dwarfdump %t1.dwo -debug-types -debug-info | FileCheck --check-prefix=ONEUNIT %s
 // RUN: llvm-dwarfdump %t2.dwo -debug-types -debug-info | FileCheck --check-prefix=ONEUNIT %s
 // RUN: ld.lld %t1.o %t2.o -o %t
-// RUN: %lldb %t -o "target var a b **b.a" -b | FileCheck %s
+// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t -o "target var a b **b.a" -b | FileCheck %s
 
 // ONEUNIT-COUNT-1: DW_TAG_type_unit
 

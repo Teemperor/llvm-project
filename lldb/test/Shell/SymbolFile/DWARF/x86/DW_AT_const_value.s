@@ -2,7 +2,7 @@
 # specified by DW_AT_const_value
 
 # RUN: llvm-mc -filetype=obj -triple x86_64-pc-linux %s -o %t
-# RUN: %lldb %t \
+# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t \
 # RUN:   -o "target variable udata data1 data2 data4 data8 string strp ref4 udata_ptr" \
 # RUN:   -o "target variable --format x data16" \
 # RUN:   -o exit | FileCheck %s

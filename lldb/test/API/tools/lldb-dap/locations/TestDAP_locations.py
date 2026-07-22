@@ -19,6 +19,10 @@ class TestDAP_locations(DAPTestCaseBase):
         """
         Tests the 'locations' request.
         """
+        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+            self.skipTest(
+                "the 'locations' request is not yet supported by TypeSystemCpp"
+            )
         program = self.getBuildArtifact("a.out")
         session = self.build_and_create_session()
         source = self.getSourcePath("main.cpp")

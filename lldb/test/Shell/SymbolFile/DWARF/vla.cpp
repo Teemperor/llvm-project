@@ -2,7 +2,7 @@
 // UNSUPPORTED: system-windows
 
 // RUN: %clangxx_host -gdwarf -std=c++11 -o %t %s
-// RUN: %lldb %t \
+// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t \
 // RUN:   -o run \
 // RUN:   -o "frame var --show-types f" \
 // RUN:   -o "frame var vla0" \

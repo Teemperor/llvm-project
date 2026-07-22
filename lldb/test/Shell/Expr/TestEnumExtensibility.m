@@ -1,7 +1,7 @@
 // UNSUPPORTED: system-linux, system-windows
 
 // RUN: %clangxx_host %s -c -g -o %t
-// RUN: %lldb %t \
+// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t \
 // RUN:   -o "target var gClosed gOpen gNS gNSOpts" \
 // RUN:   -o "image dump ast" \
 // RUN:   2>&1 | FileCheck %s

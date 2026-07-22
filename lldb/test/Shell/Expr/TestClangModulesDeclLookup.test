@@ -6,7 +6,7 @@
 
 # RUN: split-file %s %t
 # RUN: %clang_host -g -gdwarf %t/main.cpp -fmodules -fcxx-modules -o %t.out
-# RUN: %lldb -o "settings set interpreter.stop-command-source-on-error false" \
+# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" -o "settings set interpreter.stop-command-source-on-error false" \
 # RUN:       -x -b -s %t/commands.input %t.out 2>&1 \
 # RUN:       | FileCheck %s
 

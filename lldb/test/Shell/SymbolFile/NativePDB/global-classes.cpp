@@ -5,7 +5,7 @@
 // RUN: %clang_cl --target=x86_64-windows-msvc -Od -Z7 \
 // RUN:   -Xclang -fkeep-static-consts -c /Fo%t.obj -- %s
 // RUN: lld-link -debug:full -nodefaultlib -entry:main %t.obj -out:%t.exe -pdb:%t.pdb
-// RUN: %lldb -f %t.exe -s \
+// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" -f %t.exe -s \
 // RUN:     %p/Inputs/globals-classes.lldbinit | FileCheck %s
 
 enum class EnumType : unsigned {
