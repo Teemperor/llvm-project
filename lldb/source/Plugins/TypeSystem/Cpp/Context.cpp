@@ -104,8 +104,7 @@ PointerType *Context::CreatePointerType(TypeRef pointee_type) {
   if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
     return it->second;
   auto type = std::make_unique<PointerType>();
-  type->SetPointeeType(pointee_type);
-  type->SetByteSize(m_opts.GetBuiltinSizes().pointer_size);
+  type->SetPointeeType(WithOwningContext(pointee_type));
   PointerType *result = Track(std::move(type));
   m_pointer_map[key] = result;
   return result;
@@ -118,8 +117,7 @@ BlockPointerType *Context::CreateBlockPointerType(TypeRef pointee_type) {
   if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
     return llvm::cast<BlockPointerType>(it->second);
   auto type = std::make_unique<BlockPointerType>();
-  type->SetPointeeType(pointee_type);
-  type->SetByteSize(m_opts.GetBuiltinSizes().pointer_size);
+  type->SetPointeeType(WithOwningContext(pointee_type));
   BlockPointerType *result = Track(std::move(type));
   m_pointer_map[key] = result;
   return result;

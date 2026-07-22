@@ -45,6 +45,12 @@ public:
 
   const LanguageOpts &GetLanguageOpts() const { return m_opts; }
 
+  /// The target's pointer width in bytes (from the triple). Used to size
+  /// pointer/reference types, which don't store a size of their own.
+  uint64_t GetPointerSize() const {
+    return m_opts.GetBuiltinSizes().pointer_size;
+  }
+
   /// Returns a builtin type for the given attributes. When the attributes
   /// match one of the enumerated C/C++/Objective-C builtin types, the shared
   /// canonical instance is returned; otherwise a bespoke type is created and
@@ -236,6 +242,17 @@ private:
     T *result = type.get();
     m_types.push_back(std::move(type));
     return result;
+  }
+
+  /// Return \p ref, but with this Context filled in as its owning Context when
+  /// it doesn't already name one. Used so a pointer's pointee reference always
+  /// carries a Context -- even a `void *`, whose pointee is empty -- letting
+  /// PointerType::GetByteSize recover the target pointer size without storing
+  /// it per pointer.
+  TypeRef WithOwningContext(TypeRef ref) {
+    if (ref.GetContext())
+      return ref;
+    return TypeRef(*this, ref.Get());
   }
 
   std::vector<std::unique_ptr<Type>> m_types;

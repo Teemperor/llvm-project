@@ -790,17 +790,13 @@ public:
   Type *GetPointeeType() const { return m_pointee_type.Get(); }
   void SetPointeeType(TypeRef type) { m_pointee_type = type; }
 
-  // A pointer's size is the (small) target pointer width, set once at creation.
-  // Store it as a byte so it packs alongside the flag below instead of paying
-  // for a full 64-bit size word (pointers are the most numerous type kind).
-  std::optional<uint64_t> GetByteSize() const override {
-    return m_byte_size == 0 ? std::nullopt
-                            : std::optional<uint64_t>(m_byte_size);
-  }
-  void SetByteSize(std::optional<uint64_t> byte_size) {
-    assert(byte_size.value_or(0) <= UINT8_MAX && "pointer size out of range");
-    m_byte_size = static_cast<uint8_t>(byte_size.value_or(0));
-  }
+  // A pointer's size is the target's pointer width, so it isn't stored on every
+  // pointer: it is recovered from the owning Context (which knows the target
+  // triple) reached through the pointee reference. Defined out-of-line because
+  // it needs Context's definition. See PointerType::GetByteSize in Type.cpp and
+  // Context::CreatePointerType (which guarantees the pointee reference always
+  // carries a Context, even for `void *`).
+  std::optional<uint64_t> GetByteSize() const override;
 
   lldb::Encoding GetEncoding() const override { return lldb::eEncodingUint; }
   lldb::Format GetFormat() const override { return lldb::eFormatHex; }
@@ -834,7 +830,6 @@ public:
 
 private:
   TypeRef m_pointee_type;
-  uint8_t m_byte_size = 0;
 };
 
 /// An Apple "blocks" pointer (`int (^)(int)`): its pointee is a FunctionType,

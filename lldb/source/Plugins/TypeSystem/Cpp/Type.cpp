@@ -1,5 +1,7 @@
 #include "Type.h"
 
+#include "Context.h"
+
 using namespace lldb_private::cpp_typesystem;
 
 // Storage for the LLVM RTTI discriminators. The addresses (not the values) are
@@ -22,3 +24,12 @@ char ElaboratedType::ID = 0;
 char EnumType::ID = 0;
 char FunctionType::ID = 0;
 char ComplexType::ID = 0;
+
+std::optional<uint64_t> PointerType::GetByteSize() const {
+  // A pointer is the target's pointer width. Recover it from the Context that
+  // owns the pointee reference (Context::CreatePointerType guarantees this
+  // reference always carries a Context, even for a `void *` with no pointee).
+  if (const Context *ctx = m_pointee_type.GetContext())
+    return ctx->GetPointerSize();
+  return std::nullopt;
+}
