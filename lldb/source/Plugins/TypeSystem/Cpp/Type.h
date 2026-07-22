@@ -266,13 +266,14 @@ public:
     llvm_unreachable("this Type kind has no unqualified name to set");
   }
 
-  virtual std::optional<uint64_t> GetByteSize() const {
-    return m_byte_size == kNoByteSize ? std::nullopt
-                                      : std::optional<uint64_t>(m_byte_size);
-  }
-  void SetByteSize(std::optional<uint64_t> byte_size) {
-    m_byte_size = byte_size.value_or(kNoByteSize);
-  }
+  /// The size of a value of this type, in bytes, or std::nullopt when unknown
+  /// (e.g. an incomplete record, or a function type). Most structural types
+  /// (pointers, references, arrays, sugar, ...) either derive their size from
+  /// another type or share the target's fixed pointer size, so the storage for
+  /// an explicit size is NOT held here -- where every Type would pay 8 bytes
+  /// for it -- but only on the kinds that need it (see ByteSizedType and the
+  /// pointer/array/complex overrides below).
+  virtual std::optional<uint64_t> GetByteSize() const { return std::nullopt; }
 
   /// An explicitly-specified alignment in bits (from `DW_AT_alignment`, e.g.
   /// `alignas(128)`), if the debug info recorded one. When absent, callers fall
@@ -311,13 +312,6 @@ public:
   /// recorded eagerly during record completion from the artificial `_vptr$`
   /// member / a virtual base, so it is reliable without forcing method parsing.
   virtual bool IsPolymorphic() const { return false; }
-
-private:
-  // A byte size can be any 64-bit value in principle, but never in practice
-  // (no real type is 2^64-1 bytes), so steal that value as the "unset"
-  // sentinel instead of paying for std::optional's separate bool.
-  static constexpr uint64_t kNoByteSize = UINT64_MAX;
-  uint64_t m_byte_size = kNoByteSize;
 };
 
 /// Mixin adding the name/declaration-context storage that Type declares (as
@@ -343,11 +337,36 @@ private:
   const Namespace *m_decl_context = nullptr;
 };
 
+/// Mixin adding explicit byte-size storage for the type kinds that carry a
+/// size of their own (a builtin, a record, an enum). Type declares GetByteSize
+/// as a virtual defaulting to "unknown" but stores nothing itself (see the
+/// comment on Type); this adds the storage and the accessor override once,
+/// composed over whichever base the type would otherwise have. Structural
+/// types whose size is derived (arrays, complex, sugar) or a small fixed
+/// pointer width (see PointerType et al.) do NOT use this.
+template <typename Base> class ByteSizedType : public Base {
+public:
+  std::optional<uint64_t> GetByteSize() const override {
+    return m_byte_size == kNoByteSize ? std::nullopt
+                                      : std::optional<uint64_t>(m_byte_size);
+  }
+  void SetByteSize(std::optional<uint64_t> byte_size) {
+    m_byte_size = byte_size.value_or(kNoByteSize);
+  }
+
+private:
+  // A byte size can be any 64-bit value in principle, but never in practice
+  // (no real type is 2^64-1 bytes), so steal that value as the "unset"
+  // sentinel instead of paying for std::optional's separate bool.
+  static constexpr uint64_t kNoByteSize = UINT64_MAX;
+  uint64_t m_byte_size = kNoByteSize;
+};
+
 /// Common base for C/C++ record types (struct/class/union). Owns the data
 /// members and the forward-declaration/completion state that every record
 /// shares. C++-only information (such as base classes) lives on ClassType, so
 /// a plain StructType never reserves storage for it.
-class RecordType : public llvm::RTTIExtends<RecordType, NamedType<Type>> {
+class RecordType : public llvm::RTTIExtends<RecordType, NamedType<ByteSizedType<Type>>> {
 public:
   static char ID;
 
@@ -677,6 +696,21 @@ public:
 
   // An array is an aggregate whose children are its elements.
   bool IsAggregate() const override { return true; }
+  // The array's storage is the element size times the element count (when both
+  // are known). Computed on demand rather than stored: the element size may
+  // only become known after the array is created (a target-dependent builtin
+  // size or a lazily completed record).
+  std::optional<uint64_t> GetByteSize() const override {
+    std::optional<uint64_t> num_elements = GetNumElements();
+    if (!num_elements)
+      return std::nullopt;
+    const Type *element = m_element_type.Get();
+    if (!element)
+      return std::nullopt;
+    if (std::optional<uint64_t> elem_size = element->GetByteSize())
+      return *elem_size * *num_elements;
+    return std::nullopt;
+  }
   lldb::TypeClass GetTypeClass() const override {
     return m_is_vector ? lldb::eTypeClassVector : lldb::eTypeClassArray;
   }
@@ -713,6 +747,18 @@ public:
   bool IsBlockPointer() const { return m_is_block; }
   void SetIsBlockPointer(bool is_block) { m_is_block = is_block; }
 
+  // A pointer's size is the (small) target pointer width, set once at creation.
+  // Store it as a byte so it packs alongside the flag below instead of paying
+  // for a full 64-bit size word (pointers are the most numerous type kind).
+  std::optional<uint64_t> GetByteSize() const override {
+    return m_byte_size == 0 ? std::nullopt
+                            : std::optional<uint64_t>(m_byte_size);
+  }
+  void SetByteSize(std::optional<uint64_t> byte_size) {
+    assert(byte_size.value_or(0) <= UINT8_MAX && "pointer size out of range");
+    m_byte_size = static_cast<uint8_t>(byte_size.value_or(0));
+  }
+
   lldb::Encoding GetEncoding() const override { return lldb::eEncodingUint; }
   lldb::Format GetFormat() const override { return lldb::eFormatHex; }
   lldb::TypeClass GetTypeClass() const override {
@@ -745,6 +791,7 @@ public:
 
 private:
   TypeRef m_pointee_type;
+  uint8_t m_byte_size = 0;
   bool m_is_block = false;
 };
 
@@ -763,6 +810,17 @@ public:
   bool IsRValue() const { return m_is_rvalue; }
   void SetIsRValue(bool is_rvalue) { m_is_rvalue = is_rvalue; }
 
+  // A reference is represented by an address, so it has the (small) target
+  // pointer width. Stored compactly like PointerType's size (see there).
+  std::optional<uint64_t> GetByteSize() const override {
+    return m_byte_size == 0 ? std::nullopt
+                            : std::optional<uint64_t>(m_byte_size);
+  }
+  void SetByteSize(std::optional<uint64_t> byte_size) {
+    assert(byte_size.value_or(0) <= UINT8_MAX && "reference size out of range");
+    m_byte_size = static_cast<uint8_t>(byte_size.value_or(0));
+  }
+
   lldb::Encoding GetEncoding() const override { return lldb::eEncodingUint; }
   lldb::Format GetFormat() const override { return lldb::eFormatHex; }
   lldb::TypeClass GetTypeClass() const override {
@@ -774,6 +832,7 @@ public:
 
 private:
   TypeRef m_pointee_type;
+  uint8_t m_byte_size = 0;
   bool m_is_rvalue = false;
 };
 
@@ -799,6 +858,18 @@ public:
   Type *GetContainingType() const { return m_containing_type.Get(); }
   void SetContainingType(TypeRef type) { m_containing_type = type; }
 
+  // ABI-defined width (one or two pointers); small, so stored compactly like
+  // PointerType's size (see there).
+  std::optional<uint64_t> GetByteSize() const override {
+    return m_byte_size == 0 ? std::nullopt
+                            : std::optional<uint64_t>(m_byte_size);
+  }
+  void SetByteSize(std::optional<uint64_t> byte_size) {
+    assert(byte_size.value_or(0) <= UINT8_MAX &&
+           "member-pointer size out of range");
+    m_byte_size = static_cast<uint8_t>(byte_size.value_or(0));
+  }
+
   lldb::Encoding GetEncoding() const override { return lldb::eEncodingUint; }
   lldb::Format GetFormat() const override { return lldb::eFormatHex; }
   lldb::TypeClass GetTypeClass() const override {
@@ -811,6 +882,7 @@ public:
 private:
   TypeRef m_pointee_type;
   TypeRef m_containing_type;
+  uint8_t m_byte_size = 0;
 };
 
 /// Common base for "sugar" types that wrap another type and are transparent to
@@ -965,7 +1037,7 @@ struct Enumerator {
 /// A C/C++ enumeration type. It has an underlying integer type and a set of
 /// named constants; scoped enums (`enum class`) are distinguished so their
 /// enumerators are not treated as being in the enclosing scope.
-class EnumType : public llvm::RTTIExtends<EnumType, NamedType<Type>> {
+class EnumType : public llvm::RTTIExtends<EnumType, NamedType<ByteSizedType<Type>>> {
 public:
   static char ID;
 
@@ -1031,6 +1103,17 @@ public:
   bool IsFloat() const {
     return m_element_type &&
            m_element_type.Get()->GetEncoding() == lldb::eEncodingIEEE754;
+  }
+
+  // A complex value is two contiguous components of the element type. Computed
+  // on demand rather than stored (the element size may only be known later).
+  std::optional<uint64_t> GetByteSize() const override {
+    const Type *element = m_element_type.Get();
+    if (!element)
+      return std::nullopt;
+    if (std::optional<uint64_t> element_size = element->GetByteSize())
+      return *element_size * 2;
+    return std::nullopt;
   }
 
   // No lldb::Encoding value describes a complex type.

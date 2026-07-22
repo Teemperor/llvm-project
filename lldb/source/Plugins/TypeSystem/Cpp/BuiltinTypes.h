@@ -25,7 +25,7 @@ class IdentifierMap;
 /// This type represents builtin types like int/long/char/etc.
 enum class BuiltinKind : uint8_t;
 
-class BuiltinType : public llvm::RTTIExtends<BuiltinType, Type> {
+class BuiltinType : public llvm::RTTIExtends<BuiltinType, ByteSizedType<Type>> {
 public:
   static char ID;
 

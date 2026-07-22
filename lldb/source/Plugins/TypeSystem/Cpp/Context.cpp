@@ -92,11 +92,6 @@ ArrayType *Context::CreateArrayType(TypeRef element_type,
   auto type = std::make_unique<ArrayType>();
   type->SetElementType(element_type);
   type->SetNumElements(num_elements);
-  // The array's storage is the element size times the element count (when both
-  // are known).
-  if (num_elements)
-    if (std::optional<uint64_t> elem_size = element_type.Get()->GetByteSize())
-      type->SetByteSize(*elem_size * *num_elements);
   return Track(std::move(type));
 }
 
@@ -155,8 +150,6 @@ TypedefType *Context::CreateTypedefType(llvm::StringRef name,
   auto type = std::make_unique<TypedefType>();
   type->SetName(GetIdentifier(name));
   type->SetUnderlyingType(underlying_type);
-  // A typedef has the same storage as the type it aliases.
-  type->SetByteSize(underlying_type.Get()->GetByteSize());
   return Track(std::move(type));
 }
 
@@ -171,8 +164,6 @@ CVQualifiedType *Context::CreateCVQualifiedType(TypeRef underlying_type,
   type->SetUnderlyingType(underlying_type);
   type->SetIsConst(is_const);
   type->SetIsVolatile(is_volatile);
-  // A cv-qualified type has the same storage as its unqualified version.
-  type->SetByteSize(underlying_type.Get()->GetByteSize());
   return Track(std::move(type));
 }
 
@@ -187,8 +178,6 @@ PtrAuthType *Context::CreatePtrAuthType(TypeRef underlying_type, unsigned key,
   type->SetKey(key);
   type->SetAddressDiscriminated(addr_discriminated);
   type->SetExtraDiscriminator(extra_discriminator);
-  // Pure sugar over a pointer: same storage as the type it qualifies.
-  type->SetByteSize(underlying_type.Get()->GetByteSize());
   return Track(std::move(type));
 }
 
@@ -198,8 +187,6 @@ ElaboratedType *Context::CreateElaboratedType(llvm::StringRef spelling,
   auto type = std::make_unique<ElaboratedType>();
   type->SetSpelling(GetIdentifier(spelling));
   type->SetUnderlyingType(underlying_type);
-  // Pure display sugar: same storage as the type it wraps.
-  type->SetByteSize(underlying_type.Get()->GetByteSize());
   return Track(std::move(type));
 }
 
@@ -227,8 +214,5 @@ FunctionType *Context::CreateFunctionType(TypeRef return_type,
 ComplexType *Context::CreateComplexType(TypeRef element_type) {
   auto type = std::make_unique<ComplexType>();
   type->SetElementType(element_type);
-  if (element_type)
-    if (std::optional<uint64_t> element_size = element_type.Get()->GetByteSize())
-      type->SetByteSize(*element_size * 2);
   return Track(std::move(type));
 }
