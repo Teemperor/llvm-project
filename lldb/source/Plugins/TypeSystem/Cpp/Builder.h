@@ -98,8 +98,9 @@ public:
   CompilerType CreateComplexType(CompilerType element_type);
   /// Append a parameter type to a FunctionType created by CreateFunctionType.
   void AddParameter(CompilerType function_type, CompilerType param_type);
-  /// Add a member function to \p record.
-  void AddMemberFunction(RecordType &record, llvm::StringRef name,
+  /// Add a member function to \p record. Member functions are C++-only, so this
+  /// takes a ClassType.
+  void AddMemberFunction(ClassType &record, llvm::StringRef name,
                          CompilerType function_type, llvm::StringRef asm_label,
                          llvm::StringRef mangled_name, bool is_static,
                          bool is_const, bool is_volatile, bool is_virtual,
@@ -107,8 +108,9 @@ public:
                          MemberFunctionKind kind = MemberFunctionKind::Method);
   /// Add a static data member to \p record. \p mangled_name is the linkage name
   /// used to resolve the member's runtime storage (empty for a constant-only
-  /// member); \p const_value is its compile-time constant, if any.
-  void AddStaticDataMember(RecordType &record, llvm::StringRef name,
+  /// member); \p const_value is its compile-time constant, if any. Static data
+  /// members are C++-only, so this takes a ClassType.
+  void AddStaticDataMember(ClassType &record, llvm::StringRef name,
                            Type *type, llvm::StringRef mangled_name,
                            std::optional<uint64_t> const_value);
   /// Intern a name into the Context so it can be used for a type or record
@@ -127,8 +129,9 @@ public:
   void SetRecordComplete(RecordType &record);
   /// Mark \p record as a class-template instantiation (see
   /// RecordType::IsTemplateInstantiation). Set even for a specialization over an
-  /// empty parameter pack, which has no arguments but still prints `<>`.
-  void SetRecordTemplateInstantiation(RecordType &record);
+  /// empty parameter pack, which has no arguments but still prints `<>`. Only a
+  /// C++ class can be a template instantiation, so this takes a ClassType.
+  void SetRecordTemplateInstantiation(ClassType &record);
   /// Mark \p record as an anonymous struct/union (an unnamed record embedded as
   /// an unnamed member of its parent; see
   /// RecordType::IsAnonymousStructOrUnion).
@@ -166,13 +169,13 @@ public:
                      CompilerType function_type, llvm::StringRef asm_label,
                      bool is_class_method, bool is_variadic,
                      bool is_direct = false);
-  void AddTemplateArgument(RecordType &record,
+  void AddTemplateArgument(ClassType &record,
                            lldb::TemplateArgumentKind kind, Type *type,
                            uint64_t integral_value, bool is_default);
   /// Add a template-template argument (a template-template parameter such as
   /// the `T1` in `C<float, T1>`), which is not a modeled type and so is kept by
   /// name only.
-  void AddTemplateTemplateArgument(RecordType &record, llvm::StringRef name,
+  void AddTemplateTemplateArgument(ClassType &record, llvm::StringRef name,
                                    bool is_default);
   void AddNestedType(RecordType &record, Identifier name, Type *type);
   void AddEnumerator(EnumType &enum_type, Identifier name, uint64_t value);

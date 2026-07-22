@@ -132,7 +132,7 @@ void Builder::AddParameter(CompilerType function_type,
     m_ts.m_context.AddParameter(*func, ToTypeRef(param_type));
 }
 
-void Builder::AddMemberFunction(cpp_typesystem::RecordType &record,
+void Builder::AddMemberFunction(cpp_typesystem::ClassType &record,
                                 llvm::StringRef name, CompilerType function_type,
                                 llvm::StringRef asm_label,
                                 llvm::StringRef mangled_name, bool is_static,
@@ -153,7 +153,7 @@ void Builder::AddMemberFunction(cpp_typesystem::RecordType &record,
   m_ts.m_context.AddMemberFunction(record, method);
 }
 
-void Builder::AddStaticDataMember(cpp_typesystem::RecordType &record,
+void Builder::AddStaticDataMember(cpp_typesystem::ClassType &record,
                                   llvm::StringRef name, cpp_typesystem::Type *type,
                                   llvm::StringRef mangled_name,
                                   std::optional<uint64_t> const_value) {
@@ -174,7 +174,7 @@ void Builder::SetRecordComplete(cpp_typesystem::RecordType &record) {
 }
 
 void Builder::SetRecordTemplateInstantiation(
-    cpp_typesystem::RecordType &record) {
+    cpp_typesystem::ClassType &record) {
   m_ts.m_context.SetTemplateInstantiation(record);
 }
 
@@ -244,7 +244,7 @@ void Builder::AddEnumerator(cpp_typesystem::EnumType &enum_type,
   m_ts.m_context.AddEnumerator(enum_type, name, value);
 }
 
-void Builder::AddTemplateArgument(cpp_typesystem::RecordType &record,
+void Builder::AddTemplateArgument(cpp_typesystem::ClassType &record,
                                   lldb::TemplateArgumentKind kind,
                                   cpp_typesystem::Type *type,
                                   uint64_t integral_value, bool is_default) {
@@ -256,7 +256,7 @@ void Builder::AddTemplateArgument(cpp_typesystem::RecordType &record,
   m_ts.m_context.AddTemplateArgument(record, arg);
 }
 
-void Builder::AddTemplateTemplateArgument(cpp_typesystem::RecordType &record,
+void Builder::AddTemplateTemplateArgument(cpp_typesystem::ClassType &record,
                                           llvm::StringRef name,
                                           bool is_default) {
   cpp_typesystem::TemplateArgument arg;

@@ -86,7 +86,7 @@ TEST_F(BuilderTest, AddTemplateArgument) {
       "int", 4, lldb::eEncodingSint, lldb::eFormatDecimal);
   CompilerType record = builder.CreateRecordType(
       "vector<int>", 24, /*is_cpp_class=*/true);
-  auto *r = llvm::cast<RecordType>(
+  auto *r = llvm::cast<ClassType>(
       static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
   builder.SetRecordTemplateInstantiation(*r);
 
@@ -106,7 +106,7 @@ TEST_F(BuilderTest, AddTemplateTemplateArgument) {
   Builder builder(*ts);
   CompilerType record = builder.CreateRecordType("C<float, T1>",
                                                  std::nullopt, true);
-  auto *r = llvm::cast<RecordType>(
+  auto *r = llvm::cast<ClassType>(
       static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
 
   builder.AddTemplateTemplateArgument(*r, "T1", /*is_default=*/false);
