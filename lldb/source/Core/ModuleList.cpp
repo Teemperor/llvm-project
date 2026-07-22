@@ -113,6 +113,10 @@ bool ModuleListProperties::GetEnableTypeSystemCpp() const {
       idx, g_modulelist_properties[idx].default_uint_value != 0);
 }
 
+bool ModuleListProperties::SetEnableTypeSystemCpp(bool new_value) {
+  return SetPropertyAtIndex(ePropertyEnableTypeSystemCpp, new_value);
+}
+
 SymbolDownload ModuleListProperties::GetSymbolAutoDownload() const {
   // Backward compatibility alias.
   if (GetPropertyAtIndexAs<bool>(ePropertyEnableBackgroundLookup, false))

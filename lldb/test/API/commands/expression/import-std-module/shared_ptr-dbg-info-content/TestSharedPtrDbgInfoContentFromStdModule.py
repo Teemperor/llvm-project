@@ -8,6 +8,15 @@ from lldbsuite.test import lldbutil
 
 
 class TestSharedPtrDbgInfoContent(TestBase):
+    def setUp(self):
+        TestBase.setUp(self)
+        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+            self.skipTest(
+                "import-std-module (Clang @import modules) is not supported by "
+                "TypeSystemCpp"
+            )
+
+
     @add_test_categories(["libc++"])
     @skipIf(compiler=no_match("clang"))
     @skipIf(macos_version=["<", "15.0"])

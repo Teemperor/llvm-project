@@ -105,6 +105,7 @@ public:
   bool GetEnableExternalLookup() const;
   bool SetEnableExternalLookup(bool new_value);
   bool GetEnableTypeSystemCpp() const;
+  bool SetEnableTypeSystemCpp(bool new_value);
   lldb::SymbolSharedCacheUse GetSharedCacheBinaryLoading() const;
   bool GetEnableLLDBIndexCache() const;
   bool SetEnableLLDBIndexCache(bool new_value);

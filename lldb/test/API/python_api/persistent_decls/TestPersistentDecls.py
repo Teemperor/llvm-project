@@ -20,6 +20,10 @@ class TestPersistentDecls(TestBase):
 
     def test_persistent_values(self):
         """Define some values in the expression evaluator and find them."""
+        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+            self.skipTest(
+                "persistent expression declarations across expressions are not supported by TypeSystemCpp"
+            )
         self.build()
         self.main_source_file = lldb.SBFileSpec("main.c")
         self.values_test()

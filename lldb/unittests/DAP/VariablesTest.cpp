@@ -60,7 +60,13 @@ protected:
   std::optional<llvm::sys::fs::TempFile> core;
   std::optional<llvm::sys::fs::TempFile> binary;
 
-  void CreateDebugger() { debugger = lldb::SBDebugger::Create(); }
+  void CreateDebugger() {
+    debugger = lldb::SBDebugger::Create();
+    // This test checks child counts produced via the classic TypeSystemClang
+    // path; force it on regardless of the default TypeSystemCpp setting.
+    lldb::SBDebugger::SetInternalVariable("symbols.enable-typesystem-cpp",
+                                          "false", debugger.GetInstanceName());
+  }
 
   void LoadCore() {
     ASSERT_TRUE(debugger);

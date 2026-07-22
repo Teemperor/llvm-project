@@ -21,6 +21,10 @@ class TestObjCRecognizer(TestBase):
     @skipUnlessDarwin
     def test_exception_recognizer_plain(self):
         """There can be many tests in a test case - describe this test here."""
+        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+            self.skipTest(
+                "Objective-C exception recognizer expression evaluation is not yet supported by TypeSystemCpp"
+            )
         self.build()
         self.main_source_file = lldb.SBFileSpec("main.m")
         self.objc_recognizer_test(False)

@@ -3,7 +3,7 @@
 
 # RUN: llvm-mc -triple=x86_64-windows-msvc --filetype=obj %s > %t.obj
 # RUN: lld-link /debug:full /nodefaultlib /entry:main %t.obj /out:%t.exe /base:0x140000000
-# RUN: %lldb -f %t.exe -s \
+# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" -f %t.exe -s \
 # RUN:     %p/Inputs/local-variables-registers.lldbinit 2>&1 | FileCheck %s
 
 # This file is compiled from following source file:

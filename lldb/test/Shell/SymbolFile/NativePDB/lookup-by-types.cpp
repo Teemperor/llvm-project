@@ -1,7 +1,7 @@
 // clang-format off
 
 // RUN: %build -o %t.exe -- %s
-// RUN: %lldb -f %t.exe -s \
+// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" -f %t.exe -s \
 // RUN:     %p/Inputs/lookup-by-types.lldbinit 2>&1 | FileCheck %s
 
 class B;

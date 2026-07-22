@@ -13,6 +13,7 @@
 #include "TestingSupport/Symbol/YAMLModuleTester.h"
 #include "TestingSupport/TestUtilities.h"
 #include "lldb/Core/Debugger.h"
+#include "lldb/Core/ModuleList.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 
@@ -27,6 +28,9 @@ class DWARFASTParserClangTests : public testing::Test {
   void SetUp() override {
     std::call_once(TestUtilities::g_debugger_initialize_flag,
                    []() { Debugger::Initialize(nullptr); });
+    // These tests assert the DWARF parser produces a TypeSystemClang; force the
+    // classic Clang path on regardless of the default TypeSystemCpp setting.
+    ModuleList::GetGlobalModuleListProperties().SetEnableTypeSystemCpp(false);
   }
 };
 
