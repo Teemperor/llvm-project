@@ -142,7 +142,7 @@ struct TemplateArgument {
 /// The ref-qualifier applied to a member function's implicit object parameter
 /// (the `&`/`&&` in `void f() &` / `void f() &&`). A class can overload on this,
 /// so it must be modeled to disambiguate calls.
-enum class RefQualifier {
+enum class RefQualifier : uint8_t {
   None,   ///< No ref-qualifier (`void f()`).
   LValue, ///< Lvalue ref-qualifier (`void f() &`).
   RValue, ///< Rvalue ref-qualifier (`void f() &&`).
@@ -153,7 +153,7 @@ enum class RefQualifier {
 /// constructor/destructor uses a getCXXConstructorName/getCXXDestructorName,
 /// not an identifier). Detected from DWARF (see
 /// DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF).
-enum class MemberFunctionKind {
+enum class MemberFunctionKind : uint8_t {
   Method,      ///< An ordinary (possibly static) member function.
   Constructor, ///< A constructor (`Foo(...)`).
   Destructor,  ///< A destructor (`~Foo()`).
@@ -174,16 +174,24 @@ struct MemberFunction {
   /// SBTypeMemberFunction::GetMangledName/GetDemangledName (distinct from
   /// asm_label, which is a FunctionCallLabel wrapping this name plus location).
   Identifier mangled_name;
-  bool is_static = false;
-  bool is_const = false;
-  bool is_volatile = false;
-  bool is_virtual = false;
+  bool is_static : 1;
+  bool is_const : 1;
+  bool is_volatile : 1;
+  bool is_virtual : 1;
   /// The `&`/`&&` ref-qualifier, if any (overloadable, so must be modeled).
-  RefQualifier ref_qualifier = RefQualifier::None;
+  RefQualifier ref_qualifier : 2;
   /// Whether this is an ordinary method, a constructor or a destructor. A
   /// constructor/destructor must be built with the proper C++ declaration name
   /// so clang recognizes `Foo(2)` as a constructor call.
-  MemberFunctionKind kind = MemberFunctionKind::Method;
+  MemberFunctionKind kind : 2;
+
+  // The flags above are packed bit-fields, which can't carry default member
+  // initializers before C++20 (LLVM builds as C++17), so they are defaulted
+  // here.
+  MemberFunction()
+      : is_static(false), is_const(false), is_volatile(false),
+        is_virtual(false), ref_qualifier(RefQualifier::None),
+        kind(MemberFunctionKind::Method) {}
 };
 
 /// An Objective-C method of an interface. Only what an expression needs to
@@ -370,6 +378,14 @@ class RecordType : public llvm::RTTIExtends<RecordType, NamedType<ByteSizedType<
 public:
   static char ID;
 
+  // The flag members below are packed bit-fields with no default member
+  // initializers (those are a C++20 feature; LLVM builds as C++17), so they
+  // are given their defaults here.
+  RecordType()
+      : m_complete(false), m_is_union(false), m_is_class_keyword(false),
+        m_is_anonymous_struct_union(false), m_member_functions_parsed(false),
+        m_arg_passing(ArgPassingKind::Unspecified) {}
+
   bool IsAggregate() const override { return true; }
   bool IsComplete() const override { return m_complete; }
 
@@ -527,16 +543,18 @@ private:
     m_nested_types.emplace_back(name, type);
   }
 
-  bool m_complete = false;
-  bool m_is_union = false;
-  bool m_is_class_keyword = false;
-  bool m_is_anonymous_struct_union = false;
+  // Larger members first so the trailing bit-fields pack into what would
+  // otherwise be alignment padding.
   const RecordType *m_anonymous_parent = nullptr;
-  ArgPassingKind m_arg_passing = ArgPassingKind::Unspecified;
-  bool m_member_functions_parsed = false;
   std::optional<uint64_t> m_align_in_bits;
   std::vector<Field> m_fields;
   std::vector<std::pair<Identifier, TypeRef>> m_nested_types;
+  bool m_complete : 1;
+  bool m_is_union : 1;
+  bool m_is_class_keyword : 1;
+  bool m_is_anonymous_struct_union : 1;
+  bool m_member_functions_parsed : 1;
+  ArgPassingKind m_arg_passing : 2;
 };
 
 /// A C struct/union type. Records parsed from a C++ translation unit are
@@ -555,6 +573,9 @@ public:
 class ClassType : public llvm::RTTIExtends<ClassType, RecordType> {
 public:
   static char ID;
+
+  // m_is_polymorphic/m_is_template are bit-fields (see RecordType's ctor note).
+  ClassType() : m_is_polymorphic(false), m_is_template(false) {}
 
   lldb::TypeClass GetTypeClass() const override {
     return lldb::eTypeClassClass;
@@ -627,8 +648,8 @@ private:
   std::vector<TemplateArgument> m_template_args;
   std::vector<MemberFunction> m_methods;
   std::vector<StaticDataMember> m_static_data_members;
-  bool m_is_polymorphic = false;
-  bool m_is_template = false;
+  bool m_is_polymorphic : 1;
+  bool m_is_template : 1;
 };
 
 /// An Objective-C class type (`@interface Foo`). Its instance variables
