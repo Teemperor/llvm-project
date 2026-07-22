@@ -127,7 +127,7 @@ TEST_F(TypeSystemCppRecordQueriesTest, NoVirtualBaseClasses) {
 TEST_F(TypeSystemCppRecordQueriesTest, StaticFieldLookup) {
   CompilerType record = builder.CreateRecordType("Foo", 4, true);
   auto *r =
-      llvm::cast<RecordType>(static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
+      llvm::cast<ClassType>(static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
   builder.AddStaticDataMember(*r, "s_count",
                               static_cast<cpp_typesystem::Type *>(GetInt().GetOpaqueQualType()),
                               "_ZN3Foo7s_countE", std::nullopt);

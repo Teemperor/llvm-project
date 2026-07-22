@@ -145,7 +145,7 @@ public:
   /// corresponding Type methods are private and befriend this class.
   /// @{
   void SetComplete(RecordType &record) { record.SetIsComplete(true); }
-  void SetTemplateInstantiation(RecordType &record) {
+  void SetTemplateInstantiation(ClassType &record) {
     record.SetIsTemplateInstantiation(true);
   }
   void SetMemberFunctionsParsed(RecordType &record) {
@@ -181,7 +181,7 @@ public:
   void AddObjCMethod(ObjCInterfaceType &record, ObjCMethod method) {
     record.AddObjCMethod(std::move(method));
   }
-  void AddTemplateArgument(RecordType &record, TemplateArgument arg) {
+  void AddTemplateArgument(ClassType &record, TemplateArgument arg) {
     record.AddTemplateArgument(arg);
   }
   void AddNestedType(RecordType &record, Identifier name, TypeRef type) {
@@ -193,10 +193,10 @@ public:
   void AddParameter(FunctionType &func, TypeRef type) {
     func.AddParameter(type);
   }
-  void AddMemberFunction(RecordType &record, MemberFunction method) {
+  void AddMemberFunction(ClassType &record, MemberFunction method) {
     record.AddMemberFunction(method);
   }
-  void AddStaticDataMember(RecordType &record, StaticDataMember member) {
+  void AddStaticDataMember(ClassType &record, StaticDataMember member) {
     record.AddStaticDataMember(member);
   }
   /// @}

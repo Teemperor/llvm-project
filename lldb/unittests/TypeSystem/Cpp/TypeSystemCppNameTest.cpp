@@ -126,7 +126,7 @@ TEST_F(TypeSystemCppNameTest, TemplateDisplayNameHidesDefaultArgs) {
   CompilerType record = builder.CreateRecordType(
       "vector<int, allocator<int> >", 24, true);
   auto *r =
-      llvm::cast<RecordType>(static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
+      llvm::cast<ClassType>(static_cast<cpp_typesystem::Type *>(record.GetOpaqueQualType()));
   builder.SetRecordTemplateInstantiation(*r);
   builder.SetUnqualifiedName(record, "vector<int, allocator<int> >");
 

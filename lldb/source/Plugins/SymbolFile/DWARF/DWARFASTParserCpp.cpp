@@ -1798,8 +1798,9 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   cpp_typesystem::Builder ts(m_ts);
 
   // Record whether this is a class-template instantiation (see `is_template`).
-  if (is_template)
-    ts.SetRecordTemplateInstantiation(*record);
+  // Only a C++ class can be one, so this is routed through the ClassType.
+  if (is_template && cpp_class)
+    ts.SetRecordTemplateInstantiation(*cpp_class);
 
   // Compilers omit unnamed bitfields (padding) from DWARF, but LLDB
   // reconstructs them so the gaps between named bitfields are visible when
@@ -1924,23 +1925,29 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
       }
       break;
     case MemberInfo::Kind::TemplateType:
-      ts.AddTemplateArgument(*record, lldb::eTemplateArgumentKindType,
-                             member_type, /*integral_value=*/0,
-                             member.is_default);
+      // Template arguments, template-template arguments and static data
+      // members are C++-only; they only ever appear on a ClassType.
+      if (cpp_class)
+        ts.AddTemplateArgument(*cpp_class, lldb::eTemplateArgumentKindType,
+                               member_type, /*integral_value=*/0,
+                               member.is_default);
       break;
     case MemberInfo::Kind::TemplateValue:
-      ts.AddTemplateArgument(*record, lldb::eTemplateArgumentKindIntegral,
-                             member_type, member.value, member.is_default);
+      if (cpp_class)
+        ts.AddTemplateArgument(*cpp_class, lldb::eTemplateArgumentKindIntegral,
+                               member_type, member.value, member.is_default);
       break;
     case MemberInfo::Kind::TemplateTemplate:
-      ts.AddTemplateTemplateArgument(*record, member.name, member.is_default);
+      if (cpp_class)
+        ts.AddTemplateTemplateArgument(*cpp_class, member.name,
+                                       member.is_default);
       break;
     case MemberInfo::Kind::NestedType:
       if (member_type)
         ts.AddNestedType(*record, ts.GetIdentifier(member.name), member_type);
       break;
     case MemberInfo::Kind::StaticDataMember:
-      if (member_type) {
+      if (member_type && cpp_class) {
         // The linkage name used to resolve the member's runtime address. The
         // declaration DIE usually carries none (the definition, a separate
         // CU-scope DW_TAG_variable, does), in which case clang's mangler
@@ -1950,7 +1957,7 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
         const char *mangled =
             member.referencing_die.GetMangledName(
                 /*substitute_name_allowed=*/false);
-        ts.AddStaticDataMember(*record, member.name, member_type,
+        ts.AddStaticDataMember(*cpp_class, member.name, member_type,
                                mangled ? mangled : "",
                                member.const_value);
       }
@@ -2010,6 +2017,12 @@ void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
     CompleteObjCMethodsFromDWARF(*objc_iface, die, ts);
     return;
   }
+
+  // Any remaining record with (C++) member functions is a ClassType; a plain C
+  // struct has none. Member-function storage lives on ClassType.
+  auto *cpp_class = llvm::dyn_cast<cpp_typesystem::ClassType>(&record);
+  if (!cpp_class)
+    return;
 
   // The record's unqualified base name (no template arguments), used to detect
   // constructors: a member subprogram whose unqualified name equals the class
@@ -2088,7 +2101,7 @@ void DWARFASTParserCpp::CompleteMemberFunctionsFromDWARF(
       kind = cpp_typesystem::MemberFunctionKind::Constructor;
 
 
-    ts.AddMemberFunction(record, method_name,
+    ts.AddMemberFunction(*cpp_class, method_name,
                          func_type->GetForwardCompilerType(),
                          asm_label,
                          mangled_name ? mangled_name : "",

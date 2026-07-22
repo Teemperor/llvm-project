@@ -445,34 +445,31 @@ public:
   /// `GetNumTemplateArguments() > 0`: a specialization of a variadic template
   /// over an *empty* pack (e.g. `TypePack<>`) has zero arguments yet is still a
   /// template instantiation and must print an (empty) `<>` argument list.
-  bool IsTemplateInstantiation() const { return m_is_template; }
+  ///
+  /// Template arguments, member functions and static data members are C++-only
+  /// (a plain C struct/union or an Objective-C interface never has them), so
+  /// their storage lives on ClassType, not here; these accessors default to
+  /// "none" and are overridden by ClassType.
+  virtual bool IsTemplateInstantiation() const { return false; }
 
   /// Template arguments, if this record is a class-template instantiation.
-  uint32_t GetNumTemplateArguments() const { return m_template_args.size(); }
-  const TemplateArgument *GetTemplateArgumentAtIndex(uint32_t idx) const {
-    if (idx < m_template_args.size())
-      return &m_template_args[idx];
+  virtual uint32_t GetNumTemplateArguments() const { return 0; }
+  virtual const TemplateArgument *GetTemplateArgumentAtIndex(uint32_t idx) const {
     return nullptr;
   }
 
   /// Member functions of this record (used to resolve/call methods from an
   /// expression).
-  uint32_t GetNumMemberFunctions() const { return m_methods.size(); }
-  const MemberFunction *GetMemberFunctionAtIndex(uint32_t idx) const {
-    if (idx < m_methods.size())
-      return &m_methods[idx];
+  virtual uint32_t GetNumMemberFunctions() const { return 0; }
+  virtual const MemberFunction *GetMemberFunctionAtIndex(uint32_t idx) const {
     return nullptr;
   }
 
   /// Static data members of this record (`static int s;`). Used by the
   /// expression evaluator to resolve `record.s` / `Record::s` and, for a
   /// constant integral member, to fold its value.
-  uint32_t GetNumStaticDataMembers() const {
-    return m_static_data_members.size();
-  }
-  const StaticDataMember *GetStaticDataMemberAtIndex(uint32_t idx) const {
-    if (idx < m_static_data_members.size())
-      return &m_static_data_members[idx];
+  virtual uint32_t GetNumStaticDataMembers() const { return 0; }
+  virtual const StaticDataMember *GetStaticDataMemberAtIndex(uint32_t idx) const {
     return nullptr;
   }
 
@@ -509,9 +506,6 @@ private:
   // and Context is only reachable through TypeSystemCpp's locked Builder.
   friend class Context;
   void SetIsComplete(bool complete) { m_complete = complete; }
-  void SetIsTemplateInstantiation(bool is_template) {
-    m_is_template = is_template;
-  }
   void SetIsAnonymousStructOrUnion(bool v) { m_is_anonymous_struct_union = v; }
   void SetAnonymousParent(const RecordType *parent) {
     m_anonymous_parent = parent;
@@ -529,33 +523,20 @@ private:
     f.bitfield_bit_offset = bitfield_bit_offset;
     m_fields.push_back(f);
   }
-  void AddTemplateArgument(TemplateArgument arg) {
-    m_template_args.push_back(arg);
-  }
   void AddNestedType(Identifier name, TypeRef type) {
     m_nested_types.emplace_back(name, type);
-  }
-  void AddMemberFunction(MemberFunction method) {
-    m_methods.push_back(method);
-  }
-  void AddStaticDataMember(StaticDataMember member) {
-    m_static_data_members.push_back(member);
   }
 
   bool m_complete = false;
   bool m_is_union = false;
   bool m_is_class_keyword = false;
-  bool m_is_template = false;
   bool m_is_anonymous_struct_union = false;
   const RecordType *m_anonymous_parent = nullptr;
   ArgPassingKind m_arg_passing = ArgPassingKind::Unspecified;
   bool m_member_functions_parsed = false;
   std::optional<uint64_t> m_align_in_bits;
   std::vector<Field> m_fields;
-  std::vector<TemplateArgument> m_template_args;
   std::vector<std::pair<Identifier, TypeRef>> m_nested_types;
-  std::vector<MemberFunction> m_methods;
-  std::vector<StaticDataMember> m_static_data_members;
 };
 
 /// A C struct/union type. Records parsed from a C++ translation unit are
@@ -588,9 +569,41 @@ public:
 
   bool IsPolymorphic() const override { return m_is_polymorphic; }
 
+  // Template arguments, member functions and static data members are C++-only,
+  // so their storage lives here (not on RecordType, where a plain C struct or
+  // an Objective-C interface would needlessly reserve it).
+  bool IsTemplateInstantiation() const override { return m_is_template; }
+
+  uint32_t GetNumTemplateArguments() const override {
+    return m_template_args.size();
+  }
+  const TemplateArgument *
+  GetTemplateArgumentAtIndex(uint32_t idx) const override {
+    if (idx < m_template_args.size())
+      return &m_template_args[idx];
+    return nullptr;
+  }
+
+  uint32_t GetNumMemberFunctions() const override { return m_methods.size(); }
+  const MemberFunction *GetMemberFunctionAtIndex(uint32_t idx) const override {
+    if (idx < m_methods.size())
+      return &m_methods[idx];
+    return nullptr;
+  }
+
+  uint32_t GetNumStaticDataMembers() const override {
+    return m_static_data_members.size();
+  }
+  const StaticDataMember *
+  GetStaticDataMemberAtIndex(uint32_t idx) const override {
+    if (idx < m_static_data_members.size())
+      return &m_static_data_members[idx];
+    return nullptr;
+  }
+
 private:
   // Gated like RecordType's mutators (see there): only Context, reached through
-  // the locked Builder, may add base classes.
+  // the locked Builder, may mutate a class.
   friend class Context;
   void AddBaseClass(TypeRef type, uint64_t byte_offset,
                     bool is_virtual = false,
@@ -599,9 +612,23 @@ private:
         BaseClass{type, byte_offset, is_virtual, vbase_offset_offset});
   }
   void SetPolymorphic() { m_is_polymorphic = true; }
+  void SetIsTemplateInstantiation(bool is_template) {
+    m_is_template = is_template;
+  }
+  void AddTemplateArgument(TemplateArgument arg) {
+    m_template_args.push_back(arg);
+  }
+  void AddMemberFunction(MemberFunction method) { m_methods.push_back(method); }
+  void AddStaticDataMember(StaticDataMember member) {
+    m_static_data_members.push_back(member);
+  }
 
   std::vector<BaseClass> m_bases;
+  std::vector<TemplateArgument> m_template_args;
+  std::vector<MemberFunction> m_methods;
+  std::vector<StaticDataMember> m_static_data_members;
   bool m_is_polymorphic = false;
+  bool m_is_template = false;
 };
 
 /// An Objective-C class type (`@interface Foo`). Its instance variables
