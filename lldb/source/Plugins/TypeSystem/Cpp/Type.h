@@ -790,13 +790,6 @@ public:
   Type *GetPointeeType() const { return m_pointee_type.Get(); }
   void SetPointeeType(TypeRef type) { m_pointee_type = type; }
 
-  /// True if this models an Apple "blocks" pointer (`int (^)(int)`), i.e. the
-  /// pointee is a FunctionType but the runtime representation and calling
-  /// convention are those of a block, not a plain function pointer. This is
-  /// how DWARF's `DW_AT_APPLE_block` closures are represented.
-  bool IsBlockPointer() const { return m_is_block; }
-  void SetIsBlockPointer(bool is_block) { m_is_block = is_block; }
-
   // A pointer's size is the (small) target pointer width, set once at creation.
   // Store it as a byte so it packs alongside the flag below instead of paying
   // for a full 64-bit size word (pointers are the most numerous type kind).
@@ -842,7 +835,21 @@ public:
 private:
   TypeRef m_pointee_type;
   uint8_t m_byte_size = 0;
-  bool m_is_block = false;
+};
+
+/// An Apple "blocks" pointer (`int (^)(int)`): its pointee is a FunctionType,
+/// but the runtime representation and calling convention are those of a block,
+/// not a plain function pointer. This is how DWARF's `DW_AT_APPLE_block`
+/// closures are represented. A block pointer is a pointer in every layout/value
+/// respect, so it derives from PointerType and reuses all of it; it exists as a
+/// distinct kind only so that the few places that must treat it specially (the
+/// `(^)` vs `(*)` display spelling, mapping to a clang BlockPointerType,
+/// IsBlockPointerType / IsFunctionPointerType) can key off the type via
+/// llvm::isa<BlockPointerType> instead of a per-pointer flag.
+class BlockPointerType
+    : public llvm::RTTIExtends<BlockPointerType, PointerType> {
+public:
+  static char ID;
 };
 
 /// A C++ reference type: lvalue `T &` or rvalue `T &&`. At runtime a reference

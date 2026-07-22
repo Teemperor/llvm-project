@@ -86,10 +86,12 @@ public:
                              std::optional<uint64_t> num_elements);
 
   /// Create a pointer type pointing to \p pointee_type (which may be empty for
-  /// `void *`). Its byte size is the target's pointer size. \p is_block marks
-  /// an Apple "blocks" pointer (`int (^)(int)`), whose pointee is a
-  /// FunctionType.
-  PointerType *CreatePointerType(TypeRef pointee_type, bool is_block = false);
+  /// `void *`). Its byte size is the target's pointer size.
+  PointerType *CreatePointerType(TypeRef pointee_type);
+
+  /// Create an Apple "blocks" pointer (`int (^)(int)`), whose pointee is a
+  /// FunctionType. Its byte size is the target's pointer size.
+  BlockPointerType *CreateBlockPointerType(TypeRef pointee_type);
 
   /// Create an lvalue (`T &`) or rvalue (`T &&`) reference to \p pointee_type.
   /// Its byte size is the target's pointer size.
@@ -242,9 +244,10 @@ private:
   std::vector<std::unique_ptr<Namespace>> m_namespaces;
   std::map<std::tuple<const Namespace *, const void *, bool>, const Namespace *>
       m_namespace_map;
-  /// Uniquing map for pointer types, keyed by (pointee type, is_block), so that
+  /// Uniquing map for pointer types, keyed by (pointee type, is-block), so that
   /// two independently-formed `T *` are the same instance (needed for type
-  /// equality). See CreatePointerType.
+  /// equality) and a plain `T *` stays distinct from a block `T (^)`. See
+  /// CreatePointerType / CreateBlockPointerType.
   std::map<std::pair<Type *, bool>, PointerType *> m_pointer_map;
   /// Interned CompilerDecls (static data members / member functions), owned for
   /// the Context's lifetime and deduplicated by (kind, payload).

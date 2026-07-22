@@ -429,8 +429,7 @@ CompilerType ClangTypeConverter::ConvertDerived(clang::QualType qt) {
     // (`int (^)(int)`). Rebuild it as a block pointer over its (function)
     // pointee so the result can be sized and stored.
     if (CompilerType pointee = Convert(bpt->getPointeeType()))
-      return cpp_typesystem::Builder(m_target).CreatePointerType(
-          pointee, /*is_block=*/true);
+      return cpp_typesystem::Builder(m_target).CreateBlockPointerType(pointee);
   } else if (const auto *cx = qt->getAs<clang::ComplexType>()) {
     // A complex value produced by the expression (e.g. `a + (1.0f + 2.0fi)`)
     // maps back to a TypeSystemCpp ComplexType over its mapped element.
