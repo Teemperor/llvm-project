@@ -9,6 +9,16 @@ from typing import Union
 class TestCase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    def setUp(self):
+        TestBase.setUp(self)
+        if self.dbg.GetSetting(
+            "symbols.enable-typesystem-cpp"
+        ).GetBooleanValue():
+            self.skipTest(
+                "SBValue::SetType / synthetic-type interrogation not yet "
+                "supported by TypeSystemCpp"
+            )
+
     def test(self):
         self.build()
         target, _, thread, _ = lldbutil.run_to_source_breakpoint(
