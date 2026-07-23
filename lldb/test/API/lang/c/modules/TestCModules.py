@@ -26,8 +26,9 @@ class CModulesTestCase(TestBase):
             "symbols.enable-typesystem-cpp"
         ).GetBooleanValue():
             self.skipTest(
-                "TypeSystemCpp does not support clang @import modules "
-                "(ClangModulesDeclVendor)"
+                "TypeSystemCpp does not fully support clang @import modules "
+                "(ClangModulesDeclVendor): module record types / dedup and the "
+                "efficient-memread accounting this test checks are not reproduced"
             )
         self.build()
         exe = self.getBuildArtifact("a.out")
