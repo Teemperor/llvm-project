@@ -47,6 +47,15 @@ public:
   std::shared_ptr<ClangASTImporter> GetClangASTImporter();
   std::shared_ptr<ClangModulesDeclVendor> GetClangModulesDeclVendor();
 
+  /// Return the ClangModulesDeclVendor only if one has already been created
+  /// (i.e. a module was imported this session), without lazily creating the
+  /// (expensive) vendor. Used by the TypeSystemCpp expression path to avoid
+  /// spinning up a whole Clang module compiler instance just to resolve an
+  /// ordinary symbol-only function that no `@import` ever brought in.
+  std::shared_ptr<ClangModulesDeclVendor> GetExistingClangModulesDeclVendor() {
+    return m_modules_decl_vendor_sp;
+  }
+
   lldb::ExpressionVariableSP
   CreatePersistentVariable(const lldb::ValueObjectSP &valobj_sp) override;
 

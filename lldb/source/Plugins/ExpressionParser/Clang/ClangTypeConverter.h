@@ -41,7 +41,15 @@ public:
   /// \param generator the generator whose reverse map (Clang type ->
   /// cpp_typesystem type) is consulted; must outlive this converter.
   /// \param target the TypeSystemCpp that owns every reconstructed type.
-  ClangTypeConverter(ClangASTGenerator &generator, TypeSystemCpp &target);
+  /// \param source_ast the clang::ASTContext the converted types live in. It
+  /// defaults to the generator's own AST (the expression AST), used by the
+  /// result-type / persistent-decl paths. Pass a different context (e.g. the
+  /// ClangModulesDeclVendor's ASTContext) to reconstruct types that were
+  /// produced elsewhere: those are never in the generator's reverse map, so the
+  /// converter falls through to its reconstruction paths, which then query
+  /// layout/sugar from this (correct) context.
+  ClangTypeConverter(ClangASTGenerator &generator, TypeSystemCpp &target,
+                     clang::ASTContext *source_ast = nullptr);
 
   /// Map \p qt (a Clang type) back to its cpp_typesystem origin. Returns an
   /// invalid CompilerType if the type can't be mapped. The returned

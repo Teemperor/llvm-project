@@ -199,6 +199,32 @@ private:
   bool LookupSymbolFunction(const clang::DeclContext *dc, ConstString name,
                             llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
+  /// Find the preferred callable code/resolver symbol named \p name in the
+  /// target (an external symbol wins over a file-local one; a re-exported
+  /// symbol is resolved to its target). Returns null when no callable symbol
+  /// exists. Shared by LookupSymbolFunction and the module-vendor function
+  /// path, both of which need the symbol's load address to lower a call.
+  const Symbol *FindCallableSymbol(ConstString name);
+
+  /// Bind a generated FunctionDecl to a target symbol so the materializer
+  /// resolves the callee to the symbol's load address (used when the decl
+  /// carries no FunctionCallLabel asm label of its own).
+  void BindFunctionDeclToSymbol(clang::FunctionDecl *fd, const Symbol *symbol);
+
+  /// Transport a function declared only in an imported Clang module
+  /// (`@import Darwin; getpid()`) into the expression AST: query the
+  /// ClangModulesDeclVendor for \p name, translate the found clang FunctionDecl
+  /// type back into a TypeSystemCpp FunctionType (via ClangTypeConverter over
+  /// the vendor's ASTContext), synthesize a properly-typed FunctionDecl for it
+  /// via ClangASTGenerator, and bind it to the callable symbol so the call can
+  /// be lowered. Unlike LookupSymbolFunction this yields a real return/param
+  /// signature (e.g. `getpid` returning `pid_t`) rather than
+  /// `__unknown_anytype`. Only queried when a module was actually imported this
+  /// session (the vendor already exists), so an ordinary symbol-only call is
+  /// unaffected and no Clang module compiler is spun up spuriously.
+  bool LookupModuleFunctions(const clang::DeclContext *dc, ConstString name,
+                             llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
+
   /// Look up a data symbol named \p name that has no debug info (e.g. a global
   /// variable in a stripped/hidden translation unit) and create a VarDecl of
   /// type `void *&` bound to the symbol's load address (materialized via

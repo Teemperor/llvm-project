@@ -32,6 +32,7 @@ class FieldDecl;
 class FunctionDecl;
 class TagDecl;
 class ObjCInterfaceDecl;
+class LinkageSpecDecl;
 } // namespace clang
 
 namespace lldb_private {
@@ -150,10 +151,15 @@ public:
 
   /// Build a clang::FunctionDecl (in the translation unit) for a free function
   /// with the given signature and asm label; the JIT resolves the call through
-  /// the label. Returns null on failure.
+  /// the label. Returns null on failure. When \p is_extern_c is set the decl is
+  /// given C language linkage (placed in an `extern "C"` context), matching a
+  /// function transported from a Clang C module (e.g. `printf`, `getpid`) so it
+  /// merges with -- rather than conflicts against -- the same `extern "C"`
+  /// declaration in the expression's wrapper prefix.
   clang::FunctionDecl *GenerateFunction(llvm::StringRef name,
                                         const CompilerType &function_cpp_type,
-                                        llvm::StringRef asm_label);
+                                        llvm::StringRef asm_label,
+                                        bool is_extern_c = false);
 
   /// As above, but names the function with an explicit clang::DeclarationName
   /// (e.g. a CXXOperatorName for a free `operator==`) so operator syntax /
@@ -324,10 +330,18 @@ private:
 
   /// Shared implementation for the GenerateFunction overloads: build a
   /// clang::FunctionDecl in the translation unit with the given name, signature
-  /// and (optional) asm label.
+  /// and (optional) asm label. When \p is_extern_c is set the decl is placed in
+  /// a shared `extern "C"` LinkageSpecDecl so it has C language linkage.
   clang::FunctionDecl *BuildFunction(clang::DeclarationName name,
                                      clang::QualType function_qt,
-                                     llvm::StringRef asm_label);
+                                     llvm::StringRef asm_label,
+                                     bool is_extern_c = false);
+
+  /// The shared `extern "C"` LinkageSpecDecl in the translation unit (created on
+  /// first use), used to give transported C-module functions C language
+  /// linkage.
+  clang::DeclContext *GetOrCreateExternCContext();
+  clang::LinkageSpecDecl *m_extern_c_decl = nullptr;
 
   clang::ASTContext &m_ast;
 

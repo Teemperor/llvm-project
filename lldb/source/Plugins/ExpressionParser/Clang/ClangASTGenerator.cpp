@@ -1665,14 +1665,15 @@ void ClangASTGenerator::BuildParams(clang::FunctionDecl *func,
 clang::FunctionDecl *
 ClangASTGenerator::GenerateFunction(llvm::StringRef name,
                                     const CompilerType &function_cpp_type,
-                                    llvm::StringRef asm_label) {
+                                    llvm::StringRef asm_label,
+                                    bool is_extern_c) {
   GenerationGuard guard(*this);
   clang::QualType function_qt = Generate(function_cpp_type);
   if (function_qt.isNull() || !function_qt->getAs<clang::FunctionProtoType>())
     return nullptr;
   clang::ASTContext &ast = m_ast;
   return BuildFunction(clang::DeclarationName(&ast.Idents.get(name)),
-                       function_qt, asm_label);
+                       function_qt, asm_label, is_extern_c);
 }
 
 clang::FunctionDecl *
@@ -1707,13 +1708,27 @@ ClangASTGenerator::GenerateGenericFunction(llvm::StringRef name) {
                        /*asm_label=*/{});
 }
 
+clang::DeclContext *ClangASTGenerator::GetOrCreateExternCContext() {
+  clang::ASTContext &ast = m_ast;
+  if (!m_extern_c_decl) {
+    m_extern_c_decl = clang::LinkageSpecDecl::Create(
+        ast, ast.getTranslationUnitDecl(), clang::SourceLocation(),
+        clang::SourceLocation(), clang::LinkageSpecLanguageIDs::C,
+        /*HasBraces=*/true);
+    ast.getTranslationUnitDecl()->addDecl(m_extern_c_decl);
+  }
+  return m_extern_c_decl;
+}
+
 clang::FunctionDecl *
 ClangASTGenerator::BuildFunction(clang::DeclarationName name,
                                  clang::QualType function_qt,
-                                 llvm::StringRef asm_label) {
+                                 llvm::StringRef asm_label, bool is_extern_c) {
   clang::ASTContext &ast = m_ast;
+  clang::DeclContext *dc = is_extern_c ? GetOrCreateExternCContext()
+                                       : ast.getTranslationUnitDecl();
   auto *fd = clang::FunctionDecl::CreateDeserialized(ast, clang::GlobalDeclID());
-  fd->setDeclContext(ast.getTranslationUnitDecl());
+  fd->setDeclContext(dc);
   fd->setDeclName(name);
   fd->setType(function_qt);
   fd->setStorageClass(clang::SC_Extern);
@@ -1721,7 +1736,7 @@ ClangASTGenerator::BuildFunction(clang::DeclarationName name,
   if (!asm_label.empty())
     fd->addAttr(clang::AsmLabelAttr::CreateImplicit(ast, asm_label));
   BuildParams(fd, function_qt);
-  ast.getTranslationUnitDecl()->addDecl(fd);
+  dc->addDecl(fd);
   return fd;
 }
 

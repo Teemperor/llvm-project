@@ -25,8 +25,10 @@ using namespace lldb;
 namespace ct = cpp_typesystem;
 
 ClangTypeConverter::ClangTypeConverter(ClangASTGenerator &generator,
-                                       TypeSystemCpp &target)
-    : m_generator(generator), m_target(target), m_ast(generator.m_ast) {}
+                                       TypeSystemCpp &target,
+                                       clang::ASTContext *source_ast)
+    : m_generator(generator), m_target(target),
+      m_ast(source_ast ? *source_ast : generator.m_ast) {}
 
 CompilerType ClangTypeConverter::Convert(clang::QualType qt) {
   if (qt.isNull())
