@@ -105,6 +105,14 @@ CompilerType ClangTypeConverter::Convert(clang::QualType qt) {
   if (const auto *rt = qt->getAs<clang::RecordType>())
     return ConvertRecord(rt);
 
+  // A bare Objective-C interface type (`NSString`, the pointee of an
+  // `NSString *` a module method's signature refers to) has no cpp counterpart
+  // when it comes from a foreign ASTContext (a Clang module). Transport it as a
+  // forward interface; the class it's used through only needs its name here.
+  if (const auto *obj = qt->getAs<clang::ObjCObjectType>())
+    if (const clang::ObjCInterfaceDecl *iface_decl = obj->getInterface())
+      return ConvertObjCInterface(iface_decl, /*complete=*/false);
+
   // Simple derived types (a reference or pointer created by the parser itself,
   // e.g. the `T &` VarDecls we synthesize for locals or the result
   // synthesizer's pointer wrappers) aren't in the map. Reconstruct them.
@@ -476,4 +484,120 @@ CompilerType ClangTypeConverter::ConvertDerived(clang::QualType qt) {
     }
   }
   return {};
+}
+
+CompilerType
+ClangTypeConverter::ConvertObjCInterface(const clang::ObjCInterfaceDecl *decl,
+                                         bool complete) {
+  // Key by the definition when one exists (so a forward declaration and the
+  // definition unify), otherwise the canonical decl.
+  const clang::ObjCInterfaceDecl *def = decl->getDefinition();
+  const clang::ObjCInterfaceDecl *key = def ? def : decl->getCanonicalDecl();
+
+  CompilerType iface;
+  auto found = m_objc_ifaces.find(key);
+  if (found != m_objc_ifaces.end()) {
+    iface = found->second;
+  } else {
+    cpp_typesystem::Builder builder(m_target);
+    iface = builder.CreateObjCInterfaceType(key->getName(),
+                                            /*byte_size=*/std::nullopt);
+    // Register before recursing so a cycle (a method referring back to this
+    // class, or a superclass chain) terminates.
+    m_objc_ifaces[key] = iface;
+  }
+
+  // Populate the full definition at most once, and only when asked (a class a
+  // signature merely refers to through a pointer stays a forward declaration).
+  if (complete && def && m_objc_completed.insert(key).second)
+    FillObjCInterface(def, iface);
+  return iface;
+}
+
+void ClangTypeConverter::FillObjCInterface(const clang::ObjCInterfaceDecl *def,
+                                           CompilerType iface_ct) {
+  auto *iface = llvm::dyn_cast_or_null<cpp_typesystem::ObjCInterfaceType>(
+      TypeSystemCpp::GetCppType(iface_ct.GetOpaqueQualType()));
+  if (!iface)
+    return;
+  cpp_typesystem::Builder builder(m_target);
+
+  // Superclass (a name-only forward declaration is enough; it completes on
+  // demand like any other interface).
+  if (const clang::ObjCInterfaceDecl *super = def->getSuperClass()) {
+    CompilerType super_ct = ConvertObjCInterface(super, /*complete=*/false);
+    if (super_ct)
+      builder.SetObjCSuperClass(
+          *iface,
+          TypeSystemCpp::GetCppType(super_ct.GetOpaqueQualType()));
+  }
+
+  // Ivars. The offsets a module header carries are not authoritative (the ObjC
+  // runtime owns the non-fragile layout), but clang lays ObjC interfaces out
+  // itself, so a nominal 0 offset is fine here.
+  for (const clang::ObjCIvarDecl *ivar : def->ivars()) {
+    CompilerType ivar_type = Convert(ivar->getType());
+    if (!ivar_type)
+      continue;
+    builder.AddField(*iface, builder.GetIdentifier(ivar->getName()),
+                     TypeSystemCpp::GetCppType(ivar_type.GetOpaqueQualType()),
+                     /*byte_offset=*/0);
+  }
+
+  // Methods declared directly on this interface.
+  for (const clang::ObjCMethodDecl *method : def->methods())
+    AddObjCMethod(*iface, def, method);
+
+  // Property accessor methods (`@property NSUInteger length;` -> `-length`),
+  // which a bare `def->methods()` may not list. Their typedef'd return types
+  // are exactly what the runtime path can't recover.
+  for (const clang::ObjCPropertyDecl *prop : def->properties()) {
+    if (const clang::ObjCMethodDecl *getter = prop->getGetterMethodDecl())
+      AddObjCMethod(*iface, def, getter);
+    if (const clang::ObjCMethodDecl *setter = prop->getSetterMethodDecl())
+      AddObjCMethod(*iface, def, setter);
+  }
+
+  builder.SetRecordComplete(*iface);
+  // These methods came straight from the module, not from lazily-parsed debug
+  // info, so mark them parsed to keep CompleteMemberFunctions a no-op.
+  builder.SetRecordMemberFunctionsParsed(*iface);
+}
+
+void ClangTypeConverter::AddObjCMethod(cpp_typesystem::ObjCInterfaceType &iface,
+                                       const clang::ObjCInterfaceDecl *def,
+                                       const clang::ObjCMethodDecl *method) {
+  // A method with a related result type (`instancetype`, or an `init`/`alloc`
+  // family method) must, in the synthesized clang decl, return `instancetype`
+  // so a class-method send types as the receiver class (`[NSURL ...]` ->
+  // `NSURL *`). `instancetype` has no cpp counterpart, so store a placeholder
+  // `id` return and let the generator substitute it.
+  const bool returns_instancetype = method->hasRelatedResultType();
+  CompilerType ret;
+  if (returns_instancetype)
+    ret = m_target.GetBasicTypeFromAST(lldb::eBasicTypeObjCID);
+  else
+    ret = Convert(method->getReturnType());
+  if (!ret)
+    return;
+  cpp_typesystem::Builder builder(m_target);
+  CompilerType fn = builder.CreateFunctionType(ret, method->isVariadic());
+  for (const clang::ParmVarDecl *param : method->parameters()) {
+    CompilerType param_type = Convert(param->getType());
+    if (!param_type)
+      return;
+    builder.AddParameter(fn, param_type);
+  }
+
+  // Format the name exactly like the DWARF/runtime path so a merge can dedup by
+  // full name: `[+-][Class selector]`.
+  std::string name = (method->isClassMethod() ? "+[" : "-[");
+  name += def->getNameAsString();
+  name += ' ';
+  name += method->getSelector().getAsString();
+  name += ']';
+
+  builder.AddObjCMethod(iface, name, fn, /*asm_label=*/{},
+                        method->isClassMethod(), method->isVariadic(),
+                        method->isDirectMethod(), returns_instancetype);
 }

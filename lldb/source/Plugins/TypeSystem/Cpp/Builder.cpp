@@ -232,7 +232,8 @@ void Builder::SetObjCSuperClass(cpp_typesystem::ObjCInterfaceType &record,
 void Builder::AddObjCMethod(cpp_typesystem::ObjCInterfaceType &record,
                             llvm::StringRef name, CompilerType function_type,
                             llvm::StringRef asm_label, bool is_class_method,
-                            bool is_variadic, bool is_direct) {
+                            bool is_variadic, bool is_direct,
+                            bool returns_instancetype) {
   cpp_typesystem::ObjCMethod method;
   method.name = GetIdentifier(name);
   method.type = ToTypeRef(function_type);
@@ -240,6 +241,7 @@ void Builder::AddObjCMethod(cpp_typesystem::ObjCInterfaceType &record,
   method.is_class_method = is_class_method;
   method.is_variadic = is_variadic;
   method.is_direct = is_direct;
+  method.returns_instancetype = returns_instancetype;
   m_ts.m_context.AddObjCMethod(record, std::move(method));
 }
 

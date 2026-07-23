@@ -12,15 +12,23 @@
 #include "lldb/Symbol/CompilerType.h"
 
 #include "clang/AST/Type.h"
+#include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 
 namespace clang {
 class ASTContext;
+class ObjCInterfaceDecl;
+class ObjCMethodDecl;
 } // namespace clang
 
 namespace lldb_private {
 
 class ClangASTGenerator;
 class TypeSystemCpp;
+
+namespace cpp_typesystem {
+class ObjCInterfaceType;
+} // namespace cpp_typesystem
 
 /// Maps a Clang type produced by a ClangASTGenerator back onto its
 /// cpp_typesystem origin, so an expression's result type can be expressed as a
@@ -104,9 +112,42 @@ private:
   /// recursively-mapped pointee/element.
   CompilerType ConvertDerived(clang::QualType qt);
 
+public:
+  /// Transport an Objective-C interface (`@interface`) that lives in \p m_ast
+  /// (e.g. the ClangModulesDeclVendor's ASTContext) into an equivalent
+  /// TypeSystemCpp ObjCInterfaceType owned by the target. When \p complete is
+  /// set the interface is fully populated (superclass, ivars, and every
+  /// instance/class method + property accessor, with their real typedef'd
+  /// signatures -- unlike the ObjC runtime, which loses typedef names such as
+  /// `NSUInteger`); otherwise a name-only forward declaration is produced (used
+  /// for the classes a method signature merely refers to through a pointer).
+  /// Interfaces are cached by decl so a reference cycle terminates and the same
+  /// interface maps to a single cpp type.
+  CompilerType ConvertObjCInterface(const clang::ObjCInterfaceDecl *decl,
+                                    bool complete);
+
+private:
+  /// Populate the (already-created, registered) cpp interface \p iface_ct from
+  /// the complete module interface \p def: superclass, ivars, methods, and
+  /// property accessor methods.
+  void FillObjCInterface(const clang::ObjCInterfaceDecl *def,
+                         CompilerType iface_ct);
+
+  /// Add a single Objective-C method (from a module ObjCMethodDecl) to the cpp
+  /// interface being built, translating its return/parameter types.
+  void AddObjCMethod(cpp_typesystem::ObjCInterfaceType &iface,
+                     const clang::ObjCInterfaceDecl *def,
+                     const clang::ObjCMethodDecl *method);
+
   ClangASTGenerator &m_generator;
   TypeSystemCpp &m_target;
   clang::ASTContext &m_ast;
+
+  /// Interfaces already created (forward or complete), keyed by definition (or
+  /// canonical) decl, so a reference cycle terminates and identity is stable.
+  llvm::DenseMap<const clang::ObjCInterfaceDecl *, CompilerType> m_objc_ifaces;
+  /// Interfaces already fully populated (a subset of m_objc_ifaces' keys).
+  llvm::DenseSet<const clang::ObjCInterfaceDecl *> m_objc_completed;
 };
 
 } // namespace lldb_private

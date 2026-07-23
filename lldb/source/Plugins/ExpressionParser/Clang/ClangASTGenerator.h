@@ -303,6 +303,17 @@ private:
   bool RedirectObjCInterfaceToRuntimeDefinition(
       TypeSystemCpp *&ts, cpp_typesystem::ObjCInterfaceType *&iface);
 
+  /// If a Clang module was imported this session (`@import Foundation`), find
+  /// the interface named \p class_name in the ClangModulesDeclVendor and
+  /// transport it into a fully-populated TypeSystemCpp ObjCInterfaceType (owned
+  /// by the returned-through \p ts scratch TypeSystemCpp) via ClangTypeConverter.
+  /// Used to complete an interface's methods with their real typedef'd
+  /// signatures (`-(NSUInteger)length`), which the ObjC runtime's type-encoding
+  /// path can't recover. Returns null when no module was imported or the class
+  /// isn't in any imported module.
+  cpp_typesystem::ObjCInterfaceType *
+  GetModuleObjCInterface(llvm::StringRef class_name, TypeSystemCpp *&ts);
+
   /// Build a clang::ClassTemplateSpecializationDecl (backed by a synthesized
   /// ClassTemplateDecl) for the class-template instantiation \p rec, so a
   /// template-id such as `TestObj<int>` written in an expression resolves: the
@@ -369,6 +380,16 @@ private:
   /// per name in a program). Records with an empty name (unnamed /
   /// expression-local) are never entered here.
   llvm::StringMap<void *> m_records_by_name;
+
+  /// Like m_records_by_name, but for Objective-C interfaces (keyed by class
+  /// name). ObjC classes have no ASTImporter to unify them either, and the same
+  /// class can arrive from several sources with no shared cpp type: the ObjC
+  /// runtime (LookupType), an imported Clang module (GetModuleObjCInterface),
+  /// and plain debug info. Without unification each produces a distinct
+  /// clang::ObjCInterfaceDecl, so a name lookup finds several `NSString` (a
+  /// spurious "ambiguous" reference) and `NSString *` from two sources are
+  /// incompatible types. Reuse the first decl generated for a given class name.
+  llvm::StringMap<clang::ObjCInterfaceDecl *> m_objc_interfaces_by_name;
 
   /// cpp_typesystem::Namespace -> the clang::NamespaceDecl the decl map created
   /// for it, so generated types are placed in the matching namespace.

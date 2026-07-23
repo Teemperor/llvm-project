@@ -170,7 +170,8 @@ public:
   void AddObjCMethod(ObjCInterfaceType &record, llvm::StringRef name,
                      CompilerType function_type, llvm::StringRef asm_label,
                      bool is_class_method, bool is_variadic,
-                     bool is_direct = false);
+                     bool is_direct = false,
+                     bool returns_instancetype = false);
   void AddTemplateArgument(ClassType &record,
                            lldb::TemplateArgumentKind kind, Type *type,
                            uint64_t integral_value, bool is_default);
