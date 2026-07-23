@@ -8,6 +8,9 @@
 
 #include "ClangASTGenerator.h"
 
+#include "Plugins/ExpressionParser/Clang/ClangModulesDeclVendor.h"
+#include "Plugins/ExpressionParser/Clang/ClangPersistentVariables.h"
+#include "Plugins/ExpressionParser/Clang/ClangTypeConverter.h"
 #include "Plugins/ExpressionParser/Clang/CppModuleHandler.h"
 #include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
 #include "Plugins/TypeSystem/Cpp/Builder.h"
@@ -19,6 +22,7 @@
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Core/Module.h"
 #include "lldb/Core/ModuleList.h"
+#include "lldb/Symbol/CompilerDecl.h"
 #include "lldb/Symbol/Type.h"
 #include "lldb/Symbol/TypeMap.h"
 #include "lldb/Target/Target.h"
@@ -51,6 +55,7 @@
 #include "clang/Basic/TargetOptions.h"
 #include "clang/Frontend/ASTConsumers.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/StringSwitch.h"
 
 using namespace lldb_private;
@@ -722,6 +727,21 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     // as a forward declaration and completed on demand via
     // CompleteObjCInterface (mirroring how records are completed).
     llvm::StringRef name = unqualified_name(iface);
+    // Unify by name (like records, see m_records_by_name below): reuse an
+    // existing clang decl so a class arriving from the runtime, an imported
+    // module, and plain debug info all map to a single clang::ObjCInterfaceDecl
+    // -- otherwise a name lookup finds several same-named interfaces
+    // ("ambiguous") and `NSString *` from two sources are distinct types.
+    if (!name.empty()) {
+      auto by_name = m_objc_interfaces_by_name.find(name);
+      if (by_name != m_objc_interfaces_by_name.end()) {
+        result = ast.getObjCInterfaceType(by_name->second);
+        m_generated[cpp_type] = result.getAsOpaquePtr();
+        // Leave m_reverse pointing at the cpp type the decl was first generated
+        // for (its ObjCInterfaceInfo drives completion), like the record path.
+        return result;
+      }
+    }
     auto *decl =
         clang::ObjCInterfaceDecl::CreateDeserialized(ast, clang::GlobalDeclID());
     decl->setDeclContext(decl_ctx);
@@ -739,6 +759,8 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     info->cpp_iface = iface;
     info->clang_decl = decl;
     m_objc_interfaces[decl] = std::move(info);
+    if (!name.empty())
+      m_objc_interfaces_by_name[name] = decl;
   } else if (auto *rec = llvm::dyn_cast<ct::RecordType>(cpp_type)) {
     // Records are created as forward declarations and completed on demand (see
     // PopulateRecord). This mirrors lazy DWARF parsing and keeps cycles finite.
@@ -1144,6 +1166,64 @@ bool ClangASTGenerator::RedirectObjCInterfaceToRuntimeDefinition(
   ts = scratch;
   iface = runtime_iface;
   return true;
+}
+
+cpp_typesystem::ObjCInterfaceType *
+ClangASTGenerator::GetModuleObjCInterface(llvm::StringRef class_name,
+                                          TypeSystemCpp *&ts) {
+  if (!m_target || class_name.empty())
+    return nullptr;
+
+  // Only consult the module vendor if one already exists (some `@import`
+  // brought a module in this session); never lazily create it here.
+  auto *persistent = llvm::dyn_cast_or_null<ClangPersistentVariables>(
+      m_target->GetPersistentExpressionStateForLanguage(lldb::eLanguageTypeC));
+  if (!persistent)
+    return nullptr;
+  std::shared_ptr<ClangModulesDeclVendor> vendor =
+      persistent->GetExistingClangModulesDeclVendor();
+  if (!vendor)
+    return nullptr;
+
+  std::vector<CompilerDecl> found;
+  if (!vendor->FindDecls(ConstString(class_name), /*append=*/false,
+                         /*max_matches=*/UINT32_MAX, found))
+    return nullptr;
+
+  const clang::ObjCInterfaceDecl *iface_decl = nullptr;
+  clang::ASTContext *vendor_ast = nullptr;
+  for (const CompilerDecl &cd : found) {
+    if (auto *d = llvm::dyn_cast_or_null<clang::ObjCInterfaceDecl>(
+            static_cast<clang::Decl *>(cd.GetOpaqueDecl()))) {
+      iface_decl = d;
+      vendor_ast = &d->getASTContext();
+      break;
+    }
+  }
+  if (!iface_decl || !iface_decl->getDefinition())
+    return nullptr;
+
+  auto scratch_or = m_target->GetScratchTypeSystemForLanguage(
+      lldb::eLanguageTypeObjC_plus_plus);
+  if (!scratch_or) {
+    llvm::consumeError(scratch_or.takeError());
+    return nullptr;
+  }
+  auto *scratch = llvm::dyn_cast_or_null<TypeSystemCpp>(scratch_or->get());
+  if (!scratch)
+    return nullptr;
+
+  // Translate the module's clang interface (methods with typedef'd signatures,
+  // ivars, superclass) into a cpp interface owned by the scratch TypeSystemCpp.
+  ClangTypeConverter converter(*this, *scratch, vendor_ast);
+  CompilerType iface_ct =
+      converter.ConvertObjCInterface(iface_decl, /*complete=*/true);
+  auto *iface = llvm::dyn_cast_or_null<ct::ObjCInterfaceType>(
+      TypeSystemCpp::GetCppType(iface_ct.GetOpaqueQualType()));
+  if (!iface)
+    return nullptr;
+  ts = scratch;
+  return iface;
 }
 
 void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
@@ -1875,9 +1955,28 @@ void ClangASTGenerator::PopulateObjCInterface(
   // TypeSystemClang::AddMethodToObjCObjectType. Methods are parsed lazily (like
   // C++ member functions), so make sure they're available first.
   ts->CompleteMemberFunctions(iface);
+
+  // Prefer the imported module's method signatures over the debug-info/runtime
+  // ones: a Clang module carries the real typedef'd types (`-(NSUInteger)length`,
+  // `-(NSString *)scheme`), whereas the ObjC runtime only knows type encodings
+  // and so reports `unsigned long long` / an opaque `id`. Merge by the full
+  // `[+-][Class selector]` name (both paths format it identically), keeping any
+  // method the module doesn't declare (e.g. from a class extension the runtime
+  // saw). Only fires when a module was actually imported this session.
+  llvm::StringSet<> seen_methods;
+  TypeSystemCpp *module_ts = nullptr;
+  if (ct::ObjCInterfaceType *module_iface =
+          GetModuleObjCInterface(iface->GetName().GetName(), module_ts)) {
+    for (uint32_t i = 0; i < module_iface->GetNumObjCMethods(); ++i) {
+      const ct::ObjCMethod *method = module_iface->GetObjCMethodAtIndex(i);
+      if (seen_methods.insert(method->name.GetName()).second)
+        AddObjCMethod(iface_decl, *module_ts, *method);
+    }
+  }
   for (uint32_t i = 0; i < iface->GetNumObjCMethods(); ++i) {
     const ct::ObjCMethod *method = iface->GetObjCMethodAtIndex(i);
-    AddObjCMethod(iface_decl, *ts, *method);
+    if (seen_methods.insert(method->name.GetName()).second)
+      AddObjCMethod(iface_decl, *ts, *method);
   }
 
   // The members were added directly, so no external source is needed to
@@ -1935,10 +2034,18 @@ void ClangASTGenerator::AddObjCMethod(clang::ObjCInterfaceDecl *iface_decl,
 
   const bool is_instance = !method.is_class_method;
 
+  // A related-result-type method returns `instancetype`, so a class-method send
+  // (`[NSURL URLWithString:...]`) types as the receiver class pointer rather
+  // than a bare `id` (whose dereference is unsized). The cpp method carries an
+  // `id` placeholder return; substitute `instancetype` and mark the decl.
+  clang::QualType return_type = method.returns_instancetype
+                                    ? ast.getObjCInstanceType()
+                                    : proto->getReturnType();
+
   auto *method_decl =
       clang::ObjCMethodDecl::CreateDeserialized(ast, clang::GlobalDeclID());
   method_decl->setDeclName(sel);
-  method_decl->setReturnType(proto->getReturnType());
+  method_decl->setReturnType(return_type);
   method_decl->setDeclContext(iface_decl);
   method_decl->setInstanceMethod(is_instance);
   method_decl->setVariadic(method.is_variadic);
@@ -1947,7 +2054,7 @@ void ClangASTGenerator::AddObjCMethod(clang::ObjCInterfaceDecl *iface_decl,
   method_decl->setImplicit(true);
   method_decl->setDefined(false);
   method_decl->setDeclImplementation(clang::ObjCImplementationControl::None);
-  method_decl->setRelatedResultType(false);
+  method_decl->setRelatedResultType(method.returns_instancetype);
 
   const unsigned num_args = proto->getNumParams();
   if (num_args > 0) {

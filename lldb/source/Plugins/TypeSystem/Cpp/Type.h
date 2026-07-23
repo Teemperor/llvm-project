@@ -221,6 +221,14 @@ struct ObjCMethod {
   /// unrecognized selector, since a direct method is never registered with
   /// the ObjC runtime).
   bool is_direct = false;
+  /// True when the method's declared return type is `instancetype` (a related
+  /// result type): the synthesized clang::ObjCMethodDecl must return
+  /// `instancetype` with related-result-type set so a class-method send
+  /// (`[NSURL URLWithString:...]`) types as the receiver class pointer
+  /// (`NSURL *`) rather than a bare `id` -- otherwise dereferencing the result
+  /// yields an unsized `id`. The stored FunctionType's return is a placeholder
+  /// (`id`); the generator substitutes `instancetype`.
+  bool returns_instancetype = false;
 };
 
 /// Represents everything needed to understand a type.
