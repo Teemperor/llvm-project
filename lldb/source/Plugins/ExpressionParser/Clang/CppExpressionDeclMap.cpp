@@ -9,6 +9,8 @@
 #include "CppExpressionDeclMap.h"
 
 #include "ClangExpressionUtil.h"
+#include "ClangModulesDeclVendor.h"
+#include "ClangPersistentVariables.h"
 #include "ClangTypeConverter.h"
 
 #include "Plugins/ExpressionParser/Clang/CppModuleHandler.h"
@@ -25,6 +27,7 @@
 #include "lldb/Expression/ExpressionVariable.h"
 #include "lldb/Symbol/Block.h"
 #include "lldb/Symbol/CompileUnit.h"
+#include "lldb/Symbol/CompilerDecl.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/Symbol.h"
 #include "lldb/Symbol/SymbolContext.h"
@@ -481,6 +484,13 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
       // one.
       if (!found)
         found = LookupPersistentType(dc, ConstString(sname), decls);
+      // A function declared only in an imported Clang module (`@import
+      // Darwin; getpid()`): transport it from the module vendor with its real
+      // signature. Tried before the bare-symbol fallback so `getpid()` gets a
+      // typed `pid_t` return instead of `__unknown_anytype`, but still only
+      // after every debug-info candidate missed.
+      if (!found)
+        found = LookupModuleFunctions(dc, ConstString(sname), decls);
       // Last resort: a call to a code symbol that has no debug info (e.g. a
       // libc function like `strlen`). Only when nothing with debug info
       // matched, so a real function / variable / type / namespace is never
@@ -623,9 +633,28 @@ bool CppExpressionDeclMap::LookupFunctions(
 bool CppExpressionDeclMap::LookupSymbolFunction(
     const clang::DeclContext *dc, ConstString name,
     llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  const Symbol *symbol = FindCallableSymbol(name);
+  if (!symbol)
+    return false;
+
+  clang::FunctionDecl *fd =
+      GetGenerator().GenerateGenericFunction(name.GetStringRef());
+  if (!fd)
+    return false;
+  if (dc && dc != m_ast_context->getTranslationUnitDecl()) {
+    fd->setDeclContext(const_cast<clang::DeclContext *>(dc));
+    const_cast<clang::DeclContext *>(dc)->addDecl(fd);
+  }
+
+  BindFunctionDeclToSymbol(fd, symbol);
+  decls.push_back(fd);
+  return true;
+}
+
+const Symbol *CppExpressionDeclMap::FindCallableSymbol(ConstString name) {
   Target *target = m_exe_ctx.GetTargetPtr();
   if (!target)
-    return false;
+    return nullptr;
 
   // Search for a function by name including symbol-table entries; we only care
   // about matches that are symbol-only (no debug-info Function), since a
@@ -670,21 +699,13 @@ bool CppExpressionDeclMap::LookupSymbolFunction(
       non_extern_symbol = symbol;
   }
 
-  const Symbol *symbol = extern_symbol ? extern_symbol : non_extern_symbol;
-  if (!symbol)
-    return false;
+  return extern_symbol ? extern_symbol : non_extern_symbol;
+}
 
-  clang::FunctionDecl *fd =
-      GetGenerator().GenerateGenericFunction(name.GetStringRef());
-  if (!fd)
-    return false;
-  if (dc && dc != m_ast_context->getTranslationUnitDecl()) {
-    fd->setDeclContext(const_cast<clang::DeclContext *>(dc));
-    const_cast<clang::DeclContext *>(dc)->addDecl(fd);
-  }
-
+void CppExpressionDeclMap::BindFunctionDeclToSymbol(clang::FunctionDecl *fd,
+                                                    const Symbol *symbol) {
   // Bind the decl to the symbol so the materializer resolves the callee to the
-  // symbol's load address (the generic decl carries no asm label).
+  // symbol's load address (the decl carries no asm label).
   auto *entity = new ClangExpressionVariable(
       m_exe_ctx.GetBestExecutionContextScope(), m_byte_order, m_addr_byte_size);
   m_found_entities.AddNewlyConstructedVariable(entity);
@@ -693,9 +714,81 @@ bool CppExpressionDeclMap::LookupSymbolFunction(
   pv->m_named_decl = fd;
   pv->m_llvm_value = nullptr;
   pv->m_lldb_sym = symbol;
+}
 
-  decls.push_back(fd);
-  return true;
+bool CppExpressionDeclMap::LookupModuleFunctions(
+    const clang::DeclContext *dc, ConstString name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  Target *target = m_exe_ctx.GetTargetPtr();
+  if (!target)
+    return false;
+
+  // Only consult the module vendor if one already exists -- i.e. some `@import`
+  // brought a module in this session. Never lazily create it here: that would
+  // spin up a whole Clang module compiler instance for every ordinary
+  // symbol-only call (`strlen`, `malloc`, ...), defeating the point of running
+  // with no Clang instantiation.
+  auto *persistent = llvm::dyn_cast_or_null<ClangPersistentVariables>(
+      target->GetPersistentExpressionStateForLanguage(eLanguageTypeC));
+  if (!persistent)
+    return false;
+  std::shared_ptr<ClangModulesDeclVendor> vendor =
+      persistent->GetExistingClangModulesDeclVendor();
+  if (!vendor)
+    return false;
+
+  std::vector<CompilerDecl> found;
+  if (!vendor->FindDecls(name, /*append=*/false, /*max_matches=*/UINT32_MAX,
+                         found))
+    return false;
+
+  TypeSystemCpp *scratch = GetScratchCpp(target);
+  if (!scratch)
+    return false;
+
+  bool added = false;
+  llvm::StringSet<> seen_signatures;
+  for (const CompilerDecl &cd : found) {
+    auto *fn = llvm::dyn_cast_or_null<clang::FunctionDecl>(
+        static_cast<clang::Decl *>(cd.GetOpaqueDecl()));
+    if (!fn)
+      continue;
+    // Translate the module's clang FunctionDecl type back into a cpp
+    // FunctionType. The type lives in the vendor's own ASTContext, so drive the
+    // converter over that context (its reconstruction paths query layout/sugar
+    // there); the reconstructed type is owned by the scratch TypeSystemCpp.
+    ClangTypeConverter converter(GetGenerator(), *scratch, &fn->getASTContext());
+    CompilerType func_cpp_type = converter.Convert(fn->getType());
+    if (!func_cpp_type)
+      continue;
+
+    // Distinct overloads must stay distinct, but FindDecls / redeclarations can
+    // surface the same signature twice; dedup so clang doesn't see an ambiguous
+    // set.
+    if (!seen_signatures.insert(func_cpp_type.GetTypeName().GetStringRef())
+             .second)
+      continue;
+
+    // The call is lowered through the target symbol (like LookupSymbolFunction);
+    // a module function with no loadable symbol can't be called.
+    const Symbol *symbol = FindCallableSymbol(name);
+    if (!symbol)
+      continue;
+
+    clang::FunctionDecl *fd = GetGenerator().GenerateFunction(
+        name.GetStringRef(), func_cpp_type, /*asm_label=*/{},
+        /*is_extern_c=*/fn->isExternC());
+    if (!fd)
+      continue;
+    if (dc && dc != m_ast_context->getTranslationUnitDecl()) {
+      fd->setDeclContext(const_cast<clang::DeclContext *>(dc));
+      const_cast<clang::DeclContext *>(dc)->addDecl(fd);
+    }
+    BindFunctionDeclToSymbol(fd, symbol);
+    decls.push_back(fd);
+    added = true;
+  }
+  return added;
 }
 
 bool CppExpressionDeclMap::LookupGlobalDataSymbol(
