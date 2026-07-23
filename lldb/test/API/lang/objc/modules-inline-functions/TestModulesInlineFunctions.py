@@ -15,12 +15,14 @@ class ModulesInlineFunctionsTestCase(TestBase):
         if self.dbg.GetSetting(
             "symbols.enable-typesystem-cpp"
         ).GetBooleanValue():
-            # TypeSystemCpp synthesizes a fresh Clang AST for expressions from
-            # cpp_typesystem types and does not consume the clang::Decls produced
-            # by ClangModulesDeclVendor, so `@import myModule` decls (isInline,
-            # notInline) are not visible in the expression context.
-            # This is the intentionally-unsupported clang `@import` modules bucket.
-            self.skipTest("@import clang modules not supported by TypeSystemCpp")
+            # TypeSystemCpp can transport a module function's signature from the
+            # ClangModulesDeclVendor, but it binds the call to the function's
+            # symbol in the target. An *inline* module function (isInline,
+            # notInline here) is not emitted as a symbol, so there is nothing to
+            # bind to -- transporting the body itself (as the ASTImporter path
+            # does) is not implemented.
+            self.skipTest("inline @import module functions not supported by "
+                          "TypeSystemCpp (no symbol to bind the call to)")
         exe = self.getBuildArtifact("a.out")
         self.runCmd("file " + exe, CURRENT_EXECUTABLE_SET)
 

@@ -13,13 +13,6 @@ class ObjCModulesAutoImportTestCase(TestBase):
     @skipIf(macos_version=["<", "10.12"])
     @skipIf(compiler="clang", compiler_version=["<", "20.0"])
     def test_expr(self):
-        if self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
-        ).GetBooleanValue():
-            self.skipTest(
-                "TypeSystemCpp does not consume clang @import module decls "
-                "(ClangModulesDeclVendor auto-import is intentionally unsupported)"
-            )
         self.build()
         lldbutil.run_to_source_breakpoint(
             self, "// break here", lldb.SBFileSpec("main.m", False)
@@ -31,13 +24,6 @@ class ObjCModulesAutoImportTestCase(TestBase):
     @skipIf(macos_version=["<", "10.12"])
     @skipIf(compiler="clang", compiler_version=["<", "20.0"])
     def test_expr_no_sysroot(self):
-        if self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
-        ).GetBooleanValue():
-            self.skipTest(
-                "TypeSystemCpp does not consume clang @import module decls "
-                "(ClangModulesDeclVendor auto-import is intentionally unsupported)"
-            )
         self.build(dictionary={"TEST_EXTRA_FLAGS": f"-fno-debug-record-sysroot"})
         lldbutil.run_to_source_breakpoint(
             self, "// break here", lldb.SBFileSpec("main.m", False)

@@ -15,15 +15,17 @@ class TestCase(TestBase):
             self, "// break here", lldb.SBFileSpec("main.c")
         )
 
-        # TypeSystemCpp intentionally doesn't consume the clang::Decls produced
-        # by clang @import modules (ClangModulesDeclVendor), so the imported
-        # ObjC types/methods (e.g. NSString's +stringWithFormat:) aren't visible
-        # to the expression and the expected CFStringCreateWithBytes rewrite path
-        # is never reached. This is a known-unsupported feature bucket.
+        # In a non-Objective-C target the ObjC runtime path that TypeSystemCpp
+        # uses to resolve a class named by an expression (`NSString`) isn't
+        # available, and TypeSystemCpp only consults the ClangModulesDeclVendor
+        # to *complete* an already-generated interface, not to look a class up
+        # by name -- so `+stringWithFormat:` never resolves and the expected
+        # CFStringCreateWithBytes rewrite path is never reached.
         if self.dbg.GetSetting(
             "symbols.enable-typesystem-cpp"
         ).GetBooleanValue():
-            self.skipTest("@import clang modules not supported by TypeSystemCpp")
+            self.skipTest("@import ObjC class name lookup in a non-ObjC target "
+                          "not supported by TypeSystemCpp")
 
         # Import foundation to get some ObjC types.
         self.expect("expr --lang objc -- @import Foundation")
