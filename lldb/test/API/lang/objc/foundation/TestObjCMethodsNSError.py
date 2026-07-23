@@ -15,22 +15,6 @@ class FoundationTestCaseNSError(TestBase):
         """Test commands that require runtime types"""
         self.build()
 
-        # `[str length]` is expected to report its result as `NSUInteger`. That
-        # typedef only exists in the Foundation module headers. TypeSystemCpp can
-        # recover it from the ClangModulesDeclVendor, but only once a module has
-        # actually been imported this session (it never spins up a Clang module
-        # compiler on its own, unlike TypeSystemClang's implicit
-        # `ClangASTSource::FindObjCMethodDecls` path). This test never `@import`s,
-        # so the vendor doesn't exist and `[str length]` reports the runtime
-        # encoding's underlying builtin (`unsigned long long`) instead of the
-        # `NSUInteger` sugar. The rest of this subtest passes; skip it here.
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
-            self.skipTest(
-                "recovering the NSUInteger typedef for a runtime-only ObjC "
-                "method return type needs the @import-modules decl vendor, which "
-                "TypeSystemCpp only consults after an explicit @import"
-            )
-
         self.target, process, thread, bkpt = lldbutil.run_to_source_breakpoint(
             self, "// Break here for NSString tests", lldb.SBFileSpec("main.m", False)
         )

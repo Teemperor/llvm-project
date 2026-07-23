@@ -1903,6 +1903,15 @@ void ClangASTGenerator::PopulateObjCInterface(
   CompilerType cpp_ct = ts->GetCompilerType(iface);
   cpp_ct.GetCompleteType();
 
+  // Remember the debug-info interface (and its owning TypeSystemCpp) before any
+  // runtime redirect below reassigns them: its methods carry real typedef'd
+  // signatures (e.g. a `@property NSUInteger length` becomes a getter returning
+  // the `NSUInteger` typedef -- see DWARFASTParserCpp), which the runtime's
+  // type-encoding-derived methods lose. The method merge prefers these.
+  ct::ObjCInterfaceType *debug_iface = iface;
+  TypeSystemCpp *debug_ts = ts;
+  debug_ts->CompleteMemberFunctions(debug_iface);
+
   // Some of this class's ivars may only be visible in the debug info of a
   // different image/module (e.g. a class extension implemented in a shared
   // library, with the main executable only seeing a stub) -- no same-module
@@ -1966,15 +1975,17 @@ void ClangASTGenerator::PopulateObjCInterface(
   // and lower message sends (`[obj sel:arg]` / `[Class sel:arg]`). Mirrors
   // TypeSystemClang::AddMethodToObjCObjectType. Methods are parsed lazily (like
   // C++ member functions), so make sure they're available first.
-  ts->CompleteMemberFunctions(iface);
-
-  // Prefer the imported module's method signatures over the debug-info/runtime
-  // ones: a Clang module carries the real typedef'd types (`-(NSUInteger)length`,
-  // `-(NSString *)scheme`), whereas the ObjC runtime only knows type encodings
-  // and so reports `unsigned long long` / an opaque `id`. Merge by the full
-  // `[+-][Class selector]` name (both paths format it identically), keeping any
-  // method the module doesn't declare (e.g. from a class extension the runtime
-  // saw). Only fires when a module was actually imported this session.
+  // Method-signature source preference (merged by the full `[+-][Class
+  // selector]` name, which every path formats identically):
+  //   1. an imported Clang module -- carries real typedef'd types
+  //      (`-(NSUInteger)length`, `-(NSString *)scheme`); only when some
+  //      `@import` ran this session;
+  //   2. debug info -- also typedef'd (e.g. a `@property NSUInteger length`
+  //      becomes a getter returning `NSUInteger`), and captured *before* the
+  //      runtime redirect above replaced `iface`;
+  //   3. the ObjC runtime -- last resort, whose type encodings lose typedef
+  //      names (`unsigned long long`, opaque `id`) but cover methods neither of
+  //      the above declares.
   llvm::StringSet<> seen_methods;
   TypeSystemCpp *module_ts = nullptr;
   if (ct::ObjCInterfaceType *module_iface =
@@ -1985,6 +1996,14 @@ void ClangASTGenerator::PopulateObjCInterface(
         AddObjCMethod(iface_decl, *module_ts, *method);
     }
   }
+  if (debug_iface != iface) {
+    for (uint32_t i = 0; i < debug_iface->GetNumObjCMethods(); ++i) {
+      const ct::ObjCMethod *method = debug_iface->GetObjCMethodAtIndex(i);
+      if (seen_methods.insert(method->name.GetName()).second)
+        AddObjCMethod(iface_decl, *debug_ts, *method);
+    }
+  }
+  ts->CompleteMemberFunctions(iface);
   for (uint32_t i = 0; i < iface->GetNumObjCMethods(); ++i) {
     const ct::ObjCMethod *method = iface->GetObjCMethodAtIndex(i);
     if (seen_methods.insert(method->name.GetName()).second)

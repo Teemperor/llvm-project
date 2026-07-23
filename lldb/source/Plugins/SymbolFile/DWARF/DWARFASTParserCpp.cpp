@@ -2121,6 +2121,10 @@ void DWARFASTParserCpp::CompleteObjCMethodsFromDWARF(
   // as a child declaration of the class DIE and as a standalone definition
   // (reachable via the index) is only added once.
   llvm::DenseSet<dw_offset_t> seen;
+  // Full ObjC method names (`-[Class sel]`) already added, so a property
+  // accessor synthesized below isn't duplicated by an explicit method (or vice
+  // versa).
+  llvm::StringSet<> seen_names;
 
   auto add_method = [&](const DWARFDIE &method_die) {
     const char *name = method_die.GetName();
@@ -2154,10 +2158,77 @@ void DWARFASTParserCpp::CompleteObjCMethodsFromDWARF(
 
     const std::string asm_label = MakeFuncAsmLabel(method_die);
 
+    seen_names.insert(name);
     ts.AddObjCMethod(iface, name,
                      func_type->GetForwardCompilerType(),
                      asm_label, objc_name->IsClassMethod(),
                      is_variadic, is_direct);
+  };
+
+  // An Objective-C `@property` is recorded as DW_TAG_APPLE_property, not a
+  // DW_TAG_subprogram, but the compiler stores the property's *typed* accessor
+  // signature here -- e.g. `NSString`'s `length` property is
+  // `DW_AT_type -> NSUInteger`. The ObjC runtime's method type-encodings can't
+  // preserve such typedef names (`length` encodes as the underlying integer),
+  // so synthesize the getter (and, unless read-only, the setter) as methods
+  // from the DWARF property to keep the `NSUInteger` sugar for `[obj length]`.
+  auto selector_basename = [](const char *n) -> std::string {
+    // A getter/setter attribute is usually a bare selector, but may be spelled
+    // as a full `-[Class sel]` name; reduce it to the selector.
+    if (n && n[0] == '-')
+      if (std::optional<const ObjCLanguage::ObjCMethodName> m =
+              ObjCLanguage::ObjCMethodName::Create(n, /*strict=*/true))
+        return std::string(m->GetSelector());
+    return n ? std::string(n) : std::string();
+  };
+  auto add_accessor = [&](const std::string &selector,
+                          CompilerType function_type) {
+    if (selector.empty())
+      return;
+    std::string full = ("-[" + class_name + " " + selector + "]").str();
+    if (!seen_names.insert(full).second)
+      return;
+    ts.AddObjCMethod(iface, full, function_type, /*asm_label=*/"",
+                     /*is_class_method=*/false, /*is_variadic=*/false,
+                     /*is_direct=*/false);
+  };
+  auto add_property = [&](const DWARFDIE &prop_die) {
+    const char *prop_name =
+        prop_die.GetAttributeValueAsString(DW_AT_APPLE_property_name, nullptr);
+    if (!prop_name || !prop_name[0])
+      return;
+    DWARFDIE type_die = prop_die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+    Type *prop_type = type_die ? class_die.ResolveTypeUID(type_die) : nullptr;
+    if (!prop_type)
+      return;
+    CompilerType prop_ct = prop_type->GetForwardCompilerType();
+    if (!prop_ct)
+      return;
+    const uint32_t attrs = prop_die.GetAttributeValueAsUnsigned(
+        DW_AT_APPLE_property_attribute, 0);
+
+    // Getter: an explicit DW_AT_APPLE_property_getter selector, else the
+    // property name.
+    std::string getter = selector_basename(prop_die.GetAttributeValueAsString(
+        DW_AT_APPLE_property_getter, nullptr));
+    if (getter.empty())
+      getter = prop_name;
+    add_accessor(getter, ts.CreateFunctionType(prop_ct, /*is_variadic=*/false));
+
+    // Setter (unless read-only): an explicit DW_AT_APPLE_property_setter
+    // selector, else `set<Name>:`.
+    if (!(attrs & DW_APPLE_PROPERTY_readonly)) {
+      std::string setter = selector_basename(prop_die.GetAttributeValueAsString(
+          DW_AT_APPLE_property_setter, nullptr));
+      if (setter.empty())
+        setter = (llvm::Twine("set") + llvm::Twine(char(std::toupper(prop_name[0]))) +
+                  (prop_name + 1) + ":")
+                     .str();
+      CompilerType setter_ft =
+          ts.CreateFunctionType(ts.GetVoidType(), /*is_variadic=*/false);
+      ts.AddParameter(setter_ft, prop_ct);
+      add_accessor(setter, setter_ft);
+    }
   };
 
   // Method declarations that are children of the class DIE.
@@ -2174,4 +2245,9 @@ void DWARFASTParserCpp::CompleteObjCMethodsFromDWARF(
                             add_method(method_die);
                             return IterationAction::Continue;
                           });
+
+  // Property accessors (DW_TAG_APPLE_property children of the class DIE).
+  for (DWARFDIE child : class_die.children())
+    if (child.Tag() == DW_TAG_APPLE_property)
+      add_property(child);
 }
