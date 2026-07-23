@@ -16,23 +16,19 @@ class FoundationTestCaseNSError(TestBase):
         self.build()
 
         # `[str length]` is expected to report its result as `NSUInteger`. That
-        # typedef only exists in the Foundation module headers; TypeSystemClang
-        # recovers it because `ClangASTSource::FindObjCMethodDecls` consults the
-        # ClangModulesDeclVendor (an implicit `@import`-modules code path) for
-        # the NSString interface. The Objective-C runtime's own method
-        # type-encoding for `length` is just `Q` (`unsigned long long`), with no
-        # typedef information. TypeSystemCpp intentionally does not implement the
-        # `@import`-modules decl vendor, so it synthesizes NSString's methods
-        # from the runtime encoding and reports the (semantically identical)
-        # underlying builtin type instead of the `NSUInteger` sugar. The rest of
-        # this subtest's message-send evaluations pass under TypeSystemCpp; only
-        # the typedef-sugar assertion below cannot be satisfied without the
-        # module headers, so skip the whole subtest there.
+        # typedef only exists in the Foundation module headers. TypeSystemCpp can
+        # recover it from the ClangModulesDeclVendor, but only once a module has
+        # actually been imported this session (it never spins up a Clang module
+        # compiler on its own, unlike TypeSystemClang's implicit
+        # `ClangASTSource::FindObjCMethodDecls` path). This test never `@import`s,
+        # so the vendor doesn't exist and `[str length]` reports the runtime
+        # encoding's underlying builtin (`unsigned long long`) instead of the
+        # `NSUInteger` sugar. The rest of this subtest passes; skip it here.
         if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
             self.skipTest(
                 "recovering the NSUInteger typedef for a runtime-only ObjC "
-                "method return type requires the @import-modules decl vendor, "
-                "which TypeSystemCpp does not implement"
+                "method return type needs the @import-modules decl vendor, which "
+                "TypeSystemCpp only consults after an explicit @import"
             )
 
         self.target, process, thread, bkpt = lldbutil.run_to_source_breakpoint(
