@@ -47,6 +47,16 @@ str1_completion = CompletionItem(
 # templates like vector.
 @skipIf(compiler="clang", compiler_version=["<", "16.0"])
 class TestDAP_completions(DAPTestCaseBase):
+    def setUp(self):
+        super().setUp()
+        if self.dbg.GetSetting(
+            "symbols.enable-typesystem-cpp"
+        ).GetBooleanValue():
+            self.skipTest(
+                "variable-completion detail type spellings differ under "
+                "TypeSystemCpp"
+            )
+
     def verify_completions(
         self,
         input: str,
