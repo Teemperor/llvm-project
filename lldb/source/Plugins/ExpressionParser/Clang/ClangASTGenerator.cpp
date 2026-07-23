@@ -358,6 +358,12 @@ void ClangASTGenerator::DumpRecords(TypeSystemCpp &ts,
   auto diag_options = std::make_shared<clang::DiagnosticOptions>();
   clang::DiagnosticsEngine diagnostics(clang::DiagnosticIDs::create(),
                                        *diag_options);
+  // Laying out a record (getASTRecordLayout -> FinishLayout) can emit a
+  // diagnostic, and a DiagnosticsEngine with no consumer asserts
+  // ("DiagnosticClient not set!") the moment one is reported. This throwaway
+  // context does no real diagnostics, so install an ignoring consumer.
+  diagnostics.setClient(new clang::IgnoringDiagConsumer(),
+                        /*ShouldOwnClient=*/true);
   clang::SourceManager source_manager(diagnostics, file_manager);
 
   clang::ASTContext ast(lang_opts, source_manager, idents, selectors, builtins,
@@ -448,6 +454,12 @@ std::optional<uint64_t> ClangASTGenerator::ComputeVBaseOffsetOffset(
   auto diag_options = std::make_shared<clang::DiagnosticOptions>();
   clang::DiagnosticsEngine diagnostics(clang::DiagnosticIDs::create(),
                                        *diag_options);
+  // Laying out a record (getASTRecordLayout -> FinishLayout) can emit a
+  // diagnostic, and a DiagnosticsEngine with no consumer asserts
+  // ("DiagnosticClient not set!") the moment one is reported. This throwaway
+  // context does no real diagnostics, so install an ignoring consumer.
+  diagnostics.setClient(new clang::IgnoringDiagConsumer(),
+                        /*ShouldOwnClient=*/true);
   clang::SourceManager source_manager(diagnostics, file_manager);
 
   clang::ASTContext ast(lang_opts, source_manager, idents, selectors, builtins,
