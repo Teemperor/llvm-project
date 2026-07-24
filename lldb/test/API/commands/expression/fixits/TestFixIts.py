@@ -28,10 +28,6 @@ class ExprCommandWithFixits(TestBase):
 
     def test_with_target(self):
         """Test calling expressions with errors that can be fixed by the FixIts."""
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
-            self.skipTest(
-                "top-level type persistence across expressions can double-define a record under TypeSystemCpp (see subst_template_type_param)"
-            )
         self.build()
         (target, process, self.thread, bkpt) = lldbutil.run_to_source_breakpoint(
             self, "Stop here to evaluate expressions", lldb.SBFileSpec("main.cpp")
@@ -184,11 +180,4 @@ class ExprCommandWithFixits(TestBase):
         self.assertEqual(value.GetError().GetCString(), "unknown error")
 
         # Test that the code above compiles to the right thing.
-        # TypeSystemCpp does not persist top-level `expr --top-level` decls
-        # across expressions, so the `test_X` defined above is not visible to a
-        # later call expression. The Fix-It behavior itself (checked above) is
-        # unaffected.
-        if not self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
-        ).GetBooleanValue():
-            self.expect_expr("test_X(1)", result_type="int", result_value="123")
+        self.expect_expr("test_X(1)", result_type="int", result_value="123")
