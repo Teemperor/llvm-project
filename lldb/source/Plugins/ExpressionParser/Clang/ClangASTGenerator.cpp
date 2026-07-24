@@ -595,6 +595,133 @@ clang::QualType ClangASTGenerator::GenerateBuiltin(ct::Type *cpp_type) {
   return {};
 }
 
+// The set of std templates for which pulling the module definition (with its
+// inline member-function bodies) is both useful and safe. Mirrors
+// CxxModuleHandler's m_supported_templates.
+static bool IsSupportedStdModuleTemplate(llvm::StringRef base_name) {
+  static constexpr llvm::StringLiteral kSupported[] = {
+      // containers
+      "array", "deque", "forward_list", "list", "queue", "stack", "vector",
+      // pointers
+      "shared_ptr", "unique_ptr", "weak_ptr",
+      // iterator
+      "move_iterator", "__wrap_iter",
+      // utility
+      "allocator", "pair", "default_delete"};
+  for (llvm::StringRef s : kSupported)
+    if (base_name == s)
+      return true;
+  return false;
+}
+
+clang::CXXRecordDecl *ClangASTGenerator::TryGetStdModuleSpecialization(
+    TypeSystemCpp &ts, ct::RecordType *rec, llvm::StringRef qualified_name,
+    llvm::StringRef base_name) {
+  clang::ASTContext &ast = m_ast;
+
+  // Only meaningful when a C++ module was loaded for this parse (the parser
+  // turned on Modules and installed the module's ASTReader as the priority
+  // external source -- see SetupImportStdModuleLangOpts / createASTReader).
+  if (!ast.getLangOpts().Modules)
+    return nullptr;
+
+  // Only std templates we explicitly support, and only names actually in the
+  // std namespace (`std::unique_ptr<...>` / `std::__1::unique_ptr<...>`).
+  if (!IsSupportedStdModuleTemplate(base_name))
+    return nullptr;
+  if (!qualified_name.starts_with("std::"))
+    return nullptr;
+
+  // Find the module's `std` namespace by name lookup on the translation unit.
+  // Forcing a real lookup (not noload_lookup) lets the module's ASTReader
+  // deserialize `std` if it hasn't yet. This is the same reasoning as
+  // CppModuleHandler::FindImportedNamespace: safe here because the module's
+  // ASTReader is the priority external source, so the lookup is answered by it
+  // rather than reentering our own external-source callback.
+  clang::TranslationUnitDecl *tu = ast.getTranslationUnitDecl();
+  clang::NamespaceDecl *std_ns = nullptr;
+  {
+    clang::IdentifierInfo &ii = ast.Idents.get("std");
+    for (clang::NamedDecl *d : tu->lookup(clang::DeclarationName(&ii))) {
+      if (auto *ns = llvm::dyn_cast<clang::NamespaceDecl>(d)) {
+        std_ns = ns;
+        break;
+      }
+    }
+  }
+  if (!std_ns)
+    return nullptr;
+
+  // Look the bare template name up inside std (its primary context so an inline
+  // namespace like std::__1 is transparently searched).
+  clang::ClassTemplateDecl *class_template = nullptr;
+  {
+    clang::IdentifierInfo &ii = ast.Idents.get(base_name);
+    clang::DeclContext *std_ctx = std_ns->getPrimaryContext();
+    for (clang::NamedDecl *d : std_ctx->lookup(clang::DeclarationName(&ii))) {
+      if (auto *ctd = llvm::dyn_cast<clang::ClassTemplateDecl>(d)) {
+        class_template = ctd;
+        break;
+      }
+    }
+  }
+  if (!class_template)
+    return nullptr;
+
+  // Translate the modeled cpp template arguments into clang TemplateArguments,
+  // reusing the same conversions as BuildClassTemplateSpecializationDecl. Any
+  // argument kind we can't model makes us bail (the caller then synthesizes a
+  // debug-info record).
+  llvm::SmallVector<clang::TemplateArgument, 4> args;
+  for (uint32_t i = 0; i < rec->GetNumTemplateArguments(); ++i) {
+    const ct::TemplateArgument *arg = rec->GetTemplateArgumentAtIndex(i);
+    if (!arg)
+      return nullptr;
+    if (arg->kind == lldb::eTemplateArgumentKindType) {
+      clang::QualType arg_qt =
+          GenerateType(ts, arg->type.Get(), /*build_template_spec=*/true);
+      if (arg_qt.isNull())
+        return nullptr;
+      args.push_back(clang::TemplateArgument(ast.getCanonicalType(arg_qt)));
+    } else if (arg->kind == lldb::eTemplateArgumentKindIntegral) {
+      clang::QualType arg_qt = GenerateType(ts, arg->type.Get());
+      if (arg_qt.isNull() || !arg_qt->isIntegralOrEnumerationType())
+        return nullptr;
+      ct::Type *arg_type = arg->type.Get();
+      const bool is_signed =
+          arg_type && arg_type->GetEncoding() == lldb::eEncodingSint;
+      unsigned width = ast.getIntWidth(arg_qt);
+      llvm::APSInt value(llvm::APInt(width, arg->integral_value, is_signed),
+                         !is_signed);
+      args.push_back(clang::TemplateArgument(ast, value, arg_qt));
+    } else {
+      return nullptr;
+    }
+  }
+
+  // Reuse an existing specialization if the module already has one matching our
+  // arguments; otherwise create it against the module's class template so it
+  // instantiates from the module's (source-backed) pattern. Mirrors
+  // CxxModuleHandler::tryInstantiateStdTemplate.
+  void *insert_pos = nullptr;
+  clang::ClassTemplateSpecializationDecl *result =
+      class_template->findSpecialization(args, insert_pos);
+  if (result)
+    return result;
+
+  result = clang::ClassTemplateSpecializationDecl::Create(
+      ast, class_template->getTemplatedDecl()->getTagKind(),
+      class_template->getDeclContext(),
+      class_template->getTemplatedDecl()->getLocation(),
+      class_template->getLocation(), class_template, args,
+      /*StrictPackMatch=*/false,
+      /*PrevDecl=*/nullptr);
+  class_template->AddSpecialization(result, insert_pos);
+  if (class_template->isOutOfLine())
+    result->setLexicalDeclContext(class_template->getLexicalDeclContext());
+  return result;
+}
+
 clang::CXXRecordDecl *ClangASTGenerator::BuildClassTemplateSpecializationDecl(
     TypeSystemCpp &ts, ct::RecordType *rec, clang::TagTypeKind kind,
     clang::DeclContext *decl_ctx, llvm::StringRef base_name) {
@@ -809,6 +936,25 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
       ts.GetCompilerType(rec).GetCompleteType();
       if (rec->IsTemplateInstantiation()) {
         llvm::StringRef base_name = name.substr(0, name.find('<'));
+        // When `target.import-std-module` is on, prefer the std module's own
+        // specialization: it carries the member-function *definitions* (inline
+        // libc++ bodies) so calls like `(bool)s` codegen directly, instead of
+        // referencing an absent inline-function symbol. Falls through to the
+        // debug-info-synthesized record when no module is available.
+        if (clang::CXXRecordDecl *mod_spec = TryGetStdModuleSpecialization(
+                ts, rec, full_name, base_name)) {
+          result = ast.getCanonicalTagType(mod_spec);
+          // Do NOT register a RecordInfo/completion callback for a module decl:
+          // its definition comes from the module's ASTReader, not our
+          // PopulateRecord. Still record the cpp<->clang mapping so repeat
+          // lookups and MapClangTypeToCpp round-trip.
+          m_generated[cpp_type] = result.getAsOpaquePtr();
+          m_reverse[result.getAsOpaquePtr()] = cpp_type;
+          m_type_owner[cpp_type] = &ts;
+          if (!full_name.empty())
+            m_records_by_name[full_name] = result.getAsOpaquePtr();
+          return result;
+        }
         if (clang::CXXRecordDecl *spec = BuildClassTemplateSpecializationDecl(
                 ts, rec, kind, decl_ctx, base_name)) {
           result = ast.getCanonicalTagType(spec);

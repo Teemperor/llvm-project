@@ -33,6 +33,7 @@ class FunctionDecl;
 class TagDecl;
 class ObjCInterfaceDecl;
 class LinkageSpecDecl;
+class ClassTemplateSpecializationDecl;
 } // namespace clang
 
 namespace lldb_private {
@@ -328,6 +329,30 @@ private:
       TypeSystemCpp &ts, cpp_typesystem::RecordType *rec,
       clang::TagTypeKind kind, clang::DeclContext *decl_ctx,
       llvm::StringRef base_name);
+
+  /// When `target.import-std-module` is active (the parser's LangOpts have
+  /// Modules on and a std module was loaded as the priority external AST
+  /// source), try to obtain \p rec's class-template specialization straight
+  /// from that loaded module instead of synthesizing one from debug info.
+  ///
+  /// This mirrors the classic TypeSystemClang CxxModuleHandler path: a std
+  /// container/pointer template (`std::unique_ptr<int>`) from the module
+  /// carries the *definitions* of its member functions (`operator bool`,
+  /// `reset()`, ...), which are mostly inline libc++ functions with no emitted
+  /// symbol in the target. A debug-info-synthesized record only produces method
+  /// *declarations* with asm labels that reference those (absent) symbols, so a
+  /// call like `(bool)s` fails to link at JIT time. Using the module's
+  /// specialization lets clang codegen the inline bodies directly.
+  ///
+  /// \p rec must be a template instantiation living in the `std` namespace and
+  /// naming one of the handful of supported std templates. \p base_name is the
+  /// bare template name (`unique_ptr`). Returns the module's specialization
+  /// decl, or null if no module is available / the template isn't supported /
+  /// the lookup or instantiation failed (the caller then falls back to
+  /// BuildClassTemplateSpecializationDecl).
+  clang::CXXRecordDecl *TryGetStdModuleSpecialization(
+      TypeSystemCpp &ts, cpp_typesystem::RecordType *rec,
+      llvm::StringRef qualified_name, llvm::StringRef base_name);
 
   /// Complete any record type embedded by value in \p qt (the type itself, or
   /// an array element) so it can be used as a base/field.
