@@ -365,7 +365,20 @@ CompilerType ClangTypeConverter::ConvertTypedef(
     return {};
   CompilerType result = cpp_typesystem::Builder(m_target).CreateTypedefType(
       decl->getName(), underlying);
-  SetTypeNameInfo(decl, result);
+  // A typedef declared as a *class member* (e.g. `std::shared_ptr<Foo>::
+  // element_type`) has a record as its semantic DeclContext. TypeSystemCpp's
+  // Namespace model only represents enclosing *namespaces*, so attaching the
+  // typedef's containing namespace (skipping the record, as BuildDeclNamespace
+  // does) would misqualify it -- `element_type` would print as
+  // `std::element_type` instead of matching TypeSystemClang, whose
+  // GetDisplayTypeName renders such a member typedef reached through an
+  // expression by its plain unqualified name. Leave the decl context / scope
+  // unset in that case so the display name stays unqualified (`element_type`).
+  if (!decl->getDeclContext()->isRecord())
+    SetTypeNameInfo(decl, result);
+  else
+    cpp_typesystem::Builder(m_target).SetUnqualifiedName(result,
+                                                         decl->getName());
   return result;
 }
 
