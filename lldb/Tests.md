@@ -5,25 +5,20 @@
 Environment: arm64 macOS, `Release/bin/lldb`, `symbols.enable-typesystem-cpp=true`.
 
 ### Regression gate: `lb Release -f lang/c` (runs lang/c + lang/cpp)
-Clean — no new regressions. All 10 failures are in the known buckets
-(C/C++ clang-modules, gmodules/PCH, dynamic-value, ABI-tag structors).
+Clean — 0 failures (2026-07-24 re-run). The former dynamic-value bucket is
+gone: `TestDynamicValue.py` (all variants, incl. the .dSYM config) and
+`TestDynamicValueSameBase.py` now pass under TypeSystemCpp. The two
+`symbols.enable-typesystem-cpp` skips added for the dSYM virtual-base gap
+(commit 419fb70845dd) were removed once `ClangASTGenerator::
+ComputeVBaseOffsetOffset` (commit 0afbc1e7d9e8) recovered the vtable-relative
+vbase offset that dsymutil strips — so there is nothing left to un-gate here.
 
 ```
-  Passed           :  178 (7.97%)
+  Unsupported      :    9 (0.40%)
+  Passed           :  186 (8.29%)
   Expectedly Failed:    5 (0.22%)
-  Failed           :   10 (0.45%)
+  Failed           :    0
 ```
-Failed Tests (10):
-- lang/c/modules/TestCModules.py                          (clang modules)
-- lang/cpp/abi_tag_structors/TestAbiTagStructors.py       (structor mangling)
-- lang/cpp/decl-from-submodule/TestDeclFromSubmodule.py   (modules)
-- lang/cpp/dynamic-value-same-basename/TestDynamicValueSameBase.py (dynamic value)
-- lang/cpp/dynamic-value/TestDynamicValue.py              (dynamic value)
-- lang/cpp/gmodules/alignment/TestPchAlignment.py         (gmodules/PCH)
-- lang/cpp/gmodules/basic/TestWithModuleDebugging.py      (gmodules)
-- lang/cpp/gmodules/template-with-same-arg/TestTemplateWithSameArg.py (gmodules)
-- lang/cpp/gmodules/templates/TestGModules.py            (gmodules)
-- lang/cpp/modules-import/TestCXXModulesImport.py         (modules)
 
 ### lang/objc: `lb Release -f lang/objc`
 ```
