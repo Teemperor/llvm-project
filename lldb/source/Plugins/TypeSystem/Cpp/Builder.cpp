@@ -129,11 +129,12 @@ CompilerType Builder::CreateComplexType(CompilerType element_type) {
 }
 
 void Builder::AddParameter(CompilerType function_type,
-                           CompilerType param_type) {
+                           CompilerType param_type, llvm::StringRef name) {
   auto *func = llvm::dyn_cast_or_null<cpp_typesystem::FunctionType>(
       static_cast<cpp_typesystem::Type *>(function_type.GetOpaqueQualType()));
   if (func)
-    m_ts.m_context.AddParameter(*func, ToTypeRef(param_type));
+    m_ts.m_context.AddParameter(*func, ToTypeRef(param_type),
+                                GetIdentifier(name));
 }
 
 void Builder::AddMemberFunction(cpp_typesystem::ClassType &record,

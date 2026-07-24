@@ -18,19 +18,6 @@ class ExprDiagnosticsTestCase(TestBase):
 
     def test_source_and_caret_printing(self):
         """Test that the source and caret positions LLDB prints are correct"""
-        # This test depends on features TypeSystemCpp intentionally does not
-        # implement: it expects clang's exact "requires single argument 'x'"
-        # diagnostic (TypeSystemCpp's synthesized function decls carry no
-        # parameter names, so clang says "requires 1 argument"), and it
-        # redefines a `struct Redef` across two top-level expressions, which
-        # relies on persistent cross-expression decls.
-        if self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
-        ).GetBooleanValue():
-            self.skipTest(
-                "TypeSystemCpp: no param names in diagnostics / no persistent "
-                "cross-expression decls"
-            )
         self.build()
 
         (target, process, thread, bkpt) = lldbutil.run_to_source_breakpoint(

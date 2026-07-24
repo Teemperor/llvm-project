@@ -1603,7 +1603,9 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     if (!mf->asm_label.GetName().empty())
       method->addAttr(
           clang::AsmLabelAttr::CreateImplicit(ast, mf->asm_label.GetName()));
-    BuildParams(method, method_qt);
+    BuildParams(method, method_qt,
+                llvm::dyn_cast_or_null<ct::FunctionType>(
+                    Desugar(mf->type.Get())));
     decl->addDecl(method);
   }
 
@@ -1738,7 +1740,8 @@ void ClangASTGenerator::MarkImplicitCopyOpsDeletedByUserMove(
 }
 
 void ClangASTGenerator::BuildParams(clang::FunctionDecl *func,
-                                    clang::QualType function_qt) {
+                                    clang::QualType function_qt,
+                                    const cpp_typesystem::FunctionType *cpp_fn) {
   const auto *proto = function_qt->getAs<clang::FunctionProtoType>();
   if (!proto)
     return;
@@ -1749,6 +1752,13 @@ void ClangASTGenerator::BuildParams(clang::FunctionDecl *func,
     param->setDeclContext(func);
     param->setType(proto->getParamType(i));
     param->setStorageClass(clang::SC_None);
+    // Carry the parameter's declared name (if any) so clang diagnostics can
+    // refer to it by name.
+    if (cpp_fn) {
+      llvm::StringRef pname = cpp_fn->GetParameterNameAtIndex(i);
+      if (!pname.empty())
+        param->setDeclName(&m_ast.Idents.get(pname));
+    }
     params.push_back(param);
   }
   func->setParams(params);
@@ -1764,8 +1774,10 @@ ClangASTGenerator::GenerateFunction(llvm::StringRef name,
   if (function_qt.isNull() || !function_qt->getAs<clang::FunctionProtoType>())
     return nullptr;
   clang::ASTContext &ast = m_ast;
+  auto *cpp_fn = llvm::dyn_cast_or_null<ct::FunctionType>(
+      Desugar(TypeSystemCpp::GetCppType(function_cpp_type.GetOpaqueQualType())));
   return BuildFunction(clang::DeclarationName(&ast.Idents.get(name)),
-                       function_qt, asm_label, is_extern_c);
+                       function_qt, asm_label, is_extern_c, cpp_fn);
 }
 
 clang::FunctionDecl *
@@ -1776,7 +1788,10 @@ ClangASTGenerator::GenerateFunction(clang::DeclarationName name,
   clang::QualType function_qt = Generate(function_cpp_type);
   if (function_qt.isNull() || !function_qt->getAs<clang::FunctionProtoType>())
     return nullptr;
-  return BuildFunction(name, function_qt, asm_label);
+  auto *cpp_fn = llvm::dyn_cast_or_null<ct::FunctionType>(
+      Desugar(TypeSystemCpp::GetCppType(function_cpp_type.GetOpaqueQualType())));
+  return BuildFunction(name, function_qt, asm_label, /*is_extern_c=*/false,
+                       cpp_fn);
 }
 
 clang::FunctionDecl *
@@ -1815,7 +1830,8 @@ clang::DeclContext *ClangASTGenerator::GetOrCreateExternCContext() {
 clang::FunctionDecl *
 ClangASTGenerator::BuildFunction(clang::DeclarationName name,
                                  clang::QualType function_qt,
-                                 llvm::StringRef asm_label, bool is_extern_c) {
+                                 llvm::StringRef asm_label, bool is_extern_c,
+                                 const cpp_typesystem::FunctionType *cpp_fn) {
   clang::ASTContext &ast = m_ast;
   clang::DeclContext *dc = is_extern_c ? GetOrCreateExternCContext()
                                        : ast.getTranslationUnitDecl();
@@ -1827,7 +1843,7 @@ ClangASTGenerator::BuildFunction(clang::DeclarationName name,
   fd->setConstexprKind(clang::ConstexprSpecKind::Unspecified);
   if (!asm_label.empty())
     fd->addAttr(clang::AsmLabelAttr::CreateImplicit(ast, asm_label));
-  BuildParams(fd, function_qt);
+  BuildParams(fd, function_qt, cpp_fn);
   dc->addDecl(fd);
   return fd;
 }

@@ -99,7 +99,10 @@ public:
   /// Create a `_Complex` type over \p element_type.
   CompilerType CreateComplexType(CompilerType element_type);
   /// Append a parameter type to a FunctionType created by CreateFunctionType.
-  void AddParameter(CompilerType function_type, CompilerType param_type);
+  /// \p name is the parameter's declared name (empty if unnamed), preserved so
+  /// a synthesized clang ParmVarDecl can carry it into diagnostics.
+  void AddParameter(CompilerType function_type, CompilerType param_type,
+                    llvm::StringRef name = {});
   /// Add a member function to \p record. Member functions are C++-only, so this
   /// takes a ClassType.
   void AddMemberFunction(ClassType &record, llvm::StringRef name,

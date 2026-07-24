@@ -44,6 +44,7 @@ class Type;
 class RecordType;
 class ObjCInterfaceType;
 class Namespace;
+class FunctionType;
 struct ObjCMethod;
 } // namespace cpp_typesystem
 
@@ -336,17 +337,23 @@ private:
   clang::QualType GenerateBuiltin(cpp_typesystem::Type *cpp_type);
 
   /// Create ParmVarDecls for \p func from the parameter types of \p function_qt
-  /// (a FunctionProtoType).
-  void BuildParams(clang::FunctionDecl *func, clang::QualType function_qt);
+  /// (a FunctionProtoType). If \p cpp_fn is non-null, each ParmVarDecl is given
+  /// the corresponding parameter's declared name (so diagnostics can refer to
+  /// it, e.g. "requires single argument 'x'").
+  void BuildParams(clang::FunctionDecl *func, clang::QualType function_qt,
+                   const cpp_typesystem::FunctionType *cpp_fn = nullptr);
 
   /// Shared implementation for the GenerateFunction overloads: build a
   /// clang::FunctionDecl in the translation unit with the given name, signature
   /// and (optional) asm label. When \p is_extern_c is set the decl is placed in
   /// a shared `extern "C"` LinkageSpecDecl so it has C language linkage.
+  /// \p cpp_fn (if non-null) supplies the parameter names for the ParmVarDecls.
   clang::FunctionDecl *BuildFunction(clang::DeclarationName name,
                                      clang::QualType function_qt,
                                      llvm::StringRef asm_label,
-                                     bool is_extern_c = false);
+                                     bool is_extern_c = false,
+                                     const cpp_typesystem::FunctionType *cpp_fn =
+                                         nullptr);
 
   /// The shared `extern "C"` LinkageSpecDecl in the translation unit (created on
   /// first use), used to give transported C-module functions C language

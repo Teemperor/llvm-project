@@ -1214,6 +1214,16 @@ public:
     return nullptr;
   }
 
+  /// The declared name of the parameter at \p idx (its DW_AT_name), or an empty
+  /// StringRef if the parameter was unnamed. Used so a synthesized clang
+  /// ParmVarDecl can carry the original parameter name (e.g. so a diagnostic
+  /// reads "requires single argument 'x'" rather than "requires 1 argument").
+  llvm::StringRef GetParameterNameAtIndex(uint32_t idx) const {
+    if (idx < m_param_names.size())
+      return m_param_names[idx].GetName();
+    return {};
+  }
+
   bool IsVariadic() const { return m_is_variadic; }
   void SetIsVariadic(bool is_variadic) { m_is_variadic = is_variadic; }
 
@@ -1242,10 +1252,17 @@ private:
   // Gated like the other mutators: only Context (through the locked Builder)
   // may add parameters.
   friend class Context;
-  void AddParameter(TypeRef type) { m_params.push_back(type); }
+  void AddParameter(TypeRef type, Identifier name = Identifier()) {
+    m_params.push_back(type);
+    m_param_names.push_back(name);
+  }
 
   TypeRef m_return_type;
   std::vector<TypeRef> m_params;
+  // Parallel to m_params: the declared name of each parameter (empty Identifier
+  // for an unnamed parameter). Kept separate so the common size/layout queries
+  // that only need parameter *types* don't touch it.
+  std::vector<Identifier> m_param_names;
   bool m_is_variadic = false;
   bool m_use_void_for_empty_params = false;
 };

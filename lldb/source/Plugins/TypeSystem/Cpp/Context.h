@@ -198,8 +198,9 @@ public:
   void AddEnumerator(EnumType &enum_type, Identifier name, uint64_t value) {
     enum_type.AddEnumerator(name, value);
   }
-  void AddParameter(FunctionType &func, TypeRef type) {
-    func.AddParameter(type);
+  void AddParameter(FunctionType &func, TypeRef type,
+                    Identifier name = Identifier()) {
+    func.AddParameter(type, name);
   }
   void AddMemberFunction(ClassType &record, MemberFunction method) {
     record.AddMemberFunction(method);
