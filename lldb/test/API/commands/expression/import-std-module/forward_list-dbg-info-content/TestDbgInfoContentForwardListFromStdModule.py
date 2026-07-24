@@ -8,15 +8,6 @@ from lldbsuite.test import lldbutil
 
 
 class TestDbgInfoContentForwardList(TestBase):
-    def setUp(self):
-        TestBase.setUp(self)
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
-            self.skipTest(
-                "import-std-module (Clang @import modules) is not supported by "
-                "TypeSystemCpp"
-            )
-
-
     @add_test_categories(["libc++"])
     @skipIf(compiler=no_match("clang"))
     @skipIf(macos_version=["<", "15.0"])
@@ -39,9 +30,24 @@ class TestDbgInfoContentForwardList(TestBase):
 
         value_type = "value_type"
 
-        # FIXME: This has three elements in it but the formatter seems to
-        # calculate the wrong size and contents.
-        self.expect_expr("a", result_type=list_type, result_summary="size=1")
+        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+            # TypeSystemCpp computes the correct size and contents here (the
+            # element type reconstructed from debug info lays out identically to
+            # the std-module type), so the FIXME below no longer applies.
+            self.expect_expr(
+                "a",
+                result_type=list_type,
+                result_summary="size=3",
+                result_children=[
+                    ValueCheck(children=[ValueCheck(name="a", value="3")]),
+                    ValueCheck(children=[ValueCheck(name="a", value="1")]),
+                    ValueCheck(children=[ValueCheck(name="a", value="2")]),
+                ],
+            )
+        else:
+            # FIXME: This has three elements in it but the formatter seems to
+            # calculate the wrong size and contents.
+            self.expect_expr("a", result_type=list_type, result_summary="size=1")
         self.expect_expr("std::distance(a.begin(), a.end())", result_value="3")
         self.expect_expr("a.front().a", result_type="int", result_value="3")
         self.expect_expr("a.begin()->a", result_type="int", result_value="3")
