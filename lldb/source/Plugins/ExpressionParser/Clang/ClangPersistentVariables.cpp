@@ -126,14 +126,15 @@ static void CollectIdentifierTokens(llvm::StringRef text,
 }
 
 void ClangPersistentVariables::RegisterTopLevelSource(
-    std::vector<std::string> names, std::string source) {
+    std::vector<std::string> names, std::string source, std::string filename) {
   if (names.empty() || source.empty())
     return;
-  m_top_level_sources.push_back({std::move(names), std::move(source)});
+  m_top_level_sources.push_back(
+      {std::move(names), std::move(source), std::move(filename)});
 }
 
 std::string ClangPersistentVariables::GetInjectedTopLevelSource(
-    llvm::StringRef expr_text) const {
+    llvm::StringRef expr_text, bool emit_line_markers) const {
   if (m_top_level_sources.empty())
     return {};
 
@@ -173,6 +174,19 @@ std::string ClangPersistentVariables::GetInjectedTopLevelSource(
   for (size_t i = 0; i < m_top_level_sources.size(); ++i) {
     if (!included[i])
       continue;
+    // Restore the original file name and line numbering of the injected source
+    // with a `#line 1 "<file>"` directive so a diagnostic that refers to it
+    // (e.g. a "previous definition is here" note when a later expression
+    // redefines a type this source declared) still points at the original
+    // expression's file/line rather than at wherever the source happens to
+    // land in the re-injected buffer. Only done for the top-level path; the
+    // non-top-level wrapper path relies on precise buffer offsets to locate the
+    // user's expression body and must not have its line numbers shifted.
+    if (emit_line_markers && !m_top_level_sources[i].filename.empty()) {
+      result += "#line 1 \"";
+      result += m_top_level_sources[i].filename;
+      result += "\"\n";
+    }
     result += m_top_level_sources[i].source;
     result += '\n';
   }

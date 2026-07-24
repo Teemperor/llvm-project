@@ -105,15 +105,20 @@ public:
   /// GetInjectedTopLevelSource). Nothing is stored for a top-level expression
   /// that only declares types -- those go through RegisterPersistentType.
   void RegisterTopLevelSource(std::vector<std::string> names,
-                              std::string source);
+                              std::string source, std::string filename);
 
   /// Build the translation-unit-level prefix to inject before parsing
   /// \p expr_text: scan the expression for identifier tokens and return the
   /// concatenation (in declaration order) of every stored top-level source
   /// (see RegisterTopLevelSource) that defines a referenced name, pulling in
   /// transitively-referenced top-level sources as well. Returns an empty
-  /// string when nothing matches.
-  std::string GetInjectedTopLevelSource(llvm::StringRef expr_text) const;
+  /// string when nothing matches. When \p emit_line_markers is set, each
+  /// injected source is preceded by a `#line 1 "<file>"` directive restoring
+  /// its original file/line (used by the top-level path so diagnostics still
+  /// point at the original expression); the non-top-level wrapper path leaves
+  /// it off to keep buffer offsets exact.
+  std::string GetInjectedTopLevelSource(llvm::StringRef expr_text,
+                                        bool emit_line_markers = false) const;
 
   void AddHandLoadedClangModule(ClangModulesDeclVendor::ModuleID module) {
     m_hand_loaded_clang_modules.push_back(module);
@@ -156,6 +161,12 @@ private:
   struct TopLevelSource {
     std::vector<std::string> names;
     std::string source;
+    /// The synthetic file name this top-level expression was parsed under
+    /// (e.g. "<user expression 8>"). When the source is re-injected into a
+    /// later expression, a `#line 1 "<file>"` directive restores this name and
+    /// line numbering so a diagnostic (e.g. a "previous definition is here"
+    /// note) still points at the original expression.
+    std::string filename;
   };
   /// Stored top-level sources, in declaration order (the order the user
   /// declared them, which is the order they must be re-emitted for C).

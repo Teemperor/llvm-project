@@ -1291,6 +1291,7 @@ TypeSP DWARFASTParserCpp::ParseFunctionType(const DWARFDIE &die) {
   // parameter (DW_AT_artificial) so a method's signature matches its
   // clang::CXXMethodDecl.
   std::vector<CompilerType> params;
+  std::vector<std::string> param_names;
   bool is_variadic = false;
   for (DWARFDIE child : die.children()) {
     if (child.Tag() == DW_TAG_formal_parameter) {
@@ -1298,8 +1299,14 @@ TypeSP DWARFASTParserCpp::ParseFunctionType(const DWARFDIE &die) {
         continue;
       DWARFDIE param_die = child.GetAttributeValueAsReferenceDIE(DW_AT_type);
       if (param_die)
-        if (Type *p = die.ResolveTypeUID(param_die))
+        if (Type *p = die.ResolveTypeUID(param_die)) {
           params.push_back(p->GetForwardCompilerType());
+          // Preserve the parameter's declared name (DW_AT_name) so the
+          // synthesized clang ParmVarDecl carries it into diagnostics (e.g.
+          // "requires single argument 'x'").
+          const char *name = child.GetName();
+          param_names.push_back(name ? name : "");
+        }
     } else if (child.Tag() == DW_TAG_unspecified_parameters) {
       is_variadic = true;
     }
@@ -1336,8 +1343,8 @@ TypeSP DWARFASTParserCpp::ParseFunctionType(const DWARFDIE &die) {
       return_type = builder.GetVoidType();
     function_type = builder.CreateFunctionType(return_type, is_variadic,
                                                use_void_for_empty_params);
-    for (const CompilerType &param : params)
-      builder.AddParameter(function_type, param);
+    for (size_t i = 0; i < params.size(); ++i)
+      builder.AddParameter(function_type, params[i], param_names[i]);
   }
 
   Declaration decl = GetDIEDeclaration(die);

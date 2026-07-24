@@ -86,11 +86,15 @@ public:
     void CommitPersistentDecls() override;
 
     /// Remember the raw source of the top-level expression currently being
-    /// parsed, so CommitPersistentDecls can stash it (keyed by the
-    /// function/variable names it declared) for later textual re-injection.
+    /// parsed (along with the synthetic file name it is parsed under), so
+    /// CommitPersistentDecls can stash it (keyed by the names it declared) for
+    /// later textual re-injection. The file name is preserved so a later
+    /// expression that re-injects this source can restore its original
+    /// file/line via a `#line` directive (used for diagnostics).
     /// See ClangPersistentVariables::RegisterTopLevelSource.
-    void SetPendingTopLevelSource(std::string source) {
+    void SetPendingTopLevelSource(std::string source, std::string filename) {
       m_pending_top_level_source = std::move(source);
+      m_pending_top_level_filename = std::move(filename);
     }
 
   private:
@@ -105,6 +109,9 @@ public:
     /// Raw source of the top-level expression being parsed (see
     /// SetPendingTopLevelSource); consumed by CommitPersistentDecls.
     std::string m_pending_top_level_source;
+    /// Synthetic file name the top-level expression is parsed under (e.g.
+    /// "<user expression 8>"); stashed together with the source above.
+    std::string m_pending_top_level_filename;
   };
 
   /// Constructor

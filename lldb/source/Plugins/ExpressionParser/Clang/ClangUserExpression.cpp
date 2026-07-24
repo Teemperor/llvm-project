@@ -554,11 +554,17 @@ void ClangUserExpression::CreateSourceCode(
     std::string injected;
     if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp() &&
         m_clang_state)
-      injected = m_clang_state->GetInjectedTopLevelSource(m_expr_text);
+      injected = m_clang_state->GetInjectedTopLevelSource(
+          m_expr_text, /*emit_line_markers=*/true);
     if (injected.empty())
       m_transformed_text = m_expr_text;
     else
-      m_transformed_text = injected + "\n" + m_expr_text;
+      // Each injected source carries its own `#line 1 "<orig file>"` marker (so
+      // a diagnostic that refers to it points at the original expression).
+      // Reset the file/line back to *this* expression's file before its own
+      // text, so its diagnostics read as line 1 of this expression's file.
+      m_transformed_text = injected + "#line 1 \"" + m_filename + "\"\n" +
+                           m_expr_text;
     // Remember this top-level source so a later expression can re-inject any
     // decl it declares (see RegisterTopLevelSource /
     // ClangPersistentVariables::GetInjectedTopLevelSource). Only meaningful
@@ -567,7 +573,7 @@ void ClangUserExpression::CreateSourceCode(
     // Note we stash the *original* m_expr_text (not m_transformed_text with the
     // injected prefix) so a decl's source is stored exactly once.
     if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp())
-      m_type_system_helper.SetPendingTopLevelSource(m_expr_text);
+      m_type_system_helper.SetPendingTopLevelSource(m_expr_text, m_filename);
   } else {
     // Under TypeSystemCpp, prepend the sources of any previously declared
     // top-level function/variable this expression refers to, so they are
@@ -1303,7 +1309,8 @@ void ClangUserExpression::ClangUserExpressionHelper::CommitPersistentDecls() {
     // later expression referencing one of them can re-inject and recompile it.
     if (!top_level_names.empty() && !m_pending_top_level_source.empty())
       persistent_vars->RegisterTopLevelSource(std::move(top_level_names),
-                                              m_pending_top_level_source);
+                                              m_pending_top_level_source,
+                                              m_pending_top_level_filename);
     return;
   }
 
