@@ -241,13 +241,6 @@ class IRInterpreterTestCase(TestBase):
             )
 
     def test_fpconv_ub(self):
-        # TypeSystemCpp does not support persistent `$`-typedef declarations
-        # crossing expression boundaries, so the persistent `float $f` etc.
-        # set-up expressions below don't retain their (typedef) type here.
-        if self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
-        ).GetBooleanValue():
-            self.skipTest("TypeSystemCpp: persistent $-typedef decls unsupported")
         target = self.dbg.GetDummyTarget()
 
         set_up_expressions = [
