@@ -50,15 +50,6 @@ class TopLevelExpressionsTestCase(TestBase):
     @skipIf(debug_info="gmodules")  # not relevant
     @skipIf(oslist=["windows"])  # Error in record layout on Windows
     def test_top_level_expressions(self):
-        # TypeSystemCpp does not support top-level `expr --top-level` decls that
-        # persist and become visible to subsequent expressions (the same
-        # cross-expression persistent-decl feature it intentionally omits), so
-        # a later `doTest()` can't see functions/types defined by earlier
-        # top-level expressions.
-        if self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
-        ).GetBooleanValue():
-            self.skipTest("TypeSystemCpp: persistent top-level decls unsupported")
         self.build_and_run()
 
         resultFromCode = (

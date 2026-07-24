@@ -545,12 +545,27 @@ void ClangUserExpression::CreateSourceCode(
   std::string prefix = m_expr_prefix;
 
   if (m_options.GetExecutionPolicy() == eExecutionPolicyTopLevel) {
-    m_transformed_text = m_expr_text;
+    // Under TypeSystemCpp, prepend the sources of any previously declared
+    // top-level decls this top-level expression refers to, so that e.g. an
+    // out-of-line member definition (`int MyClass::f() {...}`) or a derived
+    // class (`class D : Base {...}`) can see the earlier top-level decls it
+    // depends on. Without this, each top-level parse would only see the debug
+    // info, not the decls introduced by earlier top-level expressions.
+    std::string injected;
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp() &&
+        m_clang_state)
+      injected = m_clang_state->GetInjectedTopLevelSource(m_expr_text);
+    if (injected.empty())
+      m_transformed_text = m_expr_text;
+    else
+      m_transformed_text = injected + "\n" + m_expr_text;
     // Remember this top-level source so a later expression can re-inject any
-    // function/variable it declares (see StoreTopLevelSource /
+    // decl it declares (see RegisterTopLevelSource /
     // ClangPersistentVariables::GetInjectedTopLevelSource). Only meaningful
-    // under TypeSystemCpp, which can't round-trip a top-level function/variable
-    // into a persistent CompilerType the way it does a type.
+    // under TypeSystemCpp, which persists top-level decls by re-injecting their
+    // original source rather than round-tripping them through the ASTImporter.
+    // Note we stash the *original* m_expr_text (not m_transformed_text with the
+    // injected prefix) so a decl's source is stored exactly once.
     if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp())
       m_type_system_helper.SetPendingTopLevelSource(m_expr_text);
   } else {
@@ -1206,15 +1221,26 @@ void ClangUserExpression::ClangUserExpressionHelper::CommitPersistentDecls() {
   if (!m_result_synthesizer_up)
     return;
 
+  ExpressionDeclMap *decl_map = m_expr_decl_map_up.get();
+  bool is_cpp_decl_map = decl_map && decl_map->IsCppDeclMap();
+
   // Legacy path: deport each persistent clang::NamedDecl into the target's
-  // scratch (or, under TypeSystemCpp, auxiliary side-channel) TypeSystemClang
-  // and register it by name. This keeps working even when TypeSystemCpp is
-  // enabled (ScratchTypeSystemClang::GetForTarget falls back to an auxiliary
-  // Clang AST in that case), but CppExpressionDeclMap's lookup never
-  // consults it -- see the TypeSystemCpp-specific commit below, which is what
-  // actually makes a persistent type usable from a later TypeSystemCpp
-  // expression.
-  m_result_synthesizer_up->CommitPersistentDecls();
+  // scratch TypeSystemClang and register it by name. This is the ASTImporter-
+  // based persistence used when TypeSystemCpp is off.
+  //
+  // We deliberately SKIP it when the CppExpressionDeclMap is in use: that
+  // lookup never consults the deported decls (the TypeSystemCpp-specific commit
+  // below is what actually makes a persistent decl usable from a later
+  // TypeSystemCpp expression), so the deport is pure overhead -- and worse, it
+  // can crash. A `--top-level` parse now textually re-injects the source of
+  // earlier top-level decls it references (see CreateSourceCode /
+  // GetInjectedTopLevelSource), so this AST can contain e.g. a full class
+  // definition AND an out-of-line member definition referring to it; deporting
+  // those through ClangASTImporter::DeportDecl trips a structural-equivalence
+  // assertion/crash. The reinjection + RegisterPersistentType paths below fully
+  // cover persistence under TypeSystemCpp, so nothing is lost by skipping it.
+  if (!is_cpp_decl_map)
+    m_result_synthesizer_up->CommitPersistentDecls();
 
   // TypeSystemCpp path: additionally commit any `$`-prefixed persistent
   // TypeDecl (`struct $foo {...}`, `typedef int $bar`) as a
@@ -1222,14 +1248,12 @@ void ClangUserExpression::ClangUserExpressionHelper::CommitPersistentDecls() {
   // table CppExpressionDeclMap's lookup actually consults
   // (ClangPersistentVariables::RegisterPersistentType /
   // GetCompilerTypeFromPersistentDecl). This is necessary because each
-  // TypeSystemCpp expression gets a brand new clang::ASTContext -- the
-  // deported decl above lives in a different (auxiliary) ASTContext that this
-  // path never looks at -- so the only way to make the type available again
-  // is to remember it as a cpp_typesystem type, which is context-independent,
-  // and regenerate a fresh clang type for it on demand (done by
-  // CppExpressionDeclMap when the name is looked up again).
-  ExpressionDeclMap *decl_map = m_expr_decl_map_up.get();
-  if (!decl_map || !decl_map->IsCppDeclMap())
+  // TypeSystemCpp expression gets a brand new clang::ASTContext -- so the only
+  // way to make the type available again is to remember it as a cpp_typesystem
+  // type, which is context-independent, and regenerate a fresh clang type for
+  // it on demand (done by CppExpressionDeclMap when the name is looked up
+  // again).
+  if (!is_cpp_decl_map)
     return;
 
   auto *state =
@@ -1238,12 +1262,50 @@ void ClangUserExpression::ClangUserExpressionHelper::CommitPersistentDecls() {
     return;
   auto *persistent_vars = llvm::cast<ClangPersistentVariables>(state);
 
-  // Function/variable names declared by this top-level expression. These
-  // aren't round-tripped into a CompilerType below (only types are); instead
-  // the raw top-level source is stashed under these names so a later
-  // expression referencing one of them re-injects and recompiles the source
-  // (see the m_pending_top_level_source handling after the loop).
-  std::vector<std::string> top_level_func_var_names;
+  // A `--top-level` parse and a plain (non-top-level) `$foo` parse take two
+  // very different persistence strategies here:
+  //
+  //  * Top-level (`expr --top-level -- ...`): the ENTIRE original source of
+  //    this parse is stashed (keyed by every name it declares -- types,
+  //    functions, and variables alike) and textually re-injected into a later
+  //    expression that references any of those names (see
+  //    RegisterTopLevelSource / GetInjectedTopLevelSource). We deliberately do
+  //    NOT also round-trip a top-level *type* through a persistent
+  //    CompilerType: doing both would double-define the type (the injected
+  //    source declares it, and LookupPersistentType would surface a second,
+  //    generator-built decl of the same name during the same parse). Reinjecting
+  //    the original source is also strictly more faithful than a CompilerType
+  //    round-trip -- it preserves user constructors, out-of-line member
+  //    definitions, and base-class relationships that a layout-only round-trip
+  //    loses (e.g. `Derived : Base` needs `Base`'s constructors to still be
+  //    callable). A top-level function/variable could never be a self-contained
+  //    CompilerType anyway (its body would have to be re-emitted into the new
+  //    expression's IR), so source reinjection is the only mechanism that works
+  //    uniformly for all top-level decl kinds.
+  //
+  //  * Non-top-level `$foo` (`expr struct $foo {...};`): m_pending_top_level_
+  //    source is empty (CreateSourceCode only sets it for top-level parses), and
+  //    MaybeRecordPersistentType only records `$`-prefixed TypeDecls. These are
+  //    round-tripped into a persistent CompilerType and surfaced later via
+  //    LookupPersistentType, matching TypeSystemClang's `$foo` behavior.
+  if (m_top_level) {
+    std::vector<std::string> top_level_names;
+    for (clang::NamedDecl *decl :
+         m_result_synthesizer_up->GetPersistentDecls()) {
+      if (!decl->getIdentifier())
+        continue;
+      llvm::StringRef name = decl->getName();
+      if (name.empty())
+        continue;
+      top_level_names.push_back(name.str());
+    }
+    // Stash the raw top-level source keyed by every name it declares, so a
+    // later expression referencing one of them can re-inject and recompile it.
+    if (!top_level_names.empty() && !m_pending_top_level_source.empty())
+      persistent_vars->RegisterTopLevelSource(std::move(top_level_names),
+                                              m_pending_top_level_source);
+    return;
+  }
 
   for (clang::NamedDecl *decl : m_result_synthesizer_up->GetPersistentDecls()) {
     if (!decl->getIdentifier())
@@ -1251,24 +1313,6 @@ void ClangUserExpression::ClangUserExpressionHelper::CommitPersistentDecls() {
     llvm::StringRef name = decl->getName();
     if (name.empty())
       continue;
-    // Only a type (class/struct/union/enum/typedef) is round-tripped into a
-    // persistent CompilerType here. Unlike the plain (non-top-level)
-    // `$__lldb_expr`-body case -- where MaybeRecordPersistentType only records
-    // a `$`-prefixed TypeDecl, so m_decls never contains a non-`$` name to
-    // begin with -- a *top-level* parse's RecordPersistentDecl records every
-    // top-level NamedDecl unfiltered by name (see
-    // ASTResultSynthesizer::TransformTopLevelDecl). Dropping the `$`-only
-    // filter here lets an ordinary (non-`$`) top-level class/struct/enum/
-    // typedef declared via `expr --top-level -- struct Foo {...};` be looked
-    // up again from a later TypeSystemCpp expression (see
-    // CppExpressionDeclMap::LookupPersistentType's non-top-level-friendly
-    // caller). A top-level function or variable, by contrast, cannot become a
-    // self-contained CompilerType (its *body* would have to be re-emitted into
-    // a new expression's IR every time it's referenced); instead we remember
-    // its source text (below) and textually re-inject it into any later
-    // expression that names it.
-    if (llvm::isa<clang::FunctionDecl>(decl) || llvm::isa<clang::VarDecl>(decl))
-      top_level_func_var_names.push_back(name.str());
     auto *type_decl = llvm::dyn_cast<clang::TypeDecl>(decl);
     if (!type_decl)
       continue;
@@ -1287,12 +1331,6 @@ void ClangUserExpression::ClangUserExpressionHelper::CommitPersistentDecls() {
       continue;
     persistent_vars->RegisterPersistentType(ConstString(name), cpp_type);
   }
-
-  // Stash the raw top-level source keyed by the function/variable names it
-  // declares, so a later expression referencing one of them can re-inject it.
-  if (!top_level_func_var_names.empty() && !m_pending_top_level_source.empty())
-    persistent_vars->RegisterTopLevelSource(std::move(top_level_func_var_names),
-                                            m_pending_top_level_source);
 }
 
 ConstString ClangUserExpression::ResultDelegate::GetName() {
