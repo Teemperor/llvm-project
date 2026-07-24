@@ -500,6 +500,14 @@ bool CppExpressionDeclMap::FindExternalVisibleDecls(
       // after every debug-info candidate missed.
       if (!found)
         found = LookupModuleFunctions(dc, ConstString(sname), decls);
+      // A variable declared only in an imported Clang module (`@import Dylib;
+      // &absent_weak_int`): transport its VarDecl from the module vendor,
+      // preserving external linkage and any `weak_import` attribute so a
+      // missing weak symbol resolves to NULL. Tried after the module-function
+      // lookup (a name is unlikely to be both) but before the bare-symbol
+      // fallback, and only after every debug-info candidate missed.
+      if (!found)
+        found = LookupModuleVariables(dc, ConstString(sname), decls);
       // Last resort: a call to a code symbol that has no debug info (e.g. a
       // libc function like `strlen`). Only when nothing with debug info
       // matched, so a real function / variable / type / namespace is never
@@ -805,6 +813,69 @@ bool CppExpressionDeclMap::LookupModuleFunctions(
     if (const Symbol *symbol = FindCallableSymbol(name))
       BindFunctionDeclToSymbol(fd, symbol);
     decls.push_back(fd);
+    added = true;
+  }
+  return added;
+}
+
+bool CppExpressionDeclMap::LookupModuleVariables(
+    const clang::DeclContext *dc, ConstString name,
+    llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
+  Target *target = m_exe_ctx.GetTargetPtr();
+  if (!target)
+    return false;
+
+  // Only consult the module vendor if one already exists -- i.e. some `@import`
+  // brought a module in this session. Never lazily create it here (mirrors
+  // LookupModuleFunctions).
+  auto *persistent = llvm::dyn_cast_or_null<ClangPersistentVariables>(
+      target->GetPersistentExpressionStateForLanguage(eLanguageTypeC));
+  if (!persistent)
+    return false;
+  std::shared_ptr<ClangModulesDeclVendor> vendor =
+      persistent->GetExistingClangModulesDeclVendor();
+  if (!vendor)
+    return false;
+
+  std::vector<CompilerDecl> found;
+  if (!vendor->FindDecls(name, /*append=*/false, /*max_matches=*/UINT32_MAX,
+                         found))
+    return false;
+
+  // Deport the module's clang VarDecl straight into the expression AST via the
+  // ASTImporter, mirroring LookupModuleFunctions and the classic
+  // ClangExpressionDeclMap::LookupInModulesDeclVendor VarDecl branch. The
+  // deported decl keeps its external linkage and `weak_import` attribute, so
+  // codegen emits an ordinary external reference the JIT resolves by symbol
+  // name; a missing weak symbol resolves to address 0 (so `&absent_weak_int`
+  // compares equal to NULL). Unlike a debug-info global, no materializer entity
+  // is bound: the reference is symbol-name-resolved at JIT time, not
+  // materialized to a known load address.
+  //
+  // Reuse the target's persistent importer and remember it so the destructor
+  // can ForgetDestination(m_ast_context) -- see LookupModuleFunctions for why.
+  std::shared_ptr<ClangASTImporter> importer =
+      persistent->GetClangASTImporter();
+  if (!importer)
+    return false;
+  m_module_fn_importer = importer;
+
+  bool added = false;
+  for (const CompilerDecl &cd : found) {
+    auto *var = llvm::dyn_cast_or_null<clang::VarDecl>(
+        static_cast<clang::Decl *>(cd.GetOpaqueDecl()));
+    if (!var)
+      continue;
+
+    auto *vd = llvm::dyn_cast_or_null<clang::VarDecl>(
+        importer->DeportDecl(m_ast_context, var));
+    if (!vd)
+      continue;
+    if (dc && dc != m_ast_context->getTranslationUnitDecl()) {
+      vd->setDeclContext(const_cast<clang::DeclContext *>(dc));
+      const_cast<clang::DeclContext *>(dc)->addDecl(vd);
+    }
+    decls.push_back(vd);
     added = true;
   }
   return added;

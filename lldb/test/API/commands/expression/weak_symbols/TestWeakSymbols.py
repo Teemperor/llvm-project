@@ -49,19 +49,6 @@ class TestWeakSymbolsInExpressions(TestBase):
         )
 
     def do_test(self):
-        # This test brings the weak-symbol declarations into the expression's
-        # decl context via a Clang `@import Dylib` (a clang module import).
-        # TypeSystemCpp's expression path synthesizes a fresh Clang AST from
-        # cpp_typesystem types and does not consume the clang::Decls produced
-        # by the ClangModulesDeclVendor, so `@import`ed decls (and thus the
-        # weak symbols) are not visible to the expression. Clang `@import`
-        # modules are an intentional, out-of-scope divergence for
-        # TypeSystemCpp, so skip there.
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
-            self.skipTest(
-                "Clang `@import` modules are not supported by TypeSystemCpp"
-            )
-
         hidden_dir = os.path.join(self.getBuildDir(), "hidden")
         hidden_dylib = os.path.join(hidden_dir, "libdylib.dylib")
 
