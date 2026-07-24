@@ -8,15 +8,6 @@ from lldbsuite.test import lldbutil
 
 
 class TestCase(TestBase):
-    def setUp(self):
-        TestBase.setUp(self)
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
-            self.skipTest(
-                "import-std-module (Clang @import modules) is not supported by "
-                "TypeSystemCpp"
-            )
-
-
     @add_test_categories(["libc++"])
     @skipIf(compiler=no_match("clang"))
     @skipIf(macos_version=["<", "15.0"])
@@ -42,6 +33,11 @@ class TestCase(TestBase):
     @expectedFailureAll(bugnumber="https://github.com/llvm/llvm-project/issues/149477")
     @skipIf(macos_sdk_version=["<", "16.0"])
     def test_xfail(self):
+        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+            self.skipTest(
+                "TypeSystemCpp fixes llvm.org/issue/149477; keep the "
+                "@expectedFailureAll intact for TypeSystemClang"
+            )
         self.build()
 
         lldbutil.run_to_source_breakpoint(
