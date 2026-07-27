@@ -41,7 +41,6 @@ class TagDecl;
 
 namespace lldb_private {
 
-class ClangASTImporter;
 class PersistentExpressionState;
 
 /// Resolves external entities for a Clang-parsed expression out of the
@@ -363,13 +362,6 @@ private:
 
   clang::ASTContext *m_ast_context = nullptr;
   std::optional<ClangASTGenerator> m_generator;
-
-  /// The persistent ASTImporter used by LookupModuleFunctions to deport a
-  /// module's clang FunctionDecl (with its source locations) into this
-  /// expression's ASTContext. Held so the destructor can drop the importer's
-  /// cached mapping for this destination context (ForgetDestination); null if
-  /// no module function was ever looked up.
-  std::shared_ptr<ClangASTImporter> m_module_fn_importer;
 
   /// The NamespaceMap (per-module namespace decl contexts) for each
   /// clang::NamespaceDecl we synthesized, so a member lookup inside it can be

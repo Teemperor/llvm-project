@@ -163,6 +163,12 @@ candidate function not viable: requires single argument 'x', but 2 arguments wer
 
     @add_test_categories(["objc"])
     def test_source_locations_from_objc_modules(self):
+        # Relies on `@import Foundation` (Clang @import modules), which
+        # TypeSystemCpp does not support.
+        if self.dbg.GetSetting(
+            "symbols.enable-typesystem-cpp"
+        ).GetBooleanValue():
+            self.skipTest("TypeSystemCpp: Clang @import modules unsupported")
         self.build()
 
         (target, process, thread, bkpt) = lldbutil.run_to_source_breakpoint(
