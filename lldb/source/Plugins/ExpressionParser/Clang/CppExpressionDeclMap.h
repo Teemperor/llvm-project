@@ -226,23 +226,6 @@ private:
   bool LookupModuleFunctions(const clang::DeclContext *dc, ConstString name,
                              llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
 
-  /// Transport a variable declared only in an imported Clang module
-  /// (`@import Dylib; &absent_weak_int`) into the expression AST: query the
-  /// ClangModulesDeclVendor for \p name and, for a matching VarDecl, deport it
-  /// straight into the expression's ASTContext via the persistent
-  /// ClangASTImporter (mirroring LookupModuleFunctions). The deported decl
-  /// keeps its external linkage and its `weak_import` attribute, so codegen
-  /// emits an ordinary external reference the JIT resolves by symbol name --
-  /// and a missing weak symbol resolves to address 0 (so `&absent_weak_int`
-  /// compares equal to NULL), exactly like the legacy
-  /// ClangExpressionDeclMap::LookupInModulesDeclVendor VarDecl path. No
-  /// materializer entity is bound (unlike a debug-info global), because the
-  /// reference is symbol-name-resolved at JIT time, not materialized to a
-  /// known load address. Only queried when a module was actually imported this
-  /// session (the vendor already exists).
-  bool LookupModuleVariables(const clang::DeclContext *dc, ConstString name,
-                             llvm::SmallVectorImpl<clang::NamedDecl *> &decls);
-
   /// Look up a data symbol named \p name that has no debug info (e.g. a global
   /// variable in a stripped/hidden translation unit) and create a VarDecl of
   /// type `void *&` bound to the symbol's load address (materialized via
