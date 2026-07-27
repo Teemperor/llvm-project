@@ -8,7 +8,6 @@
 
 #include "CppExpressionDeclMap.h"
 
-#include "ClangASTImporter.h"
 #include "ClangExpressionUtil.h"
 #include "ClangModulesDeclVendor.h"
 #include "ClangPersistentVariables.h"
@@ -125,15 +124,7 @@ CppExpressionDeclMap::CppExpressionDeclMap(
       m_keep_result_in_memory(keep_result_in_memory),
       m_ignore_context_qualifiers(ignore_context_qualifiers) {}
 
-CppExpressionDeclMap::~CppExpressionDeclMap() {
-  // If a module function was deported into the expression's ASTContext via the
-  // persistent importer, drop that importer's cached delegate/decl mapping for
-  // this (now-dying) destination context so a later expression whose ASTContext
-  // reuses the same address never hits a stale mapping. Mirrors
-  // ClangASTSource's destructor.
-  if (m_module_fn_importer && m_ast_context)
-    m_module_fn_importer->ForgetDestination(m_ast_context);
-}
+CppExpressionDeclMap::~CppExpressionDeclMap() = default;
 
 ClangASTGenerator &CppExpressionDeclMap::GetGenerator() {
   assert(m_ast_context && "parser AST context not installed yet");
@@ -751,28 +742,9 @@ bool CppExpressionDeclMap::LookupModuleFunctions(
                          found))
     return false;
 
-  // Deport the module's clang FunctionDecl straight into the expression AST via
-  // the ASTImporter, rather than rebuilding it from a round-tripped
-  // TypeSystemCpp type. This is the one place the TypeSystemCpp expression path
-  // keeps the classic importer: a module decl carries real SourceLocations that
-  // resolve into the module's headers, so a diagnostic against it (e.g. calling
-  // NSLog with the wrong arguments) prints the actual declaration source line
-  // from the framework header -- which a freshly-synthesized decl with no
-  // location cannot do. The importer also copies the exact signature, so
-  // getpid()'s pid_t return etc. is preserved without the round-trip.
-  //
-  // Reuse the target's persistent importer (its FileManager/source-file mapping
-  // must survive across the parse for clang to render the imported locations),
-  // and remember it so the destructor can ForgetDestination(m_ast_context):
-  // the importer caches a delegate per destination ASTContext, and this
-  // expression's context is torn down when the expression finishes, so a later
-  // expression's context -- possibly reusing the same address -- would hit a
-  // stale delegate/decl mapping and crash. Mirrors ClangASTSource's dtor.
-  std::shared_ptr<ClangASTImporter> importer =
-      persistent->GetClangASTImporter();
-  if (!importer)
+  TypeSystemCpp *scratch = GetScratchCpp(target);
+  if (!scratch)
     return false;
-  m_module_fn_importer = importer;
 
   bool added = false;
   llvm::StringSet<> seen_signatures;
@@ -781,29 +753,38 @@ bool CppExpressionDeclMap::LookupModuleFunctions(
         static_cast<clang::Decl *>(cd.GetOpaqueDecl()));
     if (!fn)
       continue;
+    // Translate the module's clang FunctionDecl type back into a cpp
+    // FunctionType. The type lives in the vendor's own ASTContext, so drive the
+    // converter over that context (its reconstruction paths query layout/sugar
+    // there); the reconstructed type is owned by the scratch TypeSystemCpp.
+    ClangTypeConverter converter(GetGenerator(), *scratch, &fn->getASTContext());
+    CompilerType func_cpp_type = converter.Convert(fn->getType());
+    if (!func_cpp_type)
+      continue;
 
     // Distinct overloads must stay distinct, but FindDecls / redeclarations can
     // surface the same signature twice; dedup so clang doesn't see an ambiguous
     // set.
-    clang::PrintingPolicy pp(fn->getASTContext().getLangOpts());
-    std::string signature = fn->getType().getAsString(pp);
-    if (!seen_signatures.insert(signature).second)
+    if (!seen_signatures.insert(func_cpp_type.GetTypeName().GetStringRef())
+             .second)
       continue;
 
-    auto *fd = llvm::dyn_cast_or_null<clang::FunctionDecl>(
-        importer->DeportDecl(m_ast_context, fn));
+    // The call is lowered through the target symbol (like LookupSymbolFunction);
+    // a module function with no loadable symbol can't be called.
+    const Symbol *symbol = FindCallableSymbol(name);
+    if (!symbol)
+      continue;
+
+    clang::FunctionDecl *fd = GetGenerator().GenerateFunction(
+        name.GetStringRef(), func_cpp_type, /*asm_label=*/{},
+        /*is_extern_c=*/fn->isExternC());
     if (!fd)
       continue;
     if (dc && dc != m_ast_context->getTranslationUnitDecl()) {
       fd->setDeclContext(const_cast<clang::DeclContext *>(dc));
       const_cast<clang::DeclContext *>(dc)->addDecl(fd);
     }
-    // The call is lowered through the target symbol (like LookupSymbolFunction).
-    // A module function with no loadable symbol (e.g. NSLog when Foundation is
-    // not loaded into the inferior) still gets its decl transported so the
-    // parser can diagnose against it; it just can't be JIT-called.
-    if (const Symbol *symbol = FindCallableSymbol(name))
-      BindFunctionDeclToSymbol(fd, symbol);
+    BindFunctionDeclToSymbol(fd, symbol);
     decls.push_back(fd);
     added = true;
   }
