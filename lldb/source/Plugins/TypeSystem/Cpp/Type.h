@@ -229,6 +229,41 @@ public:
   /// recorded eagerly during record completion from the artificial `_vptr$`
   /// member / a virtual base, so it is reliable without forcing method parsing.
   virtual bool IsPolymorphic() const { return false; }
+
+  /// For a pointer or reference whose *children* are the pointee's members
+  /// rather than a single deref child: the pointee to splice them in from.
+  /// Null for everything else, and for a pointer/reference that keeps its
+  /// single deref child.
+  ///
+  /// Pointers are transparent, mirroring TypeSystemClang: expanding `ptr`
+  /// splices in the pointee aggregate's members instead of showing one deref
+  /// child. This is what the shared libc++ synthetic-child providers expect
+  /// (they call GetChildMemberWithName/GetChildAtIndex directly on
+  /// pointer-typed node values). Only an *already-complete* aggregate is
+  /// spliced, so that merely counting a pointer's children doesn't force
+  /// completion of an otherwise-lazy pointee; a pointer to an
+  /// incomplete/non-aggregate pointee (and `void *`) keeps its deref child.
+  ///
+  /// An Objective-C object is only ever accessed through a pointer (there is
+  /// no by-value ObjC object), so a pointer to an ObjC interface is always
+  /// transparent -- see PointerType's override.
+  ///
+  /// The methods answering child queries (GetNumChildren,
+  /// GetChildCompilerTypeAtIndex, ...) must agree on this exactly, or child
+  /// counts and child indices describe different layouts; hence the single
+  /// definition here.
+  virtual Type *GetTransparentChildPointee() { return nullptr; }
+
+  /// For a pointer or reference through which a *named* member is directly
+  /// addressable (`ptr->member`, `ref.member`): the pointee to look the name
+  /// up in. Null for everything else.
+  ///
+  /// This is the by-name counterpart of GetTransparentChildPointee, and is
+  /// deliberately more permissive: a name lookup may complete the pointee as a
+  /// side effect of resolving the name, so it does not require the pointee to
+  /// be complete up front (an incomplete aggregate simply has no members to
+  /// find).
+  virtual Type *GetNamedMemberPointee() { return nullptr; }
 };
 
 /// Null-tolerant wrapper around Type::Desugar(), for the many call sites that

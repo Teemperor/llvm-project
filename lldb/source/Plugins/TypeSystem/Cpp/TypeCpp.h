@@ -230,6 +230,19 @@ public:
   bool IsRValue() const { return m_is_rvalue; }
   void SetIsRValue(bool is_rvalue) { m_is_rvalue = is_rvalue; }
 
+  // A reference is transparent: its children are those of the referenced type.
+  // Like a pointer, this must not force completion of the referent.
+  Type *GetTransparentChildPointee() override {
+    Type *pointee = m_pointee_type.Get();
+    if (pointee && pointee->IsAggregate() && pointee->IsComplete())
+      return pointee;
+    return nullptr;
+  }
+  Type *GetNamedMemberPointee() override {
+    Type *pointee = m_pointee_type.Get();
+    return pointee && pointee->IsAggregate() ? pointee : nullptr;
+  }
+
   // A reference is represented by an address, so it has the (small) target
   // pointer width. Stored compactly like PointerType's size (see there).
   std::optional<uint64_t> GetByteSize() const override {

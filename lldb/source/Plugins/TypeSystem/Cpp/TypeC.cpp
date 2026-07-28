@@ -40,6 +40,26 @@ unsigned CVQualifiedType::GetCVRMask(const Type *t) {
   return quals;
 }
 
+Type *PointerType::GetTransparentChildPointee() {
+  Type *pointee = m_pointee_type.Get();
+  if (!pointee)
+    return nullptr; // `void *` has no children.
+  // A pointer to an ObjC interface is always transparent: an ObjC object is
+  // only ever reached through a pointer, so its children are the interface's
+  // ivars/superclass. (The interface is completed by the caller, which has the
+  // SymbolFile.)
+  if (llvm::isa<ObjCInterfaceType>(pointee->Desugar()))
+    return pointee;
+  if (pointee->IsAggregate() && pointee->IsComplete())
+    return pointee;
+  return nullptr;
+}
+
+Type *PointerType::GetNamedMemberPointee() {
+  Type *pointee = m_pointee_type.Get();
+  return pointee && pointee->IsAggregate() ? pointee : nullptr;
+}
+
 uint32_t PointerType::GetTypeInfo() const {
   uint32_t info =
       lldb::eTypeHasChildren | lldb::eTypeIsPointer | lldb::eTypeHasValue;
