@@ -9,6 +9,8 @@
 #include "Plugins/TypeSystem/Cpp/Context.h"
 #include "Plugins/TypeSystem/Cpp/LanguageOpts.h"
 #include "Plugins/TypeSystem/Cpp/Type.h"
+#include "Plugins/TypeSystem/Cpp/TypeC.h"
+#include "Plugins/TypeSystem/Cpp/TypeCpp.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/TargetParser/Triple.h"

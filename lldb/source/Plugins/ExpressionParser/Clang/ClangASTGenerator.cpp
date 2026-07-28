@@ -17,6 +17,9 @@
 #include "Plugins/TypeSystem/Cpp/Context.h"
 #include "Plugins/TypeSystem/Cpp/Namespace.h"
 #include "Plugins/TypeSystem/Cpp/Type.h"
+#include "Plugins/TypeSystem/Cpp/TypeC.h"
+#include "Plugins/TypeSystem/Cpp/TypeCpp.h"
+#include "Plugins/TypeSystem/Cpp/TypeObjC.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
 #include "lldb/Host/FileSystem.h"

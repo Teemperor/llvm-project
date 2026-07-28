@@ -9,6 +9,7 @@
 #include "ClangASTGeneratorTestUtils.h"
 
 #include "Plugins/TypeSystem/Cpp/Type.h"
+#include "Plugins/TypeSystem/Cpp/TypeC.h"
 
 #include "clang/AST/Decl.h"
 #include "clang/AST/DeclCXX.h"

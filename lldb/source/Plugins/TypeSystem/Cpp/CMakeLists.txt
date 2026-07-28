@@ -7,6 +7,9 @@ add_lldb_library(lldbPluginTypeSystemCpp PLUGIN
   Namespace.cpp
   Function.cpp
   Type.cpp
+  TypeC.cpp
+  TypeCpp.cpp
+  TypeObjC.cpp
   TypeSystemCpp.cpp
 
   LINK_COMPONENTS

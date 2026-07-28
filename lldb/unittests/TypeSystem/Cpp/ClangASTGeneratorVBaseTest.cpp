@@ -9,6 +9,7 @@
 #include "ClangASTGeneratorTestUtils.h"
 
 #include "Plugins/TypeSystem/Cpp/Type.h"
+#include "Plugins/TypeSystem/Cpp/TypeCpp.h"
 
 #include "llvm/Support/Casting.h"
 
