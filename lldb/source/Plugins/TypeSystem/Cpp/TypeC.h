@@ -324,8 +324,8 @@ public:
   }
 
 private:
-  // Gated like RecordType's mutators: only Context (through the locked Builder)
-  // may add enumerators.
+  // Gated like RecordType's mutators: only Context (through a Builder) may add
+  // enumerators.
   friend class Context;
   void AddEnumerator(Identifier name, uint64_t value) {
     m_enumerators.push_back(Enumerator{name, value});
@@ -437,8 +437,8 @@ public:
   }
 
 private:
-  // Gated like the other mutators: only Context (through the locked Builder)
-  // may add parameters.
+  // Gated like the other mutators: only Context (through a Builder) may add
+  // parameters.
   friend class Context;
   void AddParameter(TypeRef type, Identifier name = Identifier()) {
     m_params.push_back(type);

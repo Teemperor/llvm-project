@@ -187,7 +187,7 @@ public:
 
 private:
   // Gated like RecordType's mutators (see there): only Context, reached through
-  // the locked Builder, may mutate a class.
+  // a Builder, may mutate a class.
   friend class Context;
   void AddBaseClass(TypeRef type, uint64_t byte_offset,
                     bool is_virtual = false,

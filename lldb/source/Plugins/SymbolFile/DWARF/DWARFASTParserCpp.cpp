@@ -55,19 +55,20 @@ using namespace lldb_private::plugin::dwarf;
 using namespace llvm::dwarf;
 
 // Launch policy for resolving a record's referenced member/base types while
-// completing it. Each future's type-system access is serialized through
-// TypeSystemCpp's lock (see ResolveReferencedType), so that side is thread
-// safe. The DWARF/SymbolFile side, however, is not: SymbolFileDWARF guards
-// itself with the Module's recursive_mutex, which CompleteType already holds
-// while CompleteTypeFromDWARF runs. A worker thread calling ResolveTypeUID
-// would block trying to re-acquire that mutex (recursive_mutex only re-enters
-// on the owning thread) while this thread waits on the worker -- a deadlock.
+// completing it. The DWARF/SymbolFile side is not thread safe here:
+// SymbolFileDWARF guards itself with the Module's recursive_mutex, which
+// CompleteType already holds while CompleteTypeFromDWARF runs. A worker thread
+// calling ResolveTypeUID would block trying to re-acquire that mutex
+// (recursive_mutex only re-enters on the owning thread) while this thread waits
+// on the worker -- a deadlock.
 //
-// So today the resolutions run with std::launch::deferred: each future
-// executes inline, on this (lock-owning) thread, when its result is needed.
-// The work is already structured as independent futures, so switching to
-// std::launch::async to spread it across cores is a one-line change once the
-// DWARF reads no longer require the Module mutex to be held across completion.
+// So the resolutions run with std::launch::deferred: each future executes
+// inline, on this thread, when its result is needed. Since that makes this
+// single-threaded, TypeSystemCpp itself does no locking (see
+// cpp_typesystem::Builder). The work is nevertheless structured as independent
+// futures, so it can be spread across cores once the DWARF reads no longer
+// require the Module mutex to be held across completion -- but that will also
+// mean giving TypeSystemCpp its serialization back.
 static constexpr std::launch kMemberResolutionPolicy = std::launch::deferred;
 
 DWARFASTParserCpp::DWARFASTParserCpp(TypeSystemCpp &ts)
@@ -890,7 +891,7 @@ TypeSP DWARFASTParserCpp::ParseArrayType(const DWARFDIE &die) {
   CompilerType array_type = element_type->GetForwardCompilerType();
   bool is_vector = die.GetAttributeValueAsUnsigned(DW_AT_GNU_vector, 0) != 0;
   {
-    // Build the (possibly nested) array type(s) under a single lock.
+    // Build the (possibly nested) array type(s) through a single Builder.
     cpp_typesystem::Builder ts(m_ts);
     if (array_info && !array_info->element_orders.empty()) {
       for (auto it = array_info->element_orders.rbegin(),
@@ -1443,11 +1444,8 @@ DWARFASTParserCpp::ResolveReferencedType(const DWARFDIE &referencing_die,
   if (!type_die)
     return nullptr;
 
-  // Serialize the whole resolution under the type-system lock. It drives both
-  // the DWARF type bookkeeping (SymbolFileDWARF's DIE->type map) and the
-  // TypeSystemCpp mutation, and may run on a worker thread. The lock is
-  // recursive, so nested parsing (e.g. of an array element, or of this type's
-  // own referenced types) re-locks safely on the same thread.
+  // This drives both the DWARF type bookkeeping (SymbolFileDWARF's DIE->type
+  // map) and the TypeSystemCpp mutation, hence the Builder.
   cpp_typesystem::Builder ts(m_ts);
   Type *resolved = referencing_die.ResolveTypeUID(type_die);
   if (!resolved)
@@ -1524,9 +1522,9 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   // expression); see CompleteMemberFunctionsFromDWARF.
   m_record_defining_die.insert_or_assign(record, die);
 
-  // Mark complete up front (under the lock) so that a member whose type
-  // (indirectly) refers back to this record doesn't recurse forever, and so
-  // that a concurrent completion of the same record bails out here.
+  // Mark complete up front so that a member whose type (indirectly) refers back
+  // to this record doesn't recurse forever, and so that a re-entrant completion
+  // of the same record bails out here.
   {
     cpp_typesystem::Builder ts(m_ts);
     if (record->IsComplete())
@@ -1575,9 +1573,9 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
   auto *objc_interface = llvm::dyn_cast<cpp_typesystem::ObjCInterfaceType>(record);
 
   // Collect the base classes, members and template arguments in declaration
-  // order, along with the DWARF reference to each one's type. This DWARF
-  // traversal runs single threaded; only the (heavier) type resolution below
-  // is spread out.
+  // order, along with the DWARF reference to each one's type. Only the
+  // (heavier) type resolution below is structured to be spread out; this DWARF
+  // traversal is not.
   struct MemberInfo {
     enum class Kind {
       Field,
@@ -1785,9 +1783,8 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
     }
   }
 
-  // Resolve each referenced type, optionally on a worker thread. Each future
-  // serializes its type-system access through the lock (see
-  // ResolveReferencedType), so this stays thread-safe.
+  // Resolve each referenced type. These run inline (deferred) today -- see
+  // kMemberResolutionPolicy.
   std::vector<std::future<cpp_typesystem::Type *>> resolved;
   resolved.reserve(members.size());
   for (const MemberInfo &member : members) {
@@ -1799,14 +1796,13 @@ bool DWARFASTParserCpp::CompleteTypeFromDWARF(
         }));
   }
 
-  // Wait for the workers *without* holding the lock -- they acquire it
-  // themselves, so holding it here would deadlock.
+  // Force each deferred resolution to run, in order.
   std::vector<cpp_typesystem::Type *> member_types(members.size());
   for (size_t i = 0; i < members.size(); ++i)
     member_types[i] = resolved[i].get();
 
   // Integrate the resolved base classes, members and template arguments into
-  // the record, in declaration order, under a single lock.
+  // the record, in declaration order.
   cpp_typesystem::Builder ts(m_ts);
 
   // Record whether this is a class-template instantiation (see `is_template`).

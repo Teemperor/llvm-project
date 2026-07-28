@@ -507,9 +507,9 @@ public:
   Type *GetHomogeneousAggregateBase(uint32_t &num_fields) const;
 
 private:
-  // Structural mutation happens after creation (during lazy completion, which
-  // may run on worker threads), so it is gated: only Context can perform it,
-  // and Context is only reachable through TypeSystemCpp's locked Builder.
+  // Structural mutation happens after creation (during lazy completion), so it
+  // is gated: only Context can perform it, and Context is only reachable
+  // through a cpp_typesystem::Builder.
   friend class Context;
   void SetIsComplete(bool complete) { m_complete = complete; }
   void SetIsAnonymousStructOrUnion(bool v) { m_is_anonymous_struct_union = v; }

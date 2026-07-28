@@ -110,7 +110,7 @@ public:
 
 private:
   // Gated like RecordType's mutators (see there): only Context, reached through
-  // the locked Builder, may set the superclass.
+  // a Builder, may set the superclass.
   friend class Context;
   void SetSuperClass(TypeRef type) {
     m_superclass = BaseClass{type, /*byte_offset=*/0, /*is_virtual=*/false,
