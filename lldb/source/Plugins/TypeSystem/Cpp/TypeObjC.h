@@ -124,6 +124,21 @@ private:
   std::vector<ObjCMethod> m_objc_methods;
 };
 
+/// True if \p t is the opaque record an `id` or `Class` points at. Unlike a
+/// real `@interface`, `id`/`Class` are modeled as a typedef over a pointer to
+/// the runtime's opaque `objc_object` / `objc_class` record (that is how the
+/// debug info spells them, and what ClangTypeConverter rebuilds them as), so
+/// recognizing an ObjC object pointer means recognizing this idiom in addition
+/// to a plain pointer-to-ObjCInterfaceType. \p t should already be desugared.
+bool IsOpaqueObjCObjectRecord(const Type *t);
+
+/// True if \p t is an Objective-C object type: an `@interface` or one of the
+/// opaque `objc_object`/`objc_class` records `id`/`Class` point at. This is
+/// the pointee test behind "is this an ObjC object pointer", used to route a
+/// value to the ObjC language runtime for dynamic-type resolution and to the
+/// ObjC formatters. \p t should already be desugared.
+bool IsObjCObjectType(const Type *t);
+
 } // namespace cpp_typesystem
 } // namespace lldb_private
 

@@ -52,56 +52,8 @@ using namespace lldb;
 
 using cpp_typesystem::Field;
 
-/// Peel typedef/cv-qualifier "sugar" off a type to reach its canonical type.
-/// Mirrors clang's RemoveWrappingTypes: queries about layout and children
-/// should see through aliases and qualifiers.
-static cpp_typesystem::Type *Desugar(cpp_typesystem::Type *t) {
-  while (auto *sugar = llvm::dyn_cast_or_null<cpp_typesystem::SugarType>(t))
-    t = sugar->GetUnderlyingType();
-  return t;
-}
+using cpp_typesystem::Desugar;
 
-// Whether a record type has any data members, considering base classes
-// recursively. A vtable pointer is not a field, so a polymorphic-but-otherwise-
-// empty class returns false here. This mirrors TypeSystemClang::RecordHasFields
-// and drives whether an empty base class is omitted from a value's children
-// (see the omit_empty_base_classes handling below). `complete` completes each
-// (lazily-parsed) base before inspecting it so its field count is known.
-static bool RecordHasFields(cpp_typesystem::Type *t,
-                            llvm::function_ref<void(cpp_typesystem::Type *)>
-                                complete) {
-  t = Desugar(t);
-  if (!t)
-    return false;
-  complete(t);
-  if (t->GetNumFields() != 0)
-    return true;
-  // We always want a record with no definition anywhere in the debug info
-  // (e.g. -flimit-debug-info) to show up, so we can print a message in the
-  // summary indicating that the type is incomplete: otherwise a base class
-  // in this state would be silently hidden by the omit-empty-base-classes
-  // logic below (since it looks exactly like an empty-but-complete base),
-  // and a top-level variable of such a type would show nothing at all.
-  // Mirrors TypeSystemClang::RecordHasFields's IsForcefullyCompleted check.
-  if (!t->IsComplete())
-    return true;
-  for (uint32_t i = 0, n = t->GetNumBaseClasses(); i < n; ++i) {
-    const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
-    if (base && RecordHasFields(base->type.Get(), complete))
-      return true;
-  }
-  return false;
-}
-
-// Compute the byte offset of a virtual base subobject within a live derived
-// object, using the Itanium-ABI vtable slot recorded on the base. `base` must
-// be a virtual base with a vbase_offset_offset. `valobj` is the derived object
-// being inspected. Reads the object's vtable pointer, steps back
-// vbase_offset_offset bytes to the slot holding this base's offset, and returns
-// that offset (relative to the derived object's start). Returns nullopt if the
-// process/object isn't available or the reads fail, so the caller falls back to
-// the (static, possibly wrong) byte_offset. Mirrors
-// TypeSystemClang::GetVBaseBitOffset.
 static std::optional<int64_t>
 ReadVirtualBaseOffset(TypeSystemCpp &ts, cpp_typesystem::RecordType *derived,
                       const cpp_typesystem::BaseClass &base,
@@ -1055,15 +1007,10 @@ bool TypeSystemCpp::IsCharType(opaque_compiler_type_t type) {
   if (!type)
     return false;
   // Strip typedef/cv sugar so `const char` (e.g. the pointee of `const char *`)
-  // is recognized. Match clang's narrow-char set: char/signed char/unsigned
-  // char (not wchar_t). Identify them by their canonical display format and
-  // size rather than pointer identity, so this also works for a type reached
-  // through another Context (e.g. an expression result mapped into the scratch
-  // TypeSystemCpp).
-  cpp_typesystem::Type *t = Desugar(GetCppType(type));
-  auto *builtin = llvm::dyn_cast<cpp_typesystem::BuiltinType>(t);
-  return builtin && builtin->GetFormat() == lldb::eFormatChar &&
-         builtin->GetByteSize().value_or(0) == 1;
+  // is recognized.
+  auto *builtin = llvm::dyn_cast<cpp_typesystem::BuiltinType>(
+      Desugar(GetCppType(type)));
+  return builtin && builtin->IsChar();
 }
 
 bool TypeSystemCpp::IsCompleteType(opaque_compiler_type_t type) {
@@ -1252,14 +1199,9 @@ bool TypeSystemCpp::IsPossibleDynamicType(opaque_compiler_type_t type,
         return false;
       }
       // `id` is modeled as a pointer to the opaque `objc_object` record.
-      if (check_objc) {
-        if (auto *rec = llvm::dyn_cast<cpp_typesystem::RecordType>(pointee)) {
-          llvm::StringRef name = rec->GetName().GetName();
-          if (name == "objc_object" || name == "objc_class") {
-            set_target(pointee);
-            return true;
-          }
-        }
+      if (check_objc && cpp_typesystem::IsOpaqueObjCObjectRecord(pointee)) {
+        set_target(pointee);
+        return true;
       }
     }
   }
@@ -1289,8 +1231,7 @@ bool TypeSystemCpp::IsPossibleDynamicType(opaque_compiler_type_t type,
     // dynamic-type a `void *` exception pointer. A reference can't be to void.
     if (!is_reference) {
       if (auto *bt = llvm::dyn_cast<cpp_typesystem::BuiltinType>(pointee)) {
-        if (bt->GetEncoding() == lldb::eEncodingInvalid &&
-            bt->GetName().GetName() == "void") {
+        if (bt->IsVoid()) {
           set_target(pointee);
           return true;
         }
@@ -1529,14 +1470,13 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
                                        bool BaseOnly) {
   if (!type)
     return ConstString();
-  cpp_typesystem::Type *t = GetCppType(type);
   // Strip elaborated display sugar (e.g. the `::` of `::Struct`, or template
-  // spelling sugar) from the canonical name: like clang's RemoveWrappingTypes,
-  // the source spelling only affects the *display* name, so a formatter keyed on
-  // `Struct` still matches a `::Struct`-spelled value. Typedefs are kept (they
-  // are meaningful, distinct names).
-  while (auto *el = llvm::dyn_cast<cpp_typesystem::ElaboratedType>(t))
-    t = el->GetUnderlyingType();
+  // spelling sugar) from the canonical name: the source spelling only affects
+  // the *display* name, so a formatter keyed on `Struct` still matches a
+  // `::Struct`-spelled value. Typedefs are kept (they are meaningful, distinct
+  // names).
+  cpp_typesystem::Type *t =
+      cpp_typesystem::ElaboratedType::Strip(GetCppType(type));
   // A class-template instantiation's display name is reconstructed from its
   // modeled template arguments (so an enum-typed non-type argument prints as
   // `EnumType::Member` rather than the DWARF producer's `(EnumType)0`). Those
@@ -1779,24 +1719,13 @@ LanguageType TypeSystemCpp::GetMinimumLanguage(opaque_compiler_type_t type) {
     if (llvm::isa<cpp_typesystem::ObjCInterfaceType>(t))
       return eLanguageTypeObjC;
     if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
-      cpp_typesystem::Type *pointee = ptr->GetPointeeType();
-      if (pointee &&
-          llvm::isa<cpp_typesystem::ObjCInterfaceType>(Desugar(pointee)))
+      cpp_typesystem::Type *pointee = Desugar(ptr->GetPointeeType());
+      // An ObjC object pointer (`NSObject *`, or the `id`/`Class` idiom -- a
+      // pointer to the opaque `objc_object`/`objc_class` record) is routed to
+      // the ObjC runtime for dynamic-type resolution.
+      if (cpp_typesystem::IsObjCObjectType(pointee))
         return eLanguageTypeObjC;
-      if (pointee) {
-        // `id` / `Class` are modeled as a pointer to the opaque
-        // `objc_object` / `objc_class` record (see IsPossibleDynamicType);
-        // recognize that idiom too so e.g. an `id`-typed container element
-        // still gets routed to the ObjC runtime for dynamic-type resolution.
-        if (auto *rec =
-                llvm::dyn_cast<cpp_typesystem::RecordType>(Desugar(pointee))) {
-          llvm::StringRef name = rec->GetName().GetName();
-          if (name == "objc_object" || name == "objc_class")
-            return eLanguageTypeObjC;
-        }
-      }
-      if (!pointee ||
-          !llvm::isa<cpp_typesystem::RecordType>(Desugar(pointee)))
+      if (!llvm::isa_and_nonnull<cpp_typesystem::RecordType>(pointee))
         return eLanguageTypeC;
     } else if (!llvm::isa<cpp_typesystem::RecordType>(t)) {
       // A plain (non-pointer, non-record, non-ObjC) type -- e.g. `int` -- is
@@ -2610,7 +2539,7 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
     uint32_t non_empty_bases = 0;
     for (uint32_t i = 0; i < num_bases; ++i) {
       const cpp_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
-      if (base && RecordHasFields(base->type.Get(), complete))
+      if (base && cpp_typesystem::RecordType::HasFields(base->type.Get(), complete))
         ++non_empty_bases;
     }
     num_bases = non_empty_bases;
@@ -2619,69 +2548,25 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
 }
 
 BasicType TypeSystemCpp::GetBasicTypeEnumeration(opaque_compiler_type_t type) {
-  using cpp_typesystem::BuiltinKind;
   if (!type)
     return eBasicTypeInvalid;
-  cpp_typesystem::Type *t = Desugar(GetCppType(type));
-  auto *builtin = llvm::dyn_cast<cpp_typesystem::BuiltinType>(t);
-  if (!builtin)
-    return eBasicTypeInvalid;
-
-  if (std::optional<BuiltinKind> kind = builtin->GetBuiltinKind()) {
-    switch (*kind) {
-    case BuiltinKind::Void:            return eBasicTypeVoid;
-    case BuiltinKind::Bool:            return eBasicTypeBool;
-    case BuiltinKind::Char:            return eBasicTypeChar;
-    case BuiltinKind::SignedChar:      return eBasicTypeSignedChar;
-    case BuiltinKind::UnsignedChar:    return eBasicTypeUnsignedChar;
-    case BuiltinKind::WCharT:          return eBasicTypeWChar;
-    case BuiltinKind::Char8:           return eBasicTypeChar8;
-    case BuiltinKind::Char16:          return eBasicTypeChar16;
-    case BuiltinKind::Char32:          return eBasicTypeChar32;
-    case BuiltinKind::Short:           return eBasicTypeShort;
-    case BuiltinKind::UnsignedShort:   return eBasicTypeUnsignedShort;
-    case BuiltinKind::Int:             return eBasicTypeInt;
-    case BuiltinKind::UnsignedInt:     return eBasicTypeUnsignedInt;
-    case BuiltinKind::Long:            return eBasicTypeLong;
-    case BuiltinKind::UnsignedLong:    return eBasicTypeUnsignedLong;
-    case BuiltinKind::LongLong:        return eBasicTypeLongLong;
-    case BuiltinKind::UnsignedLongLong:return eBasicTypeUnsignedLongLong;
-    case BuiltinKind::Int128:          return eBasicTypeInt128;
-    case BuiltinKind::UnsignedInt128:  return eBasicTypeUnsignedInt128;
-    case BuiltinKind::Float:           return eBasicTypeFloat;
-    case BuiltinKind::Double:          return eBasicTypeDouble;
-    case BuiltinKind::LongDouble:      return eBasicTypeLongDouble;
-    case BuiltinKind::NullPtr:         return eBasicTypeNullPtr;
-    case BuiltinKind::NumKinds:        break;
-    }
-  }
-  return eBasicTypeInvalid;
+  auto *builtin = llvm::dyn_cast<cpp_typesystem::BuiltinType>(
+      Desugar(GetCppType(type)));
+  return builtin ? builtin->GetBasicTypeEnumeration() : eBasicTypeInvalid;
 }
 
 bool TypeSystemCpp::IsPromotableIntegerType(opaque_compiler_type_t type) {
+  if (!type)
+    return false;
   // Follows C++ [conv.prom]: integer types with a conversion rank less than
   // int, plus bool/character/unscoped-enum types, promote to int/unsigned int.
-  switch (GetBasicTypeEnumeration(type)) {
-  case eBasicTypeBool:
-  case eBasicTypeChar:
-  case eBasicTypeSignedChar:
-  case eBasicTypeUnsignedChar:
-  case eBasicTypeShort:
-  case eBasicTypeUnsignedShort:
-  case eBasicTypeWChar:
-  case eBasicTypeSignedWChar:
-  case eBasicTypeUnsignedWChar:
-  case eBasicTypeChar8:
-  case eBasicTypeChar16:
-  case eBasicTypeChar32:
-    return true;
-  default:
-    break;
-  }
+  cpp_typesystem::Type *t = Desugar(GetCppType(type));
+  if (auto *builtin = llvm::dyn_cast<cpp_typesystem::BuiltinType>(t))
+    return builtin->IsPromotableInteger();
   // Unscoped enumerations also promote.
-  bool enum_is_signed = false;
-  return IsEnumerationType(type, enum_is_signed) &&
-         !IsScopedEnumerationType(type);
+  if (auto *enum_type = llvm::dyn_cast<cpp_typesystem::EnumType>(t))
+    return !enum_type->IsScoped();
+  return false;
 }
 
 CompilerType
@@ -3037,7 +2922,7 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
     if (!base)
       continue;
     if (omit_empty_base_classes &&
-        !RecordHasFields(base->type.Get(), complete))
+        !cpp_typesystem::RecordType::HasFields(base->type.Get(), complete))
       continue;
     if (visible_base_idx == idx) {
       // Name the base-class child by its (possibly sugar-wrapped) type name
@@ -3147,7 +3032,7 @@ TypeSystemCpp::GetIndexOfChildWithName(opaque_compiler_type_t type,
     if (!base)
       continue;
     if (omit_empty_base_classes &&
-        !RecordHasFields(base->type.Get(), complete))
+        !cpp_typesystem::RecordType::HasFields(base->type.Get(), complete))
       continue;
     if (base->type.Get()->GetName().GetName() == name)
       return visible_base_idx;
@@ -3227,7 +3112,7 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithNameImpl(
   uint32_t total_bases = t->GetNumBaseClasses();
   auto base_is_visible = [&](const cpp_typesystem::BaseClass *base) {
     return base && (!omit_empty_base_classes ||
-                    RecordHasFields(base->type.Get(), complete));
+                    cpp_typesystem::RecordType::HasFields(base->type.Get(), complete));
   };
   uint32_t num_visible_bases = 0;
   for (uint32_t i = 0; i < total_bases; ++i)
@@ -3632,24 +3517,7 @@ bool TypeSystemCpp::IsPointerOrReferenceType(opaque_compiler_type_t type,
 unsigned TypeSystemCpp::GetTypeQualifiers(opaque_compiler_type_t type) {
   if (!type)
     return 0;
-  // Return the CVR qualifier mask using clang's bit layout
-  // (Const = 0x1, Restrict = 0x2, Volatile = 0x4), which is what the callers
-  // (e.g. clang::Qualifiers::fromCVRMask) expect. DWARF nests one qualifier per
-  // DIE, so `const volatile T` is modeled as two stacked CVQualifiedType nodes;
-  // walk the whole cv-sugar chain and OR the flags so both are reported (as a
-  // single clang `const volatile T` would).
-  unsigned quals = 0;
-  for (cpp_typesystem::Type *t = GetCppType(type); t;) {
-    auto *cv = llvm::dyn_cast<cpp_typesystem::CVQualifiedType>(t);
-    if (!cv)
-      break;
-    if (cv->IsConst())
-      quals |= 0x1;
-    if (cv->IsVolatile())
-      quals |= 0x4;
-    t = cv->GetUnderlyingType();
-  }
-  return quals;
+  return cpp_typesystem::CVQualifiedType::GetCVRMask(GetCppType(type));
 }
 
 std::optional<size_t>
@@ -3745,86 +3613,13 @@ static CompilerType CreateOpaqueObjCRecordType(cpp_typesystem::Builder &builder,
 }
 
 CompilerType TypeSystemCpp::GetBasicTypeFromAST(BasicType basic_type) {
-  using cpp_typesystem::BuiltinKind;
-  // kinds. Only the kinds TypeSystemCpp models are listed; anything else has
-  // no basic type here.
-  std::optional<BuiltinKind> kind;
+  // The Objective-C object/class/selector basic types are not builtins here:
+  // they are typedefs over a pointer to an opaque runtime record, matching how
+  // the DWARF parser and ClangTypeConverter (see ConvertObjCObjectPointer)
+  // model them elsewhere in TypeSystemCpp.
   switch (basic_type) {
-  case eBasicTypeVoid:
-    kind = BuiltinKind::Void;
-    break;
-  case eBasicTypeBool:
-    kind = BuiltinKind::Bool;
-    break;
-  case eBasicTypeChar:
-    kind = BuiltinKind::Char;
-    break;
-  case eBasicTypeSignedChar:
-    kind = BuiltinKind::SignedChar;
-    break;
-  case eBasicTypeUnsignedChar:
-    kind = BuiltinKind::UnsignedChar;
-    break;
-  case eBasicTypeWChar:
-    kind = BuiltinKind::WCharT;
-    break;
-  case eBasicTypeChar8:
-    kind = BuiltinKind::Char8;
-    break;
-  case eBasicTypeChar16:
-    kind = BuiltinKind::Char16;
-    break;
-  case eBasicTypeChar32:
-    kind = BuiltinKind::Char32;
-    break;
-  case eBasicTypeShort:
-    kind = BuiltinKind::Short;
-    break;
-  case eBasicTypeUnsignedShort:
-    kind = BuiltinKind::UnsignedShort;
-    break;
-  case eBasicTypeInt:
-    kind = BuiltinKind::Int;
-    break;
-  case eBasicTypeUnsignedInt:
-    kind = BuiltinKind::UnsignedInt;
-    break;
-  case eBasicTypeLong:
-    kind = BuiltinKind::Long;
-    break;
-  case eBasicTypeUnsignedLong:
-    kind = BuiltinKind::UnsignedLong;
-    break;
-  case eBasicTypeLongLong:
-    kind = BuiltinKind::LongLong;
-    break;
-  case eBasicTypeUnsignedLongLong:
-    kind = BuiltinKind::UnsignedLongLong;
-    break;
-  case eBasicTypeInt128:
-    kind = BuiltinKind::Int128;
-    break;
-  case eBasicTypeUnsignedInt128:
-    kind = BuiltinKind::UnsignedInt128;
-    break;
-  case eBasicTypeFloat:
-    kind = BuiltinKind::Float;
-    break;
-  case eBasicTypeDouble:
-    kind = BuiltinKind::Double;
-    break;
-  case eBasicTypeLongDouble:
-    kind = BuiltinKind::LongDouble;
-    break;
-  case eBasicTypeNullPtr:
-    kind = BuiltinKind::NullPtr;
-    break;
   case eBasicTypeObjCID:
   case eBasicTypeObjCClass: {
-    // `id` / `Class` are typedefs over a pointer to the opaque `objc_object`
-    // / `objc_class` record, matching how the DWARF parser and
-    // ClangTypeConverter (see ConvertObjCObjectPointer) model them elsewhere
-    // in TypeSystemCpp.
     const bool is_class = basic_type == eBasicTypeObjCClass;
     cpp_typesystem::Builder builder(*this);
     CompilerType ptr = builder.CreatePointerType(CreateOpaqueObjCRecordType(
@@ -3832,7 +3627,6 @@ CompilerType TypeSystemCpp::GetBasicTypeFromAST(BasicType basic_type) {
     return builder.CreateTypedefType(is_class ? "Class" : "id", ptr);
   }
   case eBasicTypeObjCSel: {
-    // `SEL` is a typedef over a pointer to the opaque `objc_selector` record.
     cpp_typesystem::Builder builder(*this);
     CompilerType ptr = builder.CreatePointerType(
         CreateOpaqueObjCRecordType(builder, "objc_selector"));
@@ -3841,6 +3635,10 @@ CompilerType TypeSystemCpp::GetBasicTypeFromAST(BasicType basic_type) {
   default:
     break;
   }
+  // Everything else the type system models is one of the enumerated builtins.
+  // Anything it doesn't (e.g. eBasicTypeHalf) has no basic type here.
+  std::optional<cpp_typesystem::BuiltinKind> kind =
+      cpp_typesystem::KnownBuiltinTypes::KindForBasicType(basic_type);
   if (!kind)
     return CompilerType();
   return GetCompilerType(m_context.GetBuiltinType(*kind));
@@ -3914,68 +3712,18 @@ bool TypeSystemCpp::IsConst(opaque_compiler_type_t type) {
 
 uint32_t TypeSystemCpp::IsHomogeneousAggregate(opaque_compiler_type_t type,
                                                CompilerType *base_type_ptr) {
-  // Port of TypeSystemClang::IsHomogeneousAggregate: a Homogeneous
-  // Floating-point/Vector Aggregate is a record with no base classes, that is
-  // not a dynamic (polymorphic) class, and whose *direct* fields are all
-  // either the same scalar floating-point type (HFA) or all the same vector
-  // type with matching bit width (HVA) -- never a mix of the two, and never
-  // any other kind of field (in particular, no recursion into nested
-  // aggregate fields: a struct-typed field always disqualifies the record,
-  // matching clang's field_qual_type->isFloatingType()/isVectorType() checks).
   if (!type)
     return 0;
-  auto *record =
-      llvm::dyn_cast_or_null<cpp_typesystem::RecordType>(Desugar(GetCppType(type)));
+  auto *record = llvm::dyn_cast_or_null<cpp_typesystem::RecordType>(
+      Desugar(GetCppType(type)));
   if (!record)
     return 0;
   if (!GetCompleteType(type))
     return 0;
-  if (record->GetNumBaseClasses() > 0 || record->IsPolymorphic())
-    return 0;
-
   uint32_t num_fields = 0;
-  bool is_hva = false;
-  bool is_hfa = false;
-  cpp_typesystem::Type *base_type = nullptr;
-  uint64_t base_bitwidth = 0;
-  for (uint32_t i = 0, e = record->GetNumFields(); i != e; ++i) {
-    const cpp_typesystem::Field *field = record->GetFieldAtIndex(i);
-    if (!field || !field->type.Get())
-      return 0;
-    cpp_typesystem::Type *field_type = Desugar(field->type.Get());
-    std::optional<uint64_t> field_bitwidth_opt = field_type->GetByteSize();
-    uint64_t field_bitwidth = field_bitwidth_opt.value_or(0) * 8;
-
-    if (field_type->GetEncoding() == lldb::eEncodingIEEE754) {
-      if (num_fields == 0)
-        base_type = field_type;
-      else {
-        if (is_hva)
-          return 0;
-        is_hfa = true;
-        if (field_type != base_type)
-          return 0;
-      }
-    } else if (auto *array =
-                   llvm::dyn_cast<cpp_typesystem::ArrayType>(field_type);
-               array && array->IsVector()) {
-      if (num_fields == 0) {
-        base_type = field_type;
-        base_bitwidth = field_bitwidth;
-      } else {
-        if (is_hfa)
-          return 0;
-        is_hva = true;
-        if (base_bitwidth != field_bitwidth)
-          return 0;
-        if (field_type != base_type)
-          return 0;
-      }
-    } else
-      return 0;
-    ++num_fields;
-  }
-  if (num_fields == 0)
+  cpp_typesystem::Type *base_type =
+      record->GetHomogeneousAggregateBase(num_fields);
+  if (!base_type)
     return 0;
   if (base_type_ptr)
     *base_type_ptr = GetCompilerType(base_type);
@@ -3998,23 +3746,15 @@ bool TypeSystemCpp::IsPolymorphicClass(opaque_compiler_type_t type) {
 bool TypeSystemCpp::IsTypedefType(opaque_compiler_type_t type) {
   if (!type)
     return false;
-  // Strip elaborated display sugar (e.g. a qualifier-spelled `GlobalTypedef::V`)
-  // but stop at the typedef itself, mirroring TypeSystemClang's
-  // RemoveWrappingTypes({Typedef}): the source spelling only affects display,
-  // so a typedef named through a qualifier is still a typedef.
-  cpp_typesystem::Type *t = GetCppType(type);
-  while (auto *el = llvm::dyn_cast<cpp_typesystem::ElaboratedType>(t))
-    t = el->GetUnderlyingType();
-  return llvm::isa<cpp_typesystem::TypedefType>(t);
+  return llvm::isa<cpp_typesystem::TypedefType>(
+      cpp_typesystem::ElaboratedType::Strip(GetCppType(type)));
 }
 
 CompilerType TypeSystemCpp::GetTypedefedType(opaque_compiler_type_t type) {
   if (!type)
     return CompilerType();
-  cpp_typesystem::Type *t = GetCppType(type);
-  while (auto *el = llvm::dyn_cast<cpp_typesystem::ElaboratedType>(t))
-    t = el->GetUnderlyingType();
-  if (auto *td = llvm::dyn_cast<cpp_typesystem::TypedefType>(t))
+  if (auto *td = llvm::dyn_cast<cpp_typesystem::TypedefType>(
+          cpp_typesystem::ElaboratedType::Strip(GetCppType(type))))
     return GetCompilerType(td->GetUnderlyingType());
   return CompilerType();
 }

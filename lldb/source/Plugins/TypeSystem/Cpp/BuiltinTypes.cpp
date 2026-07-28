@@ -45,6 +45,13 @@ struct BuiltinDesc {
   BuiltinKind kind;
   lldb::Encoding encoding;
   lldb::Format format;
+  /// The lldb::BasicType this kind corresponds to. Keeping it in the same table
+  /// as everything else keeps the two mapping directions (BuiltinKind ->
+  /// BasicType and back) from drifting apart.
+  lldb::BasicType basic_type;
+  /// True if the C++ integral promotions ([conv.prom]) apply to this kind:
+  /// bool, the character types, and the integer types ranked below int.
+  bool is_promotable;
   /// Known spellings for this type. The first is the canonical name; the rest
   /// are alternative spellings different compilers emit (e.g. GCC writes
   /// "long unsigned int" where Clang writes "unsigned long"). Unused slots are
@@ -54,34 +61,49 @@ struct BuiltinDesc {
 
 // clang-format off
 constexpr BuiltinDesc kDescs[] = {
-    {BuiltinKind::Void,             lldb::eEncodingInvalid, lldb::eFormatDefault,   {"void", nullptr, nullptr}},
-    {BuiltinKind::Bool,             lldb::eEncodingUint,    lldb::eFormatBoolean,   {"bool", "_Bool", nullptr}},
-    {BuiltinKind::Char,             lldb::eEncodingSint,    lldb::eFormatChar,      {"char", nullptr, nullptr}},
-    {BuiltinKind::SignedChar,       lldb::eEncodingSint,    lldb::eFormatChar,      {"signed char", nullptr, nullptr}},
-    {BuiltinKind::UnsignedChar,     lldb::eEncodingUint,    lldb::eFormatChar,      {"unsigned char", nullptr, nullptr}},
-    {BuiltinKind::WCharT,           lldb::eEncodingSint,    lldb::eFormatChar,      {"wchar_t", nullptr, nullptr}},
-    {BuiltinKind::Char8,            lldb::eEncodingUint,    lldb::eFormatUnicode8,  {"char8_t", nullptr, nullptr}},
-    {BuiltinKind::Char16,           lldb::eEncodingUint,    lldb::eFormatUnicode16, {"char16_t", nullptr, nullptr}},
-    {BuiltinKind::Char32,           lldb::eEncodingUint,    lldb::eFormatUnicode32, {"char32_t", nullptr, nullptr}},
-    {BuiltinKind::Short,            lldb::eEncodingSint,    lldb::eFormatDecimal,   {"short", "short int", nullptr}},
-    {BuiltinKind::UnsignedShort,    lldb::eEncodingUint,    lldb::eFormatUnsigned,  {"unsigned short", "short unsigned int", "unsigned short int"}},
-    {BuiltinKind::Int,              lldb::eEncodingSint,    lldb::eFormatDecimal,   {"int", nullptr, nullptr}},
-    {BuiltinKind::UnsignedInt,      lldb::eEncodingUint,    lldb::eFormatUnsigned,  {"unsigned int", "unsigned", nullptr}},
-    {BuiltinKind::Long,             lldb::eEncodingSint,    lldb::eFormatDecimal,   {"long", "long int", nullptr}},
-    {BuiltinKind::UnsignedLong,     lldb::eEncodingUint,    lldb::eFormatUnsigned,  {"unsigned long", "long unsigned int", "unsigned long int"}},
-    {BuiltinKind::LongLong,         lldb::eEncodingSint,    lldb::eFormatDecimal,   {"long long", "long long int", nullptr}},
-    {BuiltinKind::UnsignedLongLong, lldb::eEncodingUint,    lldb::eFormatUnsigned,  {"unsigned long long", "long long unsigned int", "unsigned long long int"}},
-    {BuiltinKind::Int128,           lldb::eEncodingSint,    lldb::eFormatDecimal,   {"__int128", nullptr, nullptr}},
-    {BuiltinKind::UnsignedInt128,   lldb::eEncodingUint,    lldb::eFormatUnsigned,  {"unsigned __int128", "__int128 unsigned", nullptr}},
-    {BuiltinKind::Float,            lldb::eEncodingIEEE754, lldb::eFormatFloat,     {"float", nullptr, nullptr}},
-    {BuiltinKind::Double,           lldb::eEncodingIEEE754, lldb::eFormatFloat,     {"double", nullptr, nullptr}},
-    {BuiltinKind::LongDouble,       lldb::eEncodingIEEE754, lldb::eFormatFloat,     {"long double", nullptr, nullptr}},
-    {BuiltinKind::NullPtr,          lldb::eEncodingUint,    lldb::eFormatHex,       {"std::nullptr_t", "decltype(nullptr)", "nullptr_t"}},
+    {BuiltinKind::Void,             lldb::eEncodingInvalid, lldb::eFormatDefault,   lldb::eBasicTypeVoid,             false, {"void", nullptr, nullptr}},
+    {BuiltinKind::Bool,             lldb::eEncodingUint,    lldb::eFormatBoolean,   lldb::eBasicTypeBool,             true,  {"bool", "_Bool", nullptr}},
+    {BuiltinKind::Char,             lldb::eEncodingSint,    lldb::eFormatChar,      lldb::eBasicTypeChar,             true,  {"char", nullptr, nullptr}},
+    {BuiltinKind::SignedChar,       lldb::eEncodingSint,    lldb::eFormatChar,      lldb::eBasicTypeSignedChar,       true,  {"signed char", nullptr, nullptr}},
+    {BuiltinKind::UnsignedChar,     lldb::eEncodingUint,    lldb::eFormatChar,      lldb::eBasicTypeUnsignedChar,     true,  {"unsigned char", nullptr, nullptr}},
+    {BuiltinKind::WCharT,           lldb::eEncodingSint,    lldb::eFormatChar,      lldb::eBasicTypeWChar,            true,  {"wchar_t", nullptr, nullptr}},
+    {BuiltinKind::Char8,            lldb::eEncodingUint,    lldb::eFormatUnicode8,  lldb::eBasicTypeChar8,            true,  {"char8_t", nullptr, nullptr}},
+    {BuiltinKind::Char16,           lldb::eEncodingUint,    lldb::eFormatUnicode16, lldb::eBasicTypeChar16,           true,  {"char16_t", nullptr, nullptr}},
+    {BuiltinKind::Char32,           lldb::eEncodingUint,    lldb::eFormatUnicode32, lldb::eBasicTypeChar32,           true,  {"char32_t", nullptr, nullptr}},
+    {BuiltinKind::Short,            lldb::eEncodingSint,    lldb::eFormatDecimal,   lldb::eBasicTypeShort,            true,  {"short", "short int", nullptr}},
+    {BuiltinKind::UnsignedShort,    lldb::eEncodingUint,    lldb::eFormatUnsigned,  lldb::eBasicTypeUnsignedShort,    true,  {"unsigned short", "short unsigned int", "unsigned short int"}},
+    {BuiltinKind::Int,              lldb::eEncodingSint,    lldb::eFormatDecimal,   lldb::eBasicTypeInt,              false, {"int", nullptr, nullptr}},
+    {BuiltinKind::UnsignedInt,      lldb::eEncodingUint,    lldb::eFormatUnsigned,  lldb::eBasicTypeUnsignedInt,      false, {"unsigned int", "unsigned", nullptr}},
+    {BuiltinKind::Long,             lldb::eEncodingSint,    lldb::eFormatDecimal,   lldb::eBasicTypeLong,             false, {"long", "long int", nullptr}},
+    {BuiltinKind::UnsignedLong,     lldb::eEncodingUint,    lldb::eFormatUnsigned,  lldb::eBasicTypeUnsignedLong,     false, {"unsigned long", "long unsigned int", "unsigned long int"}},
+    {BuiltinKind::LongLong,         lldb::eEncodingSint,    lldb::eFormatDecimal,   lldb::eBasicTypeLongLong,         false, {"long long", "long long int", nullptr}},
+    {BuiltinKind::UnsignedLongLong, lldb::eEncodingUint,    lldb::eFormatUnsigned,  lldb::eBasicTypeUnsignedLongLong, false, {"unsigned long long", "long long unsigned int", "unsigned long long int"}},
+    {BuiltinKind::Int128,           lldb::eEncodingSint,    lldb::eFormatDecimal,   lldb::eBasicTypeInt128,           false, {"__int128", nullptr, nullptr}},
+    {BuiltinKind::UnsignedInt128,   lldb::eEncodingUint,    lldb::eFormatUnsigned,  lldb::eBasicTypeUnsignedInt128,   false, {"unsigned __int128", "__int128 unsigned", nullptr}},
+    {BuiltinKind::Float,            lldb::eEncodingIEEE754, lldb::eFormatFloat,     lldb::eBasicTypeFloat,            false, {"float", nullptr, nullptr}},
+    {BuiltinKind::Double,           lldb::eEncodingIEEE754, lldb::eFormatFloat,     lldb::eBasicTypeDouble,           false, {"double", nullptr, nullptr}},
+    {BuiltinKind::LongDouble,       lldb::eEncodingIEEE754, lldb::eFormatFloat,     lldb::eBasicTypeLongDouble,       false, {"long double", nullptr, nullptr}},
+    {BuiltinKind::NullPtr,          lldb::eEncodingUint,    lldb::eFormatHex,       lldb::eBasicTypeNullPtr,          false, {"std::nullptr_t", "decltype(nullptr)", "nullptr_t"}},
 };
 // clang-format on
 
 static_assert(std::size(kDescs) == static_cast<size_t>(BuiltinKind::NumKinds),
               "every BuiltinKind needs exactly one description");
+
+/// The description of \p kind. kDescs is indexed by the enum value.
+const BuiltinDesc &DescFor(BuiltinKind kind) {
+  return kDescs[static_cast<size_t>(kind)];
+}
+
+/// kDescs is indexed by BuiltinKind, so it must list the kinds in enum order.
+constexpr bool DescsAreInKindOrder() {
+  for (size_t i = 0; i != std::size(kDescs); ++i)
+    if (static_cast<size_t>(kDescs[i].kind) != i)
+      return false;
+  return true;
+}
+static_assert(DescsAreInKindOrder(),
+              "kDescs must list the kinds in BuiltinKind order");
 
 /// The size (in bytes) of a builtin type on the given target, or nullopt for
 /// types without a size (void). The target-dependent sizes come from Clang's
@@ -135,6 +157,26 @@ std::optional<uint64_t> ByteSizeFor(BuiltinKind kind,
   return std::nullopt;
 }
 } // namespace
+
+lldb::BasicType BuiltinType::GetBasicTypeEnumeration() const {
+  // A bespoke builtin created from raw DWARF attributes has no known kind and
+  // therefore no basic type.
+  if (!m_kind)
+    return lldb::eBasicTypeInvalid;
+  return DescFor(*m_kind).basic_type;
+}
+
+bool BuiltinType::IsPromotableInteger() const {
+  return m_kind && DescFor(*m_kind).is_promotable;
+}
+
+std::optional<BuiltinKind>
+KnownBuiltinTypes::KindForBasicType(lldb::BasicType basic_type) {
+  for (const BuiltinDesc &desc : kDescs)
+    if (desc.basic_type == basic_type)
+      return desc.kind;
+  return std::nullopt;
+}
 
 KnownBuiltinTypes::KnownBuiltinTypes(const LanguageOpts &opts,
                                      IdentifierMap &identifiers) {

@@ -234,16 +234,12 @@ noteReverse(llvm::DenseMap<void *, ct::Type *> &reverse,
     reverse[canonical.getAsOpaquePtr()] = cpp_type;
 }
 
-/// Peel typedef/cv-qualifier "sugar" off a cpp_typesystem type to reach its
-/// canonical type. A pointee reached through a typedef (e.g. `typedef
-/// BaseClass TypedefBaseClass; TypedefBaseClass *p;`) must still be recognized
-/// as, say, an Objective-C interface so `p` is generated as a real
-/// ObjCObjectPointerType rather than a plain pointer.
-static ct::Type *Desugar(ct::Type *t) {
-  while (auto *sugar = llvm::dyn_cast_or_null<ct::SugarType>(t))
-    t = sugar->GetUnderlyingType();
-  return t;
-}
+// A pointee reached through a typedef (e.g. `typedef BaseClass
+// TypedefBaseClass; TypedefBaseClass *p;`) must still be recognized as, say, an
+// Objective-C interface so `p` is generated as a real ObjCObjectPointerType
+// rather than a plain pointer, so this file desugars in the same places
+// TypeSystemCpp does. See cpp_typesystem::Type::Desugar.
+using ct::Desugar;
 
 void ClangASTGenerator::RegisterNamespace(const ct::Namespace *cpp_ns,
                                           clang::NamespaceDecl *clang_ns) {
