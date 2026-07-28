@@ -6,7 +6,6 @@ add_lldb_library(lldbPluginTypeSystemCpp PLUGIN
   LanguageOpts.cpp
   Namespace.cpp
   ObjCMethodSignature.cpp
-  Function.cpp
   ScratchTypeSystemCpp.cpp
   Type.cpp
   TypeC.cpp
