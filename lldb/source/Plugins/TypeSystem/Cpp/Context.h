@@ -17,6 +17,9 @@
 #include "LanguageOpts.h"
 #include "Namespace.h"
 #include "Type.h"
+#include "TypeC.h"
+#include "TypeCpp.h"
+#include "TypeObjC.h"
 
 #include "llvm/Support/Casting.h"
 

@@ -8,6 +8,7 @@
 
 #include "Plugins/TypeSystem/Cpp/Builder.h"
 #include "Plugins/TypeSystem/Cpp/Type.h"
+#include "Plugins/TypeSystem/Cpp/TypeCpp.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
 #include "llvm/Support/Casting.h"

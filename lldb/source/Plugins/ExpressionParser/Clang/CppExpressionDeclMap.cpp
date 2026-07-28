@@ -17,6 +17,8 @@
 #include "Plugins/Language/ObjC/ObjCLanguage.h"
 #include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
 #include "Plugins/TypeSystem/Cpp/Type.h"
+#include "Plugins/TypeSystem/Cpp/TypeC.h"
+#include "Plugins/TypeSystem/Cpp/TypeObjC.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 
 #include "lldb/Core/Mangled.h"
