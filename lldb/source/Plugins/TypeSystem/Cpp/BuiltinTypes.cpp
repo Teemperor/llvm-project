@@ -170,6 +170,53 @@ bool BuiltinType::IsPromotableInteger() const {
   return m_kind && DescFor(*m_kind).is_promotable;
 }
 
+namespace {
+/// One (encoding, byte size) -> kind entry for KindForEncodingAndBitSize.
+struct EncodingSizeDesc {
+  lldb::Encoding encoding;
+  uint64_t byte_size;
+  BuiltinKind kind;
+};
+
+// The widths here are fixed, not target-derived: a caller that asks for "the
+// 32-bit signed type" wants `int` on every target this supports.
+//
+// Where several builtins share a width, the entry names the preferred one:
+//   - 1-byte signed is `signed char`, not `char` (which is also 1 byte but has
+//     implementation-defined signedness).
+//   - 8-byte int is `long long`, not `long`; 16-byte float is `long double`.
+// NB: TypeSystemClang's GetBuiltinTypeForEncodingAndBitSize resolves these ties
+// differently -- it walks char/short/int/long/long long in order and stops at
+// the first whose *target* width matches, so on LP64 it answers `long` for
+// 8 bytes where this answers `long long`. That divergence predates this table;
+// it is preserved here rather than silently changed.
+constexpr EncodingSizeDesc kEncodingSizes[] = {
+    {lldb::eEncodingSint, 1, BuiltinKind::SignedChar},
+    {lldb::eEncodingSint, 2, BuiltinKind::Short},
+    {lldb::eEncodingSint, 4, BuiltinKind::Int},
+    {lldb::eEncodingSint, 8, BuiltinKind::LongLong},
+    {lldb::eEncodingSint, 16, BuiltinKind::Int128},
+    {lldb::eEncodingUint, 1, BuiltinKind::UnsignedChar},
+    {lldb::eEncodingUint, 2, BuiltinKind::UnsignedShort},
+    {lldb::eEncodingUint, 4, BuiltinKind::UnsignedInt},
+    {lldb::eEncodingUint, 8, BuiltinKind::UnsignedLongLong},
+    {lldb::eEncodingUint, 16, BuiltinKind::UnsignedInt128},
+    {lldb::eEncodingIEEE754, 4, BuiltinKind::Float},
+    {lldb::eEncodingIEEE754, 8, BuiltinKind::Double},
+    {lldb::eEncodingIEEE754, 16, BuiltinKind::LongDouble},
+};
+} // namespace
+
+std::optional<BuiltinKind>
+KnownBuiltinTypes::KindForEncodingAndBitSize(lldb::Encoding encoding,
+                                             size_t bit_size) {
+  const uint64_t byte_size = (bit_size + 7) / 8;
+  for (const EncodingSizeDesc &desc : kEncodingSizes)
+    if (desc.encoding == encoding && desc.byte_size == byte_size)
+      return desc.kind;
+  return std::nullopt;
+}
+
 std::optional<BuiltinKind>
 KnownBuiltinTypes::KindForBasicType(lldb::BasicType basic_type) {
   for (const BuiltinDesc &desc : kDescs)
