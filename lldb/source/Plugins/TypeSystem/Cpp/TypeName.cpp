@@ -8,6 +8,7 @@
 
 #include "TypeName.h"
 
+#include "BuiltinTypes.h"
 #include "Namespace.h"
 #include "Type.h"
 #include "TypeC.h"
@@ -22,8 +23,15 @@
 
 #include <cstdio>
 
-using namespace lldb_private;
+namespace lldb_private {
+// NB: everything below sits inside lldb_private rather than pulling it in with
+// a using-directive. lldb/Symbol/Type.h (included for GetTypeScopeAndBasename)
+// declares an unrelated lldb_private::Type, and importing both namespaces at
+// file scope would make every bare `Type` here ambiguous with the
+// cpp_typesystem one this file is all about; inside lldb_private the inner
+// cpp_typesystem::Type wins.
 using namespace lldb_private::cpp_typesystem;
+
 
 namespace {
 
@@ -617,7 +625,7 @@ std::string cpp_typesystem::BuildFunctionName(FunctionType *fn,
   return BuildFunctionNameImpl(fn, decl, keep_inline_namespaces);
 }
 
-std::string BuildCanonicalName(Type *t, bool base_only) {
+std::string cpp_typesystem::BuildCanonicalName(Type *t, bool base_only) {
   if (!t)
     return std::string();
   // Strip elaborated display sugar (e.g. the `::` of `::Struct`, or template
@@ -794,4 +802,7 @@ std::string BuildCanonicalName(Type *t, bool base_only) {
     }
     return result + unnamed;
   }
-  return t->GetName().GetName();
+  return t->GetName().GetName().str();
+}
+
+} // namespace lldb_private
