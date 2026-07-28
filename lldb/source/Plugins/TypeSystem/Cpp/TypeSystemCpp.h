@@ -379,26 +379,6 @@ private:
   /// already has fields, or this already is the scratch context).
   CompilerType GetRuntimeCompletedObjCType(cpp_typesystem::Type *t,
                                            const ExecutionContext *exe_ctx);
-  /// Realize a single Objective-C type-encoding (e.g. "i", "f", "^v", "@") into
-  /// a cpp type created through \p builder, advancing \p enc past what it
-  /// consumed. Returns an empty CompilerType for an unrecognized encoding.
-  CompilerType RealizeObjCEncoding(cpp_typesystem::Builder &builder,
-                                   llvm::StringRef &enc);
-
-  /// Add \p iface's runtime-reported \p selector (as reported by
-  /// ObjCLanguageRuntime::ClassDescriptor::Describe's method callbacks) to
-  /// \p iface as a cpp_typesystem::ObjCMethod, realizing its signature from
-  /// \p type_encoding (the method's full `@encode`-style type-encoding
-  /// string, e.g. "i16@0:8"). Does nothing if \p type_encoding can't be fully
-  /// decoded (e.g. a struct-by-value parameter/return, which
-  /// RealizeObjCEncoding does not handle) -- mirrors
-  /// AppleObjCDeclVendor::ObjCRuntimeMethodType::BuildMethod, which likewise
-  /// drops a method it can't fully type rather than approximating it.
-  void AddRuntimeObjCMethod(cpp_typesystem::Builder &builder,
-                            cpp_typesystem::ObjCInterfaceType &iface,
-                            llvm::StringRef class_name, const char *selector,
-                            const char *type_encoding, bool is_class_method);
-
   std::string m_display_name;
   llvm::Triple m_triple;
   cpp_typesystem::Context m_context;
