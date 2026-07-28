@@ -254,6 +254,14 @@ public:
     m_byte_size = static_cast<uint8_t>(byte_size.value_or(0));
   }
 
+  // Like a pointer, a reference is pointer-aligned (see
+  // PointerType::GetAlignmentInBits).
+  std::optional<uint64_t> GetAlignmentInBits() const override {
+    if (std::optional<uint64_t> size = GetByteSize())
+      return *size * 8;
+    return std::nullopt;
+  }
+
   lldb::Encoding GetEncoding() const override { return lldb::eEncodingUint; }
   lldb::Format GetFormat() const override { return lldb::eFormatHex; }
   lldb::TypeClass GetTypeClass() const override {
@@ -290,6 +298,11 @@ public:
   /// The class this is a pointer-to-member of.
   Type *GetContainingType() const { return m_containing_type.Get(); }
   void SetContainingType(TypeRef type) { m_containing_type = type; }
+
+  /// True for a pointer to a member *function* (`R (C::*)(Args...)`), false for
+  /// a pointer to a data member (`T C::*`). Out-of-line: telling them apart
+  /// needs FunctionType, which lives in TypeC.h.
+  bool IsMemberFunctionPointer() const;
 
   // ABI-defined width (one or two pointers); small, so stored compactly like
   // PointerType's size (see there).

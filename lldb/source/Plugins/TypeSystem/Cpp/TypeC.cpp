@@ -40,6 +40,11 @@ unsigned CVQualifiedType::GetCVRMask(const Type *t) {
   return quals;
 }
 
+bool PointerType::IsFunctionPointer() const {
+  return !llvm::isa<BlockPointerType>(this) &&
+         llvm::isa_and_nonnull<FunctionType>(cpp_typesystem::Desugar(GetPointeeType()));
+}
+
 Type *PointerType::GetTransparentChildPointee() {
   Type *pointee = m_pointee_type.Get();
   if (!pointee)
