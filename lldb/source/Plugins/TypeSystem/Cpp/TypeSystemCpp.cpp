@@ -1060,21 +1060,9 @@ TypeSystemCpp::GetFunctionArgumentAtIndex(opaque_compiler_type_t type,
 bool TypeSystemCpp::IsFunctionPointerType(opaque_compiler_type_t type) {
   if (!type)
     return false;
-  cpp_typesystem::Type *t = Desugar(GetCppType(type));
-  // Only a *pointer* to a function is a function-pointer type. A reference to a
-  // function (`void (&)(int)`) is not, matching clang's isFunctionPointerType()
-  // (and TypeSystemClang). This distinction matters for formatting: the C++
-  // "function pointer summary" only applies to pointers, so a function
-  // reference must not pick it up.
-  auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t);
-  if (!ptr)
-    return false;
-  // A block pointer (`int (^)(int)`) is not a function-pointer type, matching
-  // clang's isFunctionPointerType().
-  if (llvm::isa<cpp_typesystem::BlockPointerType>(ptr))
-    return false;
-  cpp_typesystem::Type *pointee = ptr->GetPointeeType();
-  return pointee && llvm::isa<cpp_typesystem::FunctionType>(Desugar(pointee));
+  auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(
+      Desugar(GetCppType(type)));
+  return ptr && ptr->IsFunctionPointer();
 }
 
 bool TypeSystemCpp::IsMemberFunctionPointerType(opaque_compiler_type_t type) {
@@ -1082,10 +1070,7 @@ bool TypeSystemCpp::IsMemberFunctionPointerType(opaque_compiler_type_t type) {
     return false;
   auto *mp = llvm::dyn_cast<cpp_typesystem::MemberPointerType>(
       Desugar(GetCppType(type)));
-  if (!mp)
-    return false;
-  cpp_typesystem::Type *pointee = mp->GetPointeeType();
-  return pointee && llvm::isa<cpp_typesystem::FunctionType>(Desugar(pointee));
+  return mp && mp->IsMemberFunctionPointer();
 }
 
 bool TypeSystemCpp::IsMemberDataPointerType(opaque_compiler_type_t type) {
@@ -1093,10 +1078,7 @@ bool TypeSystemCpp::IsMemberDataPointerType(opaque_compiler_type_t type) {
     return false;
   auto *mp = llvm::dyn_cast<cpp_typesystem::MemberPointerType>(
       Desugar(GetCppType(type)));
-  if (!mp)
-    return false;
-  cpp_typesystem::Type *pointee = mp->GetPointeeType();
-  return pointee && !llvm::isa<cpp_typesystem::FunctionType>(Desugar(pointee));
+  return mp && !mp->IsMemberFunctionPointer();
 }
 
 bool TypeSystemCpp::IsBlockPointerType(
@@ -3490,32 +3472,7 @@ TypeSystemCpp::GetTypeBitAlign(opaque_compiler_type_t type,
   if (!type)
     return std::nullopt;
   cpp_typesystem::Type *t = Desugar(GetCppType(type));
-  if (!t)
-    return std::nullopt;
-
-  // Pointers and references are pointer-aligned.
-  if (llvm::isa<cpp_typesystem::PointerType>(t) ||
-      llvm::isa<cpp_typesystem::ReferenceType>(t))
-    return GetPointerByteSize() * 8;
-
-  // Prefer an explicitly-recorded alignment (e.g. an `alignas(...)` type, whose
-  // DW_AT_alignment the DWARF parser stored), which the size-derived heuristic
-  // below cannot recover.
-  if (std::optional<uint64_t> align = t->GetAlignInBits())
-    if (*align != 0)
-      return *align;
-
-  // The cpp_typesystem model doesn't record alignment. For scalars this is the
-  // size; for aggregates, derive an alignment that divides the size (natural
-  // alignment for the standard-layout types produced from debug info). Cap at
-  // 8 bytes, which matches the fundamental alignment on the supported targets.
-  std::optional<uint64_t> byte_size = t->GetByteSize();
-  if (!byte_size || *byte_size == 0)
-    return std::nullopt;
-  uint64_t align_bytes = 1;
-  while (align_bytes * 2 <= 8 && (*byte_size % (align_bytes * 2)) == 0)
-    align_bytes *= 2;
-  return align_bytes * 8;
+  return t ? t->GetAlignmentInBits() : std::nullopt;
 }
 
 CompilerType TypeSystemCpp::GetBuiltinTypeByName(ConstString name) {

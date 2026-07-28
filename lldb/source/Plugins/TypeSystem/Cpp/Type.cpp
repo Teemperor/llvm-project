@@ -12,6 +12,23 @@ char Type::ID = 0;
 char RecordType::ID = 0;
 char SugarType::ID = 0;
 
+std::optional<uint64_t> Type::GetAlignmentInBits() const {
+  // Prefer an explicitly-recorded alignment (e.g. an `alignas(...)` type, whose
+  // DW_AT_alignment the DWARF parser stored), which the size-derived heuristic
+  // below cannot recover.
+  if (std::optional<uint64_t> align = GetAlignInBits())
+    if (*align != 0)
+      return *align;
+
+  std::optional<uint64_t> byte_size = GetByteSize();
+  if (!byte_size || *byte_size == 0)
+    return std::nullopt;
+  uint64_t align_bytes = 1;
+  while (align_bytes * 2 <= 8 && (*byte_size % (align_bytes * 2)) == 0)
+    align_bytes *= 2;
+  return align_bytes * 8;
+}
+
 bool RecordType::HasFields(Type *t,
                            llvm::function_ref<void(Type *)> complete) {
   t = cpp_typesystem::Desugar(t);

@@ -184,6 +184,18 @@ public:
   /// carry one; every other kind reports "none".
   virtual std::optional<uint64_t> GetAlignInBits() const { return std::nullopt; }
 
+  /// This type's alignment in bits: the explicitly-recorded one when the debug
+  /// info had it (see GetAlignInBits), else one derived from the size, or
+  /// std::nullopt when neither is available.
+  ///
+  /// The model doesn't record alignment for most types. For a scalar the
+  /// derived alignment is its size; for an aggregate it is the largest power of
+  /// two that divides the size (the natural alignment of the standard-layout
+  /// types debug info produces), capped at 8 bytes -- the fundamental alignment
+  /// on the supported targets. A pointer/reference overrides this with the
+  /// target's pointer alignment.
+  virtual std::optional<uint64_t> GetAlignmentInBits() const;
+
   /// Peel "sugar" (typedef/cv-qualifier/elaborated/ptrauth) off this type to
   /// reach its canonical type. Mirrors clang's RemoveWrappingTypes: queries
   /// about layout and children should see through aliases and qualifiers, so

@@ -120,6 +120,17 @@ public:
   Type *GetPointeeType() const { return m_pointee_type.Get(); }
   void SetPointeeType(TypeRef type) { m_pointee_type = type; }
 
+  /// True if this is a function-pointer type (`void (*)(int)`), matching
+  /// clang's isFunctionPointerType(). A block pointer (`int (^)(int)`) is not
+  /// one despite also pointing at a function type, and neither is a *reference*
+  /// to a function (`void (&)(int)`) -- which is why this lives on PointerType
+  /// rather than being a free function over any pointee. The distinction
+  /// matters for formatting: the C++ "function pointer summary" only applies to
+  /// pointers, so a function reference must not pick it up.
+  ///
+  /// Out-of-line: BlockPointerType and FunctionType are declared below.
+  bool IsFunctionPointer() const;
+
   // A pointer's size is the target's pointer width, so it isn't stored on every
   // pointer: it is recovered from the owning Context (which knows the target
   // triple) reached through the pointee reference. Defined out-of-line because
@@ -127,6 +138,14 @@ public:
   // and Context::CreatePointerType (which guarantees the pointee reference
   // always carries a Context, even for `void *`).
   std::optional<uint64_t> GetByteSize() const override;
+
+  // A pointer is pointer-aligned, which is its own size -- not the
+  // largest-power-of-two-dividing-the-size heuristic Type applies.
+  std::optional<uint64_t> GetAlignmentInBits() const override {
+    if (std::optional<uint64_t> size = GetByteSize())
+      return *size * 8;
+    return std::nullopt;
+  }
 
   lldb::Encoding GetEncoding() const override { return lldb::eEncodingUint; }
   lldb::Format GetFormat() const override { return lldb::eFormatHex; }
