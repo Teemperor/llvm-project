@@ -19,7 +19,6 @@
 #include "Context.h"
 
 #include <memory>
-#include <mutex>
 
 class DWARFASTParserCpp;
 
@@ -397,12 +396,6 @@ private:
   /// must still resolve a hidden ivar reconstructed from the runtime (see the
   /// hidden-ivars test). Only a fallback: an explicit exe_ctx always wins.
   lldb::ProcessWP m_last_seen_process_wp;
-
-  // Serializes all mutation of m_context (and the Type nodes it owns) so the
-  // DWARF parser can resolve referenced types on worker threads. Recursive so
-  // that a locked resolution can nest further locked operations on the same
-  // thread. Acquired by constructing a cpp_typesystem::Builder.
-  std::recursive_mutex m_mutex;
 };
 
 } // namespace lldb_private

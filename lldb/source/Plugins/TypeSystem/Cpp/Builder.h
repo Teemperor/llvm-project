@@ -15,7 +15,6 @@
 #include "lldb/lldb-enumerations.h"
 
 #include <cstdint>
-#include <mutex>
 #include <optional>
 
 namespace lldb_private {
@@ -24,16 +23,19 @@ class TypeSystemCpp;
 
 namespace cpp_typesystem {
 
-/// The mutating, non-thread-safe interface used to populate a TypeSystemCpp
-/// (e.g. by the DWARF parser). Constructing a Builder acquires the type
-/// system's mutex and holds it for the Builder's lifetime, so every mutation
-/// performed through it is serialized against other threads. This is the only
-/// way to reach the mutating API: a caller that wants to change the type
-/// system must name a Builder, and naming one takes the lock.
+/// The mutating interface used to populate a TypeSystemCpp (e.g. by the DWARF
+/// parser). This is the only way to reach the mutating API: a caller that wants
+/// to change the type system must name a Builder.
+///
+/// Not thread safe, and it does not make itself so: every mutation path into a
+/// TypeSystemCpp today runs single-threaded, either because the caller already
+/// holds the Module mutex (the DWARF parser) or because it is only reached from
+/// the driver thread. \ref DWARFASTParserCpp's kMemberResolutionPolicy is the
+/// one place that is *shaped* like concurrent work, and it deliberately runs
+/// its futures deferred (i.e. inline) -- see the comment there. Serialization
+/// has to come back if that ever changes.
 class Builder {
 public:
-  /// Acquire exclusive, serialized access to \p ts's mutable state. The lock
-  /// is held until this Builder is destroyed.
   explicit Builder(TypeSystemCpp &ts);
 
   Builder(const Builder &) = delete;
@@ -197,7 +199,6 @@ private:
   TypeRef ToTypeRef(Type *type) const;
 
   TypeSystemCpp &m_ts;
-  std::lock_guard<std::recursive_mutex> m_lock;
 };
 
 } // namespace cpp_typesystem

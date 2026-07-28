@@ -12,7 +12,7 @@ using namespace lldb_private;
 using namespace lldb_private::cpp_typesystem;
 using namespace lldb;
 
-Builder::Builder(TypeSystemCpp &ts) : m_ts(ts), m_lock(ts.m_mutex) {}
+Builder::Builder(TypeSystemCpp &ts) : m_ts(ts) {}
 
 TypeRef Builder::ToTypeRef(const CompilerType &type) {
   auto ts = type.GetTypeSystem().dyn_cast_or_null<TypeSystemCpp>();
