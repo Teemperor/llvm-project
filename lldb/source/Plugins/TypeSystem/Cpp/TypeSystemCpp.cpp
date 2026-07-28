@@ -139,7 +139,6 @@ FindPtrAuthType(lldb::opaque_compiler_type_t type) {
 LLDB_PLUGIN_DEFINE(TypeSystemCpp)
 
 char TypeSystemCpp::ID;
-char ScratchTypeSystemCpp::ID;
 
 TypeSystemCpp::TypeSystemCpp(llvm::StringRef name, llvm::Triple triple)
     : m_display_name(name.str()), m_triple(std::move(triple)),
@@ -186,58 +185,6 @@ void TypeSystemCpp::Terminate() {
   PluginManager::UnregisterPlugin(CreateInstance);
 }
 
-ScratchTypeSystemCpp::ScratchTypeSystemCpp(Target &target, llvm::Triple triple)
-    : TypeSystemCpp(std::string("scratch TypeSystemCpp for ") +
-                        target.GetArchitecture().GetArchitectureName(),
-                    std::move(triple)),
-      m_target_wp(target.shared_from_this()) {}
-
-UserExpression *ScratchTypeSystemCpp::GetUserExpression(
-    llvm::StringRef expr, llvm::StringRef prefix, SourceLanguage language,
-    Expression::ResultType desired_type,
-    const EvaluateExpressionOptions &options, ValueObject *ctx_obj) {
-  TargetSP target = m_target_wp.lock();
-  if (!target)
-    return nullptr;
-  return new ClangUserExpression(*target, expr, prefix, language, desired_type,
-                                 options, ctx_obj);
-}
-
-FunctionCaller *ScratchTypeSystemCpp::GetFunctionCaller(
-    const CompilerType &return_type, const Address &function_address,
-    const ValueList &arg_value_list, const char *name) {
-  TargetSP target = m_target_wp.lock();
-  if (!target)
-    return nullptr;
-  Process *process = target->GetProcessSP().get();
-  if (!process)
-    return nullptr;
-  return new ClangFunctionCaller(*process, return_type, function_address,
-                                 arg_value_list, name);
-}
-
-std::unique_ptr<UtilityFunction>
-ScratchTypeSystemCpp::CreateUtilityFunction(std::string text,
-                                            std::string name) {
-  TargetSP target = m_target_wp.lock();
-  if (!target)
-    return {};
-  return std::make_unique<ClangUtilityFunction>(
-      *target, std::move(text), std::move(name),
-      target->GetDebugUtilityExpression());
-}
-
-PersistentExpressionState *
-ScratchTypeSystemCpp::GetPersistentExpressionState() {
-  if (!m_persistent_variables) {
-    TargetSP target = m_target_wp.lock();
-    if (!target)
-      return nullptr;
-    m_persistent_variables =
-        std::make_unique<ClangPersistentVariables>(target->shared_from_this());
-  }
-  return m_persistent_variables.get();
-}
 
 ConstString TypeSystemCpp::DeclGetName(void *opaque_decl) {
   // TypeSystemCpp's CompilerDecls are tagged cpp_typesystem::Decl references.
@@ -890,7 +837,6 @@ ConstString TypeSystemCpp::GetTypeName(opaque_compiler_type_t type,
   // the only part of naming a type that needs the TypeSystem.
   CompleteTemplateInstantiationForName(t);
   return ConstString(cpp_typesystem::BuildCanonicalName(t, BaseOnly));
-}
 }
 
 ConstString TypeSystemCpp::GetDisplayTypeName(opaque_compiler_type_t type) {
