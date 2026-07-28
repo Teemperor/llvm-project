@@ -9,6 +9,7 @@ add_lldb_library(lldbPluginTypeSystemCpp PLUGIN
   Type.cpp
   TypeC.cpp
   TypeCpp.cpp
+  TypeName.cpp
   TypeObjC.cpp
   TypeSystemCpp.cpp
 
