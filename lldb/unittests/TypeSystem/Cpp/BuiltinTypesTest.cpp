@@ -104,3 +104,56 @@ TEST_F(BuiltinTypesTest, NullPtrTypeInfo) {
   EXPECT_EQ(nullptr_t->GetTypeInfo(), lldb::eTypeHasValue);
   EXPECT_EQ(builtins.MatchByName("decltype(nullptr)"), nullptr_t);
 }
+
+// KindForEncodingAndBitSize maps a raw (encoding, width) -- all a register
+// context or a runtime plugin knows -- onto a builtin kind.
+TEST_F(BuiltinTypesTest, KindForEncodingAndBitSize) {
+  using KBT = KnownBuiltinTypes;
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingSint, 32),
+            BuiltinKind::Int);
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingUint, 32),
+            BuiltinKind::UnsignedInt);
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingIEEE754, 64),
+            BuiltinKind::Double);
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingSint, 128),
+            BuiltinKind::Int128);
+  // Bit sizes round up to whole bytes: 7 bits is a 1-byte type.
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingSint, 7),
+            BuiltinKind::SignedChar);
+  // Rounding up only helps when the resulting byte width has a builtin: no
+  // C type is 3 bytes wide, so a 17- or 24-bit register has no type here.
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingSint, 17),
+            std::nullopt);
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingUint, 24),
+            std::nullopt);
+  // Widths and encodings with no builtin.
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingSint, 256),
+            std::nullopt);
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingIEEE754, 8),
+            std::nullopt);
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingVector, 32),
+            std::nullopt);
+}
+
+// Where several builtins share a width, KindForEncodingAndBitSize has to pick
+// one. Pin those choices: they are not derivable from the width alone, so a
+// future rewrite driven off the kDescs table would otherwise silently change
+// them (kDescs lists `char` before `signed char`, and `long` before
+// `long long`).
+TEST_F(BuiltinTypesTest, KindForEncodingAndBitSizeTieBreaks) {
+  using KBT = KnownBuiltinTypes;
+  // 1-byte signed is `signed char`, not the implementation-defined-signedness
+  // `char`.
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingSint, 8),
+            BuiltinKind::SignedChar);
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingUint, 8),
+            BuiltinKind::UnsignedChar);
+  // 8-byte integers are `long long`, not `long` (both are 8 bytes on LP64).
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingSint, 64),
+            BuiltinKind::LongLong);
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingUint, 64),
+            BuiltinKind::UnsignedLongLong);
+  // 16-byte float is `long double`.
+  EXPECT_EQ(KBT::KindForEncodingAndBitSize(lldb::eEncodingIEEE754, 128),
+            BuiltinKind::LongDouble);
+}

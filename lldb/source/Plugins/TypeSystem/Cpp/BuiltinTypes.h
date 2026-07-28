@@ -150,6 +150,20 @@ public:
   /// BuiltinType::GetBasicTypeEnumeration.
   static std::optional<BuiltinKind> KindForBasicType(lldb::BasicType basic_type);
 
+  /// The builtin kind for a value of \p encoding that is \p bit_size bits
+  /// wide, or std::nullopt when no builtin has that combination. Backs
+  /// TypeSystem::GetBuiltinTypeForEncodingAndBitSize, whose callers (register
+  /// contexts, data formatters, runtime plugins) know only a raw
+  /// encoding+width and want the type that carries it.
+  ///
+  /// Unlike Match(), this takes no spelling, so where several builtins share a
+  /// width one has to be preferred; see the table in BuiltinTypes.cpp for which
+  /// and why. The widths are the fixed ones the callers actually ask for, not
+  /// the target's -- a caller asking for "the 32-bit signed type" wants `int`
+  /// on every supported target.
+  static std::optional<BuiltinKind>
+  KindForEncodingAndBitSize(lldb::Encoding encoding, size_t bit_size);
+
 private:
   // Backing storage for the canonical instances; index has no meaning.
   std::vector<std::unique_ptr<BuiltinType>> m_storage;

@@ -2547,38 +2547,9 @@ CompilerType TypeSystemCpp::CreateGenericFunctionPrototype() {
 CompilerType
 TypeSystemCpp::GetBuiltinTypeForEncodingAndBitSize(Encoding encoding,
                                                    size_t bit_size) {
-  using cpp_typesystem::BuiltinKind;
-  const size_t byte_size = (bit_size + 7) / 8;
-  std::optional<BuiltinKind> kind;
-  switch (encoding) {
-  case eEncodingSint:
-    switch (byte_size) {
-    case 1: kind = BuiltinKind::SignedChar; break;
-    case 2: kind = BuiltinKind::Short; break;
-    case 4: kind = BuiltinKind::Int; break;
-    case 8: kind = BuiltinKind::LongLong; break;
-    case 16: kind = BuiltinKind::Int128; break;
-    }
-    break;
-  case eEncodingUint:
-    switch (byte_size) {
-    case 1: kind = BuiltinKind::UnsignedChar; break;
-    case 2: kind = BuiltinKind::UnsignedShort; break;
-    case 4: kind = BuiltinKind::UnsignedInt; break;
-    case 8: kind = BuiltinKind::UnsignedLongLong; break;
-    case 16: kind = BuiltinKind::UnsignedInt128; break;
-    }
-    break;
-  case eEncodingIEEE754:
-    switch (byte_size) {
-    case 4: kind = BuiltinKind::Float; break;
-    case 8: kind = BuiltinKind::Double; break;
-    case 16: kind = BuiltinKind::LongDouble; break;
-    }
-    break;
-  default:
-    break;
-  }
+  std::optional<cpp_typesystem::BuiltinKind> kind =
+      cpp_typesystem::KnownBuiltinTypes::KindForEncodingAndBitSize(encoding,
+                                                                   bit_size);
   if (!kind)
     return CompilerType();
   return GetCompilerType(m_context.GetBuiltinType(*kind));
