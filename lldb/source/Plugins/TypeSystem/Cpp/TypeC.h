@@ -183,6 +183,14 @@ public:
   bool IsVolatile() const { return m_is_volatile; }
   void SetIsVolatile(bool is_volatile) { m_is_volatile = is_volatile; }
 
+  /// The CVR qualifier mask applying to \p t, using clang's bit layout
+  /// (Const = 0x1, Restrict = 0x2, Volatile = 0x4) so the result can be handed
+  /// straight to clang::Qualifiers::fromCVRMask. DWARF nests one qualifier per
+  /// DIE, so `const volatile T` is modeled as two stacked CVQualifiedType
+  /// nodes; this walks the whole cv-sugar chain and ORs the flags together so
+  /// both are reported (as a single clang `const volatile T` would).
+  static unsigned GetCVRMask(const Type *t);
+
 private:
   bool m_is_const = false;
   bool m_is_volatile = false;
@@ -229,6 +237,17 @@ public:
   /// The source spelling to use for the display name (e.g. `::Struct`).
   Identifier GetSpelling() const { return m_spelling; }
   void SetSpelling(Identifier spelling) { m_spelling = spelling; }
+
+  /// Peel any elaborated display sugar off \p t, stopping at the first type
+  /// that carries real meaning. Mirrors TypeSystemClang's
+  /// RemoveWrappingTypes({Typedef}): unlike a full Desugar() this keeps a
+  /// typedef, since a typedef named through a qualifier (`GlobalTypedef::V`)
+  /// is still a typedef and the alias name is meaningful.
+  static Type *Strip(Type *t) {
+    while (auto *el = llvm::dyn_cast_or_null<ElaboratedType>(t))
+      t = el->GetUnderlyingType();
+    return t;
+  }
 
 private:
   Identifier m_spelling;

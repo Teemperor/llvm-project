@@ -25,6 +25,7 @@
 #include <optional>
 #include <vector>
 
+#include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 
@@ -183,6 +184,20 @@ public:
   /// carry one; every other kind reports "none".
   virtual std::optional<uint64_t> GetAlignInBits() const { return std::nullopt; }
 
+  /// Peel "sugar" (typedef/cv-qualifier/elaborated/ptrauth) off this type to
+  /// reach its canonical type. Mirrors clang's RemoveWrappingTypes: queries
+  /// about layout and children should see through aliases and qualifiers, so
+  /// most of TypeSystemCpp's query methods call this first. Sugar overrides it
+  /// to forward to what it wraps (see SugarType); every other kind is already
+  /// canonical and returns itself.
+  ///
+  /// A family of methods that disagree about desugaring causes infinite loops
+  /// (FormatManager) or "not a member" bugs, so when in doubt, desugar.
+  virtual Type *Desugar() { return this; }
+  const Type *Desugar() const {
+    return const_cast<Type *>(this)->Desugar();
+  }
+
   /// True if this type has members (a struct/class/union).
   virtual bool IsAggregate() const { return false; }
 
@@ -215,6 +230,11 @@ public:
   /// member / a virtual base, so it is reliable without forcing method parsing.
   virtual bool IsPolymorphic() const { return false; }
 };
+
+/// Null-tolerant wrapper around Type::Desugar(), for the many call sites that
+/// desugar a type that may not exist (an absent pointee, an unset TypeRef).
+inline Type *Desugar(Type *t) { return t ? t->Desugar() : nullptr; }
+inline const Type *Desugar(const Type *t) { return t ? t->Desugar() : nullptr; }
 
 /// Mixin adding the name/declaration-context storage that Type declares (as
 /// virtual accessors defaulting to "no name") but does not itself store --
@@ -410,6 +430,35 @@ public:
   /// GetNestedTypeWithName.
   uint32_t GetNumNestedTypes() const { return m_nested_types.size(); }
 
+  /// Whether \p t (a possibly-sugared record) has any data members, considering
+  /// base classes recursively. A vtable pointer is not a field, so a
+  /// polymorphic-but-otherwise-empty class answers false. Mirrors
+  /// TypeSystemClang::RecordHasFields; this drives whether an empty base class
+  /// is omitted from a value's children (the `omit_empty_base_classes` flag
+  /// threaded through the child-index queries).
+  ///
+  /// \p complete is invoked on each (lazily-parsed) record before it is
+  /// inspected, so its field count is known. Completion isn't something the
+  /// type model can do on its own -- it needs the SymbolFile -- so the caller
+  /// supplies it.
+  static bool HasFields(Type *t,
+                        llvm::function_ref<void(Type *)> complete);
+
+  /// If this record is a Homogeneous Floating-point/Vector Aggregate, the
+  /// element type every one of its fields has; null otherwise. \p num_fields
+  /// receives the field count on success (0 otherwise).
+  ///
+  /// A record qualifies when it has no base classes, is not polymorphic, and
+  /// its *direct* fields are all either the same scalar floating-point type
+  /// (HFA) or all the same vector type with matching bit width (HVA) -- never a
+  /// mix of the two, and never any other kind of field. In particular there is
+  /// no recursion into nested aggregate fields: a struct-typed field always
+  /// disqualifies the record, matching clang's
+  /// isFloatingType()/isVectorType() checks. Port of
+  /// TypeSystemClang::IsHomogeneousAggregate; callers must complete the record
+  /// first.
+  Type *GetHomogeneousAggregateBase(uint32_t &num_fields) const;
+
 private:
   // Structural mutation happens after creation (during lazy completion, which
   // may run on worker threads), so it is gated: only Context can perform it,
@@ -474,6 +523,7 @@ public:
 
   // Sugar is see-through: forward the value/layout queries to the wrapped type
   // so a `typedef`/`const` of an aggregate still looks like one.
+  Type *Desugar() override { return m_underlying_type.Get()->Desugar(); }
   bool IsAggregate() const override {
     return m_underlying_type.Get()->IsAggregate();
   }

@@ -28,27 +28,29 @@ std::optional<uint64_t> PointerType::GetByteSize() const {
   return std::nullopt;
 }
 
+unsigned CVQualifiedType::GetCVRMask(const Type *t) {
+  unsigned quals = 0;
+  while (auto *cv = llvm::dyn_cast_or_null<CVQualifiedType>(t)) {
+    if (cv->IsConst())
+      quals |= 0x1;
+    if (cv->IsVolatile())
+      quals |= 0x4;
+    t = cv->GetUnderlyingType();
+  }
+  return quals;
+}
+
 uint32_t PointerType::GetTypeInfo() const {
   uint32_t info =
       lldb::eTypeHasChildren | lldb::eTypeIsPointer | lldb::eTypeHasValue;
-  // A pointer to an Objective-C interface (`Foo *` / `id`) is itself an
+  // A pointer to an Objective-C object (`Foo *` / `id` / `Class`) is itself an
   // Objective-C construct: report eTypeIsObjC so that the value printer's
   // ObjC pointer-expansion (dwim-print's SetExpandPointerTypeFlags) and the
-  // ObjC language runtime treat it as an object pointer. (Sugar between the
-  // pointer and the interface is peeled by the caller via Desugar; the
-  // pointee stored here is normally the interface directly.)
-  const Type *pointee = m_pointee_type.Get();
-  if (pointee && llvm::isa<ObjCInterfaceType>(pointee))
+  // ObjC language runtime treat it as an object pointer, and so e.g.
+  // ObjCLanguage::IsNilReference prints a null `id` as "nil" instead of "0x0".
+  // (Sugar between the pointer and the interface is peeled by the caller via
+  // Desugar; the pointee stored here is normally the interface directly.)
+  if (IsObjCObjectType(m_pointee_type.Get()))
     info |= lldb::eTypeIsObjC;
-  // `id` / `Class` are modeled as a pointer to the opaque `objc_object` /
-  // `objc_class` record (see TypeSystemCpp::IsPossibleDynamicType /
-  // GetMinimumLanguage); recognize that idiom too, so e.g.
-  // ObjCLanguage::IsNilReference still prints a null `id`/`Class` as "nil"
-  // instead of "0x0".
-  if (auto *rec = llvm::dyn_cast_or_null<RecordType>(pointee)) {
-    llvm::StringRef name = rec->GetName().GetName();
-    if (name == "objc_object" || name == "objc_class")
-      info |= lldb::eTypeIsObjC;
-  }
   return info;
 }
