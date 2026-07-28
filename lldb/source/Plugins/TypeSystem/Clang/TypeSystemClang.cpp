@@ -84,6 +84,7 @@
 #include "Plugins/SymbolFile/DWARF/DWARFASTParserClang.h"
 #include "Plugins/SymbolFile/NativePDB/PdbAstBuilderClang.h"
 #include "Plugins/SymbolFile/PDB/PDBASTParser.h"
+#include "Plugins/TypeSystem/Cpp/ScratchTypeSystemCpp.h"
 #include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
 #include "lldb/Core/ModuleList.h"
 

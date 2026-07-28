@@ -425,45 +425,6 @@ private:
   std::recursive_mutex m_mutex;
 };
 
-class ScratchTypeSystemCpp : public TypeSystemCpp {
-  static char ID;
-
-public:
-  ScratchTypeSystemCpp(Target &target, llvm::Triple triple);
-
-  bool isA(const void *ClassID) const override {
-    return ClassID == &ID || TypeSystemCpp::isA(ClassID);
-  }
-  static bool classof(const TypeSystem *ts) { return ts->isA(&ID); }
-
-  // Expressions are still parsed by the Clang expression parser (which builds a
-  // transient clang::ASTContext); the TypeSystemCpp-specific work -- translating
-  // debug-info types into that Clang AST and mapping the result type back onto a
-  // TypeSystemCpp type -- is handled by CppExpressionDeclMap, which the parser
-  // installs when this setting is on. No scratch TypeSystemClang is involved.
-  UserExpression *
-  GetUserExpression(llvm::StringRef expr, llvm::StringRef prefix,
-                    SourceLanguage language, Expression::ResultType desired_type,
-                    const EvaluateExpressionOptions &options,
-                    ValueObject *ctx_obj) override;
-
-  FunctionCaller *GetFunctionCaller(const CompilerType &return_type,
-                                    const Address &function_address,
-                                    const ValueList &arg_value_list,
-                                    const char *name) override;
-
-  std::unique_ptr<UtilityFunction>
-  CreateUtilityFunction(std::string text, std::string name) override;
-
-  PersistentExpressionState *GetPersistentExpressionState() override;
-
-private:
-  lldb::TargetWP m_target_wp;
-  /// Persistent variables ($0, $foo, ...) for expressions evaluated in this
-  /// scratch context. Created lazily.
-  std::unique_ptr<PersistentExpressionState> m_persistent_variables;
-};
-
 } // namespace lldb_private
 
 #endif // LLDB_SOURCE_PLUGINS_TYPESYSTEM_CPP_TYPESYSTEMCPP_H
