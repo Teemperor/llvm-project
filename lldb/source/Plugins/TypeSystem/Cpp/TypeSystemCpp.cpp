@@ -2471,39 +2471,21 @@ TypeSystemCpp::GetNumChildren(opaque_compiler_type_t type,
             return info->element_orders.back().value_or(0);
     return 0;
   }
-  // A pointer is transparent, mirroring TypeSystemClang: expanding `ptr`
-  // splices in the pointee aggregate's members rather than showing a single
-  // deref child. This is what the shared libc++ synthetic-child providers
-  // expect (they call GetChildMemberWithName/GetChildAtIndex directly on
-  // pointer-typed node values). As with references, only an already-complete
-  // aggregate is expanded transparently so that merely counting a pointer's
-  // children doesn't force completion of an otherwise-lazy pointee; a pointer
-  // to an incomplete/non-aggregate pointee keeps its single deref child.
-  // `void *` has no children.
+  // A pointer/reference is transparent when its children are the pointee's
+  // members (see Type::GetTransparentChildPointee); otherwise its single child
+  // is the dereferenced value -- except for `void *`, which has no pointee to
+  // show and therefore no children.
   if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
-    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
-    if (!pointee)
-      return 0;
-    // An Objective-C object is only ever accessed through a pointer (there is
-    // no by-value ObjC object), so a pointer to an ObjC interface is always
-    // transparent -- its children are the interface's ivars/superclass.
-    if (llvm::isa<cpp_typesystem::ObjCInterfaceType>(Desugar(pointee)))
+    if (cpp_typesystem::Type *pointee = ptr->GetTransparentChildPointee())
       return GetNumChildren(static_cast<opaque_compiler_type_t>(pointee),
                             omit_empty_base_classes, exe_ctx);
-    if (pointee->IsAggregate() && pointee->IsComplete())
-      return GetNumChildren(static_cast<opaque_compiler_type_t>(pointee),
-                            omit_empty_base_classes, exe_ctx);
-    return 1;
+    return ptr->GetPointeeType() ? 1 : 0;
   }
-  // A reference is transparent: its children are those of the referenced type.
-  // Like pointers, counting them must not force completion of the referent.
   if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t)) {
-    cpp_typesystem::Type *pointee = ref->GetPointeeType();
-    if (!pointee)
-      return 0;
-    if (pointee->IsAggregate() && pointee->IsComplete())
-      return GetNumChildren(pointee, omit_empty_base_classes, exe_ctx);
-    return 1;
+    if (cpp_typesystem::Type *pointee = ref->GetTransparentChildPointee())
+      return GetNumChildren(static_cast<opaque_compiler_type_t>(pointee),
+                            omit_empty_base_classes, exe_ctx);
+    return ref->GetPointeeType() ? 1 : 0;
   }
   if (!t->IsAggregate())
     return 0;
@@ -2824,12 +2806,13 @@ llvm::Expected<CompilerType> TypeSystemCpp::GetChildCompilerTypeAtIndex(
     // `*ptr`/GetDereferencedType) must fall through to the "child 0 is the
     // dereferenced value" path below so `*ptr` yields the whole pointee
     // object rather than its first base/ivar.
-    bool is_objc =
-        llvm::isa<cpp_typesystem::ObjCInterfaceType>(Desugar(pointee));
-    if (is_objc)
+    //
+    // An ObjC interface is transparent even while incomplete (see
+    // PointerType::GetTransparentChildPointee), so complete it first --
+    // otherwise its ivars aren't there to splice in.
+    if (llvm::isa<cpp_typesystem::ObjCInterfaceType>(Desugar(pointee)))
       GetCompleteType(GetCompilerType(pointee).GetOpaqueQualType());
-    if (transparent_pointers &&
-        (is_objc || (pointee->IsAggregate() && pointee->IsComplete()))) {
+    if (transparent_pointers && ptr->GetTransparentChildPointee()) {
       bool tmp_child_is_deref_of_parent = false;
       return GetCompilerType(pointee).GetChildCompilerTypeAtIndex(
           exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
@@ -3002,19 +2985,8 @@ TypeSystemCpp::GetIndexOfChildWithName(opaque_compiler_type_t type,
   // TypeSystemClang): its named children are the aggregate pointee's members,
   // so forward the lookup. A pointer to a non-aggregate has only its (unnamed)
   // deref child, so no named member is directly addressable.
-  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
-    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
-    if (pointee && pointee->IsAggregate())
-      return GetCompilerType(pointee).GetIndexOfChildWithName(
-          name, omit_empty_base_classes);
-    return llvm::createStringError(
-        "TypeSystemCpp::GetIndexOfChildWithName: no such child");
-  }
-  cpp_typesystem::Type *pointee = nullptr;
-  if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t))
-    pointee = ref->GetPointeeType();
-  if (pointee) {
-    if (pointee->IsAggregate())
+  if (llvm::isa<cpp_typesystem::PointerType, cpp_typesystem::ReferenceType>(t)) {
+    if (cpp_typesystem::Type *pointee = t->GetNamedMemberPointee())
       return GetCompilerType(pointee).GetIndexOfChildWithName(
           name, omit_empty_base_classes);
     return llvm::createStringError(
@@ -3087,21 +3059,13 @@ size_t TypeSystemCpp::GetIndexOfChildMemberWithNameImpl(
   // the pointee aggregate's members directly, with no intervening deref child,
   // so recurse without pushing an index-0 deref step -- matching the reference
   // case and keeping the returned indices consistent with the child layout.
-  if (auto *ptr = llvm::dyn_cast<cpp_typesystem::PointerType>(t)) {
-    cpp_typesystem::Type *pointee = ptr->GetPointeeType();
-    if (!pointee || !pointee->IsAggregate())
+  if (llvm::isa<cpp_typesystem::PointerType, cpp_typesystem::ReferenceType>(t)) {
+    cpp_typesystem::Type *pointee = t->GetNamedMemberPointee();
+    if (!pointee)
       return 0;
     return GetIndexOfChildMemberWithNameImpl(
         static_cast<opaque_compiler_type_t>(pointee), name,
         omit_empty_base_classes, /*descend_anon_fields=*/true, child_indexes);
-  }
-  if (auto *ref = llvm::dyn_cast<cpp_typesystem::ReferenceType>(t)) {
-    cpp_typesystem::Type *pointee = ref->GetPointeeType();
-    if (pointee && pointee->IsAggregate())
-      return GetIndexOfChildMemberWithNameImpl(
-          static_cast<opaque_compiler_type_t>(pointee), name,
-          omit_empty_base_classes, /*descend_anon_fields=*/true, child_indexes);
-    return 0;
   }
   // Compute the number of visible base classes (empty ones omitted when
   // requested), since fields are laid out after them and their child indices

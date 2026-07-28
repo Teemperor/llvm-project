@@ -137,6 +137,8 @@ public:
   // ObjCInterfaceType, which this (C-only) header must not depend on. See
   // TypeC.cpp.
   uint32_t GetTypeInfo() const override;
+  Type *GetTransparentChildPointee() override;
+  Type *GetNamedMemberPointee() override;
 
 private:
   TypeRef m_pointee_type;
