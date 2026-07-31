@@ -10,6 +10,7 @@ add_lldb_unittest(TypeSystemClikeUnitTests
   TypeSystemClikeChildrenTest.cpp
   TypeSystemClikeNameTest.cpp
   ClangASTGeneratorTest.cpp
+  ClangASTGeneratorOverlapTest.cpp
   ClangASTGeneratorVBaseTest.cpp
   ClangTypeConverterTest.cpp
 

@@ -61,6 +61,8 @@
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/StringSwitch.h"
 
+#include <algorithm>
+
 using namespace lldb_private;
 using namespace lldb;
 namespace ct = clike_typesystem;
@@ -1383,6 +1385,60 @@ ClangASTGenerator::GetModuleObjCInterface(llvm::StringRef class_name,
   return iface;
 }
 
+static bool IsEmptyFieldForLayout(const clang::FieldDecl *fd);
+
+/// Whether a field of this type gets no storage of its own in the record
+/// lowering. Mirrors clang's `CodeGen::isEmptyRecordForLayout` /
+/// `isEmptyFieldForLayout` (clang/lib/CodeGen/ABIInfoImpl.cpp), which is what
+/// decides whether CGRecordLowering gives a field an access unit at all --
+/// duplicated here because those helpers are private to CodeGen. Fields that
+/// clang will skip must be excluded from the overlap bookkeeping below, or a
+/// perfectly valid empty member sharing another member's offset would look like
+/// an inconsistent layout.
+static bool IsEmptyRecordForLayout(clang::QualType qt) {
+  const clang::RecordDecl *rd = qt->getAsRecordDecl();
+  if (!rd)
+    return false;
+  rd = rd->getDefinition();
+  if (!rd)
+    return false;
+
+  if (const auto *cxx = llvm::dyn_cast<clang::CXXRecordDecl>(rd)) {
+    if (cxx->isDynamicClass())
+      return false;
+    for (const clang::CXXBaseSpecifier &base : cxx->bases())
+      if (!IsEmptyRecordForLayout(base.getType()))
+        return false;
+  }
+  for (const clang::FieldDecl *fd : rd->fields())
+    if (!IsEmptyFieldForLayout(fd))
+      return false;
+  return true;
+}
+
+static bool IsEmptyFieldForLayout(const clang::FieldDecl *fd) {
+  if (fd->isZeroLengthBitField())
+    return true;
+  if (fd->isUnnamedBitField())
+    return false;
+  return IsEmptyRecordForLayout(fd->getType());
+}
+
+/// The number of bits a field of type \p qt occupies when it is a
+/// *potentially-overlapping* subobject, i.e. declared `[[no_unique_address]]`:
+/// its dsize or nvsize, whichever is larger (the same rule
+/// ItaniumRecordLayoutBuilder and CGRecordLowering apply). Returns 0 when the
+/// type cannot be potentially-overlapping (only a class type can be).
+static uint64_t PotentiallyOverlappingSizeInBits(clang::ASTContext &ast,
+                                                 clang::QualType qt) {
+  const clang::CXXRecordDecl *rd = qt->getAsCXXRecordDecl();
+  if (!rd || !rd->isCompleteDefinition())
+    return 0;
+  const clang::ASTRecordLayout &layout = ast.getASTRecordLayout(rd);
+  return ast.toBits(
+      std::max(layout.getNonVirtualSize(), layout.getDataSize()));
+}
+
 void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   auto it = m_records.find(record_decl);
   if (it == m_records.end())
@@ -1467,6 +1523,34 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   bool prev_is_bitfield = false;
   uint64_t prev_bitfield_end = 0; // Bit offset just past the previous bitfield.
 
+  // Overlap bookkeeping, so the layout handed to Clang stays self-consistent.
+  //
+  // Clang's record lowering requires the storage of the members it lays out to
+  // be non-overlapping (CGRecordLowering::checkBitfieldClipping asserts on it),
+  // but two things make the DWARF-derived offsets look overlapping:
+  //
+  //   * `[[no_unique_address]]`: a member declared that way only occupies its
+  //     dsize/nvsize, so the next member may start inside its tail padding.
+  //     DWARF has no attribute for this (libc++'s `__compressed_pair` relies on
+  //     it heavily), so it has to be inferred from the offsets: when a member
+  //     starts before the end of the previous one, re-describe the previous
+  //     member as potentially-overlapping, which is exactly what the compiler
+  //     did.
+  //   * Inconsistent debug info: a member whose type is plainly too big for the
+  //     slot it sits in (seen with dsymutil-deduplicated DWARF where a member's
+  //     type reference resolves to an unrelated same-named type). Nothing can be
+  //     salvaged there, so the member is dropped rather than handed to Clang.
+  //
+  // `storage_tail` is the bit offset just past the storage of the previously
+  // added field, and `last_storage_field` that field (nullptr when it cannot be
+  // shrunk this way). Unions are exempt: all their members share offset 0 by
+  // design and Clang lowers them through a separate path.
+  const bool is_union = record_decl->isUnion();
+  const uint64_t record_size_bits = rec->GetByteSize().value_or(0) * 8;
+  uint64_t storage_tail = 0;
+  clang::FieldDecl *last_storage_field = nullptr;
+  uint64_t last_storage_offset = 0;
+
   auto abs_bit_offset = [](const ct::Field *f) -> uint64_t {
     return f->byte_offset * 8 + f->bitfield_bit_offset;
   };
@@ -1489,6 +1573,65 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     EnsureComplete(field_qt);
 
     const uint64_t this_offset = abs_bit_offset(field);
+
+    // Keep the layout we hand to Clang self-consistent (see the
+    // `storage_tail` comment above). Only plain fields are checked here: a
+    // bitfield's access unit is Clang's own business, and the padding
+    // synthesis below is what keeps a bitfield run contiguous.
+    uint64_t storage_bits = 0;
+    if (!field->IsBitfield() && !IsEmptyRecordForLayout(field_qt))
+      storage_bits = field->type.Get()->GetByteSize().value_or(0) * 8;
+    bool mark_no_unique_address = false;
+
+    if (!is_union && storage_bits) {
+      if (this_offset < storage_tail) {
+        // This member starts inside the previous one. That is what
+        // `[[no_unique_address]]` on the previous member looks like in DWARF
+        // (which cannot spell the attribute), so re-describe it that way --
+        // Clang then gives it only its dsize/nvsize worth of storage, leaving
+        // room for this member exactly as the compiler intended.
+        bool resolved = false;
+        if (last_storage_field &&
+            !last_storage_field->hasAttr<clang::NoUniqueAddressAttr>()) {
+          uint64_t shrunk = PotentiallyOverlappingSizeInBits(
+              ast, last_storage_field->getType());
+          if (shrunk && last_storage_offset + shrunk <= this_offset) {
+            last_storage_field->addAttr(
+                clang::NoUniqueAddressAttr::CreateImplicit(ast));
+            storage_tail = last_storage_offset + shrunk;
+            resolved = true;
+          }
+        }
+        if (!resolved) {
+          LLDB_LOG(GetLog(LLDBLog::Expressions),
+                   "ClangASTGenerator: dropping member '{0}' of '{1}': its "
+                   "storage starts at bit {2}, inside the preceding member "
+                   "(which ends at bit {3})",
+                   field->name.GetName(), rec->GetName().GetName(), this_offset,
+                   storage_tail);
+          continue;
+        }
+      }
+      // A member whose storage runs past the end of the record cannot be laid
+      // out either. Same two outcomes: the member may be a potentially-
+      // overlapping subobject that really is small enough, or the debug info
+      // is inconsistent and the member has to go.
+      if (record_size_bits && this_offset + storage_bits > record_size_bits) {
+        uint64_t shrunk = PotentiallyOverlappingSizeInBits(ast, field_qt);
+        if (shrunk && this_offset + shrunk <= record_size_bits) {
+          storage_bits = shrunk;
+          mark_no_unique_address = true;
+        } else {
+          LLDB_LOG(GetLog(LLDBLog::Expressions),
+                   "ClangASTGenerator: dropping member '{0}' of '{1}': its "
+                   "storage ({2} bits at bit {3}) does not fit in the {4}-bit "
+                   "record",
+                   field->name.GetName(), rec->GetName().GetName(),
+                   storage_bits, this_offset, record_size_bits);
+          continue;
+        }
+      }
+    }
 
     // Fill the gap left by an omitted padding bitfield between two bitfields in
     // the same storage unit (see the comment above).
@@ -1526,8 +1669,25 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     if (bit_width)
       fd->setBitWidth(bit_width);
     fd->setAccess(clang::AS_public);
+    if (mark_no_unique_address)
+      fd->addAttr(clang::NoUniqueAddressAttr::CreateImplicit(ast));
     decl->addDecl(fd);
     info.field_bit_offsets[fd] = this_offset;
+
+    if (!is_union) {
+      if (storage_bits) {
+        last_storage_field = fd;
+        last_storage_offset = this_offset;
+        storage_tail = this_offset + storage_bits;
+      } else if (field->IsBitfield()) {
+        // A bitfield shares its access unit with its neighbours, so it is not a
+        // candidate for the `[[no_unique_address]]` rewrite; just don't let a
+        // following member be judged against a stale tail.
+        storage_tail =
+            std::max(storage_tail, this_offset + field->bitfield_bit_size);
+        last_storage_field = nullptr;
+      }
+    }
 
     // A field with no name whose type is a struct/union is a C11 anonymous
     // struct/union member; remember it so we can promote its members below.
