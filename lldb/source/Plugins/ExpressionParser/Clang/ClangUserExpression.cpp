@@ -169,10 +169,26 @@ void ClangUserExpression::ScanContext(DiagnosticManager &diagnostic_manager,
           if (this_var->IsInScope(frame) &&
               this_var->LocationIsValidForFrame(frame)) {
             Type *this_type = this_var->GetType();
+            CompilerType pointee;
             if (this_type &&
-                this_type->GetForwardCompilerType().IsPointerType(nullptr)) {
-              m_in_cplusplus_method = true;
-              m_needs_object_ptr = true;
+                this_type->GetForwardCompilerType().IsPointerType(&pointee)) {
+              // The wrapper is only emitted as a member function when clang can
+              // actually host the injected `$__lldb_expr` method in the class,
+              // i.e. when the class has a definition. With limited debug info a
+              // member function can be emitted into a compile unit that only
+              // *declares* its class (DW_AT_declaration, e.g. a class whose key
+              // function lives in a translation unit built without debug info),
+              // with no definition in any other module either. There is nothing
+              // to add a method to then, and pretending otherwise would make
+              // every expression in such a frame fail with "incomplete type
+              // named in nested name specifier". Fall back to a plain function
+              // wrapper instead, which is exactly what the TypeSystemClang path
+              // does here: its CXXMethodDecl detection above cannot fire for a
+              // declaration-only class, whose member DIEs are never parsed.
+              if (pointee.IsAggregateType() && pointee.GetCompleteType()) {
+                m_in_cplusplus_method = true;
+                m_needs_object_ptr = true;
+              }
             }
           }
         }

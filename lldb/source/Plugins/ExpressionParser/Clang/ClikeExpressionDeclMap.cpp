@@ -1087,10 +1087,33 @@ void ClikeExpressionDeclMap::LookUpLldbClass(
   // `<non-record>::$__lldb_expr`, which fails to compile, matching
   // TypeSystemClang (a bare expression like `1` against a scalar object is
   // expected to error rather than silently evaluate).
-  if (auto *record = class_qt->getAsCXXRecordDecl()) {
+  auto *record = class_qt->getAsCXXRecordDecl();
+  if (record) {
     // Make sure members are available for unqualified lookup.
     GetGenerator().CompleteRecord(record);
-
+    // The record may have no definition anywhere in the debug info (only a
+    // forward declaration was emitted, e.g. a class built with
+    // -flimit-debug-info whose key function lives in a stripped translation
+    // unit, or a `this` whose type reference resolves to a declaration-only
+    // DIE). ClangASTGenerator::PopulateRecord deliberately leaves such a decl
+    // an incomplete forward declaration rather than faking an empty
+    // definition, so adding a member to it would ask clang for
+    // definition-only properties of a class that has none
+    // (`CXXRecordDecl::addedMember` -> `data()` asserts "queried property of
+    // class with no definition"). Skip the method injection; the wrapper's
+    // out-of-line `$__lldb_class::$__lldb_expr` definition then fails to
+    // compile with a normal "incomplete type" diagnostic. Mirrors
+    // ClangExpressionDeclMap::AddContextClassType, which likewise only injects
+    // the method when `GetCompleteType()` succeeded.
+    if (!record->hasDefinition()) {
+      LLDB_LOG(GetLog(LLDBLog::Expressions),
+               "ClikeEDM: $__lldb_class type {0} has no definition; not "
+               "injecting $__lldb_expr",
+               record->getQualifiedNameAsString());
+      record = nullptr;
+    }
+  }
+  if (record) {
     // Declare `void $__lldb_expr(void *)` in the class so the wrapper's
     // out-of-line `$__lldb_class::$__lldb_expr` definition has a matching
     // declaration (and thus an implicit `this`). Mirror the cv-qualifiers of
