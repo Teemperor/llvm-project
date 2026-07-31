@@ -7,11 +7,13 @@
 //===----------------------------------------------------------------------===//
 //
 // Clang's record lowering requires the members it is handed to have
-// non-overlapping storage (CGRecordLowering::checkBitfieldClipping asserts on
-// it). DWARF-derived layouts can violate that in two ways, both covered here:
-// a `[[no_unique_address]]` member whose tail padding the next member reuses
-// (valid, and pervasive in libc++'s `__compressed_pair`), and plainly
-// inconsistent debug info where a member's type is too big for its slot.
+// non-overlapping storage that fits inside the record
+// (CGRecordLowering::checkBitfieldClipping / ::insertPadding assert on it).
+// DWARF-derived layouts can violate that in several ways, all covered here: a
+// `[[no_unique_address]]` member whose tail padding the next member reuses
+// (valid, and pervasive in libc++'s `__compressed_pair`), plainly inconsistent
+// debug info where a member's type is too big for its slot, and the same for a
+// *base class* subobject.
 //
 //===----------------------------------------------------------------------===//
 
@@ -19,6 +21,7 @@
 
 #include "Plugins/TypeSystem/Clike/Type.h"
 #include "Plugins/TypeSystem/Clike/TypeC.h"
+#include "Plugins/TypeSystem/Clike/TypeCpp.h"
 
 #include "clang/AST/Attr.h"
 #include "clang/AST/Decl.h"
@@ -50,6 +53,10 @@ protected:
                      byte_offset);
   }
 
+  void AddBase(RecordType &record, CompilerType type, uint64_t byte_offset) {
+    builder.AddBaseClass(llvm::cast<ClassType>(record), Raw(type), byte_offset);
+  }
+
   CompilerType GetLong() {
     return builder.GetBuiltinType("long", 8, lldb::eEncodingSint,
                                   lldb::eFormatDecimal);
@@ -73,6 +80,19 @@ protected:
     std::vector<std::string> names;
     for (const clang::FieldDecl *fd : cxx->fields())
       names.push_back(fd->getNameAsString());
+    return names;
+  }
+
+  /// Complete \p record's clang decl and return the names of the base classes it
+  /// got.
+  std::vector<std::string> GenerateBaseNames(ClangASTGenerator &generator,
+                                             RecordType &record) {
+    clang::CXXRecordDecl *decl = nullptr;
+    GenerateFieldNames(generator, record, &decl);
+    std::vector<std::string> names;
+    for (const clang::CXXBaseSpecifier &base : decl->bases())
+      if (auto *base_rd = base.getType()->getAsCXXRecordDecl())
+        names.push_back(base_rd->getNameAsString());
     return names;
   }
 };
@@ -179,4 +199,118 @@ TEST_F(ClangASTGeneratorOverlapTest, UnionMembersAreNotDropped) {
   ClangASTGenerator generator(ast);
   EXPECT_EQ(GenerateFieldNames(generator, u, nullptr),
             std::vector<std::string>({"l", "b", "p"}));
+}
+
+// A base subobject that runs past the end of the derived record cannot be laid
+// out (`insertPadding` asserts on the capstone it places at the record's size).
+// This is what dsymutil's ODR uniquing produces when a `DW_TAG_inheritance`
+// resolves to a same-named nested type of an unrelated template
+// specialization: here `Derived` is 16 bytes with `Big` (16 bytes) at offset 8.
+// A base cannot be shrunk the way a `[[no_unique_address]]` field can, so it is
+// dropped.
+TEST_F(ClangASTGeneratorOverlapTest, OversizedBaseIsDropped) {
+  RecordType &small = MakeRecord("Small", 8);
+  AddField(small, "s", GetLong(), 0);
+  builder.SetRecordComplete(small);
+
+  RecordType &big = MakeRecord("Big", 16);
+  AddField(big, "a", GetLong(), 0);
+  AddField(big, "b", GetLong(), 8);
+  builder.SetRecordComplete(big);
+
+  RecordType &derived = MakeRecord("Derived", 16);
+  AddBase(derived, ts->GetCompilerType(&small), 0);
+  AddBase(derived, ts->GetCompilerType(&big), 8);
+  builder.SetRecordComplete(derived);
+
+  ClangASTGenerator generator(ast);
+  EXPECT_EQ(GenerateBaseNames(generator, derived),
+            std::vector<std::string>({"Small"}));
+}
+
+// Two base subobjects at overlapping offsets: the later one (in offset order)
+// has to go.
+TEST_F(ClangASTGeneratorOverlapTest, OverlappingBaseIsDropped) {
+  RecordType &big = MakeRecord("Big", 16);
+  AddField(big, "a", GetLong(), 0);
+  AddField(big, "b", GetLong(), 8);
+  builder.SetRecordComplete(big);
+
+  RecordType &small = MakeRecord("Small", 8);
+  AddField(small, "s", GetLong(), 0);
+  builder.SetRecordComplete(small);
+
+  RecordType &derived = MakeRecord("Derived", 24);
+  AddBase(derived, ts->GetCompilerType(&big), 0);
+  AddBase(derived, ts->GetCompilerType(&small), 8);
+  builder.SetRecordComplete(derived);
+
+  ClangASTGenerator generator(ast);
+  EXPECT_EQ(GenerateBaseNames(generator, derived),
+            std::vector<std::string>({"Big"}));
+}
+
+// An empty base gets no storage at all, so it legitimately shares the offset of
+// the base (or field) after it and must be kept.
+TEST_F(ClangASTGeneratorOverlapTest, EmptyBaseAtSharedOffsetIsKept) {
+  RecordType &empty = MakeRecord("Empty", 1);
+  builder.SetRecordComplete(empty);
+
+  RecordType &payload = MakeRecord("Payload", 8);
+  AddField(payload, "p", GetLong(), 0);
+  builder.SetRecordComplete(payload);
+
+  RecordType &derived = MakeRecord("Derived", 16);
+  AddBase(derived, ts->GetCompilerType(&empty), 0);
+  AddBase(derived, ts->GetCompilerType(&payload), 0);
+  AddField(derived, "f", GetLong(), 8);
+  builder.SetRecordComplete(derived);
+
+  ClangASTGenerator generator(ast);
+  EXPECT_EQ(GenerateBaseNames(generator, derived),
+            std::vector<std::string>({"Empty", "Payload"}));
+}
+
+// The bases are checked in *offset* order, which is not necessarily declaration
+// order: Itanium lays the primary (polymorphic) base out first even when a
+// non-polymorphic base is declared before it. Checking in declaration order
+// would see `NonPoly` at offset 8 first and then wrongly drop `Poly` at 0.
+TEST_F(ClangASTGeneratorOverlapTest, BasesOutOfDeclarationOrderAreKept) {
+  RecordType &non_poly = MakeRecord("NonPoly", 8);
+  AddField(non_poly, "n", GetLong(), 0);
+  builder.SetRecordComplete(non_poly);
+
+  RecordType &poly = MakeRecord("Poly", 8);
+  AddField(poly, "p", GetLong(), 0);
+  builder.SetRecordComplete(poly);
+
+  RecordType &derived = MakeRecord("Derived", 16);
+  AddBase(derived, ts->GetCompilerType(&non_poly), 8);
+  AddBase(derived, ts->GetCompilerType(&poly), 0);
+  builder.SetRecordComplete(derived);
+
+  ClangASTGenerator generator(ast);
+  EXPECT_EQ(GenerateBaseNames(generator, derived),
+            std::vector<std::string>({"NonPoly", "Poly"}));
+}
+
+// A field that starts inside a *base* subobject is as unlayoutable as one that
+// starts inside a preceding field, and it cannot be fixed by marking anything
+// potentially-overlapping (a base already only occupies its non-virtual size),
+// so the field is dropped.
+TEST_F(ClangASTGeneratorOverlapTest, FieldInsideBaseIsDropped) {
+  RecordType &base = MakeRecord("Base", 16);
+  AddField(base, "a", GetLong(), 0);
+  AddField(base, "b", GetLong(), 8);
+  builder.SetRecordComplete(base);
+
+  RecordType &derived = MakeRecord("Derived", 24);
+  AddBase(derived, ts->GetCompilerType(&base), 0);
+  AddField(derived, "inside", GetLong(), 8);
+  AddField(derived, "after", GetLong(), 16);
+  builder.SetRecordComplete(derived);
+
+  ClangASTGenerator generator(ast);
+  EXPECT_EQ(GenerateFieldNames(generator, derived, nullptr),
+            std::vector<std::string>({"after"}));
 }

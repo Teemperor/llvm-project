@@ -480,6 +480,13 @@ private:
     /// Clang (a plain parallel walk of the cpp fields wouldn't account for the
     /// synthetic ones).
     llvm::DenseMap<const clang::FieldDecl *, uint64_t> field_bit_offsets;
+    /// Byte offset of every *non-virtual* base subobject we wired into this
+    /// record. LayoutRecord reports these to Clang. Recorded here rather than
+    /// re-derived by walking `clang_decl->bases()` in parallel with the cpp
+    /// record's base list, because PopulateRecord may skip a base (its type
+    /// could not be generated, or its offset is inconsistent -- see the overlap
+    /// bookkeeping there), which would desynchronize such a parallel walk.
+    llvm::DenseMap<const clang::CXXRecordDecl *, uint64_t> base_byte_offsets;
     /// Nested types (by unqualified name) already resolved and parented into
     /// this record via LookupNestedType, so a repeated lookup reuses the decl.
     llvm::StringMap<clang::NamedDecl *> nested_types;
