@@ -46,6 +46,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
 
+#include <algorithm>
 #include <future>
 #include <vector>
 
@@ -1835,6 +1836,14 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
   uint64_t last_field_end = vtable_ptr_end_bits;
   bool last_field_is_bitfield = false;
   bool seen_field = false;
+  // Whether `last_field_end` is trustworthy. A member whose type has no known
+  // size yet (a lazily forward-declared record whose definition lives in
+  // another compile unit) tells us nothing about where it ends, so the gap
+  // before a following bitfield cannot be computed and no padding member may be
+  // synthesized from it -- otherwise the "gap" spans the whole unsized member
+  // and we invent a bitfield hundreds of bits wide (which then trips the
+  // bit-extraction asserts when the value is printed).
+  bool last_field_end_known = true;
 
   for (size_t i = 0; i < members.size(); ++i) {
     clike_typesystem::Type *member_type = member_types[i];
@@ -1861,6 +1870,9 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
         // detect unnamed-bitfield gaps.
         uint64_t abs_bit_offset;
         uint64_t this_bit_size;
+        // Whether this field's end (offset + size) is known; see
+        // `last_field_end_known`.
+        bool this_field_end_known = true;
         const bool is_bitfield = member.bit_size > 0;
         if (is_bitfield) {
           bitfield_bit_size = member.bit_size;
@@ -1877,11 +1889,13 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
           }
         } else {
           abs_bit_offset = member.byte_offset * 8;
-          this_bit_size = member_type->GetByteSize().value_or(0) * 8;
+          std::optional<uint64_t> member_byte_size = member_type->GetByteSize();
+          this_bit_size = member_byte_size.value_or(0) * 8;
+          this_field_end_known = member_byte_size.has_value();
         }
 
         // Fill any gap before a bitfield with a synthetic unnamed bitfield.
-        if (is_bitfield && padding_type) {
+        if (is_bitfield && padding_type && last_field_end_known) {
           uint64_t gap_start = last_field_end;
           // If the previous field was not a bitfield and did not end on a word
           // boundary, its padding fills the rest of the word, so the gap does
@@ -1893,13 +1907,22 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
           const bool this_is_first_field = !seen_field;
           if (abs_bit_offset > gap_start &&
               !(have_base && this_is_first_field)) {
-            uint64_t pad_bits = abs_bit_offset - gap_start;
-            uint32_t pad_bit_in_word =
-                static_cast<uint32_t>(gap_start % word_width);
-            uint64_t pad_byte_offset = (gap_start - pad_bit_in_word) / 8;
-            ts.AddField(*record, ts.GetIdentifier(llvm::StringRef()),
-                        padding_type, pad_byte_offset,
-                        static_cast<uint32_t>(pad_bits), pad_bit_in_word);
+            // Emit the padding one storage unit at a time. A gap can be wider
+            // than the padding type (several consecutive unnamed bitfields in
+            // the source collapse into a single hole here), and a bitfield
+            // wider than its own storage unit can neither be laid out nor have
+            // its value extracted, so split the hole into word-sized pieces
+            // rather than describing it as one huge bitfield.
+            for (uint64_t pad_pos = gap_start; pad_pos < abs_bit_offset;) {
+              uint32_t pad_bit_in_word =
+                  static_cast<uint32_t>(pad_pos % word_width);
+              uint64_t pad_bits = std::min<uint64_t>(
+                  abs_bit_offset - pad_pos, word_width - pad_bit_in_word);
+              ts.AddField(*record, ts.GetIdentifier(llvm::StringRef()),
+                          padding_type, (pad_pos - pad_bit_in_word) / 8,
+                          static_cast<uint32_t>(pad_bits), pad_bit_in_word);
+              pad_pos += pad_bits;
+            }
           }
         }
 
@@ -1924,10 +1947,16 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
                   llvm::dyn_cast<clike_typesystem::RecordType>(member_type))
             if (field_record->GetName().GetName().empty())
               ts.SetRecordAnonymousStructOrUnion(*field_record, *record);
-        // Advance the running field-end used for gap detection.
+        // Advance the running field-end used for gap detection. A field with a
+        // known end that reaches past everything seen so far makes the running
+        // end trustworthy again; an unsized one leaves it unknown.
         uint64_t this_end = abs_bit_offset + this_bit_size;
-        if (this_end > last_field_end || !seen_field)
+        if (this_end > last_field_end || !seen_field) {
           last_field_end = this_end;
+          last_field_end_known = this_field_end_known;
+        } else if (!this_field_end_known) {
+          last_field_end_known = false;
+        }
         last_field_is_bitfield = is_bitfield;
         seen_field = true;
       }
