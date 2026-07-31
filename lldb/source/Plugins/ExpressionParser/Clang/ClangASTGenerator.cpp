@@ -1488,11 +1488,62 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
 
   decl->startDefinition();
 
+  // Overlap bookkeeping, so the layout handed to Clang stays self-consistent.
+  //
+  // Clang's record lowering requires the storage of the members it lays out --
+  // base subobjects *and* fields -- to be non-overlapping and to fit inside the
+  // record (CGRecordLowering::checkBitfieldClipping and
+  // CGRecordLowering::insertPadding assert on it), but three things make the
+  // DWARF-derived offsets look overlapping:
+  //
+  //   * `[[no_unique_address]]`: a member declared that way only occupies its
+  //     dsize/nvsize, so the next member may start inside its tail padding.
+  //     DWARF has no attribute for this (libc++'s `__compressed_pair` relies on
+  //     it heavily), so it has to be inferred from the offsets: when a member
+  //     starts before the end of the previous one, re-describe the previous
+  //     member as potentially-overlapping, which is exactly what the compiler
+  //     did.
+  //   * Inconsistent debug info: a member whose type is plainly too big for the
+  //     slot it sits in (seen with dsymutil-deduplicated DWARF where a member's
+  //     type reference resolves to an unrelated same-named type). Nothing can be
+  //     salvaged there, so the member is dropped rather than handed to Clang.
+  //   * The same for a *base class*: dsymutil ODR-uniquing can point a
+  //     `DW_TAG_inheritance` at a same-named nested type of an unrelated
+  //     template specialization, giving a base subobject that runs past the end
+  //     of the derived record (or over another base). A base cannot be shrunk
+  //     the way a `[[no_unique_address]]` field can, so it is dropped.
+  //
+  // `storage_tail` is the bit offset just past the storage of the last member
+  // added (base subobject or field), `last_storage_field` the last field added
+  // (nullptr when it cannot be shrunk this way). Unions are exempt: all their
+  // members share offset 0 by design and Clang lowers them through a separate
+  // path.
+  const bool is_union = record_decl->isUnion();
+  const uint64_t record_size_bits = rec->GetByteSize().value_or(0) * 8;
+  uint64_t storage_tail = 0;
+  clang::FieldDecl *last_storage_field = nullptr;
+  uint64_t last_storage_offset = 0;
+
   // Base classes (C++ classes only). A base subobject is embedded by value, so
   // Clang requires its full definition when finalizing this record; complete
   // each base before wiring it up.
   if (rec->GetNumBaseClasses()) {
-    std::vector<clang::CXXBaseSpecifier *> bases;
+    // Generate every base's type first and only then decide which ones can
+    // actually be laid out: the overlap check has to run in *offset* order,
+    // which is not necessarily declaration order (Itanium lays the primary base
+    // out first even when another base is declared before it), so it cannot be
+    // folded into the loop that builds the base specifiers.
+    struct BaseEntry {
+      const ct::BaseClass *base;
+      clang::QualType qt;
+      clang::CXXRecordDecl *rd;
+      uint64_t offset_bits;
+      /// Bits of storage Clang gives the subobject; 0 when it gives it none (an
+      /// empty base, or a base we must not ask for a layout).
+      uint64_t size_bits;
+      bool dropped;
+    };
+    llvm::SmallVector<BaseEntry, 4> entries;
     for (uint32_t i = 0; i < rec->GetNumBaseClasses(); ++i) {
       const ct::BaseClass *base = rec->GetBaseClassAtIndex(i);
       // A base only needs completing for layout (EnsureComplete below), not a
@@ -1502,10 +1553,62 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
       if (base_qt.isNull())
         continue;
       EnsureComplete(base_qt);
+      clang::CXXRecordDecl *base_rd = base_qt->getAsCXXRecordDecl();
+      // How much storage Clang will give this base subobject
+      // (CGRecordLowering::accumulateBases: the base's non-virtual size, and
+      // nothing at all for an empty base). A virtual base has no constant offset
+      // here -- Clang lays those out itself, see LayoutRecord -- so it takes
+      // part in no offset bookkeeping. `isCompleteDefinition()` also guards
+      // against querying a layout for a record that is still mid-population
+      // (which includes this very record, should the debug info claim a class
+      // derives from itself): completeDefinition() has not run for those yet,
+      // and laying one out here would cache a half-built layout.
+      uint64_t size_bits = 0;
+      if (!base->is_virtual && base_rd && base_rd != decl &&
+          base_rd->isCompleteDefinition() && !IsEmptyRecordForLayout(base_qt))
+        size_bits =
+            ast.toBits(ast.getASTRecordLayout(base_rd).getNonVirtualSize());
+      entries.push_back({base, base_qt, base_rd, base->byte_offset * 8,
+                         size_bits, /*dropped=*/false});
+    }
+
+    // Walk the bases that get storage in offset order and drop any whose
+    // subobject overlaps a previous one or runs past the end of the record.
+    llvm::SmallVector<unsigned, 4> order;
+    for (unsigned i = 0; i < entries.size(); ++i)
+      if (entries[i].size_bits)
+        order.push_back(i);
+    llvm::stable_sort(order, [&entries](unsigned a, unsigned b) {
+      return entries[a].offset_bits < entries[b].offset_bits;
+    });
+    for (unsigned i : order) {
+      BaseEntry &e = entries[i];
+      if (e.offset_bits < storage_tail ||
+          (record_size_bits &&
+           e.offset_bits + e.size_bits > record_size_bits)) {
+        LLDB_LOG(GetLog(LLDBLog::Expressions),
+                 "ClangASTGenerator: dropping base class '{0}' of '{1}': its "
+                 "subobject ({2} bits at bit {3}) does not fit after bit {4} in "
+                 "the {5}-bit record",
+                 e.base->type.Get()->GetName().GetName(),
+                 rec->GetName().GetName(), e.size_bits, e.offset_bits,
+                 storage_tail, record_size_bits);
+        e.dropped = true;
+        continue;
+      }
+      storage_tail = e.offset_bits + e.size_bits;
+    }
+
+    std::vector<clang::CXXBaseSpecifier *> bases;
+    for (const BaseEntry &e : entries) {
+      if (e.dropped)
+        continue;
       bases.push_back(new (ast) clang::CXXBaseSpecifier(
-          clang::SourceRange(), /*is_virtual=*/base->is_virtual,
+          clang::SourceRange(), /*is_virtual=*/e.base->is_virtual,
           /*base_of_class=*/true, clang::AS_public,
-          ast.getTrivialTypeSourceInfo(base_qt), clang::SourceLocation()));
+          ast.getTrivialTypeSourceInfo(e.qt), clang::SourceLocation()));
+      if (!e.base->is_virtual && e.rd)
+        info.base_byte_offsets[e.rd] = e.base->byte_offset;
     }
     if (!bases.empty())
       decl->setBases(bases.data(), bases.size());
@@ -1522,34 +1625,6 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   // inserting spurious padding that would otherwise overlap in the lowering.
   bool prev_is_bitfield = false;
   uint64_t prev_bitfield_end = 0; // Bit offset just past the previous bitfield.
-
-  // Overlap bookkeeping, so the layout handed to Clang stays self-consistent.
-  //
-  // Clang's record lowering requires the storage of the members it lays out to
-  // be non-overlapping (CGRecordLowering::checkBitfieldClipping asserts on it),
-  // but two things make the DWARF-derived offsets look overlapping:
-  //
-  //   * `[[no_unique_address]]`: a member declared that way only occupies its
-  //     dsize/nvsize, so the next member may start inside its tail padding.
-  //     DWARF has no attribute for this (libc++'s `__compressed_pair` relies on
-  //     it heavily), so it has to be inferred from the offsets: when a member
-  //     starts before the end of the previous one, re-describe the previous
-  //     member as potentially-overlapping, which is exactly what the compiler
-  //     did.
-  //   * Inconsistent debug info: a member whose type is plainly too big for the
-  //     slot it sits in (seen with dsymutil-deduplicated DWARF where a member's
-  //     type reference resolves to an unrelated same-named type). Nothing can be
-  //     salvaged there, so the member is dropped rather than handed to Clang.
-  //
-  // `storage_tail` is the bit offset just past the storage of the previously
-  // added field, and `last_storage_field` that field (nullptr when it cannot be
-  // shrunk this way). Unions are exempt: all their members share offset 0 by
-  // design and Clang lowers them through a separate path.
-  const bool is_union = record_decl->isUnion();
-  const uint64_t record_size_bits = rec->GetByteSize().value_or(0) * 8;
-  uint64_t storage_tail = 0;
-  clang::FieldDecl *last_storage_field = nullptr;
-  uint64_t last_storage_offset = 0;
 
   auto abs_bit_offset = [](const ct::Field *f) -> uint64_t {
     return f->byte_offset * 8 + f->bitfield_bit_offset;
@@ -2559,23 +2634,24 @@ bool ClangASTGenerator::LayoutRecord(
       field_offsets[fd] = offset_it->second;
   }
 
-  // Base-class offsets (in bytes), matching declaration order. A virtual base
-  // has no constant offset (DWARF encodes it as a location expression), so it
-  // must not be reported as a direct-base offset -- Clang computes the virtual
-  // base layout itself from the record's size/vtable. Mirrors
-  // DWARFASTParserClang, which likewise omits virtual bases from base_offsets
-  // and leaves vbase_offsets empty.
+  // Base-class offsets (in bytes). Reported from the map PopulateRecord filled
+  // in as it wired the bases up, which holds exactly the non-virtual bases it
+  // actually added (it skips a base whose type could not be generated, and one
+  // whose subobject cannot be placed consistently -- see the overlap
+  // bookkeeping there). A virtual base has no constant offset (DWARF encodes it
+  // as a location expression), so it is not in the map and must not be reported
+  // as a direct-base offset -- Clang computes the virtual base layout itself
+  // from the record's size/vtable. Mirrors DWARFASTParserClang, which likewise
+  // omits virtual bases from base_offsets and leaves vbase_offsets empty.
   if (const auto *cxx = llvm::dyn_cast<clang::CXXRecordDecl>(record_decl)) {
-    uint32_t base_idx = 0;
     for (const clang::CXXBaseSpecifier &base : cxx->bases()) {
-      if (base_idx >= rec->GetNumBaseClasses())
-        break;
-      const ct::BaseClass *clike_base = rec->GetBaseClassAtIndex(base_idx++);
-      if (clike_base->is_virtual)
+      auto *base_rd = base.getType()->getAsCXXRecordDecl();
+      if (!base_rd)
         continue;
-      if (auto *base_rd = base.getType()->getAsCXXRecordDecl())
+      auto base_it = info.base_byte_offsets.find(base_rd);
+      if (base_it != info.base_byte_offsets.end())
         base_offsets[base_rd] =
-            clang::CharUnits::fromQuantity(clike_base->byte_offset);
+            clang::CharUnits::fromQuantity(base_it->second);
     }
   }
   (void)vbase_offsets;
