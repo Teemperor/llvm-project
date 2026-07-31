@@ -18,15 +18,15 @@ class TestCPPResultVariables(TestBase):
         TestBase.setUp(self)
         self.main_source_file = lldb.SBFileSpec("two-bases.cpp")
         if self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
+            "symbols.enable-typesystem-clike"
         ).GetBooleanValue():
-            # TypeSystemCpp does not (yet) preserve the dynamic type of a C++
+            # TypeSystemClike does not (yet) preserve the dynamic type of a C++
             # expression result variable, so `base_1_ptr` (a `Base_1 *` that
             # dynamically points to a `Derived`) is reported with its static
             # type rather than `Derived *`.
             self.skipTest(
                 "dynamic type of a C++ expression result not preserved by "
-                "TypeSystemCpp"
+                "TypeSystemClike"
             )
 
     def check_dereference(self, result_varname, frame, expr_options):

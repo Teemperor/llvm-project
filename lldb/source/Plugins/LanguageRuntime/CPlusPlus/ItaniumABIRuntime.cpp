@@ -22,7 +22,7 @@ static const char *vtable_demangled_prefix = "vtable for ";
 // The dynamic type found for a vtable symbol must be a C++ class/struct. Check
 // this via the CompilerType's own type-class bitfield rather than a
 // TypeSystemClang-specific query, so it works regardless of which type system
-// backs the type (TypeSystemClang or TypeSystemCpp).
+// backs the type (TypeSystemClang or TypeSystemClike).
 static bool IsCXXClassOrStruct(const CompilerType &type) {
   if (!type)
     return false;
@@ -296,7 +296,7 @@ bool ItaniumABIRuntime::GetDynamicTypeAndAddress(
     return true;
 
   // Use the generic CompilerType comparison (name-based, works across
-  // TypeSystemClang and TypeSystemCpp) instead of a TypeSystemClang-specific
+  // TypeSystemClang and TypeSystemClike) instead of a TypeSystemClang-specific
   // ASTContext type comparison.
   if (in_value.GetCompilerType().CompareTypes(type)) {
     // The dynamic type we found was the same type, so we don't have a

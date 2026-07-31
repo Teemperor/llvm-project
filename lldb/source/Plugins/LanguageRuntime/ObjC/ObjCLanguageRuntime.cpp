@@ -157,7 +157,7 @@ ObjCLanguageRuntime::LookupInCompleteClassCache(ConstString &name) {
         }
         continue;
       }
-      // TypeSystemCpp models ObjC classes as ObjCInterfaceType (not a
+      // TypeSystemClike models ObjC classes as ObjCInterfaceType (not a
       // clang::ObjCInterfaceType) and does not use the clang type payload.
       // Accept any ObjC struct/union type whose full definition is available.
       if ((fwd_type.GetTypeInfo() & lldb::eTypeIsObjC) &&
@@ -484,7 +484,7 @@ ObjCLanguageRuntime::GetRuntimeType(CompilerType base_type) {
   bool is_pointer_type = false;
 
   // Prefer the TypeSystem-neutral check (eTypeIsObjC) so this also covers
-  // TypeSystemCpp's ObjCInterfaceType, which is not a clang type and so never
+  // TypeSystemClike's ObjCInterfaceType, which is not a clang type and so never
   // matches TypeSystemClang::IsObjCObjectPointerType /
   // IsObjCObjectOrInterfaceType (both bail out immediately on a non-clang
   // CompilerType). `id`/`Class` are excluded (as the clang check above did

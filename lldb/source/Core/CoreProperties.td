@@ -27,10 +27,10 @@ let Definition = "modulelist", Path = "symbols" in {
     Global,
     DefaultStringValue<"">,
     Desc<"Debug info path which should be resolved while parsing, relative to the host filesystem.">;
-  def EnableTypeSystemCpp: Property<"enable-typesystem-cpp", "Boolean">,
+  def EnableTypeSystemClike: Property<"enable-typesystem-clike", "Boolean">,
     Global,
     DefaultTrue,
-    Desc<"Enable the experimental TypeSystemCpp mode which stores debug-info types in an LLDB-internal IR instead of the Clang AST. When enabled, the module-level type system no longer depends on the Clang ASTImporter for type sharing.">;
+    Desc<"Enable the experimental TypeSystemClike mode which stores debug-info types in an LLDB-internal IR instead of the Clang AST. When enabled, the module-level type system no longer depends on the Clang ASTImporter for type sharing.">;
   def EnableLLDBIndexCache: Property<"enable-lldb-index-cache", "Boolean">,
     Global,
     DefaultFalse,

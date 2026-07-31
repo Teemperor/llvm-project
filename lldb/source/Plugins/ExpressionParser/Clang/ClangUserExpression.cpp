@@ -22,7 +22,7 @@
 #include "ClangExpressionParser.h"
 #include "ClangModulesDeclVendor.h"
 #include "ClangPersistentVariables.h"
-#include "CppExpressionDeclMap.h"
+#include "ClikeExpressionDeclMap.h"
 #include "CppModuleConfiguration.h"
 
 #include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
@@ -132,7 +132,7 @@ void ClangUserExpression::ScanContext(DiagnosticManager &diagnostic_manager,
 
   if (!decl_context) {
     LLDB_LOGF(log, "  [CUE::SC] Null decl context");
-    // TypeSystemCpp does not model function decl contexts, so the CXXMethodDecl
+    // TypeSystemClike does not model function decl contexts, so the CXXMethodDecl
     // detection below can't fire. A context-object evaluation
     // (SBValue::EvaluateExpression) supplies the enclosing object directly via
     // `m_ctx_obj`; treat it like the corresponding member/method context so the
@@ -177,7 +177,7 @@ void ClangUserExpression::ScanContext(DiagnosticManager &diagnostic_manager,
           }
         }
     }
-    // Likewise for an Objective-C instance method: TypeSystemCpp does not model
+    // Likewise for an Objective-C instance method: TypeSystemClike does not model
     // the ObjCMethodDecl the detection below relies on, so recognize the method
     // from the frame's implicit `self` and the mangled `-[Class sel]` function
     // name. The class context and `self` object pointer are then wired up the
@@ -237,15 +237,15 @@ void ClangUserExpression::ScanContext(DiagnosticManager &diagnostic_manager,
               self_var->LocationIsValidForFrame(frame)) {
             Type *self_type = self_var->GetType();
             if (self_type) {
-              CompilerType self_cpp_type = self_type->GetForwardCompilerType();
+              CompilerType self_clike_type = self_type->GetForwardCompilerType();
               CompilerType pointee;
               // A class method's block captures `self` typed exactly `Class`
               // (a metaclass pointer, not a pointer to the interface) -- see
               // the comment above. That case is intentionally excluded here
               // (compare the pointer type's own name, not its pointee's,
               // since `Class` desugars to a pointer to `objc_class`).
-              if (self_cpp_type.IsPointerType(&pointee) && pointee &&
-                  self_cpp_type.GetTypeName() != ConstString("Class")) {
+              if (self_clike_type.IsPointerType(&pointee) && pointee &&
+                  self_clike_type.GetTypeName() != ConstString("Class")) {
                 m_in_objectivec_method = true;
                 m_needs_object_ptr = true;
               }
@@ -545,14 +545,14 @@ void ClangUserExpression::CreateSourceCode(
   std::string prefix = m_expr_prefix;
 
   if (m_options.GetExecutionPolicy() == eExecutionPolicyTopLevel) {
-    // Under TypeSystemCpp, prepend the sources of any previously declared
+    // Under TypeSystemClike, prepend the sources of any previously declared
     // top-level decls this top-level expression refers to, so that e.g. an
     // out-of-line member definition (`int MyClass::f() {...}`) or a derived
     // class (`class D : Base {...}`) can see the earlier top-level decls it
     // depends on. Without this, each top-level parse would only see the debug
     // info, not the decls introduced by earlier top-level expressions.
     std::string injected;
-    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp() &&
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike() &&
         m_clang_state)
       injected = m_clang_state->GetInjectedTopLevelSource(
           m_expr_text, /*emit_line_markers=*/true);
@@ -568,17 +568,17 @@ void ClangUserExpression::CreateSourceCode(
     // Remember this top-level source so a later expression can re-inject any
     // decl it declares (see RegisterTopLevelSource /
     // ClangPersistentVariables::GetInjectedTopLevelSource). Only meaningful
-    // under TypeSystemCpp, which persists top-level decls by re-injecting their
+    // under TypeSystemClike, which persists top-level decls by re-injecting their
     // original source rather than round-tripping them through the ASTImporter.
     // Note we stash the *original* m_expr_text (not m_transformed_text with the
     // injected prefix) so a decl's source is stored exactly once.
-    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp())
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike())
       m_type_system_helper.SetPendingTopLevelSource(m_expr_text, m_filename);
   } else {
-    // Under TypeSystemCpp, prepend the sources of any previously declared
+    // Under TypeSystemClike, prepend the sources of any previously declared
     // top-level function/variable this expression refers to, so they are
     // compiled (and JITed) together with it.
-    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp() &&
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike() &&
         m_clang_state) {
       std::string injected =
           m_clang_state->GetInjectedTopLevelSource(m_expr_text);
@@ -1199,12 +1199,12 @@ void ClangUserExpression::ClangUserExpressionHelper::ResetDeclMap(
     auto *persistent_vars = llvm::cast<ClangPersistentVariables>(state);
     ast_importer = persistent_vars->GetClangASTImporter();
   }
-  // When TypeSystemCpp is enabled, module-level debug-info types are
-  // cpp_typesystem::Type nodes rather than clang::Decls, so the ASTImporter-
-  // based decl map can't copy them. Use the TypeSystemCpp-aware decl map, which
-  // synthesizes the parser's clang AST from the cpp_typesystem description.
-  if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp()) {
-    m_expr_decl_map_up = std::make_unique<CppExpressionDeclMap>(
+  // When TypeSystemClike is enabled, module-level debug-info types are
+  // clike_typesystem::Type nodes rather than clang::Decls, so the ASTImporter-
+  // based decl map can't copy them. Use the TypeSystemClike-aware decl map, which
+  // synthesizes the parser's clang AST from the clike_typesystem description.
+  if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike()) {
+    m_expr_decl_map_up = std::make_unique<ClikeExpressionDeclMap>(
         keep_result_in_memory, &delegate, exe_ctx.GetTargetSP(), ctx_obj,
         ignore_context_qualifiers);
     return;
@@ -1228,38 +1228,38 @@ void ClangUserExpression::ClangUserExpressionHelper::CommitPersistentDecls() {
     return;
 
   ExpressionDeclMap *decl_map = m_expr_decl_map_up.get();
-  bool is_cpp_decl_map = decl_map && decl_map->IsCppDeclMap();
+  bool is_clike_decl_map = decl_map && decl_map->IsClikeDeclMap();
 
   // Legacy path: deport each persistent clang::NamedDecl into the target's
   // scratch TypeSystemClang and register it by name. This is the ASTImporter-
-  // based persistence used when TypeSystemCpp is off.
+  // based persistence used when TypeSystemClike is off.
   //
-  // We deliberately SKIP it when the CppExpressionDeclMap is in use: that
-  // lookup never consults the deported decls (the TypeSystemCpp-specific commit
+  // We deliberately SKIP it when the ClikeExpressionDeclMap is in use: that
+  // lookup never consults the deported decls (the TypeSystemClike-specific commit
   // below is what actually makes a persistent decl usable from a later
-  // TypeSystemCpp expression), so the deport is pure overhead -- and worse, it
+  // TypeSystemClike expression), so the deport is pure overhead -- and worse, it
   // can crash. A `--top-level` parse now textually re-injects the source of
   // earlier top-level decls it references (see CreateSourceCode /
   // GetInjectedTopLevelSource), so this AST can contain e.g. a full class
   // definition AND an out-of-line member definition referring to it; deporting
   // those through ClangASTImporter::DeportDecl trips a structural-equivalence
   // assertion/crash. The reinjection + RegisterPersistentType paths below fully
-  // cover persistence under TypeSystemCpp, so nothing is lost by skipping it.
-  if (!is_cpp_decl_map)
+  // cover persistence under TypeSystemClike, so nothing is lost by skipping it.
+  if (!is_clike_decl_map)
     m_result_synthesizer_up->CommitPersistentDecls();
 
-  // TypeSystemCpp path: additionally commit any `$`-prefixed persistent
+  // TypeSystemClike path: additionally commit any `$`-prefixed persistent
   // TypeDecl (`struct $foo {...}`, `typedef int $bar`) as a
-  // cpp_typesystem-backed CompilerType, keyed by name, in the persistent-type
-  // table CppExpressionDeclMap's lookup actually consults
+  // clike_typesystem-backed CompilerType, keyed by name, in the persistent-type
+  // table ClikeExpressionDeclMap's lookup actually consults
   // (ClangPersistentVariables::RegisterPersistentType /
   // GetCompilerTypeFromPersistentDecl). This is necessary because each
-  // TypeSystemCpp expression gets a brand new clang::ASTContext -- so the only
-  // way to make the type available again is to remember it as a cpp_typesystem
+  // TypeSystemClike expression gets a brand new clang::ASTContext -- so the only
+  // way to make the type available again is to remember it as a clike_typesystem
   // type, which is context-independent, and regenerate a fresh clang type for
-  // it on demand (done by CppExpressionDeclMap when the name is looked up
+  // it on demand (done by ClikeExpressionDeclMap when the name is looked up
   // again).
-  if (!is_cpp_decl_map)
+  if (!is_clike_decl_map)
     return;
 
   auto *state =
@@ -1333,10 +1333,10 @@ void ClangUserExpression::ClangUserExpressionHelper::CommitPersistentDecls() {
         m_result_synthesizer_up->GetASTContext().getTypeDeclType(type_decl);
     if (qt.isNull())
       continue;
-    CompilerType cpp_type = decl_map->WrapType(qt);
-    if (!cpp_type)
+    CompilerType clike_type = decl_map->WrapType(qt);
+    if (!clike_type)
       continue;
-    persistent_vars->RegisterPersistentType(ConstString(name), cpp_type);
+    persistent_vars->RegisterPersistentType(ConstString(name), clike_type);
   }
 }
 

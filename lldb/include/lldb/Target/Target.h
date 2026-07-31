@@ -1448,7 +1448,7 @@ public:
   /// of which concrete TypeSystem currently owns this target's C/C++/ObjC
   /// scratch slot (\a GetScratchTypeSystemForLanguage). This side channel
   /// keeps that working even when that slot is occupied by a TypeSystem that
-  /// isn't Clang-based (e.g. TypeSystemCpp). Returned/stored as an opaque
+  /// isn't Clang-based (e.g. TypeSystemClike). Returned/stored as an opaque
   /// \a TypeSystemSP since core code must not depend on a concrete
   /// TypeSystem plugin.
   lldb::TypeSystemSP GetOrCreateAuxiliaryClangScratchAST(

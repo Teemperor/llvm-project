@@ -4,25 +4,25 @@
 # RUN: %clangxx -target x86_64-pc-linux %S/Inputs/debug-types-basic.cpp \
 # RUN:   -g -gdwarf-4 -fdebug-types-section -c -o %t4.o
 # RUN: ld.lld %t4.o -o %t4
-# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t4 -s %s -o exit | FileCheck %s
+# RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t4 -s %s -o exit | FileCheck %s
 
 # Now do the same for DWARF v5.
 # RUN: %clangxx -target x86_64-pc-linux %S/Inputs/debug-types-basic.cpp \
 # RUN:   -g -gdwarf-5 -fdebug-types-section -c -o %t5.o
 # RUN: ld.lld %t5.o -o %t5
-# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t5 -s %s -o exit | FileCheck %s
+# RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t5 -s %s -o exit | FileCheck %s
 
 # Test type units in dwo files.
 # RUN: %clangxx -target x86_64-pc-linux %S/Inputs/debug-types-basic.cpp \
 # RUN:   -g -gdwarf-4 -fdebug-types-section -gsplit-dwarf -c -o %t4dwo.o
 # RUN: ld.lld %t4dwo.o -o %t4dwo
-# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t4dwo -s %s -o exit | FileCheck %s
+# RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t4dwo -s %s -o exit | FileCheck %s
 
 # And type units+dwo+dwarf5.
 # RUN: %clangxx -target x86_64-pc-linux %S/Inputs/debug-types-basic.cpp \
 # RUN:   -g -gdwarf-5 -fdebug-types-section -gsplit-dwarf -c -o %t5dwo.o
 # RUN: ld.lld %t5dwo.o -o %t5dwo
-# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t5dwo -s %s -o exit | FileCheck %s
+# RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t5dwo -s %s -o exit | FileCheck %s
 
 type lookup A
 # CHECK-LABEL: type lookup A

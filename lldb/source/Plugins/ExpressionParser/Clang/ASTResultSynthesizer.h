@@ -105,8 +105,8 @@ public:
   /// The persistent decls collected while transforming this parse's AST (any
   /// $-prefixed TypeDecl found in the `$__lldb_expr` function/method body, or
   /// every top-level NamedDecl for a top-level execution). Exposed so the
-  /// TypeSystemCpp-specific half of CommitPersistentDecls (which needs the
-  /// CppExpressionDeclMap's ClangASTGenerator to convert a type, something
+  /// TypeSystemClike-specific half of CommitPersistentDecls (which needs the
+  /// ClikeExpressionDeclMap's ClangASTGenerator to convert a type, something
   /// this class has no access to) can be driven from
   /// ClangUserExpressionHelper::CommitPersistentDecls instead.
   llvm::ArrayRef<clang::NamedDecl *> GetPersistentDecls() const {

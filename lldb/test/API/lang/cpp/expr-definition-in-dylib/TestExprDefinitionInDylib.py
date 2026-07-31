@@ -51,12 +51,12 @@ class ExprDefinitionInDylibTestCase(TestBase):
         #
         # Reading the value of a *nested* virtual base of a JIT'd expression
         # result (e.g. Expr.Local.Foo.x) requires resolving the nested
-        # virtual-base offset from the result object's vtable. TypeSystemCpp
+        # virtual-base offset from the result object's vtable. TypeSystemClike
         # does not yet do this for expression-result records (it needs the
         # out-of-scope vtable-based dynamic virtual-base offset resolution).
         # The cross-module structor calls above already pass; skip only this
-        # nested-virtual-base value check under TypeSystemCpp.
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        # nested-virtual-base value check under TypeSystemClike.
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             return
 
         self.expect_expr(

@@ -1,7 +1,7 @@
 // XFAIL: *
 
 // RUN: %clang --target=x86_64-apple-macosx -c -gdwarf -o %t %s
-// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t \
+// RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t \
 // RUN:   -o "expr alignof(OverlappingDerived)" \
 // RUN:   -o "expr sizeof(OverlappingDerived)" \
 // RUN:   -o exit | FileCheck %s

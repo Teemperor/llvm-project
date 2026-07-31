@@ -1258,8 +1258,8 @@ int main(int argc, const char *argv[]) {
   ModuleList::GetGlobalModuleListProperties().SetEnableExternalLookup(false);
   // lldb-test's symbol dumpers (e.g. -dump-clang-ast) exercise the classic
   // TypeSystemClang path; force it on regardless of the default so these tests
-  // don't route through TypeSystemCpp.
-  ModuleList::GetGlobalModuleListProperties().SetEnableTypeSystemCpp(false);
+  // don't route through TypeSystemClike.
+  ModuleList::GetGlobalModuleListProperties().SetEnableTypeSystemClike(false);
   CommandReturnObject Result(/*colors*/ false);
   Dbg->GetCommandInterpreter().HandleCommand(
       "settings set plugin.process.gdb-remote.packet-timeout 60",

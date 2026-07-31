@@ -3,7 +3,7 @@
 // RUN: %clangxx --target=x86_64-pc-linux -g -c -o %t_a.o %s -DFILE_A
 // RUN: %clangxx --target=x86_64-pc-linux -g -c -o %t_b.o %s -DFILE_B
 // RUN: ld.lld -o %t %t_a.o %t_b.o
-// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t \
+// RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t \
 // RUN:   -o "target variable my_enum my_enum_ref" -o "image dump ast" \
 // RUN:   -o exit | FileCheck %s
 

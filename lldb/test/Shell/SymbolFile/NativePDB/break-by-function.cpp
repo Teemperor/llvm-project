@@ -4,7 +4,7 @@
 // Test that we can set simple breakpoints using PDB on any platform.
 // RUN: %clang_cl --target=x86_64-windows-msvc -Od -Z7 -c /Fo%t.obj -- %s
 // RUN: lld-link -debug:full -nodefaultlib -entry:main %t.obj -out:%t.exe -pdb:%t.pdb
-// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" -f %t.exe -s \
+// RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" -f %t.exe -s \
 // RUN:     %p/Inputs/break-by-function.lldbinit | FileCheck %s
 
 // Use different indentation style for each overload so that the starting

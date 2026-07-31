@@ -1176,8 +1176,8 @@ DynamicLoaderDarwin::GetThreadLocalData(const lldb::ModuleSP module_sp,
   Target &target = m_process->GetTarget();
   // We only need a `void *` type to describe the return value of the
   // ThreadPlanCallFunction below. Any scratch type system for C will do, so
-  // don't hard-code TypeSystemClang here: when TypeSystemCpp is the enabled
-  // scratch type system, the target hands out a TypeSystemCpp instead and a
+  // don't hard-code TypeSystemClang here: when TypeSystemClike is the enabled
+  // scratch type system, the target hands out a TypeSystemClike instead and a
   // TypeSystemClang-specific lookup would fail, breaking TLS resolution.
   auto type_system_or_err =
       target.GetScratchTypeSystemForLanguage(lldb::eLanguageTypeC);

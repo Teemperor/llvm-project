@@ -5,22 +5,22 @@ RUN:   -g -gdwarf-4 -fdebug-types-section -c -o %t.o
 RUN: llvm-objcopy --remove-section=.debug_types %t.o %t
 
 
-RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t -b -o "type lookup A" | FileCheck --check-prefix=LOOKUPA %s
+RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t -b -o "type lookup A" | FileCheck --check-prefix=LOOKUPA %s
 LOOKUPA: no type was found matching 'A'
 
-RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t -b -o "type lookup E" | FileCheck --check-prefix=LOOKUPE %s
+RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t -b -o "type lookup E" | FileCheck --check-prefix=LOOKUPE %s
 LOOKUPE: no type was found matching 'E'
 
-RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t -b -o "type lookup EC" | FileCheck --check-prefix=LOOKUPEC %s
+RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t -b -o "type lookup EC" | FileCheck --check-prefix=LOOKUPEC %s
 LOOKUPEC: no type was found matching 'EC'
 
-RUN: not %lldb -O "settings set symbols.enable-typesystem-cpp false" %t -b -o "expression (E) 1" 2>&1 | FileCheck --check-prefix=PRINTE %s
+RUN: not %lldb -O "settings set symbols.enable-typesystem-clike false" %t -b -o "expression (E) 1" 2>&1 | FileCheck --check-prefix=PRINTE %s
 PRINTE: use of undeclared identifier 'E'
 
-RUN: not %lldb -O "settings set symbols.enable-typesystem-cpp false" %t -b -o "expression (EC) 1" 2>&1 | FileCheck --check-prefix=PRINTEC %s
+RUN: not %lldb -O "settings set symbols.enable-typesystem-clike false" %t -b -o "expression (EC) 1" 2>&1 | FileCheck --check-prefix=PRINTEC %s
 PRINTEC: use of undeclared identifier 'EC'
 
-RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t -b -o "target variable a e ec" | FileCheck --check-prefix=VARS %s
+RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t -b -o "target variable a e ec" | FileCheck --check-prefix=VARS %s
 VARS: (const (unnamed struct)) a = <incomplete type "const (unnamed struct)">
 VARS: (const (unnamed enum)) e = 1
 VARS: (const (unnamed enum)) ec = 1

@@ -4367,7 +4367,7 @@ void SymbolFileDWARF::DumpClangAST(Stream &s, llvm::StringRef filter,
   if (!ts)
     return;
   // Dispatches virtually: TypeSystemClang dumps its own clang AST;
-  // TypeSystemCpp synthesizes one from its (clang-AST-free) type model.
+  // TypeSystemClike synthesizes one from its (clang-AST-free) type model.
   ts->Dump(s.AsRawOstream(), filter, show_color);
 }
 

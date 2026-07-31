@@ -407,8 +407,8 @@ bool AppleObjCTrampolineHandler::AppleObjCVTables::RefreshTrampolines(
     const ABI *abi = process->GetABI().get();
 
     // Use the generic scratch TypeSystem for the language (this may be a
-    // TypeSystemClang or a TypeSystemCpp depending on the
-    // symbols.enable-typesystem-cpp setting). We only rely on the neutral
+    // TypeSystemClang or a TypeSystemClike depending on the
+    // symbols.enable-typesystem-clike setting). We only rely on the neutral
     // CompilerType / TypeSystem API here so both work.
     auto scratch_ts_or_err =
         process->GetTarget().GetScratchTypeSystemForLanguage(

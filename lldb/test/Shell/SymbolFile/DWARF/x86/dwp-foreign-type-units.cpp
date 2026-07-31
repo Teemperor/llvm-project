@@ -24,7 +24,7 @@
 
 // Check when have no .dwp file that we can find the types in both .dwo files.
 // RUN: rm -f %t.dwp
-// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" \
+// RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" \
 // RUN:   -o "type lookup IntegerType" \
 // RUN:   -o "type lookup FloatType" \
 // RUN:   -o "type lookup CustomType" \
@@ -43,7 +43,7 @@
 // pick the type unit from %t.main.dwo. Verify we find only the types from
 // %t.main.dwo's type unit.
 // RUN: llvm-dwp %t.main.dwo %t.foo.dwo -o %t.dwp
-// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" \
+// RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" \
 // RUN:   -o "type lookup IntegerType" \
 // RUN:   -o "type lookup FloatType" \
 // RUN:   -o "type lookup CustomType" \
@@ -64,7 +64,7 @@
 // pick the type unit from %t.main.dwo. Verify we find only the types from
 // %t.main.dwo's type unit.
 // RUN: llvm-dwp %t.foo.dwo %t.main.dwo -o %t.dwp
-// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" \
+// RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" \
 // RUN:   -o "type lookup IntegerType" \
 // RUN:   -o "type lookup FloatType" \
 // RUN:   -o "type lookup CustomType" \

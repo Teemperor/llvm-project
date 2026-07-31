@@ -446,7 +446,7 @@ lldb_private::formatters::NSArrayMSyntheticFrontEndBase::
     : SyntheticChildrenFrontEnd(*valobj_sp), m_exe_ctx_ref(), m_id_type() {
   if (valobj_sp) {
     // Use whatever C scratch type system the target provides (TypeSystemClang
-    // or TypeSystemCpp) rather than requiring a Clang one.
+    // or TypeSystemClike) rather than requiring a Clang one.
     auto scratch_ts_or_err =
         valobj_sp->GetExecutionContextRef().GetTargetSP()->
             GetScratchTypeSystemForLanguage(lldb::eLanguageTypeC);
@@ -580,7 +580,7 @@ lldb_private::formatters::GenericNSArrayISyntheticFrontEnd<D32, D64, Inline>::
     CompilerType type = valobj_sp->GetCompilerType();
     if (type) {
       // Use whatever C scratch type system the target provides
-      // (TypeSystemClang or TypeSystemCpp) rather than requiring a Clang one.
+      // (TypeSystemClang or TypeSystemClike) rather than requiring a Clang one.
       auto scratch_ts_or_err =
           valobj_sp->GetExecutionContextRef().GetTargetSP()->
               GetScratchTypeSystemForLanguage(lldb::eLanguageTypeC);
@@ -733,7 +733,7 @@ lldb_private::formatters::NSArray1SyntheticFrontEnd::GetChildAtIndex(
 
   if (idx == 0) {
     // Use whatever C scratch type system the target provides (TypeSystemClang
-    // or TypeSystemCpp) rather than requiring a Clang one.
+    // or TypeSystemClike) rather than requiring a Clang one.
     auto scratch_ts_or_err =
         m_backend.GetTargetSP()->GetScratchTypeSystemForLanguage(
             lldb::eLanguageTypeC);

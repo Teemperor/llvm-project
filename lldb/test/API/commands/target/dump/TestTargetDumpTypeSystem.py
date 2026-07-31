@@ -24,15 +24,15 @@ class TestCase(TestBase):
         # This last check assumes an implementation detail of TypeSystemClang:
         # evaluating `expr s` deports (via the ASTImporter) a copy of DummyStruct
         # into the *scratch* AST, which is what `target dump typesystem` prints.
-        # TypeSystemCpp has no ASTImporter; by design the expression result maps
-        # back onto the DummyStruct type owned by the *module's* TypeSystemCpp
+        # TypeSystemClike has no ASTImporter; by design the expression result maps
+        # back onto the DummyStruct type owned by the *module's* TypeSystemClike
         # (to preserve lazy completion -- see ClangTypeConverter::
         # ConvertViaReverseMap), so nothing is ever copied into the scratch
-        # TypeSystemCpp and it correctly stays empty. Skip this scratch-AST
-        # assertion under TypeSystemCpp.
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        # TypeSystemClike and it correctly stays empty. Skip this scratch-AST
+        # assertion under TypeSystemClike.
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             self.skipTest(
-                "TypeSystemCpp does not deport expression result types into the "
+                "TypeSystemClike does not deport expression result types into the "
                 "scratch type system (no ASTImporter)"
             )
 

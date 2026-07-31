@@ -103,7 +103,7 @@ private:
 
   private:
     // Base type: this is a ClangExpressionDeclMap by default, but a
-    // CppExpressionDeclMap when TypeSystemCpp is enabled (see ResetDeclMap).
+    // ClikeExpressionDeclMap when TypeSystemClike is enabled (see ResetDeclMap).
     std::unique_ptr<ExpressionDeclMap> m_expr_decl_map_up;
   };
 

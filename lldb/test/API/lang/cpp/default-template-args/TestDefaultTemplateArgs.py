@@ -15,12 +15,12 @@ class TestDefaultTemplateArgs(TestBase):
         # This test declares a top-level persistent template ($X) in one
         # expression and instantiates it ($X<> / $X<long>) in later ones,
         # relying on the decl persisting across expression boundaries.
-        # TypeSystemCpp does not implement persistent type declarations that
+        # TypeSystemClike does not implement persistent type declarations that
         # carry across expressions (an intentional, out-of-scope divergence).
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             self.skipTest(
                 "persistent type declarations across expressions are not "
-                "supported by TypeSystemCpp"
+                "supported by TypeSystemClike"
             )
 
         self.build()

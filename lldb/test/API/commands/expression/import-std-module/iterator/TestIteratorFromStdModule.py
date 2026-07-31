@@ -33,9 +33,9 @@ class TestCase(TestBase):
     @expectedFailureAll(bugnumber="https://github.com/llvm/llvm-project/issues/149477")
     @skipIf(macos_sdk_version=["<", "16.0"])
     def test_xfail(self):
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             self.skipTest(
-                "TypeSystemCpp fixes llvm.org/issue/149477; keep the "
+                "TypeSystemClike fixes llvm.org/issue/149477; keep the "
                 "@expectedFailureAll intact for TypeSystemClang"
             )
         self.build()

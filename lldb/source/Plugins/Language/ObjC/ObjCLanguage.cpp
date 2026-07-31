@@ -897,9 +897,9 @@ ObjCLanguage::GetPossibleFormattersMatches(ValueObject &valobj,
       compiler_type.IsPossibleDynamicType(nullptr, check_cpp, check_objc);
 
   // NOTE: this used to additionally require `ClangUtil::IsClangType(compiler_type)`,
-  // which excluded types backed by TypeSystemCpp (so ObjC data formatters were
+  // which excluded types backed by TypeSystemClike (so ObjC data formatters were
   // never matched against the runtime class hierarchy under
-  // symbols.enable-typesystem-cpp -- e.g. an NSException's NSString-typed ivars
+  // symbols.enable-typesystem-clike -- e.g. an NSException's NSString-typed ivars
   // wouldn't get their string summary). The body below only uses TypeSystem-
   // neutral APIs (the ObjC runtime class descriptor and CompilerType), and
   // `canBeObjCDynamic` already rejects any type that isn't a valid possible-

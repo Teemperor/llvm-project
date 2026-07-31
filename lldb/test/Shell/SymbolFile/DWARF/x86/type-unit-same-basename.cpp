@@ -8,7 +8,7 @@
 // RUN: %clangxx --target=x86_64-pc-linux -c %s -o %t-a.o -g -fdebug-types-section -flimit-debug-info -DFILE_A
 // RUN: %clangxx --target=x86_64-pc-linux -c %s -o %t-b.o -g -fdebug-types-section -flimit-debug-info -DFILE_B
 // RUN: ld.lld -z undefs %t-a.o %t-b.o -o %t
-// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t -o "target variable x" -o exit | FileCheck %s
+// RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t -o "target variable x" -o exit | FileCheck %s
 
 // CHECK: (lldb) target variable
 // CHECK-NEXT: (const X) x = {

@@ -21,7 +21,7 @@ add_lldb_library(lldbPluginExpressionParserClang
   ClangUserExpression.cpp
   ClangUtil.cpp
   ClangUtilityFunction.cpp
-  CppExpressionDeclMap.cpp
+  ClikeExpressionDeclMap.cpp
   CppModuleConfiguration.cpp
   CppModuleHandler.cpp
   CxxModuleHandler.cpp
@@ -52,7 +52,7 @@ add_lldb_library(lldbPluginExpressionParserClang
     lldbPluginCPlusPlusLanguage
     lldbPluginObjCRuntime
     lldbPluginTypeSystemClang
-    lldbPluginTypeSystemCpp
+    lldbPluginTypeSystemClike
   CLANG_LIBS
     clangAST
     clangCodeGen

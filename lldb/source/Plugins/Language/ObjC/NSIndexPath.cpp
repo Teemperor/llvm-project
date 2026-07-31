@@ -55,7 +55,7 @@ public:
       return lldb::ChildCacheState::eRefetch;
 
     // Use whatever C scratch type system the target provides (TypeSystemClang
-    // or TypeSystemCpp) rather than requiring a Clang one.
+    // or TypeSystemClike) rather than requiring a Clang one.
     TargetSP target_sp = m_backend.GetExecutionContextRef().GetTargetSP();
     auto scratch_ts_or_err =
         target_sp->GetScratchTypeSystemForLanguage(lldb::eLanguageTypeC);

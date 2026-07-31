@@ -84,8 +84,8 @@
 #include "Plugins/SymbolFile/DWARF/DWARFASTParserClang.h"
 #include "Plugins/SymbolFile/NativePDB/PdbAstBuilderClang.h"
 #include "Plugins/SymbolFile/PDB/PDBASTParser.h"
-#include "Plugins/TypeSystem/Cpp/ScratchTypeSystemCpp.h"
-#include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
+#include "Plugins/TypeSystem/Clike/ScratchTypeSystemClike.h"
+#include "Plugins/TypeSystem/Clike/TypeSystemClike.h"
 #include "lldb/Core/ModuleList.h"
 
 #include <cstdio>
@@ -544,12 +544,12 @@ lldb::TypeSystemSP TypeSystemClang::CreateInstance(lldb::LanguageType language,
   if (module) {
     std::string ast_name =
         "ASTContext for '" + module->GetFileSpec().GetPath() + "'";
-    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp())
-      return TypeSystemCpp::Create(ast_name, triple);
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike())
+      return TypeSystemClike::Create(ast_name, triple);
     return std::make_shared<TypeSystemClang>(ast_name, triple);
   } else if (target && target->IsValid()) {
-    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp())
-      return std::make_shared<ScratchTypeSystemCpp>(*target, triple);
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike())
+      return std::make_shared<ScratchTypeSystemClike>(*target, triple);
     return std::make_shared<ScratchTypeSystemClang>(*target, triple);
   }
   return lldb::TypeSystemSP();
@@ -9629,13 +9629,13 @@ ScratchTypeSystemClang::GetForTarget(Target &target,
       llvm::dyn_cast_or_null<ScratchTypeSystemClang>(ts_sp.get());
   if (!scratch_ast) {
     // The target's eLanguageTypeC scratch slot isn't owned by a
-    // ScratchTypeSystemClang (e.g. TypeSystemCpp owns it instead), so the
+    // ScratchTypeSystemClang (e.g. TypeSystemClike owns it instead), so the
     // dyn_cast above finds nothing. Generic (language-agnostic) formatters
     // still need a persistent Clang scratch AST to fabricate small helper
     // types (e.g. a `void *`, or an internal struct like NSDictionary's
     // `__lldb_autogen_nspair`); serve them one via a target-scoped side
     // channel. Sub-ASTs (CppModules) aren't needed on this path since
-    // TypeSystemCpp's own expression evaluation doesn't go through them.
+    // TypeSystemClike's own expression evaluation doesn't go through them.
     if (ast_kind != DefaultAST || !create_on_demand)
       return nullptr;
     lldb::TypeSystemSP aux_sp = target.GetOrCreateAuxiliaryClangScratchAST(

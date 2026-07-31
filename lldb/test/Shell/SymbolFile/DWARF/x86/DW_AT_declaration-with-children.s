@@ -4,7 +4,7 @@
 
 # RUN: split-file %s %t
 # RUN: llvm-mc --triple x86_64-pc-linux %t/asm --filetype=obj -o %t.o
-# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" -o "settings set interpreter.stop-command-source-on-error false" \
+# RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" -o "settings set interpreter.stop-command-source-on-error false" \
 # RUN:   -s %t/commands -o exit %t.o 2>&1 | FileCheck %s
 
 #--- commands

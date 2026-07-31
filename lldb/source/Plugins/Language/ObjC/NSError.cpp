@@ -80,7 +80,7 @@ bool lldb_private::formatters::NSError_SummaryProvider(
 
   InferiorSizedWord isw(domain_str_value, *process_sp);
   // Use whatever C scratch type system the target provides (TypeSystemClang
-  // or TypeSystemCpp) rather than requiring a Clang one.
+  // or TypeSystemClike) rather than requiring a Clang one.
   auto scratch_ts_or_err = process_sp->GetTarget().GetScratchTypeSystemForLanguage(
       lldb::eLanguageTypeC);
   if (!scratch_ts_or_err) {
@@ -158,7 +158,7 @@ public:
       return lldb::ChildCacheState::eRefetch;
     InferiorSizedWord isw(userinfo, *process_sp);
     // Use whatever C scratch type system the target provides (TypeSystemClang
-    // or TypeSystemCpp) rather than requiring a Clang one.
+    // or TypeSystemClike) rather than requiring a Clang one.
     auto scratch_ts_or_err =
         process_sp->GetTarget().GetScratchTypeSystemForLanguage(
             lldb::eLanguageTypeC);

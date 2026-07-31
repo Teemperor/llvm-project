@@ -9,7 +9,7 @@
 #include "Coroutines.h"
 
 #include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
-#include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
+#include "Plugins/TypeSystem/Clike/TypeSystemClike.h"
 #include "lldb/Symbol/Function.h"
 #include "lldb/Symbol/VariableList.h"
 #include "llvm/Support/ErrorExtras.h"
@@ -137,8 +137,8 @@ lldb_private::formatters::StdlibCoroutineHandleSyntheticFrontEnd::Update() {
   auto ptr_size = process_sp->GetAddressByteSize();
   CompilerType handle_type = valobj_sp->GetCompilerType();
   auto ast_ctx = handle_type.GetTypeSystem<TypeSystemClang>();
-  auto cpp_ts = handle_type.GetTypeSystem<TypeSystemCpp>();
-  if (!ast_ctx && !cpp_ts)
+  auto clike_ts = handle_type.GetTypeSystem<TypeSystemClike>();
+  if (!ast_ctx && !clike_ts)
     return lldb::ChildCacheState::eRefetch;
 
   // Determine the coroutine frame type and the promise type. Fall back
@@ -164,7 +164,7 @@ lldb_private::formatters::StdlibCoroutineHandleSyntheticFrontEnd::Update() {
   if (!coro_frame_type)
     coro_frame_type = void_type;
 
-  // Create the `resume` and `destroy` children. TypeSystemCpp has no generic
+  // Create the `resume` and `destroy` children. TypeSystemClike has no generic
   // (TypeSystem-agnostic) CreateFunctionType, so branch on which TypeSystem
   // owns this coroutine_handle's type.
   CompilerType coro_func_type;
@@ -174,7 +174,7 @@ lldb_private::formatters::StdlibCoroutineHandleSyntheticFrontEnd::Update() {
         /*result_type=*/void_type, args,
         /*is_variadic=*/false, /*qualifiers=*/0);
   } else {
-    cpp_typesystem::Builder builder(*cpp_ts);
+    clike_typesystem::Builder builder(*clike_ts);
     coro_func_type = builder.CreateFunctionType(void_type,
                                                 /*is_variadic=*/false);
     builder.AddParameter(coro_func_type, coro_frame_type);

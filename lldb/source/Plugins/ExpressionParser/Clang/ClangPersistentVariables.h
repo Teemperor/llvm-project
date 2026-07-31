@@ -49,7 +49,7 @@ public:
 
   /// Return the ClangModulesDeclVendor only if one has already been created
   /// (i.e. a module was imported this session), without lazily creating the
-  /// (expensive) vendor. Used by the TypeSystemCpp expression path to avoid
+  /// (expensive) vendor. Used by the TypeSystemClike expression path to avoid
   /// spinning up a whole Clang module compiler instance just to resolve an
   /// ordinary symbol-only function that no `@import` ever brought in.
   std::shared_ptr<ClangModulesDeclVendor> GetExistingClangModulesDeclVendor() {
@@ -89,14 +89,14 @@ public:
   /// {...};`, `$bar` from `expression typedef int $bar`, or an ordinary
   /// non-`$` name from a top-level `expression --top-level -- struct Foo
   /// {...};`) that is backed by a CompilerType rather than a clang::NamedDecl
-  /// -- used by the TypeSystemCpp expression path, which has no shared
+  /// -- used by the TypeSystemClike expression path, which has no shared
   /// clang::ASTContext to keep a decl alive across expressions.
   /// GetCompilerTypeFromPersistentDecl checks this map first.
   void RegisterPersistentType(ConstString name, CompilerType type);
 
   /// Remember the raw source text of a `expression --top-level -- ...` that
   /// declared one or more functions/variables, keyed by the names it defines
-  /// (\p names). Used only by the TypeSystemCpp expression path: a top-level
+  /// (\p names). Used only by the TypeSystemClike expression path: a top-level
   /// function/variable cannot be round-tripped into a context-independent
   /// CompilerType the way a type can (its *body* would have to be re-emitted
   /// into every later expression's IR), so instead we stash the original
@@ -152,7 +152,7 @@ private:
       m_persistent_decls; ///< Persistent entities declared by the user.
 
   /// Persistent types declared by the user and backed by a CompilerType (the
-  /// TypeSystemCpp path), keyed by name (e.g. "$foo"). See
+  /// TypeSystemClike path), keyed by name (e.g. "$foo"). See
   /// RegisterPersistentType.
   llvm::DenseMap<const char *, CompilerType> m_persistent_types;
 

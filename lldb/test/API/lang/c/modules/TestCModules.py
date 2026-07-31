@@ -23,10 +23,10 @@ class CModulesTestCase(TestBase):
     @expectedFailureNetBSD
     def test_expr(self):
         if self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
+            "symbols.enable-typesystem-clike"
         ).GetBooleanValue():
             self.skipTest(
-                "TypeSystemCpp does not fully support clang @import modules "
+                "TypeSystemClike does not fully support clang @import modules "
                 "(ClangModulesDeclVendor): module record types / dedup and the "
                 "efficient-memread accounting this test checks are not reproduced"
             )

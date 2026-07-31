@@ -21,11 +21,11 @@ class AbiTagStructorsTestCase(TestBase):
     @skipIfWasm  # no expression evaluation
     def test_with_structor_linkage_names(self):
         # Calling ABI-tagged constructors/destructors requires mangling structor
-        # names with their ABI tags, which TypeSystemCpp intentionally does not
+        # names with their ABI tags, which TypeSystemClike intentionally does not
         # implement (an out-of-scope divergence from TypeSystemClang).
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             self.skipTest(
-                "ABI-tagged structor mangling is not supported by TypeSystemCpp"
+                "ABI-tagged structor mangling is not supported by TypeSystemClike"
             )
 
         self.build(dictionary={"CXXFLAGS_EXTRAS": "-gstructor-decl-linkage-names"})
@@ -122,12 +122,12 @@ class AbiTagStructorsTestCase(TestBase):
         but calling un-tagged functions is.
         """
         # Calling constructors of function-local classes requires function-local
-        # class structor name mangling, which TypeSystemCpp intentionally does not
+        # class structor name mangling, which TypeSystemClike intentionally does not
         # implement (an out-of-scope divergence from TypeSystemClang).
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             self.skipTest(
                 "function-local class structor mangling is not supported by "
-                "TypeSystemCpp"
+                "TypeSystemClike"
             )
 
         lldbutil.run_to_source_breakpoint(

@@ -422,7 +422,7 @@ void SystemRuntimeMacOSX::ReadLibdispatchTSDIndexes() {
     TypeSystemClangSP scratch_ts_sp =
         ScratchTypeSystemClang::GetForTarget(m_process->GetTarget());
     // This builds a synthetic struct using TypeSystemClang-specific APIs; if
-    // the target's scratch type system is not a Clang one (e.g. TypeSystemCpp
+    // the target's scratch type system is not a Clang one (e.g. TypeSystemClike
     // is enabled), there is nothing to build it with, so skip rather than
     // dereference a null type system.
     if (!scratch_ts_sp)

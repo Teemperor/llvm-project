@@ -38,37 +38,37 @@ class ClassTemplateSpecializationDecl;
 
 namespace lldb_private {
 
-class TypeSystemCpp;
+class TypeSystemClike;
 
-namespace cpp_typesystem {
+namespace clike_typesystem {
 class Type;
 class RecordType;
 class ObjCInterfaceType;
 class Namespace;
 class FunctionType;
 struct ObjCMethod;
-} // namespace cpp_typesystem
+} // namespace clike_typesystem
 
-/// Translates types from the module-level TypeSystemCpp (see the
-/// cpp_typesystem::Type hierarchy) into a Clang AST, so that LLDB's Clang-based
+/// Translates types from the module-level TypeSystemClike (see the
+/// clike_typesystem::Type hierarchy) into a Clang AST, so that LLDB's Clang-based
 /// expression parser can reason about them.
 ///
-/// This is the TypeSystemCpp counterpart of what the ASTImporter does for the
+/// This is the TypeSystemClike counterpart of what the ASTImporter does for the
 /// Clang module type system: it materializes clang::Decls/QualTypes for the
 /// entities referenced by an expression. Unlike the importer, it never copies
 /// from another Clang AST; it synthesizes the AST from scratch out of the
-/// (Clang-AST-free) cpp_typesystem description, writing directly into a
+/// (Clang-AST-free) clike_typesystem description, writing directly into a
 /// clang::ASTContext. It intentionally does not depend on TypeSystemClang.
 ///
 /// Records are created lazily as forward declarations and are completed (and
 /// laid out) on demand, mirroring how debug info is parsed lazily. The
 /// generator also keeps the reverse mapping (generated Clang type ->
-/// originating cpp_typesystem type) so an expression's result type can be
-/// mapped back onto a TypeSystemCpp type without ever translating Clang types
+/// originating clike_typesystem type) so an expression's result type can be
+/// mapped back onto a TypeSystemClike type without ever translating Clang types
 /// back.
 class ClangASTGenerator {
   // Reads the reverse map (m_reverse / m_cross_module_complete) and the
-  // ASTContext to map generated Clang types back to their cpp_typesystem origin.
+  // ASTContext to map generated Clang types back to their clike_typesystem origin.
   friend class ClangTypeConverter;
 
 public:
@@ -76,7 +76,7 @@ public:
   /// Provide the target whose module list is searched when a record can only
   /// be completed from a *different* module than the one it was parsed from
   /// (e.g. a type forward-declared in a shared library but fully defined in the
-  /// main executable). TypeSystemCpp has no cross-module ASTImporter, so this
+  /// main executable). TypeSystemClike has no cross-module ASTImporter, so this
   /// generator resolves such records by finding the complete definition among
   /// the target's other modules. Optional: without it, cross-module completion
   /// is simply skipped (the record stays a forward declaration).
@@ -87,8 +87,8 @@ public:
   /// Builds a standalone, throwaway clang::ASTContext for the module's \p
   /// triple, synthesizes a definition for each record into it, and prints it
   /// with clang's AST dumper. This backs `target modules dump ast` for
-  /// TypeSystemCpp (the Clang-AST synthesis has to live in this plugin).
-  static void DumpRecords(TypeSystemCpp &ts, const llvm::Triple &triple,
+  /// TypeSystemClike (the Clang-AST synthesis has to live in this plugin).
+  static void DumpRecords(TypeSystemClike &ts, const llvm::Triple &triple,
                           llvm::ArrayRef<CompilerType> records,
                           llvm::raw_ostream &output, llvm::StringRef filter,
                           bool show_color);
@@ -97,8 +97,8 @@ public:
   /// vbase of the derived record \p derived, in bytes. This is the (positive)
   /// value that, subtracted from the derived object's vtable pointer, yields the
   /// address of the slot holding the vbase's runtime offset (see
-  /// cpp_typesystem::BaseClass::vbase_offset_offset and
-  /// TypeSystemCpp::ReadVirtualBaseOffset). It is normally recovered directly
+  /// clike_typesystem::BaseClass::vbase_offset_offset and
+  /// TypeSystemClike::ReadVirtualBaseOffset). It is normally recovered directly
   /// from the DWARF DW_AT_data_member_location expression on the inheritance
   /// DIE, but Darwin's dsymutil strips that expression from the .dSYM. This
   /// recomputes it the way TypeSystemClang does: build a throwaway
@@ -110,13 +110,13 @@ public:
   /// (direct or indirect) virtual base of \p derived. Returns std::nullopt when
   /// the layout can't be built or the target ABI isn't Itanium.
   static std::optional<uint64_t>
-  ComputeVBaseOffsetOffset(TypeSystemCpp &ts, const llvm::Triple &triple,
+  ComputeVBaseOffsetOffset(TypeSystemClike &ts, const llvm::Triple &triple,
                            const CompilerType &derived,
                            const CompilerType &vbase);
 
-  /// Translate \p cpp_type (a CompilerType owned by a TypeSystemCpp) into a
+  /// Translate \p clike_type (a CompilerType owned by a TypeSystemClike) into a
   /// clang::QualType. Returns a null QualType on failure.
-  clang::QualType Generate(const CompilerType &cpp_type);
+  clang::QualType Generate(const CompilerType &clike_type);
 
   /// Complete a record previously handed out by Generate(). Called by the
   /// external source when Clang requires the full definition. Returns true if
@@ -159,7 +159,7 @@ public:
   /// merges with -- rather than conflicts against -- the same `extern "C"`
   /// declaration in the expression's wrapper prefix.
   clang::FunctionDecl *GenerateFunction(llvm::StringRef name,
-                                        const CompilerType &function_cpp_type,
+                                        const CompilerType &function_clike_type,
                                         llvm::StringRef asm_label,
                                         bool is_extern_c = false);
 
@@ -167,7 +167,7 @@ public:
   /// (e.g. a CXXOperatorName for a free `operator==`) so operator syntax /
   /// overload resolution binds to it. Returns null on failure.
   clang::FunctionDecl *GenerateFunction(clang::DeclarationName name,
-                                        const CompilerType &function_cpp_type,
+                                        const CompilerType &function_clike_type,
                                         llvm::StringRef asm_label);
 
   /// Build a generic variadic `__unknown_anytype ()` FunctionDecl (in the
@@ -182,36 +182,36 @@ public:
   /// reconcile that name against the external source; those reentrant lookups
   /// are internal bookkeeping, not genuine references from the expression, so
   /// callers use this to skip expensive global searches while it is set. See
-  /// CppExpressionDeclMap::FindExternalVisibleDecls.
+  /// ClikeExpressionDeclMap::FindExternalVisibleDecls.
   bool IsGenerating() const { return m_generation_depth != 0; }
 
   /// Register the clang::NamespaceDecl that the decl map created for the
-  /// cpp_typesystem namespace \p cpp_ns. Types whose declaration context is
-  /// \p cpp_ns are then generated inside \p clang_ns (rather than the
+  /// clike_typesystem namespace \p clike_ns. Types whose declaration context is
+  /// \p clike_ns are then generated inside \p clang_ns (rather than the
   /// translation unit) so their qualified names mangle correctly for the JIT.
-  void RegisterNamespace(const cpp_typesystem::Namespace *cpp_ns,
+  void RegisterNamespace(const clike_typesystem::Namespace *clike_ns,
                          clang::NamespaceDecl *clang_ns);
 
-  /// The clang DeclContext a type declared in \p cpp_ns should be placed in:
+  /// The clang DeclContext a type declared in \p clike_ns should be placed in:
   /// the registered clang::NamespaceDecl if one exists, otherwise the
   /// translation unit (the global namespace, or a namespace not yet mapped).
   clang::DeclContext *
-  GetDeclContextForNamespace(const cpp_typesystem::Namespace *cpp_ns);
+  GetDeclContextForNamespace(const clike_typesystem::Namespace *clike_ns);
 
-  /// The clang::NamespaceDecl already registered for \p cpp_ns, or null if none
+  /// The clang::NamespaceDecl already registered for \p clike_ns, or null if none
   /// exists yet. Unlike GetDeclContextForNamespace this never materializes a new
   /// decl, so the decl map can reuse an existing one rather than create a
   /// duplicate NamespaceDecl (which would become a redeclaration whose primary
   /// context lacks the map's external visible storage).
   clang::NamespaceDecl *
-  GetRegisteredNamespace(const cpp_typesystem::Namespace *cpp_ns) const;
+  GetRegisteredNamespace(const clike_typesystem::Namespace *clike_ns) const;
 
-  /// The cpp_typesystem::Namespace a generator-created clang::NamespaceDecl
+  /// The clike_typesystem::Namespace a generator-created clang::NamespaceDecl
   /// stands for, or null if \p clang_ns was not produced here. Lets the decl
   /// map build the namespace's lookup map on demand so member lookups (types,
   /// functions, operators) inside a namespace the generator materialized still
   /// route back to it.
-  const cpp_typesystem::Namespace *
+  const clike_typesystem::Namespace *
   GetNamespaceForDecl(const clang::NamespaceDecl *clang_ns) const;
 
 private:
@@ -231,7 +231,7 @@ private:
     ClangASTGenerator &m_gen;
   };
 
-  /// Generate the clang type for \p cpp_type, which is owned by \p ts.
+  /// Generate the clang type for \p clike_type, which is owned by \p ts.
   ///
   /// \p build_template_spec controls whether a template-instantiation record
   /// (a name containing `<`) is eagerly force-completed to read its template
@@ -248,11 +248,11 @@ private:
   /// on demand (via the CompleteType callback) if it is ever actually used by
   /// value or dereferenced, and a plain complete record supports `.`/`->` member
   /// access without needing the specialization decl.
-  clang::QualType GenerateType(TypeSystemCpp &ts,
-                               cpp_typesystem::Type *cpp_type,
+  clang::QualType GenerateType(TypeSystemClike &ts,
+                               clike_typesystem::Type *clike_type,
                                bool build_template_spec = false);
 
-  /// Complete a record's fields/bases from its cpp_typesystem description.
+  /// Complete a record's fields/bases from its clike_typesystem description.
   void PopulateRecord(clang::RecordDecl *record_decl);
 
   /// Delete \p decl's implicit copy constructor/assignment operator if it
@@ -265,7 +265,7 @@ private:
   void MarkImplicitCopyOpsDeletedByUserMove(clang::CXXRecordDecl *decl);
 
   /// Complete an Objective-C interface's ivars/superclass from its
-  /// cpp_typesystem description. The ivars are added as clang::ObjCIvarDecls
+  /// clike_typesystem description. The ivars are added as clang::ObjCIvarDecls
   /// (not FieldDecls) and the superclass wired up via setSuperClass, so clang
   /// lays it out with the Objective-C runtime ABI rather than as a C++ record
   /// (which would misclassify runtime-offset bitfield ivars and assert in
@@ -276,19 +276,19 @@ private:
   /// generated \p iface_decl as an ObjCMethodDecl, so the expression parser can
   /// type-check and lower a message send. Mirrors
   /// TypeSystemClang::AddMethodToObjCObjectType.
-  void AddObjCMethod(clang::ObjCInterfaceDecl *iface_decl, TypeSystemCpp &ts,
-                     const cpp_typesystem::ObjCMethod &method);
+  void AddObjCMethod(clang::ObjCInterfaceDecl *iface_decl, TypeSystemClike &ts,
+                     const clike_typesystem::ObjCMethod &method);
 
   /// If \p rec (owned by \p ts) is an incomplete record whose complete
   /// definition lives in a *different* module of the target, find that complete
   /// record and rebind \p ts / \p rec to it. Returns true if a cross-module
   /// complete definition was found and \p ts / \p rec now refer to it. This is
-  /// how TypeSystemCpp completes a type that is only forward-declared in the
+  /// how TypeSystemClike completes a type that is only forward-declared in the
   /// module it was parsed from (no ASTImporter is involved). Only called from
   /// the by-value completion path (PopulateRecord), never for a type reached
   /// solely through a pointer/reference, so it preserves lazy completion.
-  bool RedirectToCrossModuleDefinition(TypeSystemCpp *&ts,
-                                       cpp_typesystem::RecordType *&rec);
+  bool RedirectToCrossModuleDefinition(TypeSystemClike *&ts,
+                                       clike_typesystem::RecordType *&rec);
 
   /// Like RedirectToCrossModuleDefinition, but for an Objective-C interface
   /// (\p iface, owned by \p ts): if the ObjC runtime knows about more ivars
@@ -296,25 +296,25 @@ private:
   /// info of a class extension defined in a *different* image/module -- the
   /// "hidden ivars" scenario -- so no same-module or debug-map DWARF search
   /// finds them), rebind \p ts / \p iface to a scratch-context copy completed
-  /// from the runtime. Mirrors TypeSystemCpp::GetRuntimeCompletedObjCType,
+  /// from the runtime. Mirrors TypeSystemClike::GetRuntimeCompletedObjCType,
   /// which ValueObject::GetCompilerType() applies transparently on the
   /// frame-variable/DIL path (via ObjCLanguageRuntime::GetRuntimeType) but
   /// which this expression-evaluator path must apply explicitly since it
-  /// operates on the bare cpp_typesystem::Type, not a ValueObject. Returns
+  /// operates on the bare clike_typesystem::Type, not a ValueObject. Returns
   /// true if \p ts / \p iface were rebound.
   bool RedirectObjCInterfaceToRuntimeDefinition(
-      TypeSystemCpp *&ts, cpp_typesystem::ObjCInterfaceType *&iface);
+      TypeSystemClike *&ts, clike_typesystem::ObjCInterfaceType *&iface);
 
   /// If a Clang module was imported this session (`@import Foundation`), find
   /// the interface named \p class_name in the ClangModulesDeclVendor and
-  /// transport it into a fully-populated TypeSystemCpp ObjCInterfaceType (owned
-  /// by the returned-through \p ts scratch TypeSystemCpp) via ClangTypeConverter.
+  /// transport it into a fully-populated TypeSystemClike ObjCInterfaceType (owned
+  /// by the returned-through \p ts scratch TypeSystemClike) via ClangTypeConverter.
   /// Used to complete an interface's methods with their real typedef'd
   /// signatures (`-(NSUInteger)length`), which the ObjC runtime's type-encoding
   /// path can't recover. Returns null when no module was imported or the class
   /// isn't in any imported module.
-  cpp_typesystem::ObjCInterfaceType *
-  GetModuleObjCInterface(llvm::StringRef class_name, TypeSystemCpp *&ts);
+  clike_typesystem::ObjCInterfaceType *
+  GetModuleObjCInterface(llvm::StringRef class_name, TypeSystemClike *&ts);
 
   /// Build a clang::ClassTemplateSpecializationDecl (backed by a synthesized
   /// ClassTemplateDecl) for the class-template instantiation \p rec, so a
@@ -326,7 +326,7 @@ private:
   /// specialization decl (a CXXRecordDecl), created as a forward declaration
   /// like every other generated record.
   clang::CXXRecordDecl *BuildClassTemplateSpecializationDecl(
-      TypeSystemCpp &ts, cpp_typesystem::RecordType *rec,
+      TypeSystemClike &ts, clike_typesystem::RecordType *rec,
       clang::TagTypeKind kind, clang::DeclContext *decl_ctx,
       llvm::StringRef base_name);
 
@@ -351,33 +351,33 @@ private:
   /// the lookup or instantiation failed (the caller then falls back to
   /// BuildClassTemplateSpecializationDecl).
   clang::CXXRecordDecl *TryGetStdModuleSpecialization(
-      TypeSystemCpp &ts, cpp_typesystem::RecordType *rec,
+      TypeSystemClike &ts, clike_typesystem::RecordType *rec,
       llvm::StringRef qualified_name, llvm::StringRef base_name);
 
   /// Complete any record type embedded by value in \p qt (the type itself, or
   /// an array element) so it can be used as a base/field.
   void EnsureComplete(clang::QualType qt);
 
-  /// Map a cpp_typesystem builtin type to a Clang builtin QualType.
-  clang::QualType GenerateBuiltin(cpp_typesystem::Type *cpp_type);
+  /// Map a clike_typesystem builtin type to a Clang builtin QualType.
+  clang::QualType GenerateBuiltin(clike_typesystem::Type *clike_type);
 
   /// Create ParmVarDecls for \p func from the parameter types of \p function_qt
-  /// (a FunctionProtoType). If \p cpp_fn is non-null, each ParmVarDecl is given
+  /// (a FunctionProtoType). If \p clike_fn is non-null, each ParmVarDecl is given
   /// the corresponding parameter's declared name (so diagnostics can refer to
   /// it, e.g. "requires single argument 'x'").
   void BuildParams(clang::FunctionDecl *func, clang::QualType function_qt,
-                   const cpp_typesystem::FunctionType *cpp_fn = nullptr);
+                   const clike_typesystem::FunctionType *clike_fn = nullptr);
 
   /// Shared implementation for the GenerateFunction overloads: build a
   /// clang::FunctionDecl in the translation unit with the given name, signature
   /// and (optional) asm label. When \p is_extern_c is set the decl is placed in
   /// a shared `extern "C"` LinkageSpecDecl so it has C language linkage.
-  /// \p cpp_fn (if non-null) supplies the parameter names for the ParmVarDecls.
+  /// \p clike_fn (if non-null) supplies the parameter names for the ParmVarDecls.
   clang::FunctionDecl *BuildFunction(clang::DeclarationName name,
                                      clang::QualType function_qt,
                                      llvm::StringRef asm_label,
                                      bool is_extern_c = false,
-                                     const cpp_typesystem::FunctionType *cpp_fn =
+                                     const clike_typesystem::FunctionType *clike_fn =
                                          nullptr);
 
   /// The shared `extern "C"` LinkageSpecDecl in the translation unit (created on
@@ -396,14 +396,14 @@ private:
   /// IsGenerating() / GenerationGuard.
   unsigned m_generation_depth = 0;
 
-  /// cpp_typesystem::Type -> produced clang QualType (opaque pointer).
-  llvm::DenseMap<cpp_typesystem::Type *, void *> m_generated;
+  /// clike_typesystem::Type -> produced clang QualType (opaque pointer).
+  llvm::DenseMap<clike_typesystem::Type *, void *> m_generated;
 
   /// Named records generated so far, keyed by fully-qualified name. The same
-  /// C/C++ record can be described by distinct cpp_typesystem::RecordType
+  /// C/C++ record can be described by distinct clike_typesystem::RecordType
   /// instances in different modules (e.g. a type forward-declared in the main
   /// executable but fully defined in a shared library). Each module has its own
-  /// TypeSystemCpp, so those are different cpp types and m_generated (keyed by
+  /// TypeSystemClike, so those are different cpp types and m_generated (keyed by
   /// cpp type) would materialize a *separate* clang::RecordDecl for each --
   /// making them distinct, incompatible types to Clang's overload resolution
   /// ("no known conversion from 'foo *' to 'foo *'"). There is no ASTImporter
@@ -423,57 +423,57 @@ private:
   /// incompatible types. Reuse the first decl generated for a given class name.
   llvm::StringMap<clang::ObjCInterfaceDecl *> m_objc_interfaces_by_name;
 
-  /// cpp_typesystem::Namespace -> the clang::NamespaceDecl the decl map created
+  /// clike_typesystem::Namespace -> the clang::NamespaceDecl the decl map created
   /// for it, so generated types are placed in the matching namespace.
-  llvm::DenseMap<const cpp_typesystem::Namespace *, clang::NamespaceDecl *>
+  llvm::DenseMap<const clike_typesystem::Namespace *, clang::NamespaceDecl *>
       m_namespaces;
 
   /// Reverse of m_namespaces for decls this generator created itself, so the
   /// decl map can recover the cpp namespace behind a clang::NamespaceDecl it
   /// finds during a qualified lookup.
-  llvm::DenseMap<const clang::NamespaceDecl *, const cpp_typesystem::Namespace *>
+  llvm::DenseMap<const clang::NamespaceDecl *, const clike_typesystem::Namespace *>
       m_namespace_decls;
 
   /// Reverse map: opaque QualType (quals included) -> originating
-  /// cpp_typesystem::Type, so cv-qualified variants stay distinct.
-  llvm::DenseMap<void *, cpp_typesystem::Type *> m_reverse;
+  /// clike_typesystem::Type, so cv-qualified variants stay distinct.
+  llvm::DenseMap<void *, clike_typesystem::Type *> m_reverse;
 
-  /// The TypeSystemCpp that actually owns each cpp_typesystem::Type reachable
+  /// The TypeSystemClike that actually owns each clike_typesystem::Type reachable
   /// through m_reverse (i.e. the `ts` GenerateType was called with for it).
   /// ConvertViaReverseMap must build the returned CompilerType against this
   /// TypeSystem rather than always m_target: a type that merely passed through
   /// the expression (e.g. the plain DeclRefExpr type of a local variable) keeps
-  /// pointing at the same cpp_typesystem::Type node its owning module parsed,
-  /// and that node's completion state lives in that module's TypeSystemCpp
+  /// pointing at the same clike_typesystem::Type node its owning module parsed,
+  /// and that node's completion state lives in that module's TypeSystemClike
   /// (SymbolFile, forward-decl map, etc.) -- tagging it with m_target instead
-  /// would silently make it uncompletable (m_target, the scratch TypeSystemCpp,
+  /// would silently make it uncompletable (m_target, the scratch TypeSystemClike,
   /// has no SymbolFile of its own). Only a type the parser or this generator
   /// actually synthesized into the scratch TS (ConvertRecord et al., which don't
   /// go through this map) should carry m_target.
-  llvm::DenseMap<cpp_typesystem::Type *, TypeSystemCpp *> m_type_owner;
+  llvm::DenseMap<clike_typesystem::Type *, TypeSystemClike *> m_type_owner;
 
   /// For a record that was only forward-declared in the module it was parsed
   /// from but completed from a *different* module (see
   /// RedirectToCrossModuleDefinition), maps that incomplete cpp record to the
   /// complete definition (as a CompilerType carrying the defining module's
-  /// TypeSystemCpp). Used by ClangTypeConverter so an expression whose result
+  /// TypeSystemClike). Used by ClangTypeConverter so an expression whose result
   /// type is such a record is sized from the complete definition rather than
   /// the incomplete forward declaration.
-  llvm::DenseMap<cpp_typesystem::Type *, CompilerType> m_cross_module_complete;
+  llvm::DenseMap<clike_typesystem::Type *, CompilerType> m_cross_module_complete;
 
   /// Per-record bookkeeping for lazy completion and layout.
   struct RecordInfo {
-    TypeSystemCpp *ts = nullptr;
-    cpp_typesystem::RecordType *cpp_record = nullptr;
+    TypeSystemClike *ts = nullptr;
+    clike_typesystem::RecordType *clike_record = nullptr;
     clang::CXXRecordDecl *clang_decl = nullptr;
     bool completed = false;
     /// The record the layout (size, field/base offsets) was actually read
-    /// from. Normally the same as cpp_record, but for a record only
+    /// from. Normally the same as clike_record, but for a record only
     /// forward-declared in its own module it is the complete definition found
     /// in another module (see RedirectToCrossModuleDefinition). LayoutRecord
     /// must read the size/base offsets from the same record PopulateRecord read
     /// the fields from, or Clang's record layout asserts on a size mismatch.
-    cpp_typesystem::RecordType *layout_record = nullptr;
+    clike_typesystem::RecordType *layout_record = nullptr;
     /// Bit offset of every field decl we added while populating this record,
     /// including the synthetic unnamed bitfields inserted to fill the gaps left
     /// by DWARF's omitted padding bitfields. LayoutRecord reports these to
@@ -494,8 +494,8 @@ private:
   /// mirroring m_records but for ObjCInterfaceDecls (which are not RecordDecls
   /// so they don't route through m_records / CompleteRecord).
   struct ObjCInterfaceInfo {
-    TypeSystemCpp *ts = nullptr;
-    cpp_typesystem::ObjCInterfaceType *cpp_iface = nullptr;
+    TypeSystemClike *ts = nullptr;
+    clike_typesystem::ObjCInterfaceType *clike_iface = nullptr;
     clang::ObjCInterfaceDecl *clang_decl = nullptr;
     bool completed = false;
   };

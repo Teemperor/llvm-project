@@ -18,18 +18,18 @@ class ObjCDataFormatterNSContainer(ObjCDataFormatterTestCase):
     def test_nscontainers_with_run_command(self):
         """Test formatters for  NS container classes."""
         # __NSCFDictionary/__NSCFSet have no debug info (they're private CF
-        # runtime classes), so TypeSystemCpp reconstructs their class layout
+        # runtime classes), so TypeSystemClike reconstructs their class layout
         # from the ObjC runtime's type-encoding strings instead
-        # (TypeSystemCpp::CreateRuntimeObjCInterface). That reconstruction
+        # (TypeSystemClike::CreateRuntimeObjCInterface). That reconstruction
         # can't express a real object graph: `id`/`Class`/`SEL` ivars become
-        # opaque untyped pointers (TypeSystemCpp::RealizeObjCEncoding), which
+        # opaque untyped pointers (TypeSystemClike::RealizeObjCEncoding), which
         # trips up byte-size computation for the synthesized key/value bucket
         # struct this test dereferences (`*nscfDictionary`/`*nscfSet`). This is
         # a known, narrow gap, not something TypeSystemClang needs to handle
         # the same way.
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             self.skipTest(
-                "TypeSystemCpp's runtime-reconstructed __NSCFDictionary/__NSCFSet "
+                "TypeSystemClike's runtime-reconstructed __NSCFDictionary/__NSCFSet "
                 "can't express their key/value storage's real element types"
             )
         self.appkit_tester_impl(self.nscontainers_data_formatter_commands, False)

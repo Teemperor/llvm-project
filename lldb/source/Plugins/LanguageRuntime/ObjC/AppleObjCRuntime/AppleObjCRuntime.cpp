@@ -112,8 +112,8 @@ AppleObjCRuntime::GetObjectDescription(Stream &strm, Value &value,
   Target *target = exe_ctx.GetTargetPtr();
 
   // Use the generic scratch TypeSystem for the language (this may be a
-  // TypeSystemClang or a TypeSystemCpp depending on the
-  // symbols.enable-typesystem-cpp setting). We only rely on the neutral
+  // TypeSystemClang or a TypeSystemClike depending on the
+  // symbols.enable-typesystem-clike setting). We only rely on the neutral
   // CompilerType / TypeSystem API here so both work.
   auto scratch_ts_or_err =
       target->GetScratchTypeSystemForLanguage(lldb::eLanguageTypeObjC);
@@ -529,8 +529,8 @@ ThreadSP AppleObjCRuntime::GetBacktraceThreadFromException(
     return FailExceptionParsing("Failed to get synthetic value.");
 
   // Use the generic scratch TypeSystem for the language (this may be a
-  // TypeSystemClang or a TypeSystemCpp depending on the
-  // symbols.enable-typesystem-cpp setting). We only rely on the neutral
+  // TypeSystemClang or a TypeSystemClike depending on the
+  // symbols.enable-typesystem-clike setting). We only rely on the neutral
   // CompilerType / TypeSystem API here so both work.
   auto scratch_ts_or_err =
       exception_sp->GetTargetSP()->GetScratchTypeSystemForLanguage(

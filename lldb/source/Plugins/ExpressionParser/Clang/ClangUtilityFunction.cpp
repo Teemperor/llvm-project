@@ -11,7 +11,7 @@
 #include "ClangExpressionParser.h"
 #include "ClangExpressionSourceCode.h"
 #include "ClangPersistentVariables.h"
-#include "CppExpressionDeclMap.h"
+#include "ClikeExpressionDeclMap.h"
 
 #include <cstdio>
 #include <sys/types.h>
@@ -180,25 +180,25 @@ char ClangUtilityFunction::ClangUtilityFunctionHelper::ID;
 
 void ClangUtilityFunction::ClangUtilityFunctionHelper::ResetDeclMap(
     ExecutionContext &exe_ctx, bool keep_result_in_memory) {
-  // When TypeSystemCpp is enabled, the target has no ScratchTypeSystemClang for
+  // When TypeSystemClike is enabled, the target has no ScratchTypeSystemClang for
   // the ASTImporter-based ClangExpressionDeclMap to build on. A utility function
   // is a self-contained Clang C program, so -- like a user expression (see
-  // ClangUserExpression::...::ResetDeclMap) -- use the TypeSystemCpp-aware decl
+  // ClangUserExpression::...::ResetDeclMap) -- use the TypeSystemClike-aware decl
   // map, whose WillParse does not require a scratch Clang AST.
-  if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp()) {
-    m_expr_decl_map_up = std::make_unique<CppExpressionDeclMap>(
+  if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike()) {
+    m_expr_decl_map_up = std::make_unique<ClikeExpressionDeclMap>(
         keep_result_in_memory, /*result_delegate=*/nullptr,
         exe_ctx.GetTargetSP(), /*ctx_obj=*/nullptr,
         /*ignore_context_qualifiers=*/false);
     // A utility function's free-name lookups default to disabled (unlike a
     // user expression's, which default to enabled -- see the
-    // m_lookups_enabled comment in CppExpressionDeclMap.h): a utility
+    // m_lookups_enabled comment in ClikeExpressionDeclMap.h): a utility
     // function's own text never contains a `$`-prefixed marker, so servicing
     // an ordinary identifier lookup here would only ever be Sema probing a
     // declarator while parsing the function's own prototype (e.g. classifying
     // whether `dlopen` names a type), which can create a spurious duplicate
     // decl and break a later call. See the `!m_lookups_enabled` comment in
-    // CppExpressionDeclMap::FindExternalVisibleDecls for the full story.
+    // ClikeExpressionDeclMap::FindExternalVisibleDecls for the full story.
     m_expr_decl_map_up->SetLookupsEnabled(false);
     return;
   }

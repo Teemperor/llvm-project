@@ -70,7 +70,7 @@ static bool ExtractFields(ValueObject &valobj, ValueObjectSP *name_sp,
   InferiorSizedWord reserved_isw(reserved, *process_sp);
 
   // Use whatever C scratch type system the target provides (TypeSystemClang
-  // or TypeSystemCpp) rather than requiring a Clang one.
+  // or TypeSystemClike) rather than requiring a Clang one.
   auto scratch_ts_or_err =
       process_sp->GetTarget().GetScratchTypeSystemForLanguage(
           lldb::eLanguageTypeC);

@@ -216,11 +216,11 @@ class TestCase(TestBase):
         # completed. Somehow LLDB really wants to load the first member, so
         # that is why have it defined here.
         #
-        # TypeSystemCpp does the correct thing here and only forward-declares
+        # TypeSystemClike does the correct thing here and only forward-declares
         # the pointee behind the pointer instead of completing it, so under
         # that TypeSystem the member is loaded but not completed.
         if self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
+            "symbols.enable-typesystem-clike"
         ).GetBooleanValue():
             self.assert_decl_not_completed(self.struct_first_member_decl)
         else:

@@ -2,7 +2,7 @@
 
 // RUN: %clang_cl --target=x86_64-windows-msvc -Od -Z7 -GS- -c /Fo%t.obj -- %s
 // RUN: lld-link -debug:full -nodefaultlib -entry:main %t.obj -out:%t.exe -pdb:%t.pdb
-// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" -f %t.exe -o "type lookup Foo" | FileCheck %s
+// RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" -f %t.exe -o "type lookup Foo" | FileCheck %s
 
 enum class U8Enum : unsigned char {
   Max = 255,

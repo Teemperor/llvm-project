@@ -16,10 +16,10 @@ class DeclFromSubmoduleTestCase(TestBase):
     @expectedFailureAll(oslist=["linux"])
     def test_expr(self):
         if self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
+            "symbols.enable-typesystem-clike"
         ).GetBooleanValue():
             self.skipTest(
-                "TypeSystemCpp does not implement the ClangModulesDeclVendor "
+                "TypeSystemClike does not implement the ClangModulesDeclVendor "
                 "(@import/submodule) decl lookup path"
             )
         self.build()

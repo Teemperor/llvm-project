@@ -290,8 +290,8 @@ bool DynamicLoaderMacOS::NotifyBreakpointHit(void *baton,
     // get the values from the ABI:
 
     // Read the notifier's arguments using whatever C scratch type system the
-    // target provides (TypeSystemClang or TypeSystemCpp) rather than requiring
-    // a Clang one -- otherwise, with TypeSystemCpp enabled, this would bail and
+    // target provides (TypeSystemClang or TypeSystemClike) rather than requiring
+    // a Clang one -- otherwise, with TypeSystemClike enabled, this would bail and
     // newly dlopen'd images would never be registered.
     auto scratch_ts_or_err =
         process->GetTarget().GetScratchTypeSystemForLanguage(eLanguageTypeC);

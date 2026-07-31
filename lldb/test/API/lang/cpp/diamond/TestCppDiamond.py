@@ -112,13 +112,13 @@ class TestCase(TestBase):
     def test_invalid_member(self):
         # Accessing a virtual-base member through the most-derived object
         # (`j1.m_value`) only works once virtual base classes are modeled.
-        # TypeSystemCpp models them and resolves this correctly, so the
+        # TypeSystemClike models them and resolves this correctly, so the
         # @expectedFailureAll above (which documents the TypeSystemClang bug)
-        # only applies to TypeSystemClang; skip under TypeSystemCpp to avoid an
+        # only applies to TypeSystemClang; skip under TypeSystemClike to avoid an
         # unexpected success.
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             self.skipTest(
-                "j1.m_value resolves correctly under TypeSystemCpp "
+                "j1.m_value resolves correctly under TypeSystemClike "
                 "(xfail is TypeSystemClang-only)"
             )
         self.build()

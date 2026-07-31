@@ -24,31 +24,31 @@ class ObjCMethodDecl;
 namespace lldb_private {
 
 class ClangASTGenerator;
-class TypeSystemCpp;
+class TypeSystemClike;
 
-namespace cpp_typesystem {
+namespace clike_typesystem {
 class ObjCInterfaceType;
-} // namespace cpp_typesystem
+} // namespace clike_typesystem
 
 /// Maps a Clang type produced by a ClangASTGenerator back onto its
-/// cpp_typesystem origin, so an expression's result type can be expressed as a
-/// TypeSystemCpp type without ever translating Clang types back "for real".
+/// clike_typesystem origin, so an expression's result type can be expressed as a
+/// TypeSystemClike type without ever translating Clang types back "for real".
 ///
 /// This is the inverse direction of ClangASTGenerator (which maps
-/// cpp_typesystem -> Clang). It relies on the generator's reverse map (Clang
-/// type -> originating cpp_typesystem type) for everything the generator
+/// clike_typesystem -> Clang). It relies on the generator's reverse map (Clang
+/// type -> originating clike_typesystem type) for everything the generator
 /// synthesized, and reconstructs the remainder (builtins, cv-qualifiers,
 /// parser-defined records, and simple derived types the parser formed on its
 /// own) directly from the Clang type.
 ///
-/// All reconstructed types are created in the target TypeSystemCpp (typically
-/// the scratch TypeSystemCpp that owns expression result/persistent types),
+/// All reconstructed types are created in the target TypeSystemClike (typically
+/// the scratch TypeSystemClike that owns expression result/persistent types),
 /// which is fixed for the lifetime of the converter.
 class ClangTypeConverter {
 public:
   /// \param generator the generator whose reverse map (Clang type ->
-  /// cpp_typesystem type) is consulted; must outlive this converter.
-  /// \param target the TypeSystemCpp that owns every reconstructed type.
+  /// clike_typesystem type) is consulted; must outlive this converter.
+  /// \param target the TypeSystemClike that owns every reconstructed type.
   /// \param source_ast the clang::ASTContext the converted types live in. It
   /// defaults to the generator's own AST (the expression AST), used by the
   /// result-type / persistent-decl paths. Pass a different context (e.g. the
@@ -56,12 +56,12 @@ public:
   /// produced elsewhere: those are never in the generator's reverse map, so the
   /// converter falls through to its reconstruction paths, which then query
   /// layout/sugar from this (correct) context.
-  ClangTypeConverter(ClangASTGenerator &generator, TypeSystemCpp &target,
+  ClangTypeConverter(ClangASTGenerator &generator, TypeSystemClike &target,
                      clang::ASTContext *source_ast = nullptr);
 
-  /// Map \p qt (a Clang type) back to its cpp_typesystem origin. Returns an
+  /// Map \p qt (a Clang type) back to its clike_typesystem origin. Returns an
   /// invalid CompilerType if the type can't be mapped. The returned
-  /// CompilerType is owned by the target TypeSystemCpp.
+  /// CompilerType is owned by the target TypeSystemClike.
   CompilerType Convert(clang::QualType qt);
 
 private:
@@ -78,25 +78,25 @@ private:
   CompilerType ConvertViaReverseMap(clang::QualType qt, bool &found);
 
   /// Map a clang::BuiltinType the parser created on its own (e.g. the result of
-  /// `1 + 1` or a `sizeof`) onto the corresponding TypeSystemCpp builtin.
+  /// `1 + 1` or a `sizeof`) onto the corresponding TypeSystemClike builtin.
   /// Returns an invalid CompilerType for a builtin kind we don't model.
   CompilerType ConvertBuiltin(const clang::BuiltinType *bt);
 
   /// Rebuild a record the parser defined itself (a `struct` written directly in
   /// the expression source, so it has no cpp counterpart) in the target
-  /// TypeSystemCpp from the clang record's layout. A complete definition is
+  /// TypeSystemClike from the clang record's layout. A complete definition is
   /// rebuilt with its bases/fields; a forward declaration as an incomplete
   /// record.
   CompilerType ConvertRecord(const clang::RecordType *rt);
 
   /// Rebuild a typedef the parser defined itself (e.g. a persistent typedef,
-  /// `typedef int $bar`, which has no cpp counterpart) as a TypeSystemCpp
+  /// `typedef int $bar`, which has no cpp counterpart) as a TypeSystemClike
   /// TypedefType aliasing the recursively-converted underlying type.
   CompilerType ConvertTypedef(const clang::TypedefType *tdt);
 
   /// Record \p decl's enclosing namespace chain (skipping non-namespace decl
   /// contexts, e.g. a linkage-spec) and unqualified name on \p type, mirroring
-  /// DWARFASTParserCpp::SetTypeNameInfo. Without this a type reconstructed
+  /// DWARFASTParserClike::SetTypeNameInfo. Without this a type reconstructed
   /// from real module code (e.g. `std::size_t`, resolved by the parser rather
   /// than found in the reverse map) has no DeclContext, so its display name
   /// prints unqualified (`size_t` instead of `std::size_t`).
@@ -115,7 +115,7 @@ private:
 public:
   /// Transport an Objective-C interface (`@interface`) that lives in \p m_ast
   /// (e.g. the ClangModulesDeclVendor's ASTContext) into an equivalent
-  /// TypeSystemCpp ObjCInterfaceType owned by the target. When \p complete is
+  /// TypeSystemClike ObjCInterfaceType owned by the target. When \p complete is
   /// set the interface is fully populated (superclass, ivars, and every
   /// instance/class method + property accessor, with their real typedef'd
   /// signatures -- unlike the ObjC runtime, which loses typedef names such as
@@ -135,12 +135,12 @@ private:
 
   /// Add a single Objective-C method (from a module ObjCMethodDecl) to the cpp
   /// interface being built, translating its return/parameter types.
-  void AddObjCMethod(cpp_typesystem::ObjCInterfaceType &iface,
+  void AddObjCMethod(clike_typesystem::ObjCInterfaceType &iface,
                      const clang::ObjCInterfaceDecl *def,
                      const clang::ObjCMethodDecl *method);
 
   ClangASTGenerator &m_generator;
-  TypeSystemCpp &m_target;
+  TypeSystemClike &m_target;
   clang::ASTContext &m_ast;
 
   /// Interfaces already created (forward or complete), keyed by definition (or

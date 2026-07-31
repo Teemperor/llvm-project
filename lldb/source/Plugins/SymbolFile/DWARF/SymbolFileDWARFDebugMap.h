@@ -23,7 +23,7 @@
 #include "lldb/lldb-private-enumerations.h"
 
 class DWARFASTParserClang;
-class DWARFASTParserCpp;
+class DWARFASTParserClike;
 
 namespace lldb_private::plugin {
 namespace dwarf {
@@ -156,7 +156,7 @@ protected:
 
   friend class DebugMapModule;
   friend class ::DWARFASTParserClang;
-  friend class ::DWARFASTParserCpp;
+  friend class ::DWARFASTParserClike;
   friend class DWARFCompileUnit;
   friend class SymbolFileDWARF;
   struct OSOInfo {

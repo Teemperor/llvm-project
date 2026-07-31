@@ -55,7 +55,7 @@
 #include "AppleObjCRuntimeV2.h"
 #include "AppleObjCTrampolineHandler.h"
 #include "AppleObjCTypeEncodingParser.h"
-#include "CppObjCDeclVendor.h"
+#include "ClikeObjCDeclVendor.h"
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclObjC.h"
@@ -1880,10 +1880,10 @@ uint64_t AppleObjCRuntimeV2::SharedCacheImageHeaders::GetVersion() {
 }
 
 /// The target's scratch type system for C. This may be a ScratchTypeSystemClang
-/// or -- when the setting is on -- a ScratchTypeSystemCpp; the runtime only uses
+/// or -- when the setting is on -- a ScratchTypeSystemClike; the runtime only uses
 /// the language-neutral TypeSystem API (builtin/basic/pointer types) on it, so
 /// either works. Using the generic scratch keeps the runtime from depending on
-/// a ScratchTypeSystemClang existing (there is none when TypeSystemCpp owns the
+/// a ScratchTypeSystemClang existing (there is none when TypeSystemClike owns the
 /// scratch slot).
 static lldb::TypeSystemSP GetScratchTypeSystemForObjCRuntime(Target &target) {
   auto ts_or_err =
@@ -2869,14 +2869,14 @@ void AppleObjCRuntimeV2::WarnIfNoExpandedSharedCache() {
 
 DeclVendor *AppleObjCRuntimeV2::GetDeclVendor() {
   if (!m_decl_vendor_up) {
-    // CppObjCDeclVendor never instantiates a TypeSystemClang (it hands out
-    // TypeSystemCpp CompilerTypes instead), unlike AppleObjCDeclVendor. It
+    // ClikeObjCDeclVendor never instantiates a TypeSystemClang (it hands out
+    // TypeSystemClike CompilerTypes instead), unlike AppleObjCDeclVendor. It
     // can't serve ClangASTSource's legacy ObjC expression-parsing lookups,
-    // but those never run once symbols.enable-typesystem-cpp installs
-    // CppExpressionDeclMap instead of ClangExpressionDeclMap -- see
-    // CppObjCDeclVendor.h for details.
-    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemCpp())
-      m_decl_vendor_up = std::make_unique<CppObjCDeclVendor>(*this);
+    // but those never run once symbols.enable-typesystem-clike installs
+    // ClikeExpressionDeclMap instead of ClangExpressionDeclMap -- see
+    // ClikeObjCDeclVendor.h for details.
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike())
+      m_decl_vendor_up = std::make_unique<ClikeObjCDeclVendor>(*this);
     else
       m_decl_vendor_up = std::make_unique<AppleObjCDeclVendor>(*this);
   }

@@ -3,7 +3,7 @@ add_lldb_library(lldbPluginAppleObjCRuntime PLUGIN
   AppleObjCRuntimeV2.cpp
   AppleObjCTrampolineHandler.cpp
   AppleObjCDeclVendor.cpp
-  CppObjCDeclVendor.cpp
+  ClikeObjCDeclVendor.cpp
   AppleThreadPlanStepThroughObjCTrampoline.cpp
   AppleObjCClassDescriptorV2.cpp
   AppleObjCTypeEncodingParser.cpp
@@ -23,7 +23,7 @@ add_lldb_library(lldbPluginAppleObjCRuntime PLUGIN
     lldbPluginExpressionParserClang
     lldbPluginCPPRuntime
     lldbPluginTypeSystemClang
-    lldbPluginTypeSystemCpp
+    lldbPluginTypeSystemClike
   CLANG_LIBS
     clangAST
   )

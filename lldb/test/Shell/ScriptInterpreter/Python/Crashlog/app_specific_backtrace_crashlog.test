@@ -2,7 +2,7 @@
 
 # RUN: mkdir -p %t.dir
 # RUN: yaml2obj %S/Inputs/application_specific_info/asi.yaml > %t.dir/asi
-# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" \
+# RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" \
 # RUN: -o 'command script import lldb.macosx.crashlog' \
 # RUN: -o 'crashlog -i -t %t.dir/asi %S/Inputs/application_specific_info/asi.txt' \
 # RUN: -o "thread list" -o "bt all" 2>&1 | FileCheck %s

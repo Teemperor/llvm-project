@@ -19,16 +19,16 @@ class ExprInsideLambdaTestCase(TestBase):
         frame = self.thread.GetFrameAtIndex(0)
         value = frame.EvaluateExpression(expr)
         errmsg = value.GetError().GetCString()
-        # TypeSystemCpp does not model a function-local (lambda) class as a
+        # TypeSystemClike does not model a function-local (lambda) class as a
         # nested type of its enclosing class, so a reference to an enclosing
         # member from such a class is rejected as an "undeclared identifier"
         # rather than clang's "use of non-static data member ... from nested
         # type" diagnostic. The access is still (correctly) rejected; accept the
-        # TypeSystemCpp wording for those checks.
+        # TypeSystemClike wording for those checks.
         if (
             "use of non-static data member" in expected
             and self.dbg.GetSetting(
-                "symbols.enable-typesystem-cpp"
+                "symbols.enable-typesystem-clike"
             ).GetBooleanValue()
             and "use of undeclared identifier" in errmsg
         ):

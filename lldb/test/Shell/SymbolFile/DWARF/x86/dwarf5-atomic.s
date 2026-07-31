@@ -1,5 +1,5 @@
 # RUN: llvm-mc -triple=x86_64-pc-linux -filetype=obj %s > %t
-# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t -o "target variable integer structure" -o exit | FileCheck %s
+# RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t -o "target variable integer structure" -o exit | FileCheck %s
 
 # CHECK: (_Atomic(int)) integer = 14159
 # CHECK: (_Atomic(struct_type)) structure = (member = 71828)

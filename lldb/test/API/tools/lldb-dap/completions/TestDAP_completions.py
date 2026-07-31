@@ -51,11 +51,11 @@ class TestDAP_completions(DAPTestCaseBase):
     def setUp(self):
         super().setUp()
         if self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
+            "symbols.enable-typesystem-clike"
         ).GetBooleanValue():
             self.skipTest(
                 "variable-completion detail type spellings differ under "
-                "TypeSystemCpp"
+                "TypeSystemClike"
             )
 
     def verify_completions(

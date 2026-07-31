@@ -256,7 +256,7 @@ void AddLambdaCaptureDecls(StreamString &stream, StackFrame *frame,
   if (auto thisValSP = ClangExpressionUtil::GetLambdaValueObject(frame)) {
     // The lambda's `this` is a pointer to the (unnamed) closure object. Under
     // TypeSystemClang a pointer exposes the pointee's members as its children,
-    // but TypeSystemCpp pointers have a single child (the dereferenced value),
+    // but TypeSystemClike pointers have a single child (the dereferenced value),
     // so dereference first to reach the closure's captured members.
     if (thisValSP->IsPointerType()) {
       Status deref_error;

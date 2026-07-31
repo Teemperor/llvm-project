@@ -26,9 +26,9 @@ class TestDAP_locations(lldbdap_testcase.DAPTestCaseBase):
         """
         Tests the 'locations' request.
         """
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             self.skipTest(
-                "the 'locations' request is not yet supported by TypeSystemCpp"
+                "the 'locations' request is not yet supported by TypeSystemClike"
             )
         program = self.getBuildArtifact("a.out")
         self.build_and_launch(program)
