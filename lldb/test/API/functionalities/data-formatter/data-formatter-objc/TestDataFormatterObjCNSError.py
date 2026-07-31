@@ -28,18 +28,18 @@ class ObjCDataFormatterNSError(ObjCDataFormatterTestCase):
 
     def _skip_if_typesystem_cpp_runtime_reconstruction(self):
         # NSError's `_userInfo` ivar has no debug info (it's a private
-        # Foundation ivar), so TypeSystemCpp reconstructs NSError's class
+        # Foundation ivar), so TypeSystemClike reconstructs NSError's class
         # layout from the ObjC runtime's type-encoding strings instead
-        # (TypeSystemCpp::CreateRuntimeObjCInterface). That reconstruction
+        # (TypeSystemClike::CreateRuntimeObjCInterface). That reconstruction
         # can't express a real object graph: `id`/`Class`/`SEL` ivars become
-        # opaque untyped pointers (TypeSystemCpp::RealizeObjCEncoding), so
+        # opaque untyped pointers (TypeSystemClike::RealizeObjCEncoding), so
         # `_userInfo` shows as a raw pointer instead of running the
         # NSDictionary formatter on it. This is a known, narrow gap (not
         # something TypeSystemClang needs, since it has no such reconstruction
         # step for a value it can otherwise treat as generic `id`).
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             self.skipTest(
-                "TypeSystemCpp's runtime-reconstructed NSError can't express "
+                "TypeSystemClike's runtime-reconstructed NSError can't express "
                 "_userInfo's real (NSDictionary) type"
             )
 

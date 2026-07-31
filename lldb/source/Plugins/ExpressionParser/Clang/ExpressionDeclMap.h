@@ -39,7 +39,7 @@ class Materializer;
 ///
 /// This decouples those components from any concrete implementation. The
 /// TypeSystemClang-backed ClangExpressionDeclMap implements it for the legacy
-/// path; CppExpressionDeclMap implements it for TypeSystemCpp (which has no
+/// path; ClikeExpressionDeclMap implements it for TypeSystemClike (which has no
 /// Clang AST) without depending on ClangExpressionDeclMap or TypeSystemClang.
 class ExpressionDeclMap {
 public:
@@ -61,7 +61,7 @@ public:
 
   /// [Used by IRForTarget] Wrap a QualType from the parser's ASTContext into a
   /// CompilerType. The legacy path wraps it in the parser's TypeSystemClang;
-  /// the TypeSystemCpp path maps it back onto a TypeSystemCpp type.
+  /// the TypeSystemClike path maps it back onto a TypeSystemClike type.
   virtual CompilerType WrapType(clang::QualType qt) = 0;
 
   /// [Used by IRForTarget] Add a persistent variable (including the result).
@@ -90,10 +90,10 @@ public:
   virtual lldb::addr_t GetSymbolAddress(ConstString name,
                                         lldb::SymbolType symbol_type) = 0;
 
-  /// True for the TypeSystemCpp-backed implementation (CppExpressionDeclMap).
+  /// True for the TypeSystemClike-backed implementation (ClikeExpressionDeclMap).
   /// Used by ClangExpressionParser to install the parser's ASTContext with the
   /// right concrete type.
-  virtual bool IsCppDeclMap() const { return false; }
+  virtual bool IsClikeDeclMap() const { return false; }
 };
 
 } // namespace lldb_private

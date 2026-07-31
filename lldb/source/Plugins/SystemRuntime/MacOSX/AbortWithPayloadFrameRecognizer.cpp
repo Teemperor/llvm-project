@@ -73,8 +73,8 @@ AbortWithPayloadFrameRecognizer::RecognizeFrame(lldb::StackFrameSP frame_sp) {
 
   // We only need generic builtin types (void*, char*, uint32/uint64) to
   // describe the arguments below. Any scratch type system for C will do, so
-  // don't hard-code TypeSystemClang here: when TypeSystemCpp is the enabled
-  // scratch type system, the target hands out a TypeSystemCpp instead and a
+  // don't hard-code TypeSystemClang here: when TypeSystemClike is the enabled
+  // scratch type system, the target hands out a TypeSystemClike instead and a
   // TypeSystemClang-specific lookup would fail.
   auto type_system_or_err =
       process->GetTarget().GetScratchTypeSystemForLanguage(eLanguageTypeC);

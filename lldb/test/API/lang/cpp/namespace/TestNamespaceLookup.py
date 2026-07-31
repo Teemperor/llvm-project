@@ -221,13 +221,13 @@ class NamespaceLookupTestCase(TestBase):
         """Test scope lookup of functions in lldb."""
         # TypeSystemClang resolves an unqualified `foo()` to the `Y::foo` int
         # variable (variable lookup runs before functions and `::` is ignored),
-        # so the call fails. TypeSystemCpp offers the function candidate
+        # so the call fails. TypeSystemClike offers the function candidate
         # alongside the same-named variable and honors the frame's enclosing
         # namespace scope, so it resolves `foo()`/`::foo()` to `::foo()`
         # correctly. The scope-lookup-of-functions bug remains under
         # TypeSystemClang, so skip there.
         typesystem_cpp = self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
+            "symbols.enable-typesystem-clike"
         ).GetBooleanValue()
         if not typesystem_cpp:
             self.skipTest("lldb scope lookup of functions bugs (TypeSystemClang)")

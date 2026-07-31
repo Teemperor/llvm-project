@@ -7,7 +7,7 @@ from lldbsuite.test import lldbutil
 
 class TestCase(TestBase):
     def test(self):
-        # Exercise the TypeSystemCpp "frame variable" path directly instead of
+        # Exercise the TypeSystemClike "frame variable" path directly instead of
         # the DIL evaluator.
         self.runCmd("settings set target.experimental.use-DIL false")
 
@@ -57,7 +57,7 @@ class TestCase(TestBase):
         # might need a dynamic type -- and answering that question requires
         # completing the pointee, same as TypeSystemClang's
         # GetCompleteType()->isDynamicClass() fallback (see
-        # TypeSystemCpp::IsPossibleDynamicType). Any later SBValue::GetError()/
+        # TypeSystemClike::IsPossibleDynamicType). Any later SBValue::GetError()/
         # GetChildAtIndex() call on such a value (e.g. the diagnostic dump
         # ValueCheck.check_value builds for every expect_expr(), even a
         # succeeding one) legitimately triggers that probe and completes
@@ -129,7 +129,7 @@ class TestCase(TestBase):
         # template arguments and nested types), so exercising their data
         # formatters end-to-end validates broad type-system coverage.
         # (Indexing via operator[] needs member-function call support, which
-        # TypeSystemCpp doesn't model yet; frame-variable indexing is covered by
+        # TypeSystemClike doesn't model yet; frame-variable indexing is covered by
         # TestCppSmokeTest.)
         self.expect_expr("str", result_summary='"hello"')
         self.expect_expr("vec", result_summary="size=3")

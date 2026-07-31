@@ -13,14 +13,14 @@
 #include "Plugins/ExpressionParser/Clang/ClangTypeConverter.h"
 #include "Plugins/ExpressionParser/Clang/CppModuleHandler.h"
 #include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
-#include "Plugins/TypeSystem/Cpp/Builder.h"
-#include "Plugins/TypeSystem/Cpp/Context.h"
-#include "Plugins/TypeSystem/Cpp/Namespace.h"
-#include "Plugins/TypeSystem/Cpp/Type.h"
-#include "Plugins/TypeSystem/Cpp/TypeC.h"
-#include "Plugins/TypeSystem/Cpp/TypeCpp.h"
-#include "Plugins/TypeSystem/Cpp/TypeObjC.h"
-#include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
+#include "Plugins/TypeSystem/Clike/Builder.h"
+#include "Plugins/TypeSystem/Clike/Context.h"
+#include "Plugins/TypeSystem/Clike/Namespace.h"
+#include "Plugins/TypeSystem/Clike/Type.h"
+#include "Plugins/TypeSystem/Clike/TypeC.h"
+#include "Plugins/TypeSystem/Clike/TypeCpp.h"
+#include "Plugins/TypeSystem/Clike/TypeObjC.h"
+#include "Plugins/TypeSystem/Clike/TypeSystemClike.h"
 
 #include "lldb/Host/FileSystem.h"
 #include "lldb/Core/Module.h"
@@ -63,7 +63,7 @@
 
 using namespace lldb_private;
 using namespace lldb;
-namespace ct = cpp_typesystem;
+namespace ct = clike_typesystem;
 
 /// Map the spelling after `operator` (e.g. `+`, `==`, `[]`, `new`) to the
 /// matching clang::OverloadedOperatorKind. Returns OO_None if \p spelling is
@@ -207,7 +207,7 @@ static void AddOverridesForMethod(clang::CXXMethodDecl *decl) {
 }
 
 /// Records a (clang type -> cpp type) mapping so the type can later be mapped
-/// back onto a TypeSystemCpp type (e.g. an expression result type). The key is
+/// back onto a TypeSystemClike type (e.g. an expression result type). The key is
 /// the opaque QualType so cv-qualified variants (const int vs int) stay
 /// distinct. Also register the canonical type as a fallback so a desugared
 /// variant the parser formed still maps back -- but only when the type is
@@ -216,42 +216,42 @@ static void AddOverridesForMethod(clang::CXXMethodDecl *decl) {
 /// type is `int`) would claim the canonical `int` mapping, and an unrelated
 /// `int` result would then be reported as `int32_t`.
 ///
-/// Also records \p cpp_type's true owning TypeSystemCpp (\p ts, the same one
+/// Also records \p clike_type's true owning TypeSystemClike (\p ts, the same one
 /// GenerateType was called with for it) in \p owner, so ConvertViaReverseMap
 /// can later rebuild the CompilerType against the TypeSystem that can actually
-/// complete it, instead of always the scratch TypeSystemCpp that owns
+/// complete it, instead of always the scratch TypeSystemClike that owns
 /// expression result types.
 static void
 noteReverse(llvm::DenseMap<void *, ct::Type *> &reverse,
-           llvm::DenseMap<ct::Type *, TypeSystemCpp *> &owner,
-           TypeSystemCpp &ts, clang::QualType qt, ct::Type *cpp_type) {
+           llvm::DenseMap<ct::Type *, TypeSystemClike *> &owner,
+           TypeSystemClike &ts, clang::QualType qt, ct::Type *clike_type) {
   if (qt.isNull())
     return;
-  reverse[qt.getAsOpaquePtr()] = cpp_type;
-  owner[cpp_type] = &ts;
+  reverse[qt.getAsOpaquePtr()] = clike_type;
+  owner[clike_type] = &ts;
   clang::QualType canonical = qt.getCanonicalType();
   if (canonical.getAsOpaquePtr() == qt.getAsOpaquePtr())
-    reverse[canonical.getAsOpaquePtr()] = cpp_type;
+    reverse[canonical.getAsOpaquePtr()] = clike_type;
 }
 
 // A pointee reached through a typedef (e.g. `typedef BaseClass
 // TypedefBaseClass; TypedefBaseClass *p;`) must still be recognized as, say, an
 // Objective-C interface so `p` is generated as a real ObjCObjectPointerType
 // rather than a plain pointer, so this file desugars in the same places
-// TypeSystemCpp does. See cpp_typesystem::Type::Desugar.
+// TypeSystemClike does. See clike_typesystem::Type::Desugar.
 using ct::Desugar;
 
-void ClangASTGenerator::RegisterNamespace(const ct::Namespace *cpp_ns,
+void ClangASTGenerator::RegisterNamespace(const ct::Namespace *clike_ns,
                                           clang::NamespaceDecl *clang_ns) {
-  if (cpp_ns)
-    m_namespaces[cpp_ns] = clang_ns;
+  if (clike_ns)
+    m_namespaces[clike_ns] = clang_ns;
 }
 
 clang::NamespaceDecl *
-ClangASTGenerator::GetRegisteredNamespace(const ct::Namespace *cpp_ns) const {
-  if (!cpp_ns)
+ClangASTGenerator::GetRegisteredNamespace(const ct::Namespace *clike_ns) const {
+  if (!clike_ns)
     return nullptr;
-  auto it = m_namespaces.find(cpp_ns);
+  auto it = m_namespaces.find(clike_ns);
   return it != m_namespaces.end() ? it->second : nullptr;
 }
 
@@ -262,11 +262,11 @@ ClangASTGenerator::GetNamespaceForDecl(const clang::NamespaceDecl *clang_ns) con
 }
 
 clang::DeclContext *
-ClangASTGenerator::GetDeclContextForNamespace(const ct::Namespace *cpp_ns) {
-  if (!cpp_ns)
+ClangASTGenerator::GetDeclContextForNamespace(const ct::Namespace *clike_ns) {
+  if (!clike_ns)
     return m_ast.getTranslationUnitDecl();
 
-  auto it = m_namespaces.find(cpp_ns);
+  auto it = m_namespaces.find(clike_ns);
   if (it != m_namespaces.end())
     return clang::Decl::castToDeclContext(it->second);
 
@@ -277,10 +277,10 @@ ClangASTGenerator::GetDeclContextForNamespace(const ct::Namespace *cpp_ns) {
   // (e.g. `ns::Foo`) out of the global scope, so a global-qualified lookup
   // (`::Foo`) does not spuriously find it, and clang's own unqualified lookup
   // walks the enclosing namespaces itself.
-  clang::DeclContext *parent = GetDeclContextForNamespace(cpp_ns->GetParent());
+  clang::DeclContext *parent = GetDeclContextForNamespace(clike_ns->GetParent());
   clang::IdentifierInfo *ident = nullptr;
-  if (!cpp_ns->IsAnonymous())
-    ident = &m_ast.Idents.get(cpp_ns->GetName().GetName());
+  if (!clike_ns->IsAnonymous())
+    ident = &m_ast.Idents.get(clike_ns->GetName().GetName());
 
   // A real C++ module (`@import std;`, see CxxModuleHandler/
   // target.import-std-module) may have already materialized a namespace of
@@ -293,17 +293,17 @@ ClangASTGenerator::GetDeclContextForNamespace(const ct::Namespace *cpp_ns) {
   if (ident) {
     if (clang::NamespaceDecl *existing =
             CppModuleHandler::FindImportedNamespace(
-                parent, cpp_ns->GetName().GetName())) {
+                parent, clike_ns->GetName().GetName())) {
       clang::Decl::castToDeclContext(existing)->setHasExternalVisibleStorage(
           true);
-      RegisterNamespace(cpp_ns, existing);
-      m_namespace_decls[existing] = cpp_ns;
+      RegisterNamespace(clike_ns, existing);
+      m_namespace_decls[existing] = clike_ns;
       return clang::Decl::castToDeclContext(existing);
     }
   }
 
   auto *nsd = clang::NamespaceDecl::Create(
-      m_ast, parent, cpp_ns->IsInline(), clang::SourceLocation(),
+      m_ast, parent, clike_ns->IsInline(), clang::SourceLocation(),
       clang::SourceLocation(), ident, /*PrevDecl=*/nullptr, /*Nested=*/false);
   // Route member lookups (qualified names, ADL operators) inside this namespace
   // back through the decl map: without external visible storage a qualified
@@ -312,19 +312,19 @@ ClangASTGenerator::GetDeclContextForNamespace(const ct::Namespace *cpp_ns) {
   // mapping so the decl map can rebuild this namespace's lookup map on demand.
   clang::Decl::castToDeclContext(nsd)->setHasExternalVisibleStorage(true);
   parent->addDecl(nsd);
-  RegisterNamespace(cpp_ns, nsd);
-  m_namespace_decls[nsd] = cpp_ns;
+  RegisterNamespace(clike_ns, nsd);
+  m_namespace_decls[nsd] = clike_ns;
   return clang::Decl::castToDeclContext(nsd);
 }
 
-clang::QualType ClangASTGenerator::Generate(const CompilerType &cpp_type) {
+clang::QualType ClangASTGenerator::Generate(const CompilerType &clike_type) {
   GenerationGuard guard(*this);
-  if (!cpp_type)
+  if (!clike_type)
     return {};
-  auto ts = cpp_type.GetTypeSystem<TypeSystemCpp>();
+  auto ts = clike_type.GetTypeSystem<TypeSystemClike>();
   if (!ts)
     return {};
-  auto *type = static_cast<ct::Type *>(cpp_type.GetOpaqueQualType());
+  auto *type = static_cast<ct::Type *>(clike_type.GetOpaqueQualType());
   if (!type)
     return {};
   // This is the type directly requested by the expression parser, so build a
@@ -334,7 +334,7 @@ clang::QualType ClangASTGenerator::Generate(const CompilerType &cpp_type) {
   return GenerateType(*ts, type, /*build_template_spec=*/true);
 }
 
-void ClangASTGenerator::DumpRecords(TypeSystemCpp &ts,
+void ClangASTGenerator::DumpRecords(TypeSystemClike &ts,
                                     const llvm::Triple &triple,
                                     llvm::ArrayRef<CompilerType> records,
                                     llvm::raw_ostream &output,
@@ -380,7 +380,7 @@ void ClangASTGenerator::DumpRecords(TypeSystemCpp &ts,
   // Generate() only hands out a forward declaration (completion is normally
   // driven lazily by clang's external source, which this standalone context
   // has none of), so complete each record explicitly -- but ONLY the records
-  // that are already complete in the cpp_typesystem model. A record parsed
+  // that are already complete in the clike_typesystem model. A record parsed
   // from DWARF stays a forward declaration until something actually needs its
   // definition (lazy completion); a record reachable only through a pointer or
   // reference member is never completed. Force-completing every record here
@@ -391,10 +391,10 @@ void ClangASTGenerator::DumpRecords(TypeSystemCpp &ts,
   ClangASTGenerator generator(ast);
   for (const CompilerType &record : records) {
     clang::QualType qt = generator.Generate(record);
-    ct::Type *cpp_type =
-        TypeSystemCpp::GetCppType(record.GetOpaqueQualType());
-    auto *cpp_rec = llvm::dyn_cast_or_null<ct::RecordType>(cpp_type);
-    if (cpp_rec && cpp_rec->IsComplete())
+    ct::Type *clike_type =
+        TypeSystemClike::GetClikeType(record.GetOpaqueQualType());
+    auto *clike_rec = llvm::dyn_cast_or_null<ct::RecordType>(clike_type);
+    if (clike_rec && clike_rec->IsComplete())
       generator.EnsureComplete(qt);
   }
 
@@ -434,7 +434,7 @@ void ClangASTGenerator::DumpRecords(TypeSystemCpp &ts,
 }
 
 std::optional<uint64_t> ClangASTGenerator::ComputeVBaseOffsetOffset(
-    TypeSystemCpp &ts, const llvm::Triple &triple, const CompilerType &derived,
+    TypeSystemClike &ts, const llvm::Triple &triple, const CompilerType &derived,
     const CompilerType &vbase) {
   // Build a throwaway clang::ASTContext for the target, exactly as DumpRecords
   // does. Everything here is owned locally and torn down on return.
@@ -509,16 +509,16 @@ std::optional<uint64_t> ClangASTGenerator::ComputeVBaseOffsetOffset(
   clang::CharUnits ooo =
       itanium.getVirtualBaseOffsetOffset(derived_decl, vbase_decl);
   // getVirtualBaseOffsetOffset returns a negative offset from the vtable
-  // pointer; TypeSystemCpp's ReadVirtualBaseOffset subtracts a positive value.
+  // pointer; TypeSystemClike's ReadVirtualBaseOffset subtracts a positive value.
   int64_t q = ooo.getQuantity();
   if (q >= 0)
     return std::nullopt;
   return static_cast<uint64_t>(-q);
 }
 
-clang::QualType ClangASTGenerator::GenerateBuiltin(ct::Type *cpp_type) {
+clang::QualType ClangASTGenerator::GenerateBuiltin(ct::Type *clike_type) {
   clang::ASTContext &ast = m_ast;
-  llvm::StringRef name = cpp_type->GetName().GetName();
+  llvm::StringRef name = clike_type->GetName().GetName();
 
   // Match well-known spellings first so that same-sized types (e.g. `long` vs
   // `long long`) map to the right Clang builtin.
@@ -558,8 +558,8 @@ clang::QualType ClangASTGenerator::GenerateBuiltin(ct::Type *cpp_type) {
     return by_name;
 
   // Fall back to the encoding + byte size.
-  uint64_t bytes = cpp_type->GetByteSize().value_or(0);
-  switch (cpp_type->GetEncoding()) {
+  uint64_t bytes = clike_type->GetByteSize().value_or(0);
+  switch (clike_type->GetEncoding()) {
   case eEncodingSint:
     if (bytes == 1)
       return ast.SignedCharTy;
@@ -614,7 +614,7 @@ static bool IsSupportedStdModuleTemplate(llvm::StringRef base_name) {
 }
 
 clang::CXXRecordDecl *ClangASTGenerator::TryGetStdModuleSpecialization(
-    TypeSystemCpp &ts, ct::RecordType *rec, llvm::StringRef qualified_name,
+    TypeSystemClike &ts, ct::RecordType *rec, llvm::StringRef qualified_name,
     llvm::StringRef base_name) {
   clang::ASTContext &ast = m_ast;
 
@@ -722,7 +722,7 @@ clang::CXXRecordDecl *ClangASTGenerator::TryGetStdModuleSpecialization(
 }
 
 clang::CXXRecordDecl *ClangASTGenerator::BuildClassTemplateSpecializationDecl(
-    TypeSystemCpp &ts, ct::RecordType *rec, clang::TagTypeKind kind,
+    TypeSystemClike &ts, ct::RecordType *rec, clang::TagTypeKind kind,
     clang::DeclContext *decl_ctx, llvm::StringRef base_name) {
   clang::ASTContext &ast = m_ast;
   if (base_name.empty())
@@ -731,7 +731,7 @@ clang::CXXRecordDecl *ClangASTGenerator::BuildClassTemplateSpecializationDecl(
   // Build the clang template arguments (and matching template parameters) from
   // the modeled cpp template arguments. Mirrors TypeSystemClang's
   // CreateTemplateParameterList / CreateClassTemplateSpecializationDecl but
-  // driven by cpp_typesystem::TemplateArgument. Type arguments become
+  // driven by clike_typesystem::TemplateArgument. Type arguments become
   // TemplateTypeParmDecls, integral arguments NonTypeTemplateParmDecls. Any
   // argument kind we can't model (a template-template argument, whose modeled
   // type we don't have) makes us bail so the caller falls back to a plain
@@ -828,15 +828,15 @@ clang::CXXRecordDecl *ClangASTGenerator::BuildClassTemplateSpecializationDecl(
   return spec;
 }
 
-clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
-                                                ct::Type *cpp_type,
+clang::QualType ClangASTGenerator::GenerateType(TypeSystemClike &ts,
+                                                ct::Type *clike_type,
                                                 bool build_template_spec) {
-  if (!cpp_type)
+  if (!clike_type)
     return {};
 
   // Return the cached translation if we already generated this type. This also
   // breaks cycles (e.g. a record that transitively points back to itself).
-  auto cached = m_generated.find(cpp_type);
+  auto cached = m_generated.find(clike_type);
   if (cached != m_generated.end())
     return clang::QualType::getFromOpaquePtr(cached->second);
 
@@ -851,13 +851,13 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
   // the translation unit. The declared name is the *unqualified* spelling
   // (the record's GetName() is the fully-qualified one).
   clang::DeclContext *decl_ctx = GetDeclContextForNamespace(
-      cpp_type->GetDeclContext());
+      clike_type->GetDeclContext());
   auto unqualified_name = [&](ct::Type *t) -> llvm::StringRef {
     llvm::StringRef n = t->GetUnqualifiedName().GetName();
     return n.empty() ? t->GetName().GetName() : n;
   };
 
-  if (auto *iface = llvm::dyn_cast<ct::ObjCInterfaceType>(cpp_type)) {
+  if (auto *iface = llvm::dyn_cast<ct::ObjCInterfaceType>(clike_type)) {
     // An Objective-C class must become a clang ObjCInterfaceDecl (not a
     // CXXRecordDecl): its ivars are laid out with the Objective-C runtime ABI,
     // and modeling it as a C++ record misclassifies its runtime-offset bitfield
@@ -874,7 +874,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
       auto by_name = m_objc_interfaces_by_name.find(name);
       if (by_name != m_objc_interfaces_by_name.end()) {
         result = ast.getObjCInterfaceType(by_name->second);
-        m_generated[cpp_type] = result.getAsOpaquePtr();
+        m_generated[clike_type] = result.getAsOpaquePtr();
         // Leave m_reverse pointing at the cpp type the decl was first generated
         // for (its ObjCInterfaceInfo drives completion), like the record path.
         return result;
@@ -894,12 +894,12 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     result = ast.getObjCInterfaceType(decl);
     auto info = std::make_unique<ObjCInterfaceInfo>();
     info->ts = &ts;
-    info->cpp_iface = iface;
+    info->clike_iface = iface;
     info->clang_decl = decl;
     m_objc_interfaces[decl] = std::move(info);
     if (!name.empty())
       m_objc_interfaces_by_name[name] = decl;
-  } else if (auto *rec = llvm::dyn_cast<ct::RecordType>(cpp_type)) {
+  } else if (auto *rec = llvm::dyn_cast<ct::RecordType>(clike_type)) {
     // Records are created as forward declarations and completed on demand (see
     // PopulateRecord). This mirrors lazy DWARF parsing and keeps cycles finite.
     clang::TagTypeKind kind = rec->IsUnion()
@@ -946,10 +946,10 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
           // Do NOT register a RecordInfo/completion callback for a module decl:
           // its definition comes from the module's ASTReader, not our
           // PopulateRecord. Still record the cpp<->clang mapping so repeat
-          // lookups and MapClangTypeToCpp round-trip.
-          m_generated[cpp_type] = result.getAsOpaquePtr();
-          m_reverse[result.getAsOpaquePtr()] = cpp_type;
-          m_type_owner[cpp_type] = &ts;
+          // lookups and MapClangTypeToClike round-trip.
+          m_generated[clike_type] = result.getAsOpaquePtr();
+          m_reverse[result.getAsOpaquePtr()] = clike_type;
+          m_type_owner[clike_type] = &ts;
           if (!full_name.empty())
             m_records_by_name[full_name] = result.getAsOpaquePtr();
           return result;
@@ -959,19 +959,19 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
           result = ast.getCanonicalTagType(spec);
           auto info = std::make_unique<RecordInfo>();
           info->ts = &ts;
-          info->cpp_record = rec;
+          info->clike_record = rec;
           info->clang_decl = spec;
           m_records[spec] = std::move(info);
-          m_generated[cpp_type] = result.getAsOpaquePtr();
-          m_reverse[result.getAsOpaquePtr()] = cpp_type;
-          m_type_owner[cpp_type] = &ts;
+          m_generated[clike_type] = result.getAsOpaquePtr();
+          m_reverse[result.getAsOpaquePtr()] = clike_type;
+          m_type_owner[clike_type] = &ts;
           return result;
         }
       }
     }
     // A named record is unified by its fully-qualified name: if we already
     // generated a clang decl for a record of this name (from any module's
-    // TypeSystemCpp), reuse it rather than create a second, distinct decl. This
+    // TypeSystemClike), reuse it rather than create a second, distinct decl. This
     // keeps a type that is forward-declared in one module and defined in
     // another (a shared-library type used in the main executable) a single
     // clang type, so overload resolution binds `foo *` from a variable and
@@ -981,7 +981,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
       auto by_name = m_records_by_name.find(full_name);
       if (by_name != m_records_by_name.end()) {
         result = clang::QualType::getFromOpaquePtr(by_name->second);
-        m_generated[cpp_type] = result.getAsOpaquePtr();
+        m_generated[clike_type] = result.getAsOpaquePtr();
         // Do not overwrite m_reverse: leave it pointing at the cpp type the
         // decl was first generated for (its RecordInfo drives completion).
         return result;
@@ -1004,12 +1004,12 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     result = ast.getCanonicalTagType(decl);
     auto info = std::make_unique<RecordInfo>();
     info->ts = &ts;
-    info->cpp_record = rec;
+    info->clike_record = rec;
     info->clang_decl = decl;
     m_records[decl] = std::move(info);
     if (!full_name.empty())
       m_records_by_name[full_name] = result.getAsOpaquePtr();
-  } else if (auto *ptr = llvm::dyn_cast<ct::PointerType>(cpp_type)) {
+  } else if (auto *ptr = llvm::dyn_cast<ct::PointerType>(clike_type)) {
     clang::QualType pointee;
     if (ct::Type *p = ptr->GetPointeeType())
       // A pointee stays a lazy forward declaration: don't force-complete it
@@ -1038,7 +1038,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
       else
         result = ast.getPointerType(pointee);
     }
-  } else if (auto *ref = llvm::dyn_cast<ct::ReferenceType>(cpp_type)) {
+  } else if (auto *ref = llvm::dyn_cast<ct::ReferenceType>(clike_type)) {
     // Like a pointer pointee, a reference's referent stays a lazy forward
     // declaration (completed on demand if actually dereferenced).
     clang::QualType pointee =
@@ -1046,7 +1046,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     if (!pointee.isNull())
       result = ref->IsRValue() ? ast.getRValueReferenceType(pointee)
                                : ast.getLValueReferenceType(pointee);
-  } else if (auto *arr = llvm::dyn_cast<ct::ArrayType>(cpp_type)) {
+  } else if (auto *arr = llvm::dyn_cast<ct::ArrayType>(clike_type)) {
     clang::QualType elem = GenerateType(ts, arr->GetElementType());
     if (!elem.isNull()) {
       std::optional<uint64_t> n = arr->GetNumElements();
@@ -1063,7 +1063,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
         result = ast.getIncompleteArrayType(
             elem, clang::ArraySizeModifier::Normal, 0);
     }
-  } else if (auto *td = llvm::dyn_cast<ct::TypedefType>(cpp_type)) {
+  } else if (auto *td = llvm::dyn_cast<ct::TypedefType>(clike_type)) {
     // The Objective-C pseudo-builtin `id` appears in DWARF as an ordinary
     // typedef (`id` -> `objc_object *`), but clang's ObjC semantics (implicit
     // conversions such as `NSString*` -> `id`, and message sends to `id`) only
@@ -1084,7 +1084,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
       result = ast.getTypedefType(clang::ElaboratedTypeKeyword::None,
                                   /*Qualifier=*/std::nullopt, decl);
     }
-  } else if (auto *cv = llvm::dyn_cast<ct::CVQualifiedType>(cpp_type)) {
+  } else if (auto *cv = llvm::dyn_cast<ct::CVQualifiedType>(clike_type)) {
     clang::QualType underlying = GenerateType(ts, cv->GetUnderlyingType());
     if (!underlying.isNull()) {
       if (cv->IsConst())
@@ -1093,7 +1093,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
         underlying.addVolatile();
       result = underlying;
     }
-  } else if (auto *pa = llvm::dyn_cast<ct::PtrAuthType>(cpp_type)) {
+  } else if (auto *pa = llvm::dyn_cast<ct::PtrAuthType>(clike_type)) {
     // A `__ptrauth`-qualified pointer. Generate the underlying (signed) type
     // and re-attach a matching clang PointerAuthQualifier so that clang's
     // codegen authenticates the loaded pointer before dereferencing/calling it
@@ -1113,7 +1113,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     } else {
       result = underlying;
     }
-  } else if (auto *elab = llvm::dyn_cast<ct::ElaboratedType>(cpp_type)) {
+  } else if (auto *elab = llvm::dyn_cast<ct::ElaboratedType>(clike_type)) {
     // ElaboratedType is pure display sugar (a preserved source spelling like
     // `::Struct` or the elaborated `A` a result/persistent type kept). It is
     // fully transparent for codegen, so generate the underlying type. Without
@@ -1121,7 +1121,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     // translate (e.g. a persistent variable `$p` whose stored type is an
     // elaborated record couldn't be referenced).
     result = GenerateType(ts, elab->GetUnderlyingType());
-  } else if (auto *en = llvm::dyn_cast<ct::EnumType>(cpp_type)) {
+  } else if (auto *en = llvm::dyn_cast<ct::EnumType>(clike_type)) {
     clang::QualType integer;
     if (ct::Type *ut = en->GetUnderlyingType())
       integer = GenerateType(ts, ut);
@@ -1169,7 +1169,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
     decl->completeDefinition(integer, best_promotion, num_positive,
                              num_negative);
     result = ast.getCanonicalTagType(decl);
-  } else if (auto *fn = llvm::dyn_cast<ct::FunctionType>(cpp_type)) {
+  } else if (auto *fn = llvm::dyn_cast<ct::FunctionType>(clike_type)) {
     clang::QualType ret =
         fn->GetReturnType() ? GenerateType(ts, fn->GetReturnType()) : ast.VoidTy;
     if (ret.isNull())
@@ -1189,27 +1189,27 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemCpp &ts,
       epi.Variadic = fn->IsVariadic();
       result = ast.getFunctionType(ret, params, epi);
     }
-  } else if (auto *cx = llvm::dyn_cast<ct::ComplexType>(cpp_type)) {
+  } else if (auto *cx = llvm::dyn_cast<ct::ComplexType>(clike_type)) {
     clang::QualType elem = GenerateType(ts, cx->GetElementType());
     if (!elem.isNull())
       result = ast.getComplexType(elem);
   } else {
-    result = GenerateBuiltin(cpp_type);
+    result = GenerateBuiltin(clike_type);
   }
 
   if (result.isNull()) {
     LLDB_LOG(log, "ClangASTGenerator: failed to translate cpp type '{0}'",
-             cpp_type->GetName().GetName());
+             clike_type->GetName().GetName());
     return {};
   }
 
-  m_generated[cpp_type] = result.getAsOpaquePtr();
-  noteReverse(m_reverse, m_type_owner, ts, result, cpp_type);
+  m_generated[clike_type] = result.getAsOpaquePtr();
+  noteReverse(m_reverse, m_type_owner, ts, result, clike_type);
   return result;
 }
 
 bool ClangASTGenerator::RedirectToCrossModuleDefinition(
-    TypeSystemCpp *&ts, ct::RecordType *&rec) {
+    TypeSystemClike *&ts, ct::RecordType *&rec) {
   if (!m_target || !rec)
     return false;
   // Only records with a name can be looked up in another module; an unnamed /
@@ -1232,10 +1232,10 @@ bool ClangASTGenerator::RedirectToCrossModuleDefinition(
     if (!type_sp)
       continue;
     CompilerType candidate = type_sp->GetFullCompilerType();
-    auto candidate_ts = candidate.GetTypeSystem<TypeSystemCpp>();
+    auto candidate_ts = candidate.GetTypeSystem<TypeSystemClike>();
     if (!candidate_ts)
       continue;
-    ct::Type *cand = TypeSystemCpp::GetCppType(candidate.GetOpaqueQualType());
+    ct::Type *cand = TypeSystemClike::GetClikeType(candidate.GetOpaqueQualType());
     auto *cand_rec = llvm::dyn_cast_or_null<ct::RecordType>(cand);
     if (!cand_rec || cand_rec == rec)
       continue;
@@ -1250,7 +1250,7 @@ bool ClangASTGenerator::RedirectToCrossModuleDefinition(
              name);
     // Remember the complete definition (carrying its own module's TypeSystem)
     // so a result type that maps back to the incomplete record can be sized
-    // from it (see MapClangTypeToCpp).
+    // from it (see MapClangTypeToClike).
     m_cross_module_complete[rec] = candidate;
     ts = candidate_ts.get();
     rec = cand_rec;
@@ -1260,7 +1260,7 @@ bool ClangASTGenerator::RedirectToCrossModuleDefinition(
 }
 
 bool ClangASTGenerator::RedirectObjCInterfaceToRuntimeDefinition(
-    TypeSystemCpp *&ts, ct::ObjCInterfaceType *&iface) {
+    TypeSystemClike *&ts, ct::ObjCInterfaceType *&iface) {
   if (!m_target || !iface)
     return false;
   lldb::ProcessSP process_sp = m_target->GetProcessSP();
@@ -1270,12 +1270,12 @@ bool ClangASTGenerator::RedirectObjCInterfaceToRuntimeDefinition(
   if (!runtime)
     return false;
 
-  // Ask TypeSystemCpp's own runtime-reconstruction directly (as the
+  // Ask TypeSystemClike's own runtime-reconstruction directly (as the
   // frame-variable/DIL path does via GetRuntimeCompletedObjCType) rather than
   // going through ObjCLanguageRuntime::GetRuntimeType()/LookupInRuntime(): the
   // latter is a ValueObject-facing cache keyed off DeclVendor::FindDecls(),
-  // which CppObjCDeclVendor deliberately never answers (see
-  // CppObjCDeclVendor.h) because a runtime-reconstructed CompilerType handed
+  // which ClikeObjCDeclVendor deliberately never answers (see
+  // ClikeObjCDeclVendor.h) because a runtime-reconstructed CompilerType handed
   // back there gets used to override a *live value's* displayed type -- wrong
   // for ivars the runtime can only type crudely (id/Class/SEL become opaque
   // pointers). Here the reconstructed type only ever backs a throwaway
@@ -1288,7 +1288,7 @@ bool ClangASTGenerator::RedirectObjCInterfaceToRuntimeDefinition(
     llvm::consumeError(scratch_or.takeError());
     return false;
   }
-  auto *scratch = llvm::dyn_cast_or_null<TypeSystemCpp>(scratch_or->get());
+  auto *scratch = llvm::dyn_cast_or_null<TypeSystemClike>(scratch_or->get());
   if (!scratch)
     return false;
   ConstString class_name(iface->GetName().GetName());
@@ -1299,7 +1299,7 @@ bool ClangASTGenerator::RedirectObjCInterfaceToRuntimeDefinition(
   if (!runtime_ct)
     return false;
   auto *runtime_iface = llvm::dyn_cast_or_null<ct::ObjCInterfaceType>(
-      TypeSystemCpp::GetCppType(runtime_ct.GetOpaqueQualType()));
+      TypeSystemClike::GetClikeType(runtime_ct.GetOpaqueQualType()));
   if (!runtime_iface || runtime_iface == iface)
     return false;
   // Only redirect when the runtime's answer actually has more to offer than
@@ -1325,9 +1325,9 @@ bool ClangASTGenerator::RedirectObjCInterfaceToRuntimeDefinition(
   return true;
 }
 
-cpp_typesystem::ObjCInterfaceType *
+clike_typesystem::ObjCInterfaceType *
 ClangASTGenerator::GetModuleObjCInterface(llvm::StringRef class_name,
-                                          TypeSystemCpp *&ts) {
+                                          TypeSystemClike *&ts) {
   if (!m_target || class_name.empty())
     return nullptr;
 
@@ -1366,17 +1366,17 @@ ClangASTGenerator::GetModuleObjCInterface(llvm::StringRef class_name,
     llvm::consumeError(scratch_or.takeError());
     return nullptr;
   }
-  auto *scratch = llvm::dyn_cast_or_null<TypeSystemCpp>(scratch_or->get());
+  auto *scratch = llvm::dyn_cast_or_null<TypeSystemClike>(scratch_or->get());
   if (!scratch)
     return nullptr;
 
   // Translate the module's clang interface (methods with typedef'd signatures,
-  // ivars, superclass) into a cpp interface owned by the scratch TypeSystemCpp.
+  // ivars, superclass) into a cpp interface owned by the scratch TypeSystemClike.
   ClangTypeConverter converter(*this, *scratch, vendor_ast);
   CompilerType iface_ct =
       converter.ConvertObjCInterface(iface_decl, /*complete=*/true);
   auto *iface = llvm::dyn_cast_or_null<ct::ObjCInterfaceType>(
-      TypeSystemCpp::GetCppType(iface_ct.GetOpaqueQualType()));
+      TypeSystemClike::GetClikeType(iface_ct.GetOpaqueQualType()));
   if (!iface)
     return nullptr;
   ts = scratch;
@@ -1392,16 +1392,16 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     return;
   info.completed = true;
 
-  TypeSystemCpp &ts_ref = *info.ts;
-  TypeSystemCpp *ts = &ts_ref;
-  ct::RecordType *rec = info.cpp_record;
+  TypeSystemClike &ts_ref = *info.ts;
+  TypeSystemClike *ts = &ts_ref;
+  ct::RecordType *rec = info.clike_record;
   clang::CXXRecordDecl *decl = info.clang_decl;
   clang::ASTContext &ast = m_ast;
 
   // Make sure the record's members are parsed from debug info before we read
   // them out.
-  CompilerType cpp_ct = ts->GetCompilerType(rec);
-  cpp_ct.GetCompleteType();
+  CompilerType clike_ct = ts->GetCompilerType(rec);
+  clike_ct.GetCompleteType();
 
   // The record may only be forward-declared in the module it was parsed from
   // (its complete definition living in another module of the target). We are on
@@ -1543,7 +1543,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   // unnamed struct/union member reachable directly on this record via
   // IndirectFieldDecls, so clang name lookup resolves e.g. `n->foo` / `n->b`.
   // (The frame-variable path handles this separately via
-  // TypeSystemCpp::GetIndexOfChildMemberWithName.) Nested anonymous members
+  // TypeSystemClike::GetIndexOfChildMemberWithName.) Nested anonymous members
   // already have their own IndirectFieldDecls -- built when EnsureComplete
   // populated them above -- so extending those chains handles multiple levels.
   for (clang::FieldDecl *anon : anon_fields) {
@@ -1597,7 +1597,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     clang::QualType method_qt = GenerateType(*ts, mf->type.Get());
     if (method_qt.isNull())
       continue;
-    // The cpp_typesystem FunctionType doesn't carry the method's cv-qualifiers
+    // The clike_typesystem FunctionType doesn't carry the method's cv-qualifiers
     // (the `const`/`volatile` in `int func() const`) or ref-qualifier (the
     // `&`/`&&` in `int func() &`), so the type produced above is the plain,
     // unqualified signature. Rebuild it applying the method qualifiers,
@@ -1803,7 +1803,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     decl->completeDefinition();
 
   // Reproduce the record's by-value argument-passing ABI from DWARF's
-  // DW_AT_calling_convention (see DWARFASTParserCpp). Without this, a struct
+  // DW_AT_calling_convention (see DWARFASTParserClike). Without this, a struct
   // that must be passed by reference / returned via sret (e.g. one with a
   // non-trivial copy constructor) would be miscompiled when an expression
   // calls a function taking/returning it by value, corrupting the result
@@ -1832,7 +1832,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   decl->setHasExternalLexicalStorage(false);
   // Keep visible (name-lookup) storage on when the record declares nested
   // types, so a qualified reference like `Record::Nested` calls back through
-  // the external source (CppExpressionDeclMap::FindExternalVisibleDecls, which
+  // the external source (ClikeExpressionDeclMap::FindExternalVisibleDecls, which
   // resolves it via LookupNestedType). Nested types are resolved lazily rather
   // than emitted here to avoid driving completion into infinite recursion for a
   // self-referential nested type (common in libc++ containers). A record with
@@ -1886,7 +1886,7 @@ void ClangASTGenerator::MarkImplicitCopyOpsDeletedByUserMove(
 
 void ClangASTGenerator::BuildParams(clang::FunctionDecl *func,
                                     clang::QualType function_qt,
-                                    const cpp_typesystem::FunctionType *cpp_fn) {
+                                    const clike_typesystem::FunctionType *clike_fn) {
   const auto *proto = function_qt->getAs<clang::FunctionProtoType>();
   if (!proto)
     return;
@@ -1899,8 +1899,8 @@ void ClangASTGenerator::BuildParams(clang::FunctionDecl *func,
     param->setStorageClass(clang::SC_None);
     // Carry the parameter's declared name (if any) so clang diagnostics can
     // refer to it by name.
-    if (cpp_fn) {
-      llvm::StringRef pname = cpp_fn->GetParameterNameAtIndex(i);
+    if (clike_fn) {
+      llvm::StringRef pname = clike_fn->GetParameterNameAtIndex(i);
       if (!pname.empty())
         param->setDeclName(&m_ast.Idents.get(pname));
     }
@@ -1911,32 +1911,32 @@ void ClangASTGenerator::BuildParams(clang::FunctionDecl *func,
 
 clang::FunctionDecl *
 ClangASTGenerator::GenerateFunction(llvm::StringRef name,
-                                    const CompilerType &function_cpp_type,
+                                    const CompilerType &function_clike_type,
                                     llvm::StringRef asm_label,
                                     bool is_extern_c) {
   GenerationGuard guard(*this);
-  clang::QualType function_qt = Generate(function_cpp_type);
+  clang::QualType function_qt = Generate(function_clike_type);
   if (function_qt.isNull() || !function_qt->getAs<clang::FunctionProtoType>())
     return nullptr;
   clang::ASTContext &ast = m_ast;
-  auto *cpp_fn = llvm::dyn_cast_or_null<ct::FunctionType>(
-      Desugar(TypeSystemCpp::GetCppType(function_cpp_type.GetOpaqueQualType())));
+  auto *clike_fn = llvm::dyn_cast_or_null<ct::FunctionType>(
+      Desugar(TypeSystemClike::GetClikeType(function_clike_type.GetOpaqueQualType())));
   return BuildFunction(clang::DeclarationName(&ast.Idents.get(name)),
-                       function_qt, asm_label, is_extern_c, cpp_fn);
+                       function_qt, asm_label, is_extern_c, clike_fn);
 }
 
 clang::FunctionDecl *
 ClangASTGenerator::GenerateFunction(clang::DeclarationName name,
-                                    const CompilerType &function_cpp_type,
+                                    const CompilerType &function_clike_type,
                                     llvm::StringRef asm_label) {
   GenerationGuard guard(*this);
-  clang::QualType function_qt = Generate(function_cpp_type);
+  clang::QualType function_qt = Generate(function_clike_type);
   if (function_qt.isNull() || !function_qt->getAs<clang::FunctionProtoType>())
     return nullptr;
-  auto *cpp_fn = llvm::dyn_cast_or_null<ct::FunctionType>(
-      Desugar(TypeSystemCpp::GetCppType(function_cpp_type.GetOpaqueQualType())));
+  auto *clike_fn = llvm::dyn_cast_or_null<ct::FunctionType>(
+      Desugar(TypeSystemClike::GetClikeType(function_clike_type.GetOpaqueQualType())));
   return BuildFunction(name, function_qt, asm_label, /*is_extern_c=*/false,
-                       cpp_fn);
+                       clike_fn);
 }
 
 clang::FunctionDecl *
@@ -1976,7 +1976,7 @@ clang::FunctionDecl *
 ClangASTGenerator::BuildFunction(clang::DeclarationName name,
                                  clang::QualType function_qt,
                                  llvm::StringRef asm_label, bool is_extern_c,
-                                 const cpp_typesystem::FunctionType *cpp_fn) {
+                                 const clike_typesystem::FunctionType *clike_fn) {
   clang::ASTContext &ast = m_ast;
   clang::DeclContext *dc = is_extern_c ? GetOrCreateExternCContext()
                                        : ast.getTranslationUnitDecl();
@@ -1988,7 +1988,7 @@ ClangASTGenerator::BuildFunction(clang::DeclarationName name,
   fd->setConstexprKind(clang::ConstexprSpecKind::Unspecified);
   if (!asm_label.empty())
     fd->addAttr(clang::AsmLabelAttr::CreateImplicit(ast, asm_label));
-  BuildParams(fd, function_qt, cpp_fn);
+  BuildParams(fd, function_qt, clike_fn);
   dc->addDecl(fd);
   return fd;
 }
@@ -2024,8 +2024,8 @@ void ClangASTGenerator::EnsureComplete(clang::QualType qt) {
     // outstanding PopulateRecord finish the definition.
     auto info_it = m_records.find(rd);
     if (info_it != m_records.end() && !rd->isCompleteDefinition() &&
-        info_it->second->cpp_record &&
-        !info_it->second->cpp_record->IsComplete()) {
+        info_it->second->clike_record &&
+        !info_it->second->clike_record->IsComplete()) {
       auto *mrd = const_cast<clang::CXXRecordDecl *>(rd);
       mrd->startDefinition();
       mrd->completeDefinition();
@@ -2056,21 +2056,21 @@ void ClangASTGenerator::PopulateObjCInterface(
     return;
   info.completed = true;
 
-  TypeSystemCpp *ts = info.ts;
-  ct::ObjCInterfaceType *iface = info.cpp_iface;
+  TypeSystemClike *ts = info.ts;
+  ct::ObjCInterfaceType *iface = info.clike_iface;
   clang::ASTContext &ast = m_ast;
 
   // Make sure the interface's ivars/superclass are parsed from debug info.
-  CompilerType cpp_ct = ts->GetCompilerType(iface);
-  cpp_ct.GetCompleteType();
+  CompilerType clike_ct = ts->GetCompilerType(iface);
+  clike_ct.GetCompleteType();
 
-  // Remember the debug-info interface (and its owning TypeSystemCpp) before any
+  // Remember the debug-info interface (and its owning TypeSystemClike) before any
   // runtime redirect below reassigns them: its methods carry real typedef'd
   // signatures (e.g. a `@property NSUInteger length` becomes a getter returning
-  // the `NSUInteger` typedef -- see DWARFASTParserCpp), which the runtime's
+  // the `NSUInteger` typedef -- see DWARFASTParserClike), which the runtime's
   // type-encoding-derived methods lose. The method merge prefers these.
   ct::ObjCInterfaceType *debug_iface = iface;
-  TypeSystemCpp *debug_ts = ts;
+  TypeSystemClike *debug_ts = ts;
   debug_ts->CompleteMemberFunctions(debug_iface);
 
   // Some of this class's ivars may only be visible in the debug info of a
@@ -2079,7 +2079,7 @@ void ClangASTGenerator::PopulateObjCInterface(
   // or debug-map DWARF search finds those. Ask the ObjC runtime, which knows
   // the class's full ivar layout regardless of which image defined it.
   if (RedirectObjCInterfaceToRuntimeDefinition(ts, iface))
-    info.cpp_iface = iface;
+    info.clike_iface = iface;
 
   // Turn the forward declaration into a definition. Clang lays out the ivars
   // itself using the Objective-C runtime ABI (non-fragile), so -- unlike C++
@@ -2148,7 +2148,7 @@ void ClangASTGenerator::PopulateObjCInterface(
   //      names (`unsigned long long`, opaque `id`) but cover methods neither of
   //      the above declares.
   llvm::StringSet<> seen_methods;
-  TypeSystemCpp *module_ts = nullptr;
+  TypeSystemClike *module_ts = nullptr;
   if (ct::ObjCInterfaceType *module_iface =
           GetModuleObjCInterface(iface->GetName().GetName(), module_ts)) {
     for (uint32_t i = 0; i < module_iface->GetNumObjCMethods(); ++i) {
@@ -2178,7 +2178,7 @@ void ClangASTGenerator::PopulateObjCInterface(
 }
 
 void ClangASTGenerator::AddObjCMethod(clang::ObjCInterfaceDecl *iface_decl,
-                                      TypeSystemCpp &ts,
+                                      TypeSystemClike &ts,
                                       const ct::ObjCMethod &method) {
   clang::ASTContext &ast = m_ast;
   llvm::StringRef full_name = method.name.GetName();
@@ -2302,8 +2302,8 @@ ClangASTGenerator::LookupNestedType(const clang::RecordDecl *record_decl,
       cached != info.nested_types.end())
     return cached->second;
 
-  ct::RecordType *rec = info.cpp_record;
-  TypeSystemCpp &ts = *info.ts;
+  ct::RecordType *rec = info.clike_record;
+  TypeSystemClike &ts = *info.ts;
   // Make sure the record's members (including nested types) have been parsed
   // from debug info.
   ts.GetCompilerType(rec).GetCompleteType();
@@ -2359,13 +2359,13 @@ bool ClangASTGenerator::LayoutRecord(
   if (it == m_records.end())
     return false;
   RecordInfo &info = *it->second;
-  ct::RecordType *rec = info.cpp_record;
+  ct::RecordType *rec = info.clike_record;
 
   // Make sure the record is populated so we can iterate its clang fields.
   PopulateRecord(const_cast<clang::RecordDecl *>(record_decl));
 
   // PopulateRecord may have read the layout from a cross-module complete
-  // definition rather than info.cpp_record (which can be a forward declaration
+  // definition rather than info.clike_record (which can be a forward declaration
   // in its own module); use that same record for the size/base offsets.
   if (info.layout_record)
     rec = info.layout_record;
@@ -2374,8 +2374,8 @@ bool ClangASTGenerator::LayoutRecord(
   size = byte_size * 8;
 
   // Prefer an explicitly-recorded alignment (e.g. from `alignas(...)` /
-  // `__attribute__((aligned(N)))`, which DWARFASTParserCpp stores on the
-  // record from DW_AT_alignment -- see TypeSystemCpp::GetTypeBitAlign, which
+  // `__attribute__((aligned(N)))`, which DWARFASTParserClike stores on the
+  // record from DW_AT_alignment -- see TypeSystemClike::GetTypeBitAlign, which
   // does the same for the non-expression-evaluator query path). Otherwise
   // derive a value consistent with the record's size (Clang requires
   // size % align == 0); for the standard-layout types produced from debug
@@ -2410,12 +2410,12 @@ bool ClangASTGenerator::LayoutRecord(
     for (const clang::CXXBaseSpecifier &base : cxx->bases()) {
       if (base_idx >= rec->GetNumBaseClasses())
         break;
-      const ct::BaseClass *cpp_base = rec->GetBaseClassAtIndex(base_idx++);
-      if (cpp_base->is_virtual)
+      const ct::BaseClass *clike_base = rec->GetBaseClassAtIndex(base_idx++);
+      if (clike_base->is_virtual)
         continue;
       if (auto *base_rd = base.getType()->getAsCXXRecordDecl())
         base_offsets[base_rd] =
-            clang::CharUnits::fromQuantity(cpp_base->byte_offset);
+            clang::CharUnits::fromQuantity(clike_base->byte_offset);
     }
   }
   (void)vbase_offsets;

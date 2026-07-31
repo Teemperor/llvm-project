@@ -12,11 +12,11 @@ class TestCase(TestBase):
     def setUp(self):
         TestBase.setUp(self)
         if self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
+            "symbols.enable-typesystem-clike"
         ).GetBooleanValue():
             self.skipTest(
                 "SBValue::SetType / synthetic-type interrogation not yet "
-                "supported by TypeSystemCpp"
+                "supported by TypeSystemClike"
             )
 
     def test(self):

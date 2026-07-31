@@ -204,7 +204,7 @@ bool ItaniumABIRuntime::GetDynamicTypeAndAddress(
     return true;
 
   // Use the generic CompilerType comparison (name-based, works across
-  // TypeSystemClang and TypeSystemCpp) instead of a TypeSystemClang-specific
+  // TypeSystemClang and TypeSystemClike) instead of a TypeSystemClang-specific
   // ASTContext type comparison.
   if (in_value.GetCompilerType().CompareTypes(type)) {
     // The dynamic type we found was the same type, so we don't have a

@@ -16,7 +16,7 @@
 ; Note: lldb will print types differently before and after 'run'.
 ;
 ; RUN: %clang --target=x86_64-pc-linux -c -g -o %t %s
-; RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" %t -o 'type lookup string' -o 'type lookup wstring' \
+; RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t -o 'type lookup string' -o 'type lookup wstring' \
 ; RUN:   -o 'type lookup dstring' -o exit | FileCheck %s
 ;
 ; CHECK: struct string {

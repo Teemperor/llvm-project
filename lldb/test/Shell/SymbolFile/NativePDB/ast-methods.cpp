@@ -3,7 +3,7 @@
 
 // RUN: %clang_cl --target=x86_64-windows-msvc -Od -Z7 -GR- -c /Fo%t.obj -- %s
 // RUN: lld-link -debug:full -nodefaultlib -entry:main %t.obj -out:%t.exe -pdb:%t.pdb
-// RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" -f %t.exe -s \
+// RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" -f %t.exe -s \
 // RUN:     %p/Inputs/ast-methods.lldbinit 2>&1 | FileCheck %s --check-prefix=AST
 
 // RUN: lldb-test symbols --dump-ast %t.exe | FileCheck %s --check-prefix=SYMBOL

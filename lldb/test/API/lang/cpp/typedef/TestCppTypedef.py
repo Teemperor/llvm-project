@@ -74,7 +74,7 @@ class TestCppTypedef(TestBase):
 
 
 # The AST dump is record-centric: it emits the record definitions the module
-# has produced (TypeSystemCpp resolves typedefs and namespaces lazily rather
+# has produced (TypeSystemClike resolves typedefs and namespaces lazily rather
 # than eagerly materializing standalone TypedefDecls/NamespaceDecls up front).
 # CHECK:      {{^}}|-ClassTemplateSpecializationDecl {{.*}} struct S definition
 # CHECK:      {{^}}|-CXXRecordDecl {{.*}} struct ST definition

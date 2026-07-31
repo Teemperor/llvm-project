@@ -1,14 +1,14 @@
-# TypeSystemCpp test status
+# TypeSystemClike test status
 
 ## Objective-C status (2026-07-16)
 
-Environment: arm64 macOS, `Release/bin/lldb`, `symbols.enable-typesystem-cpp=true`.
+Environment: arm64 macOS, `Release/bin/lldb`, `symbols.enable-typesystem-clike=true`.
 
 ### Regression gate: `lb Release -f lang/c` (runs lang/c + lang/cpp)
 Clean — 0 failures (2026-07-24 re-run). The former dynamic-value bucket is
 gone: `TestDynamicValue.py` (all variants, incl. the .dSYM config) and
-`TestDynamicValueSameBase.py` now pass under TypeSystemCpp. The two
-`symbols.enable-typesystem-cpp` skips added for the dSYM virtual-base gap
+`TestDynamicValueSameBase.py` now pass under TypeSystemClike. The two
+`symbols.enable-typesystem-clike` skips added for the dSYM virtual-base gap
 (commit 419fb70845dd) were removed once `ClangASTGenerator::
 ComputeVBaseOffsetOffset` (commit 0afbc1e7d9e8) recovered the vtable-relative
 vbase offset that dsymutil strips — so there is nothing left to un-gate here.
@@ -48,7 +48,7 @@ UNRESOLVED (30) — lldb crashes, two signatures:
 
 1. SIGSEGV (-11), ~22 tests — infinite recursion / stack overflow in the Cpp
    expression decl map. Cycle:
-   `CppExpressionDeclMap::FindExternalVisibleDecls` ->
+   `ClikeExpressionDeclMap::FindExternalVisibleDecls` ->
    `LookupSymbolFunction` -> `ClangASTGenerator::GenerateGenericFunction` ->
    `BuildFunction` -> `DeclContext::makeDeclVisibleInContext` ->
    `CppASTSourceProxy::FindExternalVisibleDeclsByName` -> (repeats).
@@ -66,7 +66,7 @@ UNRESOLVED (30) — lldb crashes, two signatures:
    `checkBitfieldClipping: (M.Offset >= Tail && "Bitfield access unit is not clipped"),
    CGRecordLayoutBuilder.cpp:960` when clang lays out an ObjC record with ivars.
    FIXED: ClangASTGenerator now generates a clang ObjCInterfaceDecl (with
-   ObjCIvarDecls + superclass) for cpp_typesystem::ObjCInterfaceType instead of a
+   ObjCIvarDecls + superclass) for clike_typesystem::ObjCInterfaceType instead of a
    CXXRecordDecl, and a pointer to it becomes an ObjCObjectPointerType. The
    formerly-crashing tests (TestHiddenIvars, TestIvarInFrameworkBase,
    TestBitfieldIvars, TestObjCIvarsInBlocks, TestObjCIvarStripped,

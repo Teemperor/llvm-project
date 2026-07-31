@@ -10,12 +10,12 @@
 
 #include "ClangASTGenerator.h"
 
-#include "Plugins/TypeSystem/Cpp/Builder.h"
-#include "Plugins/TypeSystem/Cpp/Type.h"
-#include "Plugins/TypeSystem/Cpp/TypeC.h"
-#include "Plugins/TypeSystem/Cpp/TypeCpp.h"
-#include "Plugins/TypeSystem/Cpp/TypeObjC.h"
-#include "Plugins/TypeSystem/Cpp/TypeSystemCpp.h"
+#include "Plugins/TypeSystem/Clike/Builder.h"
+#include "Plugins/TypeSystem/Clike/Type.h"
+#include "Plugins/TypeSystem/Clike/TypeC.h"
+#include "Plugins/TypeSystem/Clike/TypeCpp.h"
+#include "Plugins/TypeSystem/Clike/TypeObjC.h"
+#include "Plugins/TypeSystem/Clike/TypeSystemClike.h"
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/Decl.h"
@@ -25,10 +25,10 @@
 
 using namespace lldb_private;
 using namespace lldb;
-namespace ct = cpp_typesystem;
+namespace ct = clike_typesystem;
 
 ClangTypeConverter::ClangTypeConverter(ClangASTGenerator &generator,
-                                       TypeSystemCpp &target,
+                                       TypeSystemClike &target,
                                        clang::ASTContext *source_ast)
     : m_generator(generator), m_target(target),
       m_ast(source_ast ? *source_ast : generator.m_ast) {}
@@ -57,7 +57,7 @@ CompilerType ClangTypeConverter::Convert(clang::QualType qt) {
     if (CompilerType inner = Convert(qt.getCanonicalType())) {
       std::string spelling = qt.getAsString(m_ast.getPrintingPolicy());
       if (!spelling.empty())
-        return cpp_typesystem::Builder(m_target).CreateElaboratedType(
+        return clike_typesystem::Builder(m_target).CreateElaboratedType(
             spelling, inner);
       return inner;
     }
@@ -77,7 +77,7 @@ CompilerType ClangTypeConverter::Convert(clang::QualType qt) {
   // that desugars through (and so silently drops) any local qualifier.
   if (qt.hasLocalQualifiers()) {
     if (CompilerType inner = Convert(qt.getLocalUnqualifiedType()))
-      return cpp_typesystem::Builder(m_target).CreateCVQualifiedType(
+      return clike_typesystem::Builder(m_target).CreateCVQualifiedType(
           inner, qt.isLocalConstQualified(), qt.isLocalVolatileQualified());
     return {};
   }
@@ -96,7 +96,7 @@ CompilerType ClangTypeConverter::Convert(clang::QualType qt) {
   // Builtin types (int, unsigned long, bool, ...) the parser created on its own
   // -- e.g. the result type of `1 + 1`, a `sizeof` expression, or a cast -- are
   // never in the reverse map because we didn't generate them. Map them onto the
-  // corresponding TypeSystemCpp builtin so the result type can be sized.
+  // corresponding TypeSystemClike builtin so the result type can be sized.
   if (const auto *bt = qt->getAs<clang::BuiltinType>()) {
     if (CompilerType builtin = ConvertBuiltin(bt))
       return builtin;
@@ -168,7 +168,7 @@ CompilerType ClangTypeConverter::ConvertViaReverseMap(clang::QualType qt,
 
   // If this record was only forward-declared in its own module but we
   // completed it from another module's definition, return that complete
-  // definition (carrying its defining module's TypeSystemCpp) so the result
+  // definition (carrying its defining module's TypeSystemClike) so the result
   // can be sized. This only fires for a record used by value (the one whose
   // layout was needed and thus populated the map), never for a type reached
   // solely through a pointer -- preserving lazy completion.
@@ -176,18 +176,18 @@ CompilerType ClangTypeConverter::ConvertViaReverseMap(clang::QualType qt,
       redirect != m_generator.m_cross_module_complete.end())
     return redirect->second;
 
-  // Map the recovered type back into the TypeSystemCpp that actually owns it
+  // Map the recovered type back into the TypeSystemClike that actually owns it
   // (the module it was parsed from), not always m_target (the scratch
-  // TypeSystemCpp that owns expression result/persistent types). A type that
+  // TypeSystemClike that owns expression result/persistent types). A type that
   // merely passed through the expression unchanged (e.g. the plain
   // DeclRefExpr type of a local variable, or any record/field reachable from
   // it) still needs its completion state -- forward-decl-to-DIE map,
-  // SymbolFile -- which lives on its owning module's TypeSystemCpp; the
-  // scratch TypeSystemCpp has no SymbolFile of its own, so tagging the result
+  // SymbolFile -- which lives on its owning module's TypeSystemClike; the
+  // scratch TypeSystemClike has no SymbolFile of its own, so tagging the result
   // with it would silently make the type (and everything nested inside it,
   // e.g. a member whose own type is only discovered/completed for the first
   // time via this very access) permanently uncompletable. This does not
-  // affect the lazy-completion contract: reusing the module's TypeSystemCpp
+  // affect the lazy-completion contract: reusing the module's TypeSystemClike
   // does not force anything complete by itself, it just makes on-demand
   // completion (e.g. GetCompleteType, or a formatter's Cast()+child access)
   // possible when something actually asks for it, exactly as it would be had
@@ -195,7 +195,7 @@ CompilerType ClangTypeConverter::ConvertViaReverseMap(clang::QualType qt,
   // m_target for a type the generator doesn't have a recorded owner for
   // (shouldn't normally happen for anything reachable via m_reverse, but stay
   // defensive).
-  TypeSystemCpp *owner = m_generator.m_type_owner.lookup(find->second);
+  TypeSystemClike *owner = m_generator.m_type_owner.lookup(find->second);
   CompilerType mapped = (owner ? *owner : m_target).GetCompilerType(find->second);
 
   // The parser may have kept elaborated/spelling sugar around the type the
@@ -209,7 +209,7 @@ CompilerType ClangTypeConverter::ConvertViaReverseMap(clang::QualType qt,
       qt.getAsOpaquePtr() != qt.getCanonicalType().getAsOpaquePtr()) {
     std::string spelling = qt.getAsString(m_ast.getPrintingPolicy());
     if (!spelling.empty())
-      return cpp_typesystem::Builder(m_target).CreateElaboratedType(
+      return clike_typesystem::Builder(m_target).CreateElaboratedType(
           spelling, mapped);
   }
   return mapped;
@@ -301,21 +301,21 @@ CompilerType ClangTypeConverter::ConvertRecord(const clang::RecordType *rt) {
     clang::QualType qt(rt, 0);
     const clang::ASTRecordLayout &layout = m_ast.getASTRecordLayout(rd);
     std::string name = rd->getNameAsString();
-    cpp_typesystem::Builder builder(m_target);
+    clike_typesystem::Builder builder(m_target);
     CompilerType record = builder.CreateRecordType(
         name, m_ast.getTypeSizeInChars(qt).getQuantity(),
         /*is_cpp_class=*/llvm::isa<clang::CXXRecordDecl>(rd),
         /*is_union=*/rd->isUnion());
-    auto *cpp_record = llvm::cast<ct::RecordType>(
+    auto *clike_record = llvm::cast<ct::RecordType>(
         static_cast<ct::Type *>(record.GetOpaqueQualType()));
     // Base classes (C++ records only). The parser-defined record's layout is
     // complete here, so use the concrete base offsets from it directly (unlike
     // the DWARF path, where a virtual base has no constant offset). Emit the
     // direct bases in declaration order (matching TypeSystemClang's child
     // order), tagging each with its virtuality and offset from the layout.
-    auto *cpp_class = llvm::dyn_cast<ct::ClassType>(cpp_record);
+    auto *clike_class = llvm::dyn_cast<ct::ClassType>(clike_record);
     if (const auto *cxx = llvm::dyn_cast<clang::CXXRecordDecl>(rd);
-        cxx && cpp_class) {
+        cxx && clike_class) {
       for (const clang::CXXBaseSpecifier &base : cxx->bases()) {
         const auto *base_rd = base.getType()->getAsCXXRecordDecl();
         if (!base_rd)
@@ -327,7 +327,7 @@ CompilerType ClangTypeConverter::ConvertRecord(const clang::RecordType *rt) {
         clang::CharUnits off = is_virtual ? layout.getVBaseClassOffset(base_rd)
                                           : layout.getBaseClassOffset(base_rd);
         builder.AddBaseClass(
-            *cpp_class, static_cast<ct::Type *>(base_type.GetOpaqueQualType()),
+            *clike_class, static_cast<ct::Type *>(base_type.GetOpaqueQualType()),
             off.getQuantity(), is_virtual);
       }
     }
@@ -338,11 +338,11 @@ CompilerType ClangTypeConverter::ConvertRecord(const clang::RecordType *rt) {
         return {};
       uint64_t bit_offset = layout.getFieldOffset(field_idx++);
       builder.AddField(
-          *cpp_record, builder.GetIdentifier(fd->getNameAsString()),
+          *clike_record, builder.GetIdentifier(fd->getNameAsString()),
           static_cast<ct::Type *>(field_type.GetOpaqueQualType()),
           bit_offset / 8);
     }
-    builder.SetRecordComplete(*cpp_record);
+    builder.SetRecordComplete(*clike_record);
     SetTypeNameInfo(rd, record);
     return record;
   }
@@ -352,7 +352,7 @@ CompilerType ClangTypeConverter::ConvertRecord(const clang::RecordType *rt) {
   // build a `S *` pointee out of. Rebuild it as an incomplete record (no
   // byte size, no SetRecordComplete) so the pointer can be sized/stored.
   std::string name = decl->getNameAsString();
-  CompilerType fwd_record = cpp_typesystem::Builder(m_target).CreateRecordType(
+  CompilerType fwd_record = clike_typesystem::Builder(m_target).CreateRecordType(
       name, /*byte_size=*/std::nullopt,
       /*is_cpp_class=*/llvm::isa<clang::CXXRecordDecl>(decl),
       /*is_union=*/decl->isUnion());
@@ -366,10 +366,10 @@ CompilerType ClangTypeConverter::ConvertTypedef(
   CompilerType underlying = Convert(decl->getUnderlyingType());
   if (!underlying)
     return {};
-  CompilerType result = cpp_typesystem::Builder(m_target).CreateTypedefType(
+  CompilerType result = clike_typesystem::Builder(m_target).CreateTypedefType(
       decl->getName(), underlying);
   // A typedef declared as a *class member* (e.g. `std::shared_ptr<Foo>::
-  // element_type`) has a record as its semantic DeclContext. TypeSystemCpp's
+  // element_type`) has a record as its semantic DeclContext. TypeSystemClike's
   // Namespace model only represents enclosing *namespaces*, so attaching the
   // typedef's containing namespace (skipping the record, as BuildDeclNamespace
   // does) would misqualify it -- `element_type` would print as
@@ -380,23 +380,23 @@ CompilerType ClangTypeConverter::ConvertTypedef(
   if (!decl->getDeclContext()->isRecord())
     SetTypeNameInfo(decl, result);
   else
-    cpp_typesystem::Builder(m_target).SetUnqualifiedName(result,
+    clike_typesystem::Builder(m_target).SetUnqualifiedName(result,
                                                          decl->getName());
   return result;
 }
 
 /// Build the interned Namespace chain enclosing \p decl_ctx (outermost
 /// first), skipping any non-namespace decl context (e.g. a linkage-spec),
-/// mirroring DWARFASTParserCpp::BuildDeclNamespace but walking clang
+/// mirroring DWARFASTParserClike::BuildDeclNamespace but walking clang
 /// DeclContexts instead of DWARFDIEs.
-static const cpp_typesystem::Namespace *
+static const clike_typesystem::Namespace *
 BuildDeclNamespace(const clang::DeclContext *decl_ctx,
-                   cpp_typesystem::Builder &builder) {
+                   clike_typesystem::Builder &builder) {
   llvm::SmallVector<const clang::NamespaceDecl *, 4> namespaces;
   for (const clang::DeclContext *ctx = decl_ctx; ctx; ctx = ctx->getParent())
     if (const auto *nsd = llvm::dyn_cast<clang::NamespaceDecl>(ctx))
       namespaces.push_back(nsd);
-  const cpp_typesystem::Namespace *ns = nullptr;
+  const clike_typesystem::Namespace *ns = nullptr;
   for (const clang::NamespaceDecl *nsd : llvm::reverse(namespaces))
     ns = builder.GetNamespace(nsd->getName(), ns, nsd->isInline());
   return ns;
@@ -404,7 +404,7 @@ BuildDeclNamespace(const clang::DeclContext *decl_ctx,
 
 void ClangTypeConverter::SetTypeNameInfo(const clang::NamedDecl *decl,
                                          CompilerType type) {
-  cpp_typesystem::Builder builder(m_target);
+  clike_typesystem::Builder builder(m_target);
   builder.SetDeclContext(type, BuildDeclNamespace(decl->getDeclContext(),
                                                    builder));
   builder.SetUnqualifiedName(type, decl->getName());
@@ -416,10 +416,10 @@ CompilerType ClangTypeConverter::ConvertObjCObjectPointer(
   // object type has no backing interface). We generate these from the `id` /
   // `Class` typedefs (see GenerateType), so they aren't in the reverse map;
   // rebuild them as a pointer to the opaque `objc_object` / `objc_class`
-  // record, matching how TypeSystemCpp models `id` (see IsPossibleDynamicType
+  // record, matching how TypeSystemClike models `id` (see IsPossibleDynamicType
   // / the DWARF parser).
   if (objc_ptr->isObjCIdType() || objc_ptr->isObjCClassType()) {
-    cpp_typesystem::Builder builder(m_target);
+    clike_typesystem::Builder builder(m_target);
     const bool is_class = objc_ptr->isObjCClassType();
     CompilerType opaque = builder.CreateRecordType(
         is_class ? "objc_class" : "objc_object",
@@ -436,7 +436,7 @@ CompilerType ClangTypeConverter::ConvertObjCObjectPointer(
   // A pointer to an Objective-C class (`Foo *`) the parser formed. Map the
   // pointee interface and wrap it in a cpp pointer.
   if (CompilerType pointee = Convert(objc_ptr->getPointeeType()))
-    return cpp_typesystem::Builder(m_target).CreatePointerType(pointee);
+    return clike_typesystem::Builder(m_target).CreatePointerType(pointee);
   return {};
 }
 
@@ -445,33 +445,33 @@ CompilerType ClangTypeConverter::ConvertDerived(clang::QualType qt) {
     return ConvertObjCObjectPointer(objc_ptr);
   if (qt->isReferenceType()) {
     if (CompilerType pointee = Convert(qt->getPointeeType()))
-      return cpp_typesystem::Builder(m_target).CreateReferenceType(
+      return clike_typesystem::Builder(m_target).CreateReferenceType(
           pointee, qt->isRValueReferenceType());
   } else if (qt->isPointerType()) {
     if (CompilerType pointee = Convert(qt->getPointeeType()))
-      return cpp_typesystem::Builder(m_target).CreatePointerType(pointee);
+      return clike_typesystem::Builder(m_target).CreatePointerType(pointee);
   } else if (const auto *bpt = qt->getAs<clang::BlockPointerType>()) {
     // A block-literal expression (`^int(int){...}`) has a block-pointer type
     // (`int (^)(int)`). Rebuild it as a block pointer over its (function)
     // pointee so the result can be sized and stored.
     if (CompilerType pointee = Convert(bpt->getPointeeType()))
-      return cpp_typesystem::Builder(m_target).CreateBlockPointerType(pointee);
+      return clike_typesystem::Builder(m_target).CreateBlockPointerType(pointee);
   } else if (const auto *cx = qt->getAs<clang::ComplexType>()) {
     // A complex value produced by the expression (e.g. `a + (1.0f + 2.0fi)`)
-    // maps back to a TypeSystemCpp ComplexType over its mapped element.
+    // maps back to a TypeSystemClike ComplexType over its mapped element.
     if (CompilerType element = Convert(cx->getElementType()))
-      return cpp_typesystem::Builder(m_target).CreateComplexType(element);
+      return clike_typesystem::Builder(m_target).CreateComplexType(element);
   } else if (const auto *fpt = qt->getAs<clang::FunctionProtoType>()) {
     // A function type the parser formed (e.g. the pointee of a function-pointer
     // cast result). Rebuild it so a pointer to it can be sized/stored.
     CompilerType ret = Convert(fpt->getReturnType());
-    cpp_typesystem::Builder builder(m_target);
+    clike_typesystem::Builder builder(m_target);
     CompilerType fn = builder.CreateFunctionType(ret, fpt->isVariadic());
     for (clang::QualType param : fpt->param_types()) {
-      CompilerType cpp_param = Convert(param);
-      if (!cpp_param)
+      CompilerType clike_param = Convert(param);
+      if (!clike_param)
         return {};
-      builder.AddParameter(fn, cpp_param);
+      builder.AddParameter(fn, clike_param);
     }
     return fn;
   } else if (const clang::VectorType *vt = qt->getAs<clang::VectorType>()) {
@@ -479,10 +479,10 @@ CompilerType ClangTypeConverter::ConvertDerived(clang::QualType qt) {
     // or a vector-format reinterpretation result). Rebuild it as a cpp vector
     // array so it can be sized and formatted as a vector.
     if (CompilerType element = Convert(vt->getElementType())) {
-      CompilerType arr = cpp_typesystem::Builder(m_target).CreateArrayType(
+      CompilerType arr = clike_typesystem::Builder(m_target).CreateArrayType(
           element, vt->getNumElements());
-      if (auto *arr_type = llvm::dyn_cast_or_null<cpp_typesystem::ArrayType>(
-              TypeSystemCpp::GetCppType(arr.GetOpaqueQualType())))
+      if (auto *arr_type = llvm::dyn_cast_or_null<clike_typesystem::ArrayType>(
+              TypeSystemClike::GetClikeType(arr.GetOpaqueQualType())))
         arr_type->SetIsVector(true);
       return arr;
     }
@@ -495,7 +495,7 @@ CompilerType ClangTypeConverter::ConvertDerived(clang::QualType qt) {
       std::optional<uint64_t> num_elements;
       if (const auto *cat = llvm::dyn_cast<clang::ConstantArrayType>(at))
         num_elements = cat->getSize().getZExtValue();
-      return cpp_typesystem::Builder(m_target).CreateArrayType(element,
+      return clike_typesystem::Builder(m_target).CreateArrayType(element,
                                                                num_elements);
     }
   }
@@ -515,7 +515,7 @@ ClangTypeConverter::ConvertObjCInterface(const clang::ObjCInterfaceDecl *decl,
   if (found != m_objc_ifaces.end()) {
     iface = found->second;
   } else {
-    cpp_typesystem::Builder builder(m_target);
+    clike_typesystem::Builder builder(m_target);
     iface = builder.CreateObjCInterfaceType(key->getName(),
                                             /*byte_size=*/std::nullopt);
     // Register before recursing so a cycle (a method referring back to this
@@ -532,11 +532,11 @@ ClangTypeConverter::ConvertObjCInterface(const clang::ObjCInterfaceDecl *decl,
 
 void ClangTypeConverter::FillObjCInterface(const clang::ObjCInterfaceDecl *def,
                                            CompilerType iface_ct) {
-  auto *iface = llvm::dyn_cast_or_null<cpp_typesystem::ObjCInterfaceType>(
-      TypeSystemCpp::GetCppType(iface_ct.GetOpaqueQualType()));
+  auto *iface = llvm::dyn_cast_or_null<clike_typesystem::ObjCInterfaceType>(
+      TypeSystemClike::GetClikeType(iface_ct.GetOpaqueQualType()));
   if (!iface)
     return;
-  cpp_typesystem::Builder builder(m_target);
+  clike_typesystem::Builder builder(m_target);
 
   // Superclass (a name-only forward declaration is enough; it completes on
   // demand like any other interface).
@@ -545,7 +545,7 @@ void ClangTypeConverter::FillObjCInterface(const clang::ObjCInterfaceDecl *def,
     if (super_ct)
       builder.SetObjCSuperClass(
           *iface,
-          TypeSystemCpp::GetCppType(super_ct.GetOpaqueQualType()));
+          TypeSystemClike::GetClikeType(super_ct.GetOpaqueQualType()));
   }
 
   // Ivars. The offsets a module header carries are not authoritative (the ObjC
@@ -556,7 +556,7 @@ void ClangTypeConverter::FillObjCInterface(const clang::ObjCInterfaceDecl *def,
     if (!ivar_type)
       continue;
     builder.AddField(*iface, builder.GetIdentifier(ivar->getName()),
-                     TypeSystemCpp::GetCppType(ivar_type.GetOpaqueQualType()),
+                     TypeSystemClike::GetClikeType(ivar_type.GetOpaqueQualType()),
                      /*byte_offset=*/0);
   }
 
@@ -580,7 +580,7 @@ void ClangTypeConverter::FillObjCInterface(const clang::ObjCInterfaceDecl *def,
   builder.SetRecordMemberFunctionsParsed(*iface);
 }
 
-void ClangTypeConverter::AddObjCMethod(cpp_typesystem::ObjCInterfaceType &iface,
+void ClangTypeConverter::AddObjCMethod(clike_typesystem::ObjCInterfaceType &iface,
                                        const clang::ObjCInterfaceDecl *def,
                                        const clang::ObjCMethodDecl *method) {
   // A method with a related result type (`instancetype`, or an `init`/`alloc`
@@ -596,7 +596,7 @@ void ClangTypeConverter::AddObjCMethod(cpp_typesystem::ObjCInterfaceType &iface,
     ret = Convert(method->getReturnType());
   if (!ret)
     return;
-  cpp_typesystem::Builder builder(m_target);
+  clike_typesystem::Builder builder(m_target);
   CompilerType fn = builder.CreateFunctionType(ret, method->isVariadic());
   for (const clang::ParmVarDecl *param : method->parameters()) {
     CompilerType param_type = Convert(param->getType());

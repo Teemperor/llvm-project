@@ -17,15 +17,15 @@ class TestWeakSymbolsInExpressionsOnArm64e(Arm64eTestBase):
     def test_weak_symbol_in_expr(self):
         # This test brings the weak-symbol declarations into the expression's
         # decl context via a Clang `@import Dylib` (a clang module import).
-        # TypeSystemCpp's expression path synthesizes a fresh Clang AST from
-        # cpp_typesystem types and does not consume the clang::Decls produced
+        # TypeSystemClike's expression path synthesizes a fresh Clang AST from
+        # clike_typesystem types and does not consume the clang::Decls produced
         # by the ClangModulesDeclVendor, so `@import`ed decls (and thus the
         # weak symbols) are not visible to the expression. Clang `@import`
         # modules are an intentional, out-of-scope divergence for
-        # TypeSystemCpp, so skip there.
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        # TypeSystemClike, so skip there.
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             self.skipTest(
-                "Clang `@import` modules are not supported by TypeSystemCpp"
+                "Clang `@import` modules are not supported by TypeSystemClike"
             )
 
         self.build()

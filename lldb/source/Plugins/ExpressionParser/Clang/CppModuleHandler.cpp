@@ -38,8 +38,8 @@ CppModuleHandler::FindImportedNamespace(const DeclContext *parent_ctx,
   // ambiguous.
   //
   // A real lookup risks reentrancy: this DeclContext may be one
-  // ClangASTGenerator/CppExpressionDeclMap gave external visible storage to,
-  // and forcing a lookup on it calls back into CppExpressionDeclMap's own
+  // ClangASTGenerator/ClikeExpressionDeclMap gave external visible storage to,
+  // and forcing a lookup on it calls back into ClikeExpressionDeclMap's own
   // FindExternalVisibleDeclsByName, corrupting whatever resolution is
   // currently in flight (observed with TestInlineNamespaceAlias). Only take
   // that risk when a C++ module import is actually possible for this parse

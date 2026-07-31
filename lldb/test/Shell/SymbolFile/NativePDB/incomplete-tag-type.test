@@ -6,8 +6,8 @@
 # RUN: %clang_cl --target=x86_64-windows-msvc /O1 /Z7 -c /Fo%t2.obj -- %t/main.cpp
 # RUN: lld-link /debug:full /nodefaultlib /entry:main %t1.obj %t2.obj /out:%t.exe /pdb:%t.pdb
 
-# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" -f %t.exe -s %t/target-var.input 2>&1 | FileCheck %s --check-prefix=TARGET-VAR
-# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" -f %t.exe -s %t/expr.input 2>&1 | FileCheck %s --check-prefix=EXPR
+# RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" -f %t.exe -s %t/target-var.input 2>&1 | FileCheck %s --check-prefix=TARGET-VAR
+# RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" -f %t.exe -s %t/expr.input 2>&1 | FileCheck %s --check-prefix=EXPR
 
 #--- main.cpp
 

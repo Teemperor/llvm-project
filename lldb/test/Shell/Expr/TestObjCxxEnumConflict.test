@@ -15,7 +15,7 @@
 
 # RUN: split-file %s %t
 # RUN: %clang_host -g %t/main.m -fmodules -fcxx-modules -o %t.out
-# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" -x -b -s %t/commands.input %t.out -o exit 2>&1 \
+# RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" -x -b -s %t/commands.input %t.out -o exit 2>&1 \
 # RUN:       | FileCheck %s
 
 #--- main.m

@@ -23,7 +23,7 @@ public:
     eClangModuleDeclVendor,
     eAppleObjCDeclVendor,
     eLastClangDeclVendor,
-    eCppObjCDeclVendor,
+    eClikeObjCDeclVendor,
   };
   // Constructors and Destructors
   DeclVendor(DeclVendorKind kind) : m_kind(kind) {}

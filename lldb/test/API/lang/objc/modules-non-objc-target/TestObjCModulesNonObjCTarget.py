@@ -15,17 +15,17 @@ class TestCase(TestBase):
             self, "// break here", lldb.SBFileSpec("main.c")
         )
 
-        # In a non-Objective-C target the ObjC runtime path that TypeSystemCpp
+        # In a non-Objective-C target the ObjC runtime path that TypeSystemClike
         # uses to resolve a class named by an expression (`NSString`) isn't
-        # available, and TypeSystemCpp only consults the ClangModulesDeclVendor
+        # available, and TypeSystemClike only consults the ClangModulesDeclVendor
         # to *complete* an already-generated interface, not to look a class up
         # by name -- so `+stringWithFormat:` never resolves and the expected
         # CFStringCreateWithBytes rewrite path is never reached.
         if self.dbg.GetSetting(
-            "symbols.enable-typesystem-cpp"
+            "symbols.enable-typesystem-clike"
         ).GetBooleanValue():
             self.skipTest("@import ObjC class name lookup in a non-ObjC target "
-                          "not supported by TypeSystemCpp")
+                          "not supported by TypeSystemClike")
 
         # Import foundation to get some ObjC types.
         self.expect("expr --lang objc -- @import Foundation")

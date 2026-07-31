@@ -24,11 +24,11 @@ class CXXModulesImportTestCase(TestBase):
     @skipIf(compiler="clang", compiler_version=["<", "14.0"])
     def test_expr(self):
         # This test relies on clang `@import` module support
-        # (ClangModulesDeclVendor), which TypeSystemCpp intentionally does not
+        # (ClangModulesDeclVendor), which TypeSystemClike intentionally does not
         # implement, so skip it in that configuration.
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             self.skipTest(
-                "clang @import modules are not supported by TypeSystemCpp"
+                "clang @import modules are not supported by TypeSystemClike"
             )
         self.build()
         target, process, thread, bkpt = lldbutil.run_to_source_breakpoint(
@@ -46,11 +46,11 @@ class CXXModulesImportTestCase(TestBase):
     @skipIf(compiler="clang", compiler_version=["<", "14.0"])
     def test_expr_failing_import(self):
         # This test relies on clang `@import` module support
-        # (ClangModulesDeclVendor), which TypeSystemCpp intentionally does not
+        # (ClangModulesDeclVendor), which TypeSystemClike intentionally does not
         # implement, so skip it in that configuration.
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             self.skipTest(
-                "clang @import modules are not supported by TypeSystemCpp"
+                "clang @import modules are not supported by TypeSystemClike"
             )
         self.build()
         shutil.rmtree(self.getBuildArtifact("include"))

@@ -1,0 +1,28 @@
+add_lldb_unittest(TypeSystemClikeUnitTests
+  IdentifierTest.cpp
+  LanguageOptsTest.cpp
+  NamespaceTest.cpp
+  BuiltinTypesTest.cpp
+  ContextTest.cpp
+  BuilderTest.cpp
+  TypeSystemClikeBasicQueriesTest.cpp
+  TypeSystemClikeRecordQueriesTest.cpp
+  TypeSystemClikeChildrenTest.cpp
+  TypeSystemClikeNameTest.cpp
+  ClangASTGeneratorTest.cpp
+  ClangASTGeneratorVBaseTest.cpp
+  ClangTypeConverterTest.cpp
+
+  LINK_LIBS
+    lldbCore
+    lldbHost
+    lldbSymbol
+    lldbTarget
+    lldbUtility
+    lldbUtilityHelpers
+    lldbPluginExpressionParserClang
+    lldbPluginTypeSystemClike
+    lldbPluginTypeSystemClang
+    lldbPluginObjCRuntime
+    LLVMTestingSupport
+  )

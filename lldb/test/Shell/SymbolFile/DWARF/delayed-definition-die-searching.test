@@ -4,7 +4,7 @@
 
 # RUN: split-file %s %t
 # RUN: %clangxx_host %t/main.cpp %t/t1_def.cpp -gdwarf -gno-simple-template-names -o %t.out
-# RUN: %lldb -O "settings set symbols.enable-typesystem-cpp false" -b %t.out -s %t/lldb.cmd | FileCheck %s
+# RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" -b %t.out -s %t/lldb.cmd | FileCheck %s
 
 # CHECK: (lldb) p v1
 # CHECK: DWARFASTParserClang::ParseTypeFromDWARF{{.*}}DW_TAG_structure_type (DW_TAG_structure_type) name = 't2<t1>'

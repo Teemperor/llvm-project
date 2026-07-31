@@ -21,8 +21,8 @@ class LimitDebugInfoTestCase(TestBase):
         # definition, so the subscript itself succeeds (yielding a valid, if
         # memberless, element) and the error only surfaces once `.member` is
         # looked up ("no member named 'member' in 'array::Two'").
-        # TypeSystemCpp deliberately does not forcefully complete records this
-        # way (see TypeSystemCpp::GetCompleteType), so the type stays honestly
+        # TypeSystemClike deliberately does not forcefully complete records this
+        # way (see TypeSystemClike::GetCompleteType), so the type stays honestly
         # incomplete and clang's own array-subscript typecheck
         # (Sema::CreateBuiltinArraySubscriptExpr) rejects the subscript before
         # member lookup is ever reached, with clang's fixed diagnostic wording
@@ -32,7 +32,7 @@ class LimitDebugInfoTestCase(TestBase):
         # correct errors for a genuinely incomplete type; only the message
         # differs, so branch on which type system is active instead of
         # skipping the coverage entirely.
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             self.expect(
                 command,
                 error=True,

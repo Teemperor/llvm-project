@@ -17,9 +17,9 @@ class TestSMERegistersDarwin(TestBase):
     @skipIf(macos_version=["<", "15.4"])
     def test(self):
         """Test that we can read the contents of the SME/SVE registers on Darwin"""
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
             self.skipTest(
-                "SME/SVE register expression evaluation is not yet supported by TypeSystemCpp"
+                "SME/SVE register expression evaluation is not yet supported by TypeSystemClike"
             )
         self.build()
         (target, process, thread, bkpt) = lldbutil.run_to_source_breakpoint(

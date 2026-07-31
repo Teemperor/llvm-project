@@ -30,8 +30,8 @@ class TestDbgInfoContentForwardList(TestBase):
 
         value_type = "value_type"
 
-        if self.dbg.GetSetting("symbols.enable-typesystem-cpp").GetBooleanValue():
-            # TypeSystemCpp computes the correct size and contents here (the
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
+            # TypeSystemClike computes the correct size and contents here (the
             # element type reconstructed from debug info lays out identically to
             # the std-module type), so the FIXME below no longer applies.
             self.expect_expr(

@@ -76,7 +76,7 @@ void ClangPersistentVariables::RemovePersistentVariable(
 std::optional<CompilerType>
 ClangPersistentVariables::GetCompilerTypeFromPersistentDecl(
     ConstString type_name) {
-  // A TypeSystemCpp-backed persistent type (registered by
+  // A TypeSystemClike-backed persistent type (registered by
   // RegisterPersistentType) takes priority: it's a plain CompilerType lookup,
   // no clang::NamedDecl/ASTContext involved.
   auto type_it = m_persistent_types.find(type_name.GetCString());

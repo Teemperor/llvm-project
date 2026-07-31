@@ -313,7 +313,7 @@ protected:
 
 private:
   // NOTE: The section below was relocated from `private` to `protected` so the
-  // TypeSystemCpp-backed subclass (CppExpressionDeclMap) can reuse the
+  // TypeSystemClike-backed subclass (ClikeExpressionDeclMap) can reuse the
   // variable/struct/materialization machinery. Nothing here changes behavior
   // for the existing Clang path.
 protected:

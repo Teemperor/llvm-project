@@ -29,8 +29,8 @@ class DWARFASTParserClangTests : public testing::Test {
     std::call_once(TestUtilities::g_debugger_initialize_flag,
                    []() { Debugger::Initialize(nullptr); });
     // These tests assert the DWARF parser produces a TypeSystemClang; force the
-    // classic Clang path on regardless of the default TypeSystemCpp setting.
-    ModuleList::GetGlobalModuleListProperties().SetEnableTypeSystemCpp(false);
+    // classic Clang path on regardless of the default TypeSystemClike setting.
+    ModuleList::GetGlobalModuleListProperties().SetEnableTypeSystemClike(false);
   }
 };
 
