@@ -66,6 +66,13 @@ public:
   void SetUp() override {
     lang_opts.CPlusPlus = true;
     lang_opts.CPlusPlus11 = true;
+    // Laying out a record (getASTRecordLayout -> FinishLayout) can report a
+    // diagnostic, and a DiagnosticsEngine with no consumer asserts
+    // ("DiagnosticClient not set!") as soon as one is. Mirrors what
+    // ClangASTGenerator::ComputeVBaseOffsetOffset does for its throwaway
+    // context.
+    diagnostics.setClient(new clang::IgnoringDiagConsumer(),
+                          /*ShouldOwnClient=*/true);
     auto target_options = std::make_shared<clang::TargetOptions>();
     target_options->Triple = "x86_64-pc-linux-gnu";
     if (clang::TargetInfo *target_info = clang::TargetInfo::CreateTargetInfo(
