@@ -297,6 +297,28 @@ bool ClikeExpressionDeclMap::FindExternalVisibleDecls(
     return false;
   llvm::StringRef sname = ii->getName();
 
+  // A "name" that is not a plain identifier cannot have come from the
+  // expression's source -- no C++ token spells
+  // `basic_string<char, std::__1::char_traits<char>, std::__1::allocator<char> >`.
+  // Such a lookup is clang reconciling one of *our own* synthesized decls: a
+  // record that ClangASTGenerator created lazily as another template's argument
+  // is named with the debug info's full template-id spelling rather than
+  // modelled as a ClassTemplateSpecializationDecl (see the record path in
+  // GenerateType). Clang then looks that literal name up, e.g. while printing
+  // the type in a diagnostic -- NamespaceDecl::isRedundantInlineQualifierFor
+  // does a lookup in the inline namespace and in its parent to decide whether
+  // the `__1::` qualifier can be dropped. Answering it would search the target
+  // for the debug-info type of that name and synthesize a *second*, properly
+  // templated decl for it, whose DeclarationName is the bare template name
+  // (`basic_string`) -- both a duplicate of a type we already have and a decl
+  // clang cannot file under the name it asked for. Clang stores whatever we
+  // return in `dc`'s lookup table keyed by the name it asked for, and asserts
+  // ("Declaration name mismatch" in NamedDecl::declarationReplaces) as soon as
+  // it has to reconcile that entry against the literally-named record already
+  // sitting there.
+  if (sname.contains('<'))
+    return false;
+
   // When compiling Objective-C, clang provides id/Class/SEL/Protocol
   // intrinsically. Never answer a lookup for these reserved names -- from the
   // debug info, from a namespace, or (importantly) from the synthetic
@@ -1552,6 +1574,15 @@ bool ClikeExpressionDeclMap::LookupType(
     return true;
   }
   if (clang::TagDecl *tag = qt->getAsTagDecl()) {
+    // Same reasoning in the other direction: a debug-info type whose name is a
+    // template-id (`S<float>`) generates a ClassTemplateSpecializationDecl
+    // named by the bare template (`S`), so returning it for a lookup of the
+    // full spelling would again hand clang a decl it cannot file under the
+    // name it asked for. An identifier lookup for such a name is already
+    // rejected above (see FindExternalVisibleDecls); this keeps every other
+    // caller of LookupType honest too.
+    if (tag->getIdentifier() && tag->getName() != name.GetStringRef())
+      return false;
     // Make sure the members/enumerators are available (e.g. for sizeof or
     // offsetof, which need a complete type).
     if (auto *record = llvm::dyn_cast<clang::RecordDecl>(tag))
