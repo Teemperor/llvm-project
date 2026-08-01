@@ -1578,6 +1578,16 @@ Desugar(swift::Demangle::Demangler &dem, swift::Demangle::NodePointer node,
   assert(node->getNumChildren() >= 1 && node->getNumChildren() <= 2 &&
          "Sugared types should only have 1 or 2 children");
   for (NodePointer child : *node) {
+    // The children of a sugared type are already wrapped in a Type node.
+    // Wrapping them a second time would produce a Type(Type(...)) tree, which
+    // still mangles to the same string, but is not structurally identical to
+    // the tree the demangler produces for that string. The remangler matches
+    // substitutions structurally, so such a tree defeats substitution matching
+    // and yields a mangled name that isn't canonical.
+    if (child->getKind() == Node::Kind::Type) {
+      type_list->addChild(child, dem);
+      continue;
+    }
     NodePointer type = dem.createNode(Node::Kind::Type);
     type->addChild(child, dem);
     type_list->addChild(type, dem);
