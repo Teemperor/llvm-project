@@ -68,6 +68,36 @@ ValueObjectSP SwiftArrayNativeBufferHandler::GetElementAtIndex(size_t idx,
                                                 m_exe_ctx_ref, m_elem_type);
 }
 
+/// Recover the element type of a native Swift array from the runtime type
+/// metadata of its _ContiguousArrayStorage<T> instance. This is a fallback for
+/// element types that cannot be resolved from the debug info, such as a type
+/// alias nested inside a bound generic type, which the Swift compiler does not
+/// describe in the debug info.
+static CompilerType GetElementTypeFromMetadata(ValueObject &valobj,
+                                               lldb::addr_t metadata_ptr) {
+  if (metadata_ptr == 0 || metadata_ptr == LLDB_INVALID_ADDRESS)
+    return {};
+  TargetSP target_sp = valobj.GetTargetSP();
+  if (!target_sp)
+    return {};
+  auto ts = TypeSystemSwiftTypeRefForExpressions::GetForTarget(*target_sp);
+  if (!ts)
+    return {};
+  auto *swift_runtime = SwiftLanguageRuntime::Get(valobj.GetProcessSP());
+  if (!swift_runtime)
+    return {};
+  CompilerType storage_type =
+      swift_runtime->GetTypeFromMetadata(*ts, metadata_ptr);
+  if (!storage_type)
+    return {};
+  auto storage_ts =
+      storage_type.GetTypeSystem().dyn_cast_or_null<TypeSystemSwift>();
+  if (!storage_ts)
+    return {};
+  return storage_ts->GetGenericArgumentType(storage_type.GetOpaqueQualType(),
+                                            0);
+}
+
 SwiftArrayNativeBufferHandler::SwiftArrayNativeBufferHandler(
     ValueObject &valobj, lldb::addr_t native_ptr, CompilerType elem_type)
     : m_elem_type(elem_type), m_exe_ctx_ref(valobj.GetExecutionContextRef()), 
@@ -91,18 +121,6 @@ SwiftArrayNativeBufferHandler::SwiftArrayNativeBufferHandler(
   ProcessSP process_sp(m_exe_ctx_ref.GetProcessSP());
   if (!process_sp)
     return;
-  auto opt_size =
-      llvm::expectedToOptional(elem_type.GetByteSize(process_sp.get()));
-  if (opt_size)
-    m_element_size = *opt_size;
-  auto opt_stride = elem_type.GetByteStride(process_sp.get());
-  // The Objective-C bridged array path (_ContiguousArrayStorage) uses a Clang
-  // 'id' element type, whose type system does not implement GetByteStride.
-  assert((opt_stride ||
-          !elem_type.GetTypeSystem().dyn_cast_or_null<TypeSystemSwift>()) &&
-         "Swift Array element type has no stride");
-  m_element_stride = opt_stride.value_or(m_element_size);
-  assert(m_element_stride > 0 && "Swift array element stride must be positive");
   size_t ptr_size = process_sp->GetAddressByteSize();
   Status error;
   lldb::addr_t next_read = native_ptr;
@@ -126,6 +144,27 @@ SwiftArrayNativeBufferHandler::SwiftArrayNativeBufferHandler(
     return;
   next_read += ptr_size;
   m_first_elem_ptr = next_read;
+
+  auto opt_stride = elem_type.GetByteStride(process_sp.get());
+  if (!opt_stride &&
+      elem_type.GetTypeSystem().dyn_cast_or_null<TypeSystemSwift>()) {
+    // A Swift type that has no stride is a type the debug info doesn't
+    // describe, for example a type alias nested inside a bound generic type.
+    // The runtime metadata of the array storage still knows the real element
+    // type, so use that instead.
+    if (CompilerType metadata_elem_type =
+            GetElementTypeFromMetadata(valobj, m_metadata_ptr)) {
+      m_elem_type = elem_type = metadata_elem_type;
+      opt_stride = elem_type.GetByteStride(process_sp.get());
+    }
+  }
+  auto opt_size =
+      llvm::expectedToOptional(elem_type.GetByteSize(process_sp.get()));
+  if (opt_size)
+    m_element_size = *opt_size;
+  // The Objective-C bridged array path (_ContiguousArrayStorage) uses a Clang
+  // 'id' element type, whose type system does not implement GetByteStride.
+  m_element_stride = opt_stride.value_or(m_element_size);
 }
 
 bool SwiftArrayNativeBufferHandler::IsValid() {
@@ -136,7 +175,8 @@ bool SwiftArrayNativeBufferHandler::IsValid() {
   return (m_is_embedded_swift ||
           (m_metadata_ptr != LLDB_INVALID_ADDRESS && m_metadata_ptr)) &&
          m_first_elem_ptr != LLDB_INVALID_ADDRESS && m_capacity >= m_size &&
-         m_elem_type.IsValid();
+         // Without a stride the elements cannot be located in memory.
+         (m_size == 0 || m_element_stride > 0) && m_elem_type.IsValid();
 }
 
 size_t SwiftArrayBridgedBufferHandler::GetCount() {
