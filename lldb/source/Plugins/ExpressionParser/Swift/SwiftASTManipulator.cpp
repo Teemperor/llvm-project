@@ -27,6 +27,8 @@
 #include "swift/AST/DiagnosticEngine.h"
 #include "swift/AST/DiagnosticsFrontend.h"
 #include "swift/AST/Expr.h"
+#include "swift/AST/GenericParamKey.h"
+#include "swift/AST/GenericSignature.h"
 #include "swift/AST/Initializer.h"
 #include "swift/AST/Module.h"
 #include "swift/AST/NameLookup.h"
@@ -837,18 +839,12 @@ SwiftASTManipulator::AddExternalVariable(swift::Identifier name,
   return variables[0].m_decl;
 }
 
-static swift::PatternBindingDecl *
-GetPatternBindingForVarDecl(swift::VarDecl *var_decl,
-                            swift::DeclContext *containing_context) {
-  swift::ASTContext &ast_context = var_decl->getASTContext();
-
-  swift::NamedPattern *named_pattern =
-      swift::NamedPattern::createImplicit(ast_context, var_decl);
-
-  // Since lldb does not call bindExtensions, must ensure that any enclosing
-  // extension is bound
-  // FIXME: This won't correctly handle cases that rely on other extensions
-  // being bound first, e.g for nested types defined in extensions.
+/// Since lldb does not call bindExtensions, this must be called to ensure that
+/// any extension enclosing \p containing_context is bound.
+///
+/// FIXME: This won't correctly handle cases that rely on other extensions
+/// being bound first, e.g for nested types defined in extensions.
+static void BindEnclosingExtensions(swift::DeclContext *containing_context) {
   for (auto *context = containing_context; context;
        context = context->getParent()) {
     if (auto *d = context->getAsDecl()) {
@@ -858,6 +854,17 @@ GetPatternBindingForVarDecl(swift::VarDecl *var_decl,
       }
     }
   }
+}
+
+static swift::PatternBindingDecl *
+GetPatternBindingForVarDecl(swift::VarDecl *var_decl,
+                            swift::DeclContext *containing_context) {
+  swift::ASTContext &ast_context = var_decl->getASTContext();
+
+  swift::NamedPattern *named_pattern =
+      swift::NamedPattern::createImplicit(ast_context, var_decl);
+
+  BindEnclosingExtensions(containing_context);
   swift::Type type = var_decl->getTypeInContext();
   swift::TypedPattern *typed_pattern =
     swift::TypedPattern::createImplicit(ast_context, named_pattern, type);
@@ -960,6 +967,30 @@ SwiftASTManipulator::GetVarDeclForVariableInFunction(
     return maybe_swift_type.takeError();
 
   const auto &swift_type = *maybe_swift_type;
+
+  // The type of a variable may refer to the generic parameters of the context
+  // the variable was declared in. Those parameters need to have a counterpart
+  // in the generic signature of the function the variable is injected into,
+  // otherwise the type cannot be mapped into that context. This can happen for
+  // persistent result variables, which outlive the generic context they were
+  // created in.
+  if (swift_type->hasTypeParameter()) {
+    BindEnclosingExtensions(containing_function);
+    llvm::ArrayRef<swift::GenericTypeParamType *> generic_params;
+    if (auto generic_sig = containing_function->getGenericSignatureOfContext())
+      generic_params = generic_sig.getGenericParams();
+
+    bool has_unknown_param = swift_type.findIf([&](swift::Type type) {
+      if (auto *param = type->getAs<swift::GenericTypeParamType>())
+        return swift::GenericParamKey(param).findIndexIn(generic_params) ==
+               generic_params.size();
+      return false;
+    });
+    if (has_unknown_param)
+      return llvm::createStringError(
+          "type of variable " + variable.GetName().str() +
+          " refers to a generic parameter that is not in scope");
+  }
 
   const swift::SourceLoc loc = containing_function->getBody()->getLBraceLoc();
   const swift::Identifier name = variable.GetName();

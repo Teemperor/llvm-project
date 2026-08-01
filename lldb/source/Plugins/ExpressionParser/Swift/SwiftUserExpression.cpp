@@ -566,13 +566,25 @@ static llvm::Error RegisterAllVariables(
 /// Check if we can evaluate the expression as generic.
 /// Currently, evaluating expression as a generic has several limitations:
 /// - Only self will be evaluated with unbound generics.
-/// - The Self type can only have one generic parameter. 
+/// - The Self type can only have one generic parameter.
 /// - The Self type has to be the outermost type with unbound generics.
+/// - The function itself may not introduce generic parameters.
 static bool CanEvaluateExpressionWithoutBindingGenericParams(
     const llvm::SmallVectorImpl<SwiftASTManipulator::VariableInfo> &variables,
     const std::optional<SwiftLanguageRuntime::GenericSignature> &generic_sig,
     SwiftASTContextForExpressions &scratch_ctx, Block *block,
     StackFrame &stack_frame) {
+  // The only generic parameter metadata that is passed into the expression
+  // are the metadata pointers of the outermost type ($τ_0_0, $τ_0_1, ...), so
+  // a function that introduces generic parameters of its own (which live at a
+  // deeper depth) cannot be evaluated generically. Variables using those
+  // parameters would get an interface type that has no counterpart in the
+  // generic signature of the generated expression function.
+  if (generic_sig)
+    for (const auto &generic_param : generic_sig->generic_params)
+      if (generic_param.depth != 0)
+        return false;
+
   // First, find the compiler type of self with the generic parameters not
   // bound.
   auto self_var = SwiftExpressionParser::FindSelfVariable(block);
