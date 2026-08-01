@@ -32,7 +32,8 @@ if(EXISTS "${_swift_root}/swift-syntax")
   set(SWIFT_PATH_TO_SWIFT_SYNTAX_SOURCE "${_swift_root}/swift-syntax" CACHE PATH "" FORCE)
 endif()
 
-set(LLVM_EXTERNAL_PROJECTS         "cmark;swift"            CACHE STRING "" FORCE)
+set(LLDB_DEP_EXTERNAL_PROJECTS     "cmark;swift"           CACHE STRING "" FORCE)
+set(LLVM_EXTERNAL_PROJECTS         "${LLDB_DEP_EXTERNAL_PROJECTS}"           CACHE STRING "" FORCE)
 set(LLVM_EXTERNAL_CMARK_SOURCE_DIR "${_swift_root}/cmark"   CACHE PATH   "" FORCE)
 set(LLVM_EXTERNAL_SWIFT_SOURCE_DIR "${_swift_root}/swift"   CACHE PATH   "" FORCE)
 
@@ -104,6 +105,62 @@ if(APPLE)
   endforeach()
 endif()
 
+
+# `swift` and `swiftc` in the build tree are just symlinks to swift-frontend,
+# which forwards to a `swift-driver` binary sitting next to it. That binary is
+# not built by this CMake tree: build-script builds it *before* configuring
+# swift (the "EarlySwiftDriver" product) and points
+# SWIFT_EARLY_SWIFT_DRIVER_BUILD at the result, which
+# swift_create_early_driver_copies() then copies into bin/.
+option(LLDB_BUILD_EARLY_SWIFT_DRIVER "Build the early swift-driver for the build-tree swiftc" ON)
+
+# Note: SWIFT_EARLY_SWIFT_DRIVER_BUILD is declared (empty) as a cache variable
+# by swift's own CMake, so test it for emptiness rather than for definedness --
+# otherwise this is skipped on every reconfigure of an existing build dir.
+if(LLDB_BUILD_EARLY_SWIFT_DRIVER AND NOT SWIFT_EARLY_SWIFT_DRIVER_BUILD
+   AND EXISTS "${_swift_root}/swift-driver")
+  # The helper needs a toolchain root with bin/swiftc and bin/swift in it. The
+  # SDK-matching toolchain derived below may not exist, so ask xcrun.
+  if(APPLE)
+    execute_process(COMMAND xcrun -f swiftc
+      OUTPUT_VARIABLE _early_driver_swiftc OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+  else()
+    find_program(_early_driver_swiftc swiftc)
+  endif()
+
+  if(CMAKE_MAKE_PROGRAM)
+    set(_early_driver_ninja "${CMAKE_MAKE_PROGRAM}")
+  else()
+    find_program(_early_driver_ninja ninja)
+  endif()
+
+  if(_early_driver_swiftc AND _early_driver_ninja)
+    get_filename_component(_early_driver_toolchain "${_early_driver_swiftc}" DIRECTORY)
+    get_filename_component(_early_driver_toolchain "${_early_driver_toolchain}" DIRECTORY)
+    set(_early_driver_build "${CMAKE_BINARY_DIR}/earlyswiftdriver")
+
+    message(STATUS "Building early swift-driver with ${_early_driver_swiftc}")
+    execute_process(
+      COMMAND "${_swift_root}/swift-driver/Utilities/build-script-helper.py" build
+              --package-path "${_swift_root}/swift-driver"
+              --build-path   "${_early_driver_build}"
+              --configuration release
+              --toolchain    "${_early_driver_toolchain}"
+              --ninja-bin    "${_early_driver_ninja}"
+              --cmake-bin    "${CMAKE_COMMAND}"
+              --local_compiler_build
+      RESULT_VARIABLE _early_driver_result)
+
+    if(_early_driver_result EQUAL 0)
+      set(SWIFT_EARLY_SWIFT_DRIVER_BUILD "${_early_driver_build}/release/bin"
+          CACHE PATH "" FORCE)
+    else()
+      message(FATAL_ERROR "Failed to build the early swift-driver.")
+    endif()
+  else()
+    message(FATAL_ERROR "Could not locate swiftc/ninja to build the early swift-driver.")
+  endif()
+endif()
 
 # ---------------------------------------------------------------------------
 # Swift compiler detection

@@ -55,6 +55,14 @@ add_llvm_external_project(mlir)
 # accordingly so place them afterwards
 add_llvm_external_project(clang)
 add_llvm_external_project(flang)
+# BEGIN SWIFT MOD
+# These external projects are Swift and/or cmark which lldb depends on.
+# We need to run their CMake before LLDB to simulate build-scripts
+# behavior.
+foreach(p ${LLDB_DEP_EXTERNAL_PROJECTS})
+  add_llvm_external_project(${p})
+endforeach(p)
+# END SWIFT MOD
 add_llvm_external_project(lldb)
 add_llvm_external_project(bolt)
 
