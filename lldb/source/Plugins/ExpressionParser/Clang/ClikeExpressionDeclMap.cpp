@@ -52,6 +52,7 @@
 #include "clang/AST/DeclObjC.h"
 #include "clang/AST/DeclarationName.h"
 #include "clang/Basic/OperatorKinds.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringSet.h"
 #include "llvm/ADT/Twine.h"
@@ -333,6 +334,29 @@ bool ClikeExpressionDeclMap::FindExternalVisibleDecls(
       (sname == "id" || sname == "Class" || sname == "SEL" ||
        sname == "Protocol"))
     return false;
+
+  // Never resolve a name whose resolution is already in flight. Placing a
+  // generated decl into a decl context with external visible storage (the
+  // translation unit, or the namespace a namespace-scoped function belongs in)
+  // makes clang reconcile that name there, which routes a lookup for the very
+  // name being resolved straight back into this function. Such a lookup is
+  // clang bookkeeping, not a reference from the expression, and answering it
+  // would at best redo the whole (target-wide) search once per placed decl.
+  //
+  // The guard is deliberately keyed on the name alone rather than on the
+  // (context, name) pair, mirroring ClangASTSource::m_active_lookups: the
+  // reconciliation lookup does not always name the context the decl was placed
+  // in. Placing a function into an *inline* namespace re-files it in the parent
+  // namespace too, whose lookup table has no entry for the name yet, so the
+  // callback arrives for the parent -- and answering it hands clang a decl it is
+  // itself in the middle of filing there (tripping the "Already exists!"
+  // assertion in StoredDeclsList::addOrReplaceDecl), or, before the generated
+  // function was registered ahead of being placed, a second identical decl,
+  // which recursed until the stack ran out.
+  if (!m_active_lookups.insert(ii).second)
+    return false;
+  auto end_lookup =
+      llvm::make_scope_exit([&] { m_active_lookups.erase(ii); });
 
   if (const auto *nsd = llvm::dyn_cast<clang::NamespaceDecl>(dc)) {
     if (nsd->getName() == "$__lldb_local_vars")
@@ -640,13 +664,21 @@ bool ClikeExpressionDeclMap::LookupFunctions(
 
     if (clang::FunctionDecl *fd = GetGenerator().GenerateFunction(
             name.GetStringRef(), func_clike_type, label)) {
+      // Register the decl *before* placing it into its namespace: adding it to
+      // an (external-visible) namespace makes clang reconcile the name there,
+      // which routes a lookup for it straight back into this function (see the
+      // reentrancy guard in FindExternalVisibleDecls). Having it registered
+      // first lets that reentrant lookup reuse this decl instead of
+      // synthesizing a second, identical-signature FunctionDecl for the same
+      // target function -- which clang would report as an ambiguous call, and
+      // which used to recurse without end.
+      m_generated_functions[function->GetID()] = fd;
       // A namespace-scoped function must live in the namespace decl so its
       // (mangled) qualified name is correct and clang finds it there.
       if (dc && dc != ast.getTranslationUnitDecl()) {
         fd->setDeclContext(const_cast<clang::DeclContext *>(dc));
         const_cast<clang::DeclContext *>(dc)->addDecl(fd);
       }
-      m_generated_functions[function->GetID()] = fd;
       decls.push_back(fd);
       added = true;
     }

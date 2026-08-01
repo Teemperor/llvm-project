@@ -20,6 +20,7 @@
 #include "lldb/lldb-public.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/StringSet.h"
 
 #include <memory>
@@ -392,6 +393,13 @@ private:
   /// name, which routes an operator lookup back here; this guard stops that
   /// reentrant lookup from recursively resolving the same operators.
   bool m_resolving_operators = false;
+  /// The names whose resolution is currently in flight, so that a lookup clang
+  /// routes back here while a generated decl is being placed into an
+  /// external-visible decl context is not serviced a second time. See the
+  /// reentrancy guard in FindExternalVisibleDecls; mirrors
+  /// ClangASTSource::m_active_lookups. Keyed on the (ASTContext-uniqued)
+  /// identifier, i.e. name-only, deliberately not on (context, name).
+  llvm::DenseSet<const clang::IdentifierInfo *> m_active_lookups;
   ExecutionContext m_exe_ctx;
   Materializer *m_materializer = nullptr;
   clang::ASTConsumer *m_code_gen = nullptr;
