@@ -3538,6 +3538,13 @@ TypeSystemSwiftTypeRef::RemangleAsType(swift::Demangle::Demangler &dem,
     if (!opaque_type->hasChildren())
       return {};
 
+  // Guard against names that the remangler cannot mangle. Demangle trees that
+  // are reconstructed from the inferior's memory may contain arbitrary bytes;
+  // mangling a name that isn't valid UTF-8 asserts in the remangler, and an
+  // empty name mangles into a non-canonical mangled name.
+  if (swift_demangle::ContainsUnmanglableName(node))
+    return {};
+
   using namespace swift::Demangle;
   if (node->getKind() != Node::Kind::Global) {
     auto global = dem.createNode(Node::Kind::Global);
