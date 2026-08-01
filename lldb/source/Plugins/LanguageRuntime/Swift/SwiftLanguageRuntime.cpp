@@ -3751,10 +3751,17 @@ CachingTaskFinder::GetTaskAddrLocations(llvm::ArrayRef<Thread *> threads) {
       addr_locations.push_back(it->second);
 #ifndef NDEBUG
       // In assert builds, check that caching did not produce incorrect results.
+      // Recomputing queries the live process, which can fail for reasons that
+      // say nothing about the validity of the cached location (see the error
+      // handling below, where the same failure is an expected outcome), so only
+      // compare when the recomputation actually produced an address.
       llvm::Expected<lldb::addr_t> task_addr_location =
           ComputeTaskAddrLocation(real_thread);
-      assert(task_addr_location);
-      assert(it->second == *task_addr_location);
+      if (task_addr_location)
+        assert(it->second == *task_addr_location);
+      else
+        LLDB_LOG_ERROR(GetLog(LLDBLog::OS), task_addr_location.takeError(),
+                       "could not verify cached task address location: {0}");
 #endif
       continue;
     }
