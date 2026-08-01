@@ -424,6 +424,12 @@ public:
     llvm::SmallVector<unsigned, 4> count_for_type_pack;
     unsigned dependent_generic_param_count = 0;
     unsigned num_counts = 0;
+    /// The number of pack expansions that appear at the top level of the
+    /// function's parameter list. Only those are passed into the function as
+    /// a value pack argument. Pack expansions in the return type or nested
+    /// inside another type (such as a tuple or a function type) are also part
+    /// of \c pack_expansions, but they have no corresponding argument.
+    unsigned num_value_pack_params = 0;
 
     unsigned GetNumValuePacks() const { return count_for_value_pack.size(); }
     unsigned GetNumTypePacks() const { return count_for_type_pack.size(); }

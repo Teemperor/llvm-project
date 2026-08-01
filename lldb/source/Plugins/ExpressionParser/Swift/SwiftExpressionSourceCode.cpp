@@ -242,7 +242,7 @@ static llvm::Expected<CallsAndArgs> MakeGenericSignaturesAndCalls(
                    << ">(_ $__lldb_arg: UnsafeMutablePointer<("
                    << generic_params_no_packs << ")>";
   for (auto &var : local_variables)
-    if (var.GetType().GetTypeInfo() & lldb::eTypeIsPack) {
+    if (var.IsUnboundPack()) {
       auto pack_type = TransformPackType(var.GetType(), subs);
       if (!pack_type)
         return pack_type.takeError();
@@ -280,7 +280,7 @@ static llvm::Expected<CallsAndArgs> MakeGenericSignaturesAndCalls(
     }
   // FIXME: This assumes all pack variables are local function arguments.
   assert(!generic_sig ||
-         num_value_packs == generic_sig->pack_expansions.size());
+         num_value_packs == generic_sig->num_value_pack_params);
 
   if (generic_sig)
     for (unsigned i = 0; i < generic_sig->num_counts; ++i) {

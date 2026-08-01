@@ -1354,6 +1354,52 @@ SwiftLanguageRuntime::GetStepThroughTrampolinePlan(Thread &thread,
   return ::GetStepThroughTrampolinePlan(thread, stop_others);
 }
 
+/// Count the pack expansions at the top level of the parameter list of the
+/// function type \p node. Only these pack expansions are passed into the
+/// function as a value pack argument. A pack expansion that appears in the
+/// return type or nested inside another type (for example inside a tuple or a
+/// function type) is part of a single, non-pack argument (or of no argument at
+/// all) and thus has no value pack in the function's frame.
+static unsigned CountValuePackParams(swift::Demangle::NodePointer type_node) {
+  using namespace swift::Demangle;
+  auto get_sole_child = [](NodePointer n, Node::Kind kind) -> NodePointer {
+    if (!n || n->getKind() != kind || n->getNumChildren() != 1)
+      return nullptr;
+    return n->getFirstChild();
+  };
+
+  NodePointer func = get_sole_child(type_node, Node::Kind::Type);
+  if (!func)
+    return 0;
+  NodePointer args = nullptr;
+  for (auto child : *func)
+    if (child->getKind() == Node::Kind::ArgumentTuple) {
+      args = child;
+      break;
+    }
+  NodePointer arg_list = get_sole_child(args, Node::Kind::ArgumentTuple);
+  arg_list = get_sole_child(arg_list, Node::Kind::Type);
+  if (!arg_list)
+    return 0;
+
+  // A sole unlabeled parameter is not wrapped in a tuple. Note that a sole
+  // parameter of tuple type is wrapped in an extra tuple, so this cannot be
+  // confused with a parameter list.
+  if (arg_list->getKind() != Node::Kind::Tuple)
+    return arg_list->getKind() == Node::Kind::PackExpansion ? 1 : 0;
+
+  unsigned num_value_pack_params = 0;
+  for (auto element : *arg_list) {
+    if (element->getKind() != Node::Kind::TupleElement)
+      continue;
+    for (auto child : *element)
+      if (NodePointer arg = get_sole_child(child, Node::Kind::Type))
+        if (arg->getKind() == Node::Kind::PackExpansion)
+          ++num_value_pack_params;
+  }
+  return num_value_pack_params;
+}
+
 std::optional<SwiftLanguageRuntime::GenericSignature>
 SwiftLanguageRuntime::GetGenericSignature(llvm::StringRef function_name,
                                           TypeSystemSwiftTypeRef &ts) {
@@ -1438,6 +1484,7 @@ SwiftLanguageRuntime::GetGenericSignature(llvm::StringRef function_name,
   node = node->getLastChild();
   if (node->getKind() != swift::Demangle::Node::Kind::Type)
     return {};
+  signature.num_value_pack_params = CountValuePackParams(node);
   bool error = false;
   // For each pack_expansion...
   swift::Demangle::NodePointer type_node = nullptr;
