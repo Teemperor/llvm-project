@@ -363,10 +363,17 @@ static llvm::Error AddVariableInfo(
   CompilerType target_type;
   bool should_not_bind_generic_types =
       !SwiftASTManipulator::ShouldBindGenericTypes(bind_generic_types);
-  bool is_unbound_pack =
-      should_not_bind_generic_types &&
-      (variable_sp->GetType()->GetForwardCompilerType().GetTypeInfo() &
-       lldb::eTypeIsPack);
+  // A value pack is passed into its function as a SIL pack. Note that this is
+  // more narrow than asking for lldb::eTypeIsPack, which is also set for types
+  // that merely mention a pack, such as `S<repeat each T>`. Those are ordinary
+  // single values and must not be forwarded as a value pack.
+  CompilerType static_type = variable_sp->GetType()->GetForwardCompilerType();
+  bool is_unbound_pack = false;
+  if (should_not_bind_generic_types)
+    if (auto tss =
+            static_type.GetTypeSystem().dyn_cast_or_null<TypeSystemSwift>())
+      if (auto ts = tss->GetTypeSystemSwiftTypeRef())
+        is_unbound_pack = ts->IsSILPackType(static_type).has_value();
   bool could_not_resolve = false;
   // If we're not binding the generic types, we need to set the self type as an
   // opaque pointer type. This is necessary because we don't bind the generic
@@ -376,7 +383,7 @@ static llvm::Error AddVariableInfo(
     target_type =
         ast_context.GetBuiltinRawPointerType(ast_context.GetManglingFlavor());
   else if (is_unbound_pack)
-    target_type = variable_sp->GetType()->GetForwardCompilerType();
+    target_type = static_type;
   else {
     CompilerType var_type = SwiftExpressionParser::ResolveVariable(
         variable_sp, *stack_frame_sp, runtime, use_dynamic, bind_generic_types);
@@ -589,9 +596,13 @@ static bool CanEvaluateExpressionWithoutBindingGenericParams(
   // bound.
   auto self_var = SwiftExpressionParser::FindSelfVariable(block);
   if (!self_var) {
-    // Freestanding variadic generic functions are also supported.
+    // Freestanding variadic generic functions are also supported, but only if
+    // they have at least one value pack parameter. The generated expression
+    // function forwards the value packs of the current frame as its own
+    // parameters; a function whose pack expansions all appear elsewhere (for
+    // example only in the return type) has nothing to forward.
     if (generic_sig)
-      return generic_sig->pack_expansions.size();
+      return generic_sig->num_value_pack_params;
 
     return false;
   }
