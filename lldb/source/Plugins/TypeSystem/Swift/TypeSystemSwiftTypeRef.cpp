@@ -3531,12 +3531,14 @@ TypeSystemSwiftTypeRef::RemangleAsType(swift::Demangle::Demangler &dem,
   if (!node)
     return {};
 
-  // Guard against an empty opaque type. This can happen when demangling an
-  // OpaqueTypeRef (ex `$sBpD`). An empty opaque will assert when mangled.
-  if (auto *opaque_type =
-          swift_demangle::ChildAtPath(node, {Node::Kind::OpaqueType}))
-    if (!opaque_type->hasChildren())
-      return {};
+  // Guard against incomplete opaque types anywhere in the tree. The remangler
+  // requires an OpaqueType to have at least three children and asserts
+  // otherwise. Demangle trees reconstructed from the inferior's memory can
+  // contain an empty OpaqueType, which is what the reflection library produces
+  // for metadata it cannot interpret (ex `$sBpD`), or an OpaqueType with a
+  // single unresolved OpaqueTypeDescriptorSymbolicReference child.
+  if (swift_demangle::ContainsUnmanglableOpaqueType(node))
+    return {};
 
   // Guard against names that the remangler cannot mangle. Demangle trees that
   // are reconstructed from the inferior's memory may contain arbitrary bytes;

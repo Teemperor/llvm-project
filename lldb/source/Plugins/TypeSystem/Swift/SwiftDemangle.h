@@ -271,6 +271,27 @@ GetMangledName(swift::Demangle::Demangler &dem,
   return mangleNode(global, flavor);
 }
 
+/// Returns true if the demangle tree contains an opaque type that the remangler
+/// cannot mangle.
+///
+/// The remangler requires an OpaqueType node to have at least three children
+/// (the opaque declaration's context, its index, and its bound generic
+/// arguments) and asserts otherwise. Demangle trees that are reconstructed from
+/// the inferior's memory can violate this in two ways:
+///
+/// * The reflection library represents metadata that it cannot interpret (for
+///   example the uninitialized metadata pointer of a generic parameter in a
+///   function prologue) as an OpaqueTypeRef, which demangles into a childless
+///   OpaqueType node.
+/// * An unresolved opaque symbolic reference demangles into an OpaqueType node
+///   with a single OpaqueTypeDescriptorSymbolicReference child.
+inline bool ContainsUnmanglableOpaqueType(swift::Demangle::NodePointer node) {
+  return FindIf(node, [](NodePointer node) -> bool {
+    return node->getKind() == Node::Kind::OpaqueType &&
+           node->getNumChildren() < 3;
+  });
+}
+
 /// Returns true if the demangle tree contains a name that the remangler cannot
 /// faithfully mangle.
 ///
