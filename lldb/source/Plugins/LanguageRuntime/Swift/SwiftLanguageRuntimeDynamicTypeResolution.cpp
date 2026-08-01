@@ -3778,6 +3778,20 @@ bool SwiftLanguageRuntime::GetDynamicTypeAndAddress(
   if (success) {
     hoist_result_type(class_type_or_name);
 
+    // The resolvers above reconstruct the dynamic type from data that they read
+    // out of the inferior, which can fail without failing the resolver, for
+    // example when TypeSystemSwiftTypeRef::RemangleAsType() rejects a type that
+    // the remangler cannot mangle. Without a dynamic type there is nothing to
+    // resolve to, so report failure and let the static type be used instead of
+    // handing out an empty dynamic type.
+    if (class_type_or_name.IsEmpty()) {
+      LLDB_LOG(GetLog(LLDBLog::Types),
+               "[GetDynamicTypeAndAddress] could not reconstruct the dynamic "
+               "type of {0}",
+               in_value.GetName());
+      return false;
+    }
+
     // If we haven't found a better static value type, use the value object's
     // one.
     if (static_value_type == Value::ValueType::Invalid)

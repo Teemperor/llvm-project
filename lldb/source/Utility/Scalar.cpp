@@ -814,6 +814,12 @@ bool Scalar::ExtractBitfield(uint32_t bit_size, uint32_t bit_offset) {
   if (bit_size == 0)
     return true;
 
+  // The requested bitfield needs to be contained in this Scalar. Callers pass
+  // in sizes and offsets that are derived from debug info or from data read out
+  // of the inferior, so they can't be trusted to be in range.
+  if ((uint64_t)bit_offset + bit_size > 8 * (uint64_t)GetByteSize())
+    return false;
+
   switch (m_type) {
   case Scalar::e_void:
   case Scalar::e_float:

@@ -225,8 +225,13 @@ bool ValueObjectChild::UpdateValue() {
         // try to extract the child value from the parent's scalar value
         {
           Scalar scalar(m_value.GetScalar());
-          scalar.ExtractBitfield(8 * m_byte_size, 8 * m_byte_offset);
-          m_value.GetScalar() = scalar;
+          if (scalar.ExtractBitfield(8 * m_byte_size, 8 * m_byte_offset))
+            m_value.GetScalar() = scalar;
+          else
+            m_error = Status::FromErrorStringWithFormatv(
+                "parent is a {0}-byte scalar value, which is too small to "
+                "contain a {1}-byte child at offset {2}",
+                scalar.GetByteSize(), m_byte_size, m_byte_offset);
         }
         break;
       }
