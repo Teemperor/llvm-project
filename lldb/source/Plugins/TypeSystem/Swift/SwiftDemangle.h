@@ -16,6 +16,8 @@
 #include "swift/Demangling/Demangle.h"
 #include "swift/Demangling/Demangler.h"
 #include "swift/Demangling/ManglingFlavor.h"
+#include "swift/Demangling/ManglingUtils.h"
+#include "swift/Demangling/Punycode.h"
 #include "llvm/ADT/ArrayRef.h"
 #include <initializer_list>
 
@@ -267,6 +269,45 @@ GetMangledName(swift::Demangle::Demangler &dem,
   global->addChild(type_mangling, dem);
   type_mangling->addChild(node, dem);
   return mangleNode(global, flavor);
+}
+
+/// Returns true if the demangle tree contains a name that the remangler cannot
+/// faithfully mangle.
+///
+/// Type and module names that are reconstructed from data in the inferior (for
+/// example a typeref for the dynamic type of a variable that isn't initialized
+/// yet) can contain arbitrary bytes, whereas the remangler only supports names
+/// that are valid Swift identifiers:
+///
+/// * An empty name is mangled as nothing, which produces a mangled name that no
+///   longer round-trips (and thus violates TypeSystemSwiftTypeRef's invariant
+///   that mangled names are canonical). The reflection reader produces empty
+///   names for, e.g., Objective-C classes whose name couldn't be read.
+/// * Names that contain characters that aren't valid in a mangled name are
+///   punycode-encoded, which fails for text that isn't valid UTF-8. The
+///   remangler doesn't diagnose this failure and asserts instead.
+inline bool ContainsUnmanglableName(swift::Demangle::NodePointer node) {
+  return FindIf(node, [](NodePointer node) -> bool {
+    // These are the node kinds that are mangled as an identifier and whose
+    // text may originate from the inferior.
+    switch (node->getKind()) {
+    case Node::Kind::Identifier:
+    case Node::Kind::Module:
+      break;
+    default:
+      return false;
+    }
+    if (!node->hasText())
+      return false;
+    llvm::StringRef text = node->getText();
+    if (text.empty())
+      return true;
+    if (!swift::Mangle::needsPunycodeEncoding(text))
+      return false;
+    std::string punycode;
+    return !swift::Punycode::encodePunycodeUTF8(text, punycode,
+                                                /*mapNonSymbolChars=*/true);
+  });
 }
 
 /// Returns true if this type contains an error node anywhere.
