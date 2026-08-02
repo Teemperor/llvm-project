@@ -5,7 +5,6 @@ include Makefile.rules
 
 libmod.%.dylib: mod.%.swift
 	$(call LN_SF,$<,mod.swift)
-	$(SWIFTC) $(SWIFTFLAGS) -emit-module -module-name mod mod.swift -emit-library -o $@ -Xlinker -install_name -Xlinker @executable_path/libmod.$*.dylib -###
 	"$(MAKE)" MAKE_DSYM=$(MAKE_DSYM) CC=$(CC) SWIFTC=$(SWIFTC) \
 		ARCH=$(ARCH) DSYMUTIL=$(DSYMUTIL) \
 		DYLIB_NAME=mod \

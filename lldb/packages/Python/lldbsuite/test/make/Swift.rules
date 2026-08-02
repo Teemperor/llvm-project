@@ -3,6 +3,7 @@
 # SWIFT_BRIDGING_HEADER :=
 # SWIFT_PRECOMPILE_BRIDGING_HEADER := NO
 # SWIFT_OBJC_HEADER := Foo-Swift.h
+# SWIFT_PRINT_DRIVER_JOBS := 1   # dump the expanded driver jobs (slow, see below)
 
 #----------------------------------------------------------------------
 # SWIFTC defaults to swift.
@@ -256,12 +257,19 @@ ifneq "$(SWIFT_WMO)" "1"
 	$(PYTHON) $(THIS_FILE_DIR)/gen-output-map.py $^ $(patsubst %,$(BUILDDIR)/%,$(SWIFT_OBJECTS)) >$(BUILDDIR)/$(MODULENAME)-output-file-map.json
 endif
 	@echo "### Compiling" $^
-	@echo "### Swift driver expanded incovation will be:"
+# Dumping the driver's job list costs a second full driver launch (toolchain
+# load plus, with -explicit-module-build, a module dependency scan) that
+# produces no build output: ~25% of the build time of a small Swift test, and
+# the output is discarded unless dotest runs with -t. Opt in when debugging a
+# Makefile instead of paying for it on every build of every test variant.
+ifeq "$(SWIFT_PRINT_DRIVER_JOBS)" "1"
+	@echo "### Swift driver expanded invocation will be:"
 	$(SWIFTC) -emit-object $^ $(SWIFTC_OUTPUT) \
 	  $(SWIFTFLAGS) $(SWIFT_HFLAGS) $(PARSE_AS_LIBRARY) \
 	  -module-name $(MODULENAME) \
           -emit-module-path $(BUILDDIR)/$(MODULENAME).swiftmodule \
 	  $(SWIFT_INTERFACE_FLAGS) -###
+endif
 	@echo "### Swift driver invocation:"
 	$(SWIFTC) -emit-object $^ $(SWIFTC_OUTPUT) \
 	  $(SWIFTFLAGS) $(SWIFT_HFLAGS) $(PARSE_AS_LIBRARY) \
