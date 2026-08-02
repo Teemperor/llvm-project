@@ -91,7 +91,10 @@ class CommandParser:
 
 class InlineTest(TestBase):
     def getBuildDirBasename(self):
-        return self.__class__.__name__ + "." + self.testMethodName
+        # MakeInlineTest() synthesizes these classes, so __module__ is always
+        # "lldbinline" and cannot tell two inline tests apart; the class name
+        # is derived from the test file and can.
+        return self.buildDirBasenameFor(self.__class__.__name__)
 
     def BuildMakefile(self):
         makefilePath = self.getBuildArtifact("Makefile")

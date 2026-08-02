@@ -541,6 +541,21 @@ class Base(unittest.TestCase):
     # Can be overridden by the LLDB_TIME_WAIT_NEXT_LAUNCH environment variable.
     timeWaitNextLaunch = 1.0
 
+    # What every build directory used so far in this process contains:
+    #   build dir -> {"commands": [make argv, ...], "files": snapshotBuildDir()}
+    # Test methods that build identical binaries deliberately share a build
+    # directory, and this is how build() recognizes that the binary it is about
+    # to compile is already sitting there. Process-wide because a dotest process
+    # runs all the test methods of a file sequentially.
+    _build_dir_state = {}
+
+    # The make invocations the running test has completed, in order, and the
+    # build directory entries it inherited from an earlier test method. Both are
+    # set up by setUp()/makeBuildDir(); see reuseExistingBuild().
+    _completed_builds = []
+    _inherited_build_entries = frozenset()
+    _inherited_build_files = {}
+
     @staticmethod
     def compute_mydir(test_file):
         """Subclasses should call this function to correctly calculate the
@@ -728,7 +743,27 @@ class Base(unittest.TestCase):
         return os.path.join(configuration.test_src_root, self.mydir)
 
     def getBuildDirBasename(self):
-        return self.__class__.__module__ + "." + self.testMethodName
+        return self.buildDirBasenameFor(self.__class__.__module__)
+
+    def buildDirBasenameFor(self, prefix):
+        """Name of this test method's build directory, below <build>/<mydir>/.
+
+        The metaclass multiplies every test method out along the dimensions in
+        `_test_variants`, but only some of those dimensions change the program
+        that gets built: `dsym` vs `dwarf` and plain vs embedded Swift do,
+        while the Swift ClangImporter dimension merely flips an LLDB setting.
+        Whenever the dimensions that do affect the build are known (i.e. the
+        method carries a `build_dir_group`), name the directory after them and
+        the test class rather than after the test method, so that all the
+        methods that compile the very same binary land in the same directory.
+        `build()` then compiles it once and the remaining methods reuse it.
+        """
+        group = getattr(
+            getattr(type(self), self.testMethodName, None), "build_dir_group", None
+        )
+        if not group:
+            return prefix + "." + self.testMethodName
+        return prefix + "." + self.__class__.__name__ + "." + group
 
     def getBuildDir(self):
         """Return the full path to the current test."""
@@ -740,9 +775,26 @@ class Base(unittest.TestCase):
         """Create the test-specific working directory, deleting any previous
         contents."""
         bdir = self.getBuildDir()
-        if os.path.isdir(bdir):
-            lldbutil.remove_tree(bdir)
+        state = Base._build_dir_state.get(bdir)
+        if state is None:
+            if os.path.isdir(bdir):
+                lldbutil.remove_tree(bdir)
+            lldbutil.mkdir_p(bdir)
+            self._inherited_build_entries = set()
+            self._inherited_build_files = {}
+            return
+        # A test method that shares this directory has already built in it. Keep
+        # its build output for build() to reuse, but drop everything it created
+        # on top of that (module caches, log files, inferior output, ...) so this
+        # test starts out looking at nothing but a build.
         lldbutil.mkdir_p(bdir)
+        built = {path.split(os.sep)[0] for path in state["files"]}
+        for name in self.buildDirEntries() - built:
+            self.removeBuildDirEntry(name)
+        # Whatever is left belongs to that other test method; an entry that
+        # shows up or changes from here on was put there by this one.
+        self._inherited_build_entries = self.buildDirEntries()
+        self._inherited_build_files = self.snapshotBuildDir()
 
     def getBuildArtifact(self, name="a.out"):
         """Return absolute path to an artifact in the test's build directory."""
@@ -877,6 +929,11 @@ class Base(unittest.TestCase):
 
         # List of log files produced by the current test.
         self.log_files = []
+
+        # The make invocations this test has already run, in order. Used to
+        # decide whether a build directory shared with another test method
+        # already holds what the next build() call would produce.
+        self._completed_builds = []
 
         # Create the build directory.
         # The logs are stored in the build directory, so we have to create it
@@ -1203,7 +1260,10 @@ class Base(unittest.TestCase):
         returns a partial path that can be used as the beginning of the name of multiple
         log files pertaining to this test
         """
-        return os.path.join(self.getBuildDir(), prefix)
+        # Test methods can share a build directory (see getBuildDirBasename), so
+        # the test method name has to be part of the log name to keep the logs
+        # of one method from overwriting another's.
+        return os.path.join(self.getBuildDir(), prefix + "-" + self.testMethodName)
 
     def dumpSessionInfo(self):
         """
@@ -1544,7 +1604,118 @@ class Base(unittest.TestCase):
 
         command += [f"{k}={v}" for k, v in self.extra_make_flags.items()]
 
+        if self.reuseExistingBuild(command):
+            return
+
         self.runBuildCommand(command)
+        self.recordCompletedBuild(command)
+
+    def snapshotBuildDir(self):
+        """Return {relative path: fingerprint} for the build directory.
+
+        Files, directories and symlinks all get an entry, so that a build's
+        output can be told apart from a build's output that a test has since
+        deleted, replaced or added to. The log files of the running test are left
+        out: they are not build output, and they are written as the test runs.
+        """
+        bdir = self.getBuildDir()
+        own_logs = {
+            os.path.relpath(path, bdir) for path in getattr(self, "log_files", ())
+        }
+
+        def fingerprint(path):
+            if os.path.islink(path):
+                return os.readlink(path)
+            if os.path.isdir(path):
+                return "<dir>"
+            st = os.stat(path)
+            return (st.st_size, st.st_mtime_ns)
+
+        snapshot = {}
+        for dirpath, dirnames, filenames in os.walk(bdir):
+            for name in dirnames + filenames:
+                path = os.path.join(dirpath, name)
+                relpath = os.path.relpath(path, bdir)
+                if relpath in own_logs:
+                    continue
+                try:
+                    snapshot[relpath] = fingerprint(path)
+                except OSError:
+                    continue
+        return snapshot
+
+    def buildDirEntries(self):
+        """Return the names directly below the build directory."""
+        try:
+            return set(os.listdir(self.getBuildDir()))
+        except OSError:
+            return set()
+
+    def removeBuildDirEntry(self, name):
+        """Delete `name` from the build directory, file or directory alike."""
+        path = os.path.join(self.getBuildDir(), name)
+        if os.path.isdir(path) and not os.path.islink(path):
+            lldbutil.remove_tree(path)
+        else:
+            remove_file(path, num_retries=0)
+
+    def discardInheritedBuild(self):
+        """Delete the build another test method left in the build directory.
+
+        Entries this test has created, overwritten or added to are left alone:
+        they are no longer (only) the other test method's, and the build is about
+        to consume them.
+        """
+        now = self.snapshotBuildDir()
+
+        def contents(snapshot, name):
+            prefix = name + os.sep
+            return {
+                path: fingerprint
+                for path, fingerprint in snapshot.items()
+                if path == name or path.startswith(prefix)
+            }
+
+        for name in self._inherited_build_entries:
+            if contents(now, name) == contents(self._inherited_build_files, name):
+                self.removeBuildDirEntry(name)
+        self._inherited_build_entries = set()
+        self._inherited_build_files = {}
+
+    def reuseExistingBuild(self, command):
+        """Return True if `command`'s output is already in the build directory.
+
+        Test methods that build the same program share a build directory (see
+        `Base.getBuildDirBasename`), so by the time this method runs the
+        directory may already hold exactly what `command` would produce. That is
+        only true if every build in this test so far, plus this one, matches what
+        the previous occupant built, in the same order, and nothing has touched
+        the artifacts since. Otherwise they are discarded, so that `command` runs
+        against the same directory contents it would see if this test had the
+        directory to itself.
+        """
+        bdir = self.getBuildDir()
+        state = Base._build_dir_state.get(bdir)
+        sequence = self._completed_builds + [command]
+        if state is not None and state["commands"] == sequence:
+            snapshot = self.snapshotBuildDir()
+            if snapshot == state["files"]:
+                self.trace("Reusing the build in " + bdir)
+                self._completed_builds = sequence
+                return True
+
+        if state is not None and not self._completed_builds:
+            self.trace("Discarding the unrelated build in " + bdir)
+            self.discardInheritedBuild()
+            Base._build_dir_state.pop(bdir, None)
+        return False
+
+    def recordCompletedBuild(self, command):
+        self._completed_builds = self._completed_builds + [command]
+        Base._build_dir_state[self.getBuildDir()] = {
+            "commands": list(self._completed_builds),
+            "files": self.snapshotBuildDir(),
+        }
 
     def runBuildCommand(self, command):
         self.trace(seven.join_for_shell(command))
@@ -1833,7 +2004,13 @@ class TestVariant:
     """
 
     def __init__(
-        self, name, values, predicate=None, setup_fn=None, attrs_to_preserve=()
+        self,
+        name,
+        values,
+        predicate=None,
+        setup_fn=None,
+        attrs_to_preserve=(),
+        affects_build=True,
     ):
         """Create a new test variant dimension.
 
@@ -1856,12 +2033,19 @@ class TestVariant:
                 from the source method to each expanded copy (e.g.
                 `("debug_info",)` so that a second-pass variant preserves
                 the debug-info value set by the first pass).
+            affects_build: Whether the value of this dimension changes the
+                binary that the test builds.  Dimensions that only reconfigure
+                LLDB (such as the Swift ClangImporter setting) leave this
+                `False`, which lets the expanded copies share one build
+                directory and one compile instead of rebuilding the same
+                program once per value.  See `Base.getBuildDirBasename`.
         """
         self.name = name
         self.values = values
         self.predicate = predicate
         self.setup_fn = setup_fn
         self.attrs_to_preserve = attrs_to_preserve
+        self.affects_build = affects_build
 
     def should_expand(self, test_method):
         """Return True if *test_method* should be expanded by this variant."""
@@ -1928,6 +2112,12 @@ def _expand_test_variants(attrname, methods, variant, xfail_fns, skip_fns):
 
             variant_method.__name__ = new_name
             setattr(variant_method, variant.name, value_name)
+            # Only dimensions that change the built binary become part of the
+            # build directory name; see Base.getBuildDirBasename.
+            group = getattr(method, "build_dir_group", "")
+            if variant.affects_build:
+                group = group + "_" + value_name if group else value_name
+            variant_method.build_dir_group = group
 
             for attr in variant.attrs_to_preserve:
                 if hasattr(method, attr):
@@ -1967,6 +2157,9 @@ _test_variants = [
         predicate=lambda m: getattr(m, "__swift_test__", False),
         setup_fn=_swift_module_importer_setup,
         attrs_to_preserve=("debug_info",),
+        # Both values build the same binary and only differ in an LLDB setting,
+        # so they can share a build directory and a single compile.
+        affects_build=False,
     ),
     TestVariant(
         name="swift_embedded",
@@ -2073,6 +2266,7 @@ class LLDBTestCaseFactory(type):
                         method_name = attrname + "_" + cat
                         test_method.__name__ = method_name
                         test_method.debug_info = cat
+                        test_method.build_dir_group = cat
                         test_method.categories = other_categories + [cat]
 
                         xfail_reason = xfail_for_debug_info_cat_fn(debug_info=cat)
