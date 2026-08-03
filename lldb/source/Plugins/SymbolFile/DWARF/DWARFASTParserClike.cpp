@@ -2079,8 +2079,22 @@ void DWARFASTParserClike::CompleteMemberFunctionsFromDWARF(
     const char *method_name = child.GetName();
     if (!method_name || !method_name[0])
       continue;
-    // Skip compiler-generated special members (implicit ctors/dtors/etc.).
-    if (child.GetAttributeValueAsUnsigned(DW_AT_artificial, 0))
+    // Skip compiler-generated special members (implicit ctors/etc.), except
+    // an implicit destructor. Unlike other implicit special members, every
+    // class in a hierarchy that needs a destructor gets its own (distinctly
+    // mangled D0/D1/D2) destructor even when it's not user-declared, and
+    // when it's virtual it must be modeled as its own CXXMethodDecl so
+    // AddOverridesForMethod (ClangASTGenerator.cpp) can link it into the
+    // override chain below the base's virtual destructor. Skipping it here
+    // (as if it didn't exist) left the chain rooted at the base's destructor
+    // in every subobject, which made clang's VTableBuilder treat a diamond's
+    // shared virtual-base destructor slot as an unused duplicate in one of
+    // the two paths reaching it and assert (MakeUnusedFunction refuses to
+    // represent an "unused" destructor) -- see
+    // other-bugs/lldb-diamond-vtable-unused-destructor.
+    llvm::StringRef name_ref(method_name);
+    if (child.GetAttributeValueAsUnsigned(DW_AT_artificial, 0) &&
+        !name_ref.starts_with("~"))
       continue;
 
     Type *func_type = die.ResolveTypeUID(child);
@@ -2131,7 +2145,6 @@ void DWARFASTParserClike::CompleteMemberFunctionsFromDWARF(
     // TypeSystemClang compare the method name against the record decl name).
     clike_typesystem::MemberFunctionKind kind =
         clike_typesystem::MemberFunctionKind::Method;
-    llvm::StringRef name_ref(method_name);
     if (name_ref.starts_with("~"))
       kind = clike_typesystem::MemberFunctionKind::Destructor;
     else if (!record_base_name.empty() && name_ref == record_base_name)
