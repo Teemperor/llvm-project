@@ -1822,6 +1822,132 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
       have_base = true;
       break;
     }
+
+  // A forward-declared/incomplete base doesn't have SetRecordPolymorphic
+  // applied yet -- IsPolymorphic() would read the not-yet-populated default of
+  // false -- so force completion first (mirroring
+  // TypeSystemClike::IsPolymorphicClass, which has the identical
+  // requirement). This recurses into CompleteTypeFromDWARF for the base on
+  // this same thread (not a worker thread), so it re-enters the Module's
+  // recursive_mutex rather than deadlocking on it -- see the launch-policy
+  // comment above this function.
+  auto complete_and_check_polymorphic = [&](clike_typesystem::Type *base) {
+    if (!base)
+      return false;
+    m_ts.GetCompleteType(static_cast<lldb::opaque_compiler_type_t>(base));
+    return base->IsPolymorphic();
+  };
+
+  // True if any direct base class is itself a polymorphic C++ class -- i.e.
+  // this class is dynamic (dynamic_cast-able etc.) because it inherits
+  // virtual functions, regardless of whether that base's vtable pointer ends
+  // up shared with this record (see below). Needed to mark this record
+  // polymorphic further below.
+  auto inherits_polymorphic_base = [&] {
+    for (size_t i = 0; i < members.size(); ++i)
+      if (members[i].kind == MemberInfo::Kind::Base &&
+          complete_and_check_polymorphic(member_types[i]))
+        return true;
+    return false;
+  };
+
+  // Recognize an *implicit* vtable pointer: per the Itanium C++ ABI, when
+  // this record has no local explicit vtable pointer (no `_vptr$Class` DWARF
+  // member was found above), it may still implicitly share one with a
+  // "nearly empty" direct base (one whose entire footprint IS its vtable
+  // pointer, with no data of its own): such a base is selected as the
+  // "primary base" and the compiler places its vtable pointer at this
+  // record's own offset 0, so clang's debug-info emitter omits this record's
+  // own `_vptr$Derived` DWARF member entirely (see
+  // CGDebugInfo::CollectVTableInfo). Without accounting for that, LLDB's
+  // unnamed-bitfield-gap reconstruction below has nothing in its model to
+  // explain the leading pointer-width bits, and handing Clang's
+  // expression-evaluator codegen a bitfield starting at a non-byte-aligned
+  // offset with nothing preceding it trips one of the sibling asserts in
+  // CGRecordLayoutBuilder.cpp.
+  //
+  // Deliberately gated on the base being nearly empty (byte size no larger
+  // than a pointer): a base with real data of its own (e.g. its own extra
+  // fields) can still be selected as primary the same way, but then more
+  // than just a vtable pointer's worth of storage at the front of this
+  // record is spoken for -- how much exactly depends on where any *other*
+  // bases' real data ends, which base-class tail-padding reuse can place
+  // earlier than that other base's own full (padded) byte size. Getting that
+  // wrong risks synthesizing a bogus padding field that overlaps a real
+  // base's storage (a different, worse failure than the one this is fixing).
+  // That fuller case is not handled here; nearly-emptiness is exactly the
+  // condition under which "the first pointer-width bits, and nothing more or
+  // less, are spoken for" is unconditionally true regardless of which base
+  // ends up primary or whether it is inherited virtually or non-virtually.
+  if (vtable_ptr_end_bits == 0 && clike_class) {
+    const uint64_t ptr_bits = die.GetCU()->GetAddressByteSize() * 8;
+    for (size_t i = 0; i < members.size(); ++i) {
+      const MemberInfo &member = members[i];
+      if (member.kind != MemberInfo::Kind::Base)
+        continue;
+      clike_typesystem::Type *base = member_types[i];
+      if (!complete_and_check_polymorphic(base))
+        continue;
+      uint64_t base_bits = base->GetByteSize().value_or(0) * 8;
+      if (base_bits == 0 || base_bits > ptr_bits)
+        continue;
+      vtable_ptr_end_bits = ptr_bits;
+      has_vtable = true;
+      break;
+    }
+  }
+
+  // Whether it is safe to synthesize padding to fill the gap immediately
+  // before this record's first own field, when this record has one or more
+  // bases: only when EVERY non-virtual base's real storage (the byte range
+  // [byte_offset, byte_offset + byte_size)) lies entirely within
+  // [0, vtable_ptr_end_bits) -- i.e. vtable_ptr_end_bits, however it was
+  // determined (an explicit local `_vptr$` member, or the implicit-sharing
+  // seed above), accounts for ALL storage any base occupies, not just
+  // whatever narrower reason set it. Otherwise a base's own real data could
+  // sit anywhere in the apparent "gap" before the first field, and blindly
+  // filling that gap with a synthetic padding field would fabricate a field
+  // that overlaps that base's storage -- a *worse* failure than the one
+  // being avoided here. This is a real, previously-passing case:
+  // `DerivedWithVTable` in TestCppBitfields.py has an explicit local vptr
+  // (so vtable_ptr_end_bits is non-zero) immediately followed by a
+  // non-empty, non-polymorphic base (`Base`) that has nothing to do with any
+  // vtable-pointer sharing at all; the space `Base` occupies must not be
+  // reinterpreted as padding just because vtable_ptr_end_bits happens to be
+  // non-zero.
+  //
+  // A virtual base is excluded from this check: it has no fixed
+  // compile-time offset in the leading part of the object -- its real
+  // storage is not laid out contiguously with fields the way a non-virtual
+  // base's is (see the architecture note on ClangASTGenerator::LayoutRecord
+  // omitting virtual bases from base_offsets) -- so it cannot itself
+  // explain, or conflict with, a gap in the leading, non-virtual part of the
+  // record's layout.
+  //
+  // When vtable_ptr_end_bits is 0 (no anchor at all -- no explicit local
+  // vptr, and the implicit-sharing seed above did not fire), there is
+  // nothing to check bases against, so this conservatively matches the
+  // original, unconditional suppression: any base at all means "not safe"
+  // (regardless of whether it is virtual), exactly as before this whole
+  // implicit-vtable-pointer handling existed.
+  bool bases_fit_before_vtable_end = !have_base;
+  if (have_base && vtable_ptr_end_bits != 0) {
+    bases_fit_before_vtable_end = true;
+    for (size_t i = 0; i < members.size(); ++i) {
+      const MemberInfo &member = members[i];
+      if (member.kind != MemberInfo::Kind::Base || member.is_virtual)
+        continue;
+      clike_typesystem::Type *base = member_types[i];
+      if (base)
+        m_ts.GetCompleteType(static_cast<lldb::opaque_compiler_type_t>(base));
+      uint64_t base_bits = base ? base->GetByteSize().value_or(0) * 8 : 0;
+      if (member.byte_offset * 8 + base_bits > vtable_ptr_end_bits) {
+        bases_fit_before_vtable_end = false;
+        break;
+      }
+    }
+  }
+
   // The synthetic padding member is an `int` (matching TypeSystemClang, which
   // uses a signed word-width builtin). Fetch it once.
   constexpr uint64_t word_width = 32;
@@ -1905,8 +2031,18 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
             gap_start += word_width - (gap_start % word_width);
 
           const bool this_is_first_field = !seen_field;
+          // Suppress synthesizing padding for the very first field when the
+          // record has a base and any base's real storage might not be fully
+          // accounted for by vtable_ptr_end_bits (see
+          // bases_fit_before_vtable_end above): a base's own tail might
+          // legitimately be reused there and we have no way to know how much
+          // of it is free. This does NOT apply once every base's storage is
+          // confirmed to lie entirely within the seeded vtable-pointer
+          // extent -- in which case the gap past it is a genuine, computable
+          // hole and should be filled like any other.
           if (abs_bit_offset > gap_start &&
-              !(have_base && this_is_first_field)) {
+              !(have_base && this_is_first_field &&
+                !bases_fit_before_vtable_end)) {
             // Emit the padding one storage unit at a time. A gap can be wider
             // than the padding type (several consecutive unnamed bitfields in
             // the source collapse into a single hole here), and a bitfield
@@ -2003,21 +2139,15 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
   }
 
   // Mark the class polymorphic if it has its own vtable pointer / a virtual
-  // base, or if it inherits a vtable from a (direct) polymorphic base. Recorded
-  // eagerly so C++ dynamic-type detection (IsPossibleDynamicType) works without
-  // forcing lazy member-function parsing (see ClassType::IsPolymorphic).
+  // base, or if it inherits a vtable from a (direct) polymorphic base --
+  // regardless of whether that base's vtable pointer ends up implicitly
+  // shared with this record (the narrower condition seeding
+  // vtable_ptr_end_bits above). Recorded eagerly so C++ dynamic-type
+  // detection (IsPossibleDynamicType) works without forcing lazy
+  // member-function parsing (see ClassType::IsPolymorphic).
   if (clike_class) {
-    if (!has_vtable) {
-      for (size_t i = 0; i < members.size(); ++i) {
-        if (members[i].kind != MemberInfo::Kind::Base)
-          continue;
-        if (auto *base = member_types[i];
-            base && base->IsPolymorphic()) {
-          has_vtable = true;
-          break;
-        }
-      }
-    }
+    if (!has_vtable)
+      has_vtable = inherits_polymorphic_base();
     if (has_vtable)
       ts.SetRecordPolymorphic(*clike_class);
   }
