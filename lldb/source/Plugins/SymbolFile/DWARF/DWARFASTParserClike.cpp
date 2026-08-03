@@ -2019,7 +2019,6 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
   // bitfield) field so the space it occupies is not mistaken for a gap that
   // needs a synthetic unnamed bitfield.
   uint64_t last_field_end = vtable_ptr_end_bits;
-  bool last_field_is_bitfield = false;
   bool seen_field = false;
   // Whether `last_field_end` is trustworthy. A member whose type has no known
   // size yet (a lazily forward-declared record whose definition lives in
@@ -2081,13 +2080,29 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
 
         // Fill any gap before a bitfield with a synthetic unnamed bitfield.
         if (is_bitfield && padding_type && last_field_end_known) {
+          // `gap_start` is simply where the previous field ended: unlike
+          // DWARFASTParserClang's ShouldCreateUnnamedBitfield/
+          // AddUnnamedBitfieldToRecordTypeIfNeeded (which this used to
+          // mirror), there is no need to round a non-bitfield's end up to
+          // the next word boundary here to account for "its own trailing
+          // alignment padding". Both ends of the potential gap are already
+          // exact, DWARF-derived values -- `last_field_end` is the previous
+          // field's real (byte_offset/size- or data_bit_offset-derived) end,
+          // and `abs_bit_offset` below is this bitfield's real
+          // DW_AT_data_bit_offset -- so the true gap is simply their
+          // difference, with no alignment assumption needed. Rounding up
+          // unconditionally is actively wrong in general: real (Itanium ABI)
+          // bitfield packing does not always extend a non-bitfield's padding
+          // out to a full word (e.g. a `char` field followed by an unnamed
+          // 6-bit bitfield then a named 3-bit bitfield can leave the named
+          // bitfield at a non-word-aligned, *non-byte-aligned* offset, with
+          // a genuine narrower gap before it) -- rounding past such a real,
+          // narrower gap makes this code believe there is nothing to pad,
+          // which then feeds Clang's expression-evaluator codegen a
+          // self-inconsistent layout (a bitfield run "starting" at a
+          // non-byte-aligned offset with no padding before it), tripping
+          // `accumulateBitFields`'s "Not at start of char" assert.
           uint64_t gap_start = last_field_end;
-          // If the previous field was not a bitfield and did not end on a word
-          // boundary, its padding fills the rest of the word, so the gap does
-          // not start until the next word.
-          if (!last_field_is_bitfield && gap_start != 0 &&
-              (gap_start % word_width) != 0)
-            gap_start += word_width - (gap_start % word_width);
 
           const bool this_is_first_field = !seen_field;
           // Suppress synthesizing padding for the very first field when the
@@ -2152,7 +2167,6 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
         } else if (!this_field_end_known) {
           last_field_end_known = false;
         }
-        last_field_is_bitfield = is_bitfield;
         seen_field = true;
       }
       break;
