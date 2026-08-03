@@ -1897,41 +1897,100 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
     }
   }
 
+  // Extend the known-occupied leading prefix using every direct NON-VIRTUAL
+  // base's own fully-known real extent: [byte_offset, byte_offset +
+  // byte_size). A non-virtual base's DW_AT_data_member_location is always a
+  // real constant offset (unlike a virtual base's, which is a location
+  // expression evaluated against a live object -- excluded below for that
+  // reason), and its own byte_size is that base's complete, standalone size
+  // -- the most it could ever occupy as a subobject. Itanium tail-padding
+  // reuse can let a *later* member start earlier than this (inside what
+  // would otherwise be the base's own trailing alignment padding), but it
+  // can never make the base spill past its own declared size -- so
+  // `byte_offset + byte_size` is always a safe (never-underestimating)
+  // upper bound on that base's real storage, regardless of whether the base
+  // is polymorphic, nearly-empty, or has substantial data of its own. This is
+  // what a class with two ordinary (ABI "primary" and non-primary),
+  // non-nearly-empty polymorphic bases needs -- e.g.
+  // `kmodel::Process : public KObject, public Schedulable` (a torture-fuzzer
+  // finding, see torture/findings/crash-seed377059235-prog016): neither base
+  // is nearly-empty, so the implicit-vtable-pointer seed above never fires,
+  // but both have their own explicit `_vptr$` DWARF member and a fully known
+  // size, so their real extents alone -- no vtable-pointer reasoning
+  // whatsoever -- safely explain the leading part of Process's own layout
+  // and let the gap before its first bitfield (`ring_`) be filled like any
+  // other.
+  //
+  // Bails (does not extend the anchor) if any non-virtual base's size can't
+  // be determined (an incomplete/lazily-unresolved record): such a base
+  // could in principle occupy more than is currently visible, and trusting
+  // a too-small anchor risks the exact overlap this whole mechanism exists
+  // to avoid. The pre-existing, narrower vtable_ptr_end_bits-only check
+  // below remains as a fallback for that case.
+  uint64_t bases_extent_bits = 0;
+  bool have_nonvirtual_base = false;
+  bool bases_extent_known = true;
+  for (size_t i = 0; i < members.size(); ++i) {
+    const MemberInfo &member = members[i];
+    if (member.kind != MemberInfo::Kind::Base || member.is_virtual)
+      continue;
+    clike_typesystem::Type *base = member_types[i];
+    if (base)
+      m_ts.GetCompleteType(static_cast<lldb::opaque_compiler_type_t>(base));
+    std::optional<uint64_t> base_byte_size =
+        base ? base->GetByteSize() : std::nullopt;
+    if (!base_byte_size) {
+      bases_extent_known = false;
+      break;
+    }
+    have_nonvirtual_base = true;
+    bases_extent_bits = std::max(
+        bases_extent_bits, member.byte_offset * 8 + *base_byte_size * 8);
+  }
+
   // Whether it is safe to synthesize padding to fill the gap immediately
   // before this record's first own field, when this record has one or more
-  // bases: only when EVERY non-virtual base's real storage (the byte range
-  // [byte_offset, byte_offset + byte_size)) lies entirely within
-  // [0, vtable_ptr_end_bits) -- i.e. vtable_ptr_end_bits, however it was
-  // determined (an explicit local `_vptr$` member, or the implicit-sharing
-  // seed above), accounts for ALL storage any base occupies, not just
-  // whatever narrower reason set it. Otherwise a base's own real data could
-  // sit anywhere in the apparent "gap" before the first field, and blindly
-  // filling that gap with a synthetic padding field would fabricate a field
-  // that overlaps that base's storage -- a *worse* failure than the one
-  // being avoided here. This is a real, previously-passing case:
-  // `DerivedWithVTable` in TestCppBitfields.py has an explicit local vptr
-  // (so vtable_ptr_end_bits is non-zero) immediately followed by a
-  // non-empty, non-polymorphic base (`Base`) that has nothing to do with any
-  // vtable-pointer sharing at all; the space `Base` occupies must not be
-  // reinterpreted as padding just because vtable_ptr_end_bits happens to be
-  // non-zero.
+  // bases: true once every non-virtual base's real storage is confirmed to
+  // lie entirely within a known extent -- either the general, base-extent
+  // -derived one just computed above (which folds in, and can only enlarge,
+  // whatever vtable_ptr_end_bits already holds from an explicit local
+  // `_vptr$` member or the implicit-sharing seed above), or, if that
+  // couldn't be fully determined for every non-virtual base, the narrower
+  // pre-existing check that every non-virtual base's [byte_offset,
+  // byte_offset + byte_size) fits inside whatever vtable_ptr_end_bits was
+  // set to by those narrower mechanisms alone. Otherwise a base's own real
+  // data could sit anywhere in the apparent "gap" before the first field,
+  // and blindly filling that gap with a synthetic padding field would
+  // fabricate a field that overlaps that base's storage -- a *worse*
+  // failure than the one being avoided here. This is a real,
+  // previously-passing case: `DerivedWithVTable` in TestCppBitfields.py has
+  // an explicit local vptr immediately followed by a non-empty,
+  // non-polymorphic base (`Base`) that has nothing to do with any
+  // vtable-pointer sharing at all -- but `Base`'s own real extent (now
+  // computed above) covers it exactly, so this still works out safely
+  // rather than needing to stay suppressed.
   //
-  // A virtual base is excluded from this check: it has no fixed
+  // A virtual base is excluded from both checks: it has no fixed
   // compile-time offset in the leading part of the object -- its real
   // storage is not laid out contiguously with fields the way a non-virtual
   // base's is (see the architecture note on ClangASTGenerator::LayoutRecord
   // omitting virtual bases from base_offsets) -- so it cannot itself
   // explain, or conflict with, a gap in the leading, non-virtual part of the
-  // record's layout.
+  // record's layout. (A nearly-empty virtual base used as the Itanium
+  // "primary base" is the one exception, already covered by the
+  // implicit-sharing seed above, which does not distinguish virtual from
+  // non-virtual.)
   //
-  // When vtable_ptr_end_bits is 0 (no anchor at all -- no explicit local
-  // vptr, and the implicit-sharing seed above did not fire), there is
-  // nothing to check bases against, so this conservatively matches the
-  // original, unconditional suppression: any base at all means "not safe"
-  // (regardless of whether it is virtual), exactly as before this whole
-  // implicit-vtable-pointer handling existed.
+  // When neither mechanism can establish an extent (no non-virtual base's
+  // size is known here, and vtable_ptr_end_bits is 0), this conservatively
+  // matches the original, unconditional suppression: any base at all means
+  // "not safe", exactly as before this whole implicit-vtable-pointer
+  // handling existed.
   bool bases_fit_before_vtable_end = !have_base;
-  if (have_base && vtable_ptr_end_bits != 0) {
+  if (have_base && bases_extent_known && have_nonvirtual_base) {
+    vtable_ptr_end_bits = std::max(vtable_ptr_end_bits, bases_extent_bits);
+    bases_fit_before_vtable_end = true;
+  } else if (have_base && vtable_ptr_end_bits != 0) {
     bases_fit_before_vtable_end = true;
     for (size_t i = 0; i < members.size(); ++i) {
       const MemberInfo &member = members[i];
