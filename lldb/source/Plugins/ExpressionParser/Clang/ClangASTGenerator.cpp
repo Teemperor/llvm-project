@@ -1650,21 +1650,37 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     const uint64_t this_offset = abs_bit_offset(field);
 
     // Keep the layout we hand to Clang self-consistent (see the
-    // `storage_tail` comment above). Only plain fields are checked here: a
-    // bitfield's access unit is Clang's own business, and the padding
-    // synthesis below is what keeps a bitfield run contiguous.
+    // `storage_tail` comment above). `storage_bits` is how much storage Clang
+    // gives this field on its own; a bitfield gets none of its own -- how wide
+    // the access unit wrapping the run it belongs to ends up being is Clang's
+    // business, and the padding synthesis below is what keeps such a run
+    // contiguous.
     uint64_t storage_bits = 0;
     if (!field->IsBitfield() && !IsEmptyRecordForLayout(field_qt))
       storage_bits = field->type.Get()->GetByteSize().value_or(0) * 8;
     bool mark_no_unique_address = false;
 
-    if (!is_union && storage_bits) {
+    // A bitfield still takes part in the overlap check below even though it
+    // has no storage of its own: the access unit Clang wraps its run in has to
+    // start at or after the end of everything laid out so far, and that unit
+    // begins at the byte holding the run's first bit
+    // (CGRecordLowering::accumulateBitFields). Comparing `this_offset` -- the
+    // bit, not its byte -- is exactly right for that: whenever the preceding
+    // member is not a bitfield sharing this very byte, `storage_tail` is
+    // byte-aligned, so clearing it by the bit means clearing it by the byte
+    // too; and when it *is* such a bitfield, both live in one access unit and
+    // there is nothing to clear (the gap synthesis above keeps them
+    // contiguous).
+    if (!is_union && (storage_bits || field->IsBitfield())) {
       if (this_offset < storage_tail) {
         // This member starts inside the previous one. That is what
         // `[[no_unique_address]]` on the previous member looks like in DWARF
         // (which cannot spell the attribute), so re-describe it that way --
         // Clang then gives it only its dsize/nvsize worth of storage, leaving
-        // room for this member exactly as the compiler intended.
+        // room for this member exactly as the compiler intended. This is just
+        // as real for a bitfield reusing that tail padding as for a plain
+        // field: `struct { [[no_unique_address]] Inner in; unsigned b : 3; }`
+        // puts `b` inside `in`'s sizeof (but past its dsize).
         bool resolved = false;
         if (last_storage_field &&
             !last_storage_field->hasAttr<clang::NoUniqueAddressAttr>()) {
@@ -1690,8 +1706,12 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
       // A member whose storage runs past the end of the record cannot be laid
       // out either. Same two outcomes: the member may be a potentially-
       // overlapping subobject that really is small enough, or the debug info
-      // is inconsistent and the member has to go.
-      if (record_size_bits && this_offset + storage_bits > record_size_bits) {
+      // is inconsistent and the member has to go. (Only a member with storage
+      // of its own: how far past its first byte a bitfield's access unit
+      // reaches is up to Clang, which clips it to the record's usable tail
+      // itself.)
+      if (storage_bits && record_size_bits &&
+          this_offset + storage_bits > record_size_bits) {
         uint64_t shrunk = PotentiallyOverlappingSizeInBits(ast, field_qt);
         if (shrunk && this_offset + shrunk <= record_size_bits) {
           storage_bits = shrunk;
