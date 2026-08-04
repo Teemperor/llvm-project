@@ -13,7 +13,10 @@
 // `[[no_unique_address]]` member whose tail padding the next member reuses
 // (valid, and pervasive in libc++'s `__compressed_pair`), plainly inconsistent
 // debug info where a member's type is too big for its slot, and the same for a
-// *base class* subobject.
+// *base class* subobject. A bitfield is no exception: Clang decides how wide
+// the access unit wrapping a bitfield run is, but that unit still starts at the
+// byte holding the run's first bit, so a bitfield has to clear everything laid
+// out before it just like a plain field's storage does.
 //
 //===----------------------------------------------------------------------===//
 
@@ -51,6 +54,17 @@ protected:
                 uint64_t byte_offset) {
     builder.AddField(record, builder.GetIdentifier(name), Raw(type),
                      byte_offset);
+  }
+
+  /// Add a bitfield \p name of \p bit_size bits whose *absolute* bit offset in
+  /// \p record is \p bit_offset, described the way the DWARF parser does it: a
+  /// storage-unit byte offset plus the bit offset within that unit.
+  void AddBitfield(RecordType &record, llvm::StringRef name, CompilerType type,
+                   uint64_t bit_offset, uint32_t bit_size) {
+    uint64_t storage_bits = *Raw(type)->GetByteSize() * 8;
+    uint32_t bit_in_unit = bit_offset % storage_bits;
+    builder.AddField(record, builder.GetIdentifier(name), Raw(type),
+                     (bit_offset - bit_in_unit) / 8, bit_size, bit_in_unit);
   }
 
   void AddBase(RecordType &record, CompilerType type, uint64_t byte_offset) {
@@ -313,4 +327,87 @@ TEST_F(ClangASTGeneratorOverlapTest, FieldInsideBaseIsDropped) {
   ClangASTGenerator generator(ast);
   EXPECT_EQ(GenerateFieldNames(generator, derived, nullptr),
             std::vector<std::string>({"after"}));
+}
+
+// The same for a *bitfield* starting inside a base subobject. A bitfield has no
+// storage of its own -- Clang decides how wide the access unit wrapping its run
+// is -- but that unit still starts at the byte holding the bitfield's first bit,
+// so it has to clear everything laid out before it just like a plain field's
+// storage does (CGRecordLowering::checkBitfieldClipping, "Bitfield access unit
+// is not clipped").
+//
+// This is what the fuzzer's deliberately ODR-inconsistent debug info produces:
+// the derived class's definition comes from a translation unit where the base
+// had fewer members (leaving the bitfield's byte free), while the base type
+// resolves to a larger definition from another one.
+TEST_F(ClangASTGeneratorOverlapTest, BitfieldInsideBaseIsDropped) {
+  RecordType &base = MakeRecord("Base", 16);
+  AddField(base, "a", GetLong(), 0);
+  AddField(base, "b", GetLong(), 8);
+  builder.SetRecordComplete(base);
+
+  RecordType &derived = MakeRecord("Derived", 24);
+  AddBase(derived, ts->GetCompilerType(&base), 0);
+  // Bit 104 is byte 13, inside the 16-byte base subobject.
+  AddBitfield(derived, "inside", GetInt(), 104, 19);
+  AddField(derived, "after", GetLong(), 16);
+  builder.SetRecordComplete(derived);
+
+  ClangASTGenerator generator(ast);
+  EXPECT_EQ(GenerateFieldNames(generator, derived, nullptr),
+            std::vector<std::string>({"after"}));
+}
+
+// A bitfield may legitimately sit in the tail padding of a preceding
+// `[[no_unique_address]]` member, so -- exactly as for a plain field there
+// (TailPaddingReuseInfersNoUniqueAddress above) -- the preceding member has to
+// be re-described as potentially-overlapping rather than either member being
+// dropped. Real, valid C++ this time, not inconsistent debug info:
+//
+//   struct Structure {
+//     long *ptr;
+//     [[no_unique_address]] Del del;  // at 8, sizeof 16 but dsize 9
+//     unsigned bf : 3;                // at bit 136 (byte 17), in del's padding
+//   };
+TEST_F(ClangASTGeneratorOverlapTest, BitfieldInTailPaddingInfersNoUniqueAddress) {
+  // struct Del { long &r; bool b; };  // sizeof 16, dsize 9
+  RecordType &del = MakeRecord("Del", 16);
+  AddField(del, "r", builder.CreateReferenceType(GetLong(), /*is_rvalue=*/false),
+           0);
+  AddField(del, "b", GetBool(), 8);
+  builder.SetRecordComplete(del);
+
+  RecordType &structure = MakeRecord("Structure", 24);
+  AddField(structure, "ptr", builder.CreatePointerType(GetLong()), 0);
+  AddField(structure, "del", ts->GetCompilerType(&del), 8);
+  AddBitfield(structure, "bf", GetInt(), 136, 3);
+  builder.SetRecordComplete(structure);
+
+  ClangASTGenerator generator(ast);
+  clang::CXXRecordDecl *decl = nullptr;
+  EXPECT_EQ(GenerateFieldNames(generator, structure, &decl),
+            std::vector<std::string>({"ptr", "del", "bf"}));
+
+  auto field = decl->field_begin();
+  EXPECT_FALSE((*field)->hasAttr<clang::NoUniqueAddressAttr>()); // ptr
+  ++field;
+  EXPECT_TRUE((*field)->hasAttr<clang::NoUniqueAddressAttr>()); // del
+  EXPECT_TRUE((*field)->isPotentiallyOverlapping());
+}
+
+// Two bitfields whose bits overlap (again only possible with inconsistent debug
+// info) land in overlapping access units, which Clang cannot lay out either.
+// Neither can be shrunk, so the later one goes.
+TEST_F(ClangASTGeneratorOverlapTest, OverlappingBitfieldIsDropped) {
+  RecordType &structure = MakeRecord("Structure", 8);
+  AddBitfield(structure, "wide", GetInt(), 0, 24);
+  // Starts inside `wide`, at a byte boundary -- so it would begin a second
+  // access unit overlapping the first rather than joining `wide`'s run.
+  AddBitfield(structure, "inside", GetInt(), 8, 8);
+  AddField(structure, "after", GetInt(), 4);
+  builder.SetRecordComplete(structure);
+
+  ClangASTGenerator generator(ast);
+  EXPECT_EQ(GenerateFieldNames(generator, structure, nullptr),
+            std::vector<std::string>({"wide", "after"}));
 }
