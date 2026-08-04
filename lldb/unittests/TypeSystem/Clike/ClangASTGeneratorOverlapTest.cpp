@@ -199,6 +199,68 @@ TEST_F(ClangASTGeneratorOverlapTest, ImpossibleOverlapDropsMember) {
             std::vector<std::string>({"ptr"}));
 }
 
+// The overlap check has to size a member by the *clang* type the generator
+// hands Clang, not by the LLDB type the enclosing record was laid out against.
+// Those two disagree whenever two modules define a same-named record
+// differently: the generator unifies records by fully-qualified name (so a type
+// forward-declared in one module and defined in another stays a single clang
+// type), which means the first module to be generated owns the clang decl and
+// everybody else's LLDB byte size for that name is irrelevant to how much
+// storage Clang gives a member of it.
+//
+// Here "BBox" is 24 bytes in the module generated first and 16 bytes in the one
+// `Cellule` comes from, so `hash` at byte 16 looks fine against the 16-byte
+// LLDB size but sits inside the 24 bytes Clang gives `box`.
+TEST_F(ClangASTGeneratorOverlapTest, MemberSizeComesFromTheClangType) {
+  // The "other module": struct BBox { long a, b; char c; }; -- 24 bytes.
+  auto other_ts = std::make_shared<TypeSystemClike>(
+      "other", llvm::Triple("x86_64-pc-linux-gnu"));
+  clike_typesystem::Builder other_builder{*other_ts};
+  auto &other_bbox = *llvm::cast<RecordType>(
+      static_cast<clike_typesystem::Type *>(
+          other_builder.CreateRecordType("BBox", 24, /*is_cpp_class=*/true)
+              .GetOpaqueQualType()));
+  other_builder.AddField(other_bbox, other_builder.GetIdentifier("a"),
+                         Raw(GetLong()), 0);
+  other_builder.AddField(other_bbox, other_builder.GetIdentifier("b"),
+                         Raw(GetLong()), 8);
+  other_builder.AddField(
+      other_bbox, other_builder.GetIdentifier("c"),
+      Raw(other_builder.GetBuiltinType("char", 1, lldb::eEncodingSint,
+                                       lldb::eFormatChar)),
+      16);
+  other_builder.SetRecordComplete(other_bbox);
+
+  // This module's own, smaller "BBox": struct BBox { long a, b; }; -- 16 bytes.
+  RecordType &bbox = MakeRecord("BBox", 16);
+  AddField(bbox, "a", GetLong(), 0);
+  AddField(bbox, "b", GetLong(), 8);
+  builder.SetRecordComplete(bbox);
+
+  RecordType &cellule = MakeRecord("Cellule", 32);
+  AddField(cellule, "box", ts->GetCompilerType(&bbox), 0);
+  AddField(cellule, "hash", GetLong(), 16);
+  AddField(cellule, "tail", GetLong(), 24);
+  builder.SetRecordComplete(cellule);
+
+  ClangASTGenerator generator(ast);
+  // Generate the other module's BBox first, so it is the one that owns the
+  // clang decl named "BBox" (this is the ordering the name unification makes
+  // significant, and which module wins is not something the generator gets to
+  // choose in a real target).
+  clang::CXXRecordDecl *other_decl = nullptr;
+  EXPECT_EQ(GenerateFieldNames(generator, other_bbox, &other_decl),
+            std::vector<std::string>({"a", "b", "c"}));
+  EXPECT_EQ(ast.getTypeSizeInChars(ast.getCanonicalTagType(other_decl))
+                .getQuantity(),
+            24);
+
+  // `hash` cannot be laid out inside those 24 bytes, and nothing can be shrunk
+  // to make room (BBox's dsize is 17 bytes, still past `hash`), so it goes.
+  EXPECT_EQ(GenerateFieldNames(generator, cellule, nullptr),
+            std::vector<std::string>({"box", "tail"}));
+}
+
 // A union's members all share offset 0 by design (and Clang lowers them through
 // a path with no such requirement), so none of them may be dropped.
 TEST_F(ClangASTGeneratorOverlapTest, UnionMembersAreNotDropped) {

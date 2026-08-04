@@ -1439,6 +1439,34 @@ static uint64_t PotentiallyOverlappingSizeInBits(clang::ASTContext &ast,
       std::max(layout.getNonVirtualSize(), layout.getDataSize()));
 }
 
+/// The number of bits of storage Clang gives a field of type \p qt.
+///
+/// This has to be Clang's own idea of the type's size, not the LLDB type's
+/// DWARF byte size: record lowering sizes a member from
+/// ConvertTypeForMem(the member's type) (CGRecordLowering::getStorageType), so
+/// it follows the *clang* decl this generator produced for \p qt. The two can
+/// genuinely disagree, because a clang decl is shared by all the same-named
+/// types across the target's modules while each LLDB type keeps its own
+/// module's byte size: with the (deliberately, in a fuzzer; accidentally, in
+/// dsymutil-uniqued or ODR-violating real debug info) differently-defined
+/// same-named records, the record we are populating can be laid out against a
+/// 32-byte definition of a member's type while the clang decl for it came from
+/// a 40-byte one. Deciding overlap on the LLDB size then lets a member through
+/// that Clang later finds sitting inside its predecessor.
+///
+/// Falls back to the LLDB byte size when Clang cannot size the type: it stayed
+/// an incomplete forward declaration, or (for a record, directly or as an array
+/// element) it is still being populated further up this call stack, in which
+/// case asking for its layout now would both be invalid and cache a half-built
+/// one.
+static uint64_t FieldStorageSizeInBits(clang::ASTContext &ast,
+                                       clang::QualType qt,
+                                       ct::Type *clike_type) {
+  if (!qt->isIncompleteType() && !qt->isDependentType())
+    return ast.toBits(ast.getTypeSizeInChars(qt));
+  return clike_type ? clike_type->GetByteSize().value_or(0) * 8 : 0;
+}
+
 void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   auto it = m_records.find(record_decl);
   if (it == m_records.end())
@@ -1657,7 +1685,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     // contiguous.
     uint64_t storage_bits = 0;
     if (!field->IsBitfield() && !IsEmptyRecordForLayout(field_qt))
-      storage_bits = field->type.Get()->GetByteSize().value_or(0) * 8;
+      storage_bits = FieldStorageSizeInBits(ast, field_qt, field->type.Get());
     bool mark_no_unique_address = false;
 
     // A bitfield still takes part in the overlap check below even though it
