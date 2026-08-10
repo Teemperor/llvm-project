@@ -641,6 +641,16 @@ bool ClangASTImporter::importRecordLayoutFromOrigin(
   if (origin_record.IsInvalid())
     return false;
 
+  // Everything below completes the origin and reads its record layout, both of
+  // which modify the origin's ASTContext. That context is shared by every
+  // Target that has the origin's Module loaded, so take its lock - the same one
+  // its TypeSystemClang entry points take. Without it two threads laying out
+  // the same record corrupt the origin's layout cache.
+  std::optional<std::lock_guard<std::recursive_mutex>> origin_guard;
+  if (TypeSystemClang *origin_ast =
+          TypeSystemClang::GetASTContext(&origin_record->getASTContext()))
+    origin_guard.emplace(origin_ast->GetMutex());
+
   std::remove_reference_t<decltype(field_offsets)> origin_field_offsets;
   std::remove_reference_t<decltype(base_offsets)> origin_base_offsets;
   std::remove_reference_t<decltype(vbase_offsets)> origin_virtual_base_offsets;
@@ -1046,6 +1056,14 @@ ClangASTImporter::MapCompleter::~MapCompleter() = default;
 
 llvm::Expected<Decl *>
 ClangASTImporter::ASTImporterDelegate::ImportImpl(Decl *From) {
+  // Importing reads and completes the source ASTContext, which - when it is a
+  // Module's ASTContext - is shared by every Target that has that Module
+  // loaded. Take that ASTContext's lock, the same one its TypeSystemClang entry
+  // points take, or the import races every other thread parsing types into it.
+  std::optional<std::lock_guard<std::recursive_mutex>> source_guard;
+  if (TypeSystemClang *source_ast = TypeSystemClang::GetASTContext(m_source_ctx))
+    source_guard.emplace(source_ast->GetMutex());
+
   // FIXME: The Minimal import mode of clang::ASTImporter does not correctly
   // import Lambda definitions. Work around this for now by not importing
   // lambdas at all. This is most likely encountered when importing decls from
@@ -1139,6 +1157,11 @@ ClangASTImporter::ASTImporterDelegate::ImportImpl(Decl *From) {
 
 void ClangASTImporter::ASTImporterDelegate::ImportDefinitionTo(
     clang::Decl *to, clang::Decl *from) {
+  // Same as in ImportImpl: `from` lives in the shared source ASTContext.
+  std::optional<std::lock_guard<std::recursive_mutex>> source_guard;
+  if (TypeSystemClang *source_ast = TypeSystemClang::GetASTContext(m_source_ctx))
+    source_guard.emplace(source_ast->GetMutex());
+
   Log *log = GetLog(LLDBLog::Expressions);
 
   auto getDeclName = [](Decl const *decl) {

@@ -14,6 +14,7 @@
 #include <functional>
 #include <initializer_list>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <set>
 #include <string>
@@ -122,6 +123,18 @@ public:
   typedef void (*CompleteTagDeclCallback)(void *baton, clang::TagDecl *);
   typedef void (*CompleteObjCInterfaceDeclCallback)(void *baton,
                                                     clang::ObjCInterfaceDecl *);
+
+  /// Guards this type system, and with it the ASTContext it owns.
+  ///
+  /// A Module-scoped TypeSystemClang is shared by every Target that has that
+  /// Module loaded, so two threads debugging the same binary parse types into
+  /// one ASTContext - which is not thread-safe in any respect. Every entry
+  /// point below takes this lock.
+  ///
+  /// Recursive for two reasons: the entry points call each other, and clang
+  /// calls back into them (ClangExternalASTSourceCallbacks) from inside an
+  /// operation the caller already holds this lock for.
+  std::recursive_mutex &GetMutex() const { return m_mutex; }
 
   // llvm casting support
   bool isA(const void *ClassID) const override { return ClassID == &ID; }
@@ -1206,6 +1219,8 @@ private:
 
   // Classes that inherit from TypeSystemClang can see and modify these
   std::string m_target_triple;
+  /// See GetMutex(). Mutable so that const entry points can take it.
+  mutable std::recursive_mutex m_mutex;
   std::unique_ptr<clang::ASTContext> m_ast_up;
   std::unique_ptr<clang::LangOptions> m_language_options_up;
   std::unique_ptr<clang::FileManager> m_file_manager_up;
