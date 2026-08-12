@@ -1,0 +1,4 @@
+module CommonMod {
+  header "Common.h"
+  export *
+}

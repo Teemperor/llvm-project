@@ -1,0 +1,17 @@
+// Template for the six generated 'commonN.h' headers (commonN.h is produced
+// from this file by the Makefile via 'sed s/@N@/<N>/'). Each of the six
+// dylibs (M1.cpp .. M6.cpp) includes its own numbered copy, but every copy
+// still defines the *same* tag name 'Common' (via COMMON_NAME) with a
+// different array bound on 'fields' -- a deliberate ODR violation on the
+// array bound of an otherwise identically-named/shaped struct, replicated
+// six ways instead of the usual two or three.
+#ifndef COMMON_H_IN
+#define COMMON_H_IN
+
+#define COMMON_NAME Common
+
+struct COMMON_NAME {
+  int fields[@N@];
+};
+
+#endif // COMMON_H_IN

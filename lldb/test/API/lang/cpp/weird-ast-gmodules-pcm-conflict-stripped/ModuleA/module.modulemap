@@ -1,0 +1,4 @@
+module Shapes {
+  header "Shapes.h"
+  export *
+}

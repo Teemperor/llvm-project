@@ -1,0 +1,4 @@
+module ModuleB {
+  header "Shared.h"
+  export *
+}
