@@ -72,3 +72,17 @@ Note once finalized, no further increments will be processed.") lldb::SBProgress
 %feature("docstring",
 "Increment the progress by a given number of units, optionally with a message. Not all progress events are guaraunteed
 to be sent, but incrementing to the total will always guarauntee a progress end event being sent.") lldb::SBProcess::Increment; 
+
+%feature("docstring",
+"Reports that progress was made.
+
+``amount`` is how many units of work were completed since the last call and
+``description`` optionally replaces the detail text of the progress report::
+
+    progress = lldb.SBProgress('Scanning modules', 'starting', 100, debugger)
+    for i, module in enumerate(target.module_iter()):
+        progress.Increment(1, module.GetFileSpec().GetFilename())
+
+Progress reports show up in the command line interface and are broadcast as
+`SBDebugger` events, see `SBDebugger.GetProgressFromEvent`."
+) lldb::SBProgress::Increment;

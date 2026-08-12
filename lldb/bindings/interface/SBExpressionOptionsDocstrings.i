@@ -1,5 +1,23 @@
 %feature("docstring",
-"A container for options to use when evaluating expressions."
+"A container for options to use when evaluating expressions.
+
+Pass one to `SBFrame.EvaluateExpression`, `SBTarget.EvaluateExpression` or
+`SBValue.EvaluateExpression` to control how the expression is run. The most
+frequently used options say what may happen while the expression executes: how
+long it may take, whether it may hit breakpoints and what happens if it
+crashes::
+
+    options = lldb.SBExpressionOptions()
+    options.SetIgnoreBreakpoints(True)
+    options.SetTimeoutInMicroSeconds(500000)   # Give up after half a second.
+    options.SetTrapExceptions(False)
+    value = frame.EvaluateExpression('compute_everything()', options)
+
+Other options select the language of the expression
+(`SBExpressionOptions.SetLanguage`), whether the result becomes a persistent
+variable such as ``$0`` (`SBExpressionOptions.SetSuppressPersistentResult`) and
+whether the expression defines new entities instead of computing a value
+(`SBExpressionOptions.SetTopLevel`)."
 ) lldb::SBExpressionOptions;
 
 %feature("docstring", "Sets whether to coerce the expression result to ObjC id type after evaluation."
@@ -29,7 +47,7 @@
 %feature("docstring", "Sets whether to abort expression evaluation if an exception is thrown while executing.  Don't set this to false unless you know the function you are calling traps all exceptions itself."
 ) lldb::SBExpressionOptions::SetTrapExceptions;
 
-%feature ("docstring", "Sets the language that LLDB should assume the expression is written in"
+%feature("docstring", "Sets the language that LLDB should assume the expression is written in"
 ) lldb::SBExpressionOptions::SetLanguage;
 
 %feature("docstring", "Sets whether to generate debug information for the expression and also controls if a SBModule is generated."
@@ -67,3 +85,75 @@
 
 %feature("docstring", "Gets language-plugin specific boolean option for expression evaluation. LLDB currently doesn't validate whether the option being retrieved is one that is understood by the expression evaluator."
 ) lldb::SBExpressionOptions::GetBooleanLanguageOption;
+
+%feature("docstring", "Gets whether the expression result is coerced to the ObjC id type after evaluation."
+) lldb::SBExpressionOptions::GetCoerceResultToId;
+
+%feature("docstring", "Gets whether the expression stack is unwound on error.
+
+If this is disabled, the frames of a crashed expression are left on the stack so
+they can be inspected."
+) lldb::SBExpressionOptions::GetUnwindOnError;
+
+%feature("docstring", "Gets whether breakpoint hits are ignored while running expressions."
+) lldb::SBExpressionOptions::GetIgnoreBreakpoints;
+
+%feature("docstring", "Gets whether the expression result is cast to its dynamic type.
+
+The result is one of the ``lldb.eDynamic*`` enumerators, see
+`SBValue.GetDynamicValue`."
+) lldb::SBExpressionOptions::GetFetchDynamicValue;
+
+%feature("docstring", "Gets the timeout in microseconds the expression may run for.
+
+A timeout of ``0`` means the default timeout is used."
+) lldb::SBExpressionOptions::GetTimeoutInMicroSeconds;
+
+%feature("docstring", "Gets the timeout in microseconds the expression may run on one thread before all threads are resumed.
+
+See `SBExpressionOptions.SetOneThreadTimeoutInMicroSeconds`."
+) lldb::SBExpressionOptions::GetOneThreadTimeoutInMicroSeconds;
+
+%feature("docstring", "Gets whether all threads are resumed if the expression does not complete on one thread."
+) lldb::SBExpressionOptions::GetTryAllThreads;
+
+%feature("docstring", "Gets whether other threads are stopped while the expression runs."
+) lldb::SBExpressionOptions::GetStopOthers;
+
+%feature("docstring", "Gets whether expression evaluation is aborted when an exception is thrown."
+) lldb::SBExpressionOptions::GetTrapExceptions;
+
+%feature("docstring", "Gets whether expression evaluation stops if the expression forks."
+) lldb::SBExpressionOptions::GetStopOnFork;
+
+%feature("docstring", "Sets whether expression evaluation stops if the expression forks.
+
+Expressions that call ``fork`` or ``posix_spawn`` create a child process; with
+this enabled LLDB stops when that happens instead of letting the child run."
+) lldb::SBExpressionOptions::SetStopOnFork;
+
+%feature("docstring", "Sets a callback that can cancel a running expression.
+
+The callback is polled while the expression runs; returning ``True`` from it
+aborts the evaluation. Use this to keep a user interface responsive during long
+running expressions."
+) lldb::SBExpressionOptions::SetCancelCallback;
+
+%feature("docstring", "Gets whether debug information is generated for the expression."
+) lldb::SBExpressionOptions::GetGenerateDebugInfo;
+
+%feature("docstring", "Gets whether a persistent result variable is suppressed.
+
+If persistent results are suppressed, the value of the expression is not
+available as ``$0`` afterwards, see `SBValue.Persist`."
+) lldb::SBExpressionOptions::GetSuppressPersistentResult;
+
+%feature("docstring", "Gets whether the expression is parsed as top level code."
+) lldb::SBExpressionOptions::GetTopLevel;
+
+%feature("docstring", "Sets whether the expression is parsed as top level code.
+
+Top level expressions are not wrapped in a function, so they can define new
+functions, types and variables that later expressions can use, but they don't
+produce a value."
+) lldb::SBExpressionOptions::SetTopLevel;

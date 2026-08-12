@@ -1,10 +1,23 @@
 %feature("docstring",
-"API clients can get information about memory regions in processes.
+"Describes one region of the address space of a process.
 
-For Python users, `len()` is overriden to output the size of the memory region in bytes.
-For Python users, `str()` is overriden with the results of the GetDescription function-
-        produces a formatted string that describes a memory range in the form: 
-        [Hex start - Hex End) with associated permissions (RWX)"
+A memory region is a contiguous range of addresses with uniform permissions, for
+example the code of a shared library or a mapped file. Regions are obtained from
+`SBProcess.GetMemoryRegionInfo` for a specific address or from
+`SBProcess.GetMemoryRegions` for all of them::
+
+    region = lldb.SBMemoryRegionInfo()
+    error = process.GetMemoryRegionInfo(addr, region)
+    if error.Success() and region.IsWritable():
+        process.WriteMemory(addr, b'\\x00', lldb.SBError())
+
+API clients can get information about memory regions in processes.
+
+For Python users, ``len()`` is overriden to output the size of the memory region
+in bytes, and ``str()`` is overriden with the results of the
+`SBMemoryRegionInfo.GetDescription` function: a formatted string that describes a
+memory range in the form ``[Hex start - Hex End)`` with the associated
+permissions (RWX)."
 ) lldb::SBMemoryRegionInfo;
 
 %feature("docstring", "
@@ -33,7 +46,7 @@ For Python users, `str()` is overriden with the results of the GetDescription fu
 %feature("docstring", "
         Return the size of pages in this memory region.  0 will be returned
         if this information was unavailable."
-) lldb::SBMemoryRegionInfo::GetPageSize();
+) lldb::SBMemoryRegionInfo::GetPageSize;
 
 %feature("docstring", "
         Takes an SBStream parameter to write output to,
@@ -42,3 +55,48 @@ For Python users, `str()` is overriden with the results of the GetDescription fu
         If results true, the output will be written to the stream.
         "
 ) lldb::SBMemoryRegionInfo::GetDescription;
+
+%feature("docstring",
+"Resets this object to an invalid, empty region."
+) lldb::SBMemoryRegionInfo::Clear;
+
+%feature("docstring",
+"Returns the first address of this region."
+) lldb::SBMemoryRegionInfo::GetRegionBase;
+
+%feature("docstring",
+"Returns the address after the last byte of this region."
+) lldb::SBMemoryRegionInfo::GetRegionEnd;
+
+%feature("docstring",
+"Returns whether this region can be read from.
+
+Reading memory from a region that is not readable fails, see
+`SBProcess.ReadMemory`."
+) lldb::SBMemoryRegionInfo::IsReadable;
+
+%feature("docstring",
+"Returns whether this region can be written to.
+
+Note that LLDB can often write to read-only regions anyway, since it writes
+memory through the debug interface of the operating system rather than through
+the process itself."
+) lldb::SBMemoryRegionInfo::IsWritable;
+
+%feature("docstring",
+"Returns whether code in this region can be executed."
+) lldb::SBMemoryRegionInfo::IsExecutable;
+
+%feature("docstring",
+"Returns whether this region is mapped into the address space of the process.
+
+`SBProcess.GetMemoryRegionInfo` also returns regions for unmapped address
+ranges, which is how the holes between the mapped regions can be found."
+) lldb::SBMemoryRegionInfo::IsMapped;
+
+%feature("docstring",
+"Returns the name of this region, if it has one.
+
+This is typically the path of the file that is mapped into the region. Returns
+``None`` for anonymous regions."
+) lldb::SBMemoryRegionInfo::GetName;

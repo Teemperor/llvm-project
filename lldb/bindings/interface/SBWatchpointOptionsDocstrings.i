@@ -1,5 +1,15 @@
 %feature("docstring",
-"A container for options to use when creating watchpoints."
+"A container for options to use when creating watchpoints.
+
+Pass it to `SBTarget.WatchpointCreateByAddress` to decide what kind of memory
+accesses the watchpoint should stop on::
+
+    options = lldb.SBWatchpointOptions()
+    options.SetWatchpointTypeWrite(lldb.eWatchpointWriteTypeOnModify)
+    error = lldb.SBError()
+    watchpoint = target.WatchpointCreateByAddress(addr, 4, options, error)
+
+See also :py:class:`SBWatchpoint`."
 ) lldb::SBWatchpointOptions;
 
 %feature("docstring", "Sets whether the watchpoint should stop on read accesses."

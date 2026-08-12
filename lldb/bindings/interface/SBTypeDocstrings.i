@@ -1,10 +1,146 @@
 %feature("docstring",
-"Represents a member of a type."
+"Represents a field, a base class or an ivar of a type.
+
+Members are returned by `SBType.GetFieldAtIndex`,
+`SBType.GetDirectBaseClassAtIndex` and `SBType.GetVirtualBaseClassAtIndex`. A
+member has a name, a type and an offset inside the containing type::
+
+    task_type = target.FindFirstType('Task')
+    for i in range(task_type.GetNumberOfFields()):
+        field = task_type.GetFieldAtIndex(i)
+        print('%s %s at offset %d' % (field.GetType().GetName(), field.GetName(),
+                                      field.GetOffsetInBytes()))
+
+See `SBTypeStaticField` for static data members, which are not part of the
+fields of a type."
 ) lldb::SBTypeMember;
 
 %feature("docstring",
-"Represents a member function of a type."
+"Returns the name of this member.
+
+Returns an empty string for anonymous members. For base classes this is the
+name of the base class type."
+) lldb::SBTypeMember::GetName;
+
+%feature("docstring",
+"Returns the type of this member as an `SBType`."
+) lldb::SBTypeMember::GetType;
+
+%feature("docstring",
+"Returns the offset of this member inside the containing type in bytes.
+
+For bitfields this is the offset of the byte the bitfield starts in; use
+`SBTypeMember.GetOffsetInBits` to get the exact position."
+) lldb::SBTypeMember::GetOffsetInBytes;
+
+%feature("docstring",
+"Returns the offset of this member inside the containing type in bits."
+) lldb::SBTypeMember::GetOffsetInBits;
+
+%feature("docstring",
+"Returns whether this member is a bitfield.
+
+See `SBTypeMember.GetBitfieldSizeInBits` for the declared width of the
+bitfield."
+) lldb::SBTypeMember::IsBitfield;
+
+%feature("docstring",
+"Returns the width of this bitfield in bits.
+
+Returns ``0`` if this member is not a bitfield, see
+`SBTypeMember.IsBitfield`."
+) lldb::SBTypeMember::GetBitfieldSizeInBits;
+
+%feature("docstring",
+"Represents a member function (a method) of a type.
+
+Member functions are returned by `SBType.GetMemberFunctionAtIndex`. Note that
+this only describes the function's signature, it is not a callable object; use
+`SBFrame.EvaluateExpression` or `SBValue.EvaluateExpression` to actually call a
+function in the target::
+
+    task_type = target.FindFirstType('Task')
+    for i in range(task_type.GetNumberOfMemberFunctions()):
+        method = task_type.GetMemberFunctionAtIndex(i)
+        print('%s %s' % (method.GetReturnType().GetName(), method.GetName()))
+"
 ) lldb::SBTypeMemberFunction;
+
+%feature("docstring",
+"Returns the name of this member function."
+) lldb::SBTypeMemberFunction::GetName;
+
+%feature("docstring",
+"Returns the demangled name of this member function, if it has one."
+) lldb::SBTypeMemberFunction::GetDemangledName;
+
+%feature("docstring",
+"Returns the mangled name of this member function, if it has one.
+
+Returns ``None`` for languages that don't mangle names or if the debug
+information doesn't contain the mangled name."
+) lldb::SBTypeMemberFunction::GetMangledName;
+
+%feature("docstring",
+"Returns the function type of this member function as an `SBType`."
+) lldb::SBTypeMemberFunction::GetType;
+
+%feature("docstring",
+"Returns the return type of this member function as an `SBType`."
+) lldb::SBTypeMemberFunction::GetReturnType;
+
+%feature("docstring",
+"Returns the number of arguments of this member function.
+
+For non-static member functions this does not include the implicit ``this``
+argument."
+) lldb::SBTypeMemberFunction::GetNumberOfArguments;
+
+%feature("docstring",
+"Returns the type of the argument with the given index.
+
+Returns an invalid `SBType` if the index is out of range. See
+`SBTypeMemberFunction.GetNumberOfArguments`."
+) lldb::SBTypeMemberFunction::GetArgumentTypeAtIndex;
+
+%feature("docstring",
+"Returns what kind of member function this is.
+
+The result is one of the ``lldb.eMemberFunctionKind*`` enumerators, which
+distinguishes constructors, destructors, static methods and instance methods."
+) lldb::SBTypeMemberFunction::GetKind;
+
+%feature("docstring",
+"Represents a static data member of a type.
+
+Static data members are not part of the fields of a type (they are not stored
+inside instances), so they are looked up by name with
+`SBType.GetStaticFieldWithName`::
+
+    static_field = my_type.GetStaticFieldWithName('s_instance_count')
+    value = static_field.GetConstantValue(target)
+"
+) lldb::SBTypeStaticField;
+
+%feature("docstring",
+"Returns the name of this static data member."
+) lldb::SBTypeStaticField::GetName;
+
+%feature("docstring",
+"Returns the mangled name of this static data member, if it has one."
+) lldb::SBTypeStaticField::GetMangledName;
+
+%feature("docstring",
+"Returns the type of this static data member as an `SBType`."
+) lldb::SBTypeStaticField::GetType;
+
+%feature("docstring",
+"Returns the value of this static data member as an `SBValue`.
+
+``target`` is the `SBTarget` in which the value should be read. Returns an
+invalid value if the member has no value that LLDB can read, for instance
+because it is only declared and never defined."
+) lldb::SBTypeStaticField::GetConstantValue;
 
 %feature("docstring",
 "Represents a data type in lldb.
@@ -25,75 +161,39 @@ information so for dynamic languages the functionality can be very limited.
 `SBValue` can be used to represent runtime values which then can be more
 accurately queried for certain information such as byte size.
 
+Types can be inspected and transformed with the methods below, and two types
+can be compared with the ``==`` and ``!=`` operators. For example::
 
-SBType supports the eq/ne operator. For example,::
+    # A pointer type and the type of a variable of that type are the same type.
+    task_type = target.FindFirstType('Task')
+    task_head = frame.FindVariable('task_head')  # Declared as 'Task *'.
+    assert task_head.GetType() == task_type.GetPointerType()
 
-    //main.cpp:
+    # Walk to the pointee type and list its fields.
+    for i in range(task_head.GetType().GetPointeeType().GetNumberOfFields()):
+        field = task_head.GetType().GetPointeeType().GetFieldAtIndex(i)
+        print('%s %s' % (field.GetType().GetName(), field.GetName()))
 
-    class Task {
-    public:
-        int id;
-        Task *next;
-        Task(int i, Task *n):
-            id(i),
-            next(n)
-        {}
-    };
+The ``Is*`` methods (`SBType.IsPointerType`, `SBType.IsAggregateType`, ...)
+classify a type, the ``Get*Type`` methods navigate between related types
+(`SBType.GetPointerType`, `SBType.GetPointeeType`,
+`SBType.GetCanonicalType`, ...) and `SBType.GetFieldAtIndex`,
+`SBType.GetMemberFunctionAtIndex` and `SBType.GetEnumMembers` inspect the
+contents of a type.
 
-    int main (int argc, char const *argv[])
-    {
-        Task *task_head = new Task(-1, NULL);
-        Task *task1 = new Task(1, NULL);
-        Task *task2 = new Task(2, NULL);
-        Task *task3 = new Task(3, NULL); // Orphaned.
-        Task *task4 = new Task(4, NULL);
-        Task *task5 = new Task(5, NULL);
-
-        task_head->next = task1;
-        task1->next = task2;
-        task2->next = task4;
-        task4->next = task5;
-
-        int total = 0;
-        Task *t = task_head;
-        while (t != NULL) {
-            if (t->id >= 0)
-                ++total;
-            t = t->next;
-        }
-        printf('We have a total number of %d tasks\\n', total);
-
-        // This corresponds to an empty task list.
-        Task *empty_task_head = new Task(-1, NULL);
-
-        return 0; // Break at this line
-    }
-
-    # find_type.py:
-
-            # Get the type 'Task'.
-            task_type = target.FindFirstType('Task')
-            self.assertTrue(task_type)
-
-            # Get the variable 'task_head'.
-            frame0.FindVariable('task_head')
-            task_head_type = task_head.GetType()
-            self.assertTrue(task_head_type.IsPointerType())
-
-            # task_head_type is 'Task *'.
-            task_pointer_type = task_type.GetPointerType()
-            self.assertTrue(task_head_type == task_pointer_type)
-
-            # Get the child mmember 'id' from 'task_head'.
-            id = task_head.GetChildMemberWithName('id')
-            id_type = id.GetType()
-
-            # SBType.GetBasicType() takes an enum 'BasicType' (lldb-enumerations.h).
-            int_type = id_type.GetBasicType(lldb.eBasicTypeInt)
-            # id_type and int_type should be the same type!
-            self.assertTrue(id_type == int_type)
-
+See also `SBTypeList`, which is what the ``FindTypes`` functions return, and
+`SBTypeCategory` for changing how values of a type are displayed.
 ") lldb::SBType;
+
+%feature("docstring",
+    "Returns whether this object represents a type.
+
+    An SBType is invalid if it was default constructed or if the lookup that
+    was supposed to produce it (for example `SBTarget.FindFirstType`) found
+    nothing. Most methods of an invalid type return an invalid type, ``0`` or
+    an empty string.
+    "
+) lldb::SBType::IsValid;
 
 %feature("docstring",
     "Returns the number of bytes a variable with the given types occupies in memory.
@@ -114,6 +214,35 @@ SBType supports the eq/ne operator. For example,::
       ``0`` as the actual size depends on runtime information.
     "
 ) lldb::SBType::GetByteSize;
+
+%feature("docstring",
+    "Returns the alignment requirement of this type in bytes.
+
+    Returns ``0`` if the alignment can't be determined.
+
+    Language-specific behaviour:
+
+    * C: The output is expected to match the value of ``_Alignof(Type)``.
+    * C++: Same as in C (``alignof(Type)``).
+    * Objective-C: Same as in C.
+    "
+) lldb::SBType::GetByteAlign;
+
+%feature("docstring",
+    "Returns true if this type is a function type.
+
+    Language-specific behaviour:
+
+    * C: Returns true for function types such as ``int(int)``. Pointers to
+      functions are not function types, use `SBType.GetPointeeType` on them
+      first.
+    * C++: Same as in C. Member functions are also considered function types.
+    * Objective-C: Same as in C. Objective-C methods are not function types.
+
+    See `SBType.GetFunctionReturnType` and `SBType.GetFunctionArgumentTypes` to
+    inspect the signature of a function type.
+    "
+) lldb::SBType::IsFunctionType;
 
 %feature("docstring",
     "Returns true if this type is a pointer type.
@@ -317,6 +446,27 @@ SBType supports the eq/ne operator. For example,::
 ) lldb::SBType::GetUnqualifiedType;
 
 %feature("docstring",
+    "Returns the canonical version of this type.
+
+    The canonical type is the type with all typedefs and type aliases resolved.
+    In contrast to `SBType.GetTypedefedType` this looks through all levels of
+    typedefs at once and also resolves typedefs that are nested inside the type
+    (for example the element type of an array).
+
+    Language-specific behaviour:
+
+    * C: For a typedef this returns the type it ultimately refers to, for any
+      other type it returns the type itself.
+    * C++: Same as in C. Also resolves type aliases and ``decltype``
+      expressions.
+    * Objective-C: Same as in C.
+
+    See also `SBType.GetUnqualifiedType`, which only removes ``const`` and
+    ``volatile``.
+    "
+) lldb::SBType::GetCanonicalType;
+
+%feature("docstring",
     "Returns the underlying integer type if this is an enumeration type.
 
     If this type is an invalid `SBType` or not an enumeration type an invalid
@@ -490,6 +640,35 @@ SBType supports the eq/ne operator. For example,::
 ) lldb::SBType::GetVirtualBaseClassAtIndex;
 
 %feature("docstring",
+    "Returns the static data member with the given name.
+
+    Static data members are not part of the fields of a type, so they can't be
+    found via `SBType.GetFieldAtIndex`. Returns an invalid `SBTypeStaticField`
+    if this type has no static data member with that name.
+
+    Language-specific behaviour:
+
+    * C: Always returns an invalid `SBTypeStaticField`.
+    * C++: Returns ``static`` data members of classes and structs.
+    * Objective-C: Returns class variables.
+    "
+) lldb::SBType::GetStaticFieldWithName;
+
+%feature("docstring",
+    "Returns the members of this enumeration type.
+
+    Returns an `SBTypeEnumMemberList`, which is empty if this type is not an
+    enumeration type. For example::
+
+        for member in my_enum_type.GetEnumMembers():
+            print('%s = %d' % (member.GetName(), member.GetValueAsSigned()))
+
+    See also `SBType.GetEnumerationIntegerType` and
+    `SBType.IsScopedEnumerationType`.
+    "
+) lldb::SBType::GetEnumMembers;
+
+%feature("docstring",
     "Returns the `SBModule` this `SBType` belongs to.
 
     Returns no `SBModule` if this type does not belong to any specific
@@ -584,6 +763,28 @@ SBType supports the eq/ne operator. For example,::
     * Objective-C: Always returns an invalid SBType.
     "
 ) lldb::SBType::GetTemplateArgumentType;
+
+%feature("docstring",
+    "Returns the value of the non-type template argument with the given index.
+
+    ``target`` is the `SBTarget` that provides the context in which the value is
+    created. Returns an invalid `SBValue` if the index is out of bounds or the
+    template argument is not a value (for example because it is a type). Packs
+    of template arguments are expanded, so each element of a pack has its own
+    index.
+
+    Language-specific behaviour:
+
+    * C: Always returns an invalid `SBValue`.
+    * C++: For an instantiation of ``template <int N> struct Array {};`` as
+      ``Array<42>``, ``GetTemplateArgumentValue(target, 0)`` returns a value
+      holding ``42``.
+    * Objective-C: Always returns an invalid `SBValue`.
+
+    See `SBType.GetTemplateArgumentKind` to find out whether an argument is a
+    type or a value.
+    "
+) lldb::SBType::GetTemplateArgumentValue;
 
 %feature("docstring",
     "Returns the kind of the template argument with the given index.
@@ -716,35 +917,49 @@ SBType supports the eq/ne operator. For example,::
 ) lldb::SBType::FindDirectNestedType;
 
 %feature("docstring",
-"Represents a list of :py:class:`SBType` s.
+    "Writes a description of this type into the given `SBStream`.
 
-The FindTypes() method of :py:class:`SBTarget`/:py:class:`SBModule` returns a SBTypeList.
+    ``description_level`` is one of the ``lldb.eDescriptionLevel*`` enumerators
+    and controls how much detail is printed. For complete types this can include
+    the full layout of the type, which is useful for debugging problems with
+    debug information.
+    "
+) lldb::SBType::GetDescription;
 
-SBTypeList supports :py:class:`SBType` iteration. For example,
+%feature("docstring",
+"Represents a list of `SBType` objects.
 
-.. code-block:: cpp
+Type lists are returned by the functions that can find more than one type, such
+as `SBTarget.FindTypes` and `SBModule.FindTypes`.
 
-    // main.cpp:
+In Python an SBTypeList supports ``len()`` and iteration::
 
-    class Task {
-    public:
-        int id;
-        Task *next;
-        Task(int i, Task *n):
-            id(i),
-            next(n)
-        {}
-    };
+    # A program can contain several types with the same name, e.g. one per
+    # translation unit or one per module.
+    for type in target.FindTypes('Task'):
+        print('%s in %s' % (type.GetName(), type.GetModule().GetFileSpec().GetFilename()))
 
-.. code-block:: python
-
-    # find_type.py:
-
-    # Get the type 'Task'.
-    type_list = target.FindTypes('Task')
-    self.assertTrue(len(type_list) == 1)
-    # To illustrate the SBType iteration.
-    for type in type_list:
-        # do something with type
-
+Use `SBTarget.FindFirstType` instead if only one matching type is needed.
 ") lldb::SBTypeList;
+
+%feature("docstring",
+"Returns whether this list was initialized.
+
+A valid list can still be empty, use `SBTypeList.GetSize` to check for that."
+) lldb::SBTypeList::IsValid;
+
+%feature("docstring",
+"Appends the given `SBType` to this list."
+) lldb::SBTypeList::Append;
+
+%feature("docstring",
+"Returns the type at the given index.
+
+Returns an invalid `SBType` if the index is out of bounds."
+) lldb::SBTypeList::GetTypeAtIndex;
+
+%feature("docstring",
+"Returns the number of types in this list.
+
+In Python this is also what ``len()`` returns."
+) lldb::SBTypeList::GetSize;
