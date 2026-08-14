@@ -97,7 +97,69 @@ class SBBreakpointCallbackCase(TestBase):
             inferior_source="deep_stack.cpp",
         )
 
-    def build_and_test(self, sources, test_name, inferior_source="inferior.cpp"):
+    @skipIfRemote
+    # clang-cl does not support throw or catch (llvm.org/pr24538)
+    @skipIfWindows
+    @skipIfHostIncompatibleWithTarget
+    def test_concurrent_expressions(self):
+        """Test that expressions can be evaluated and their results inspected
+        from several threads at the same time.
+        """
+        self.build_and_test(
+            "driver.cpp test_concurrent_expressions.cpp",
+            "test_concurrent_expressions",
+            inferior_source="global_struct.cpp",
+        )
+
+    @skipIfRemote
+    # clang-cl does not support throw or catch (llvm.org/pr24538)
+    @skipIfWindows
+    @skipIfHostIncompatibleWithTarget
+    def test_concurrent_expressions(self):
+        """Test that expressions can be evaluated and their results inspected
+        from several threads at the same time. Every thread debugs its own
+        program, so the threads only share the debugger itself.
+        """
+        self.build_and_test(
+            "driver.cpp test_concurrent_expressions.cpp",
+            "test_concurrent_expressions",
+            inferior_source="global_struct.cpp",
+            num_inferiors=5,
+        )
+
+    @skipIfRemote
+    # clang-cl does not support throw or catch (llvm.org/pr24538)
+    @skipIfWindows
+    @skipIfHostIncompatibleWithTarget
+    # LLDB deadlocks when two threads complete the same type of a shared
+    # module: one thread holds the Module's lock in SymbolFileDWARF::FindTypes
+    # and waits for the TypeSystemClang lock, while the other holds the
+    # TypeSystemClang lock in TypeSystemClang::CompleteTagDecl and waits for the
+    # Module's lock. Making both the same lock fixes this, but then the lock is
+    # held while an expression runs code in the inferior (see
+    # ClangASTImporter::ASTImporterDelegate::ImportImpl completing a type
+    # through the Objective-C runtime), which deadlocks with the private state
+    # thread. The test is expected to hang until this is fixed.
+    @expectedFailureAll
+    def test_concurrent_expressions_shared_module(self):
+        """Test that expressions for the same module can be evaluated and their
+        results inspected from several threads at the same time.
+        """
+        self.build_and_test(
+            "driver.cpp test_concurrent_expressions.cpp",
+            "test_concurrent_expressions_shared_module",
+            inferior_source="global_struct.cpp",
+            defines=[("TEST_SHARED_MODULE", 1)],
+        )
+
+    def build_and_test(
+        self,
+        sources,
+        test_name,
+        inferior_source="inferior.cpp",
+        num_inferiors=1,
+        defines=None,
+    ):
         """Build LLDB test from sources, and run expecting 0 exit code"""
 
         # These tests link against host lldb API.
@@ -109,15 +171,22 @@ class SBBreakpointCallbackCase(TestBase):
                 "This test is only run if the target arch is the same as the lldb binary arch"
             )
 
-        self.inferior = "inferior_program"
-        self.buildProgram(inferior_source, self.inferior)
-        self.addTearDownHook(lambda: os.remove(self.getBuildArtifact(self.inferior)))
+        # Tests that debug a program from several threads at the same time get
+        # one program per thread so that the threads don't have to share LLDB's
+        # module for it.
+        self.inferiors = ["inferior_program"] + [
+            "inferior_program%d" % i for i in range(1, num_inferiors)
+        ]
+        for inferior in self.inferiors:
+            self.buildProgram(inferior_source, inferior)
+        inferior_paths = [self.getBuildArtifact(i) for i in self.inferiors]
+        self.addTearDownHook(lambda: [os.remove(p) for p in inferior_paths])
 
-        self.buildDriver(sources, test_name)
+        self.buildDriver(sources, test_name, defines=defines)
         self.addTearDownHook(lambda: os.remove(self.getBuildArtifact(test_name)))
 
         test_exe = self.getBuildArtifact(test_name)
-        exe = [test_exe, self.getBuildArtifact(self.inferior)]
+        exe = [test_exe] + inferior_paths
 
         # Tests locate their support files (e.g. test_stop-hook.cpp's
         # some_cmd.py) via the LLDB_TEST_SOURCE_DIR environment variable.
