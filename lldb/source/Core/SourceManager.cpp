@@ -610,6 +610,7 @@ uint32_t SourceManager::File::GetLineOffset(uint32_t line) {
   if (line == 1)
     return 0;
 
+  std::lock_guard<std::recursive_mutex> guard(m_offsets_mutex);
   if (CalculateLineOffsets(line)) {
     if (line < m_offsets.size())
       return m_offsets[line - 1]; // yes we want "line - 1" in the index
@@ -618,6 +619,7 @@ uint32_t SourceManager::File::GetLineOffset(uint32_t line) {
 }
 
 uint32_t SourceManager::File::GetNumLines() {
+  std::lock_guard<std::recursive_mutex> guard(m_offsets_mutex);
   CalculateLineOffsets();
   return m_offsets.size();
 }
@@ -668,6 +670,7 @@ bool SourceManager::File::LineIsValid(uint32_t line) {
   if (line == 0)
     return false;
 
+  std::lock_guard<std::recursive_mutex> guard(m_offsets_mutex);
   if (CalculateLineOffsets(line))
     return line < m_offsets.size();
   return false;
@@ -779,6 +782,7 @@ bool lldb_private::operator==(const SourceManager::File &lhs,
 }
 
 bool SourceManager::File::CalculateLineOffsets(uint32_t line) {
+  std::lock_guard<std::recursive_mutex> guard(m_offsets_mutex);
   line =
       UINT32_MAX; // TODO: take this line out when we support partial indexing
   if (line == UINT32_MAX) {

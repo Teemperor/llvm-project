@@ -22,6 +22,7 @@
 #include <cstdint>
 #include <map>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -104,6 +105,14 @@ public:
     uint32_t m_source_map_mod_id = 0;
     lldb::DataBufferSP m_data_sp;
     typedef std::vector<uint32_t> LineOffsets;
+
+    /// Guards m_offsets, the only member that is computed after this File was
+    /// created. One File is shared by every Target and Process that reads that
+    /// file (see SourceFileCache), so several threads can index it at once.
+    ///
+    /// Recursive because the methods that read m_offsets index the file first
+    /// through CalculateLineOffsets().
+    mutable std::recursive_mutex m_offsets_mutex;
     LineOffsets m_offsets;
     lldb::DebuggerWP m_debugger_wp;
     lldb::TargetWP m_target_wp;
