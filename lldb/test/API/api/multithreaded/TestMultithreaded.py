@@ -103,20 +103,6 @@ class SBBreakpointCallbackCase(TestBase):
     @skipIfHostIncompatibleWithTarget
     def test_concurrent_expressions(self):
         """Test that expressions can be evaluated and their results inspected
-        from several threads at the same time.
-        """
-        self.build_and_test(
-            "driver.cpp test_concurrent_expressions.cpp",
-            "test_concurrent_expressions",
-            inferior_source="global_struct.cpp",
-        )
-
-    @skipIfRemote
-    # clang-cl does not support throw or catch (llvm.org/pr24538)
-    @skipIfWindows
-    @skipIfHostIncompatibleWithTarget
-    def test_concurrent_expressions(self):
-        """Test that expressions can be evaluated and their results inspected
         from several threads at the same time. Every thread debugs its own
         program, so the threads only share the debugger itself.
         """
