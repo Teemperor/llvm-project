@@ -56,9 +56,11 @@ CompilerType ClangTypeConverter::Convert(clang::QualType qt) {
           qt.getTypePtr())) {
     if (CompilerType inner = Convert(qt.getCanonicalType())) {
       std::string spelling = qt.getAsString(m_ast.getPrintingPolicy());
-      if (!spelling.empty())
-        return clike_typesystem::Builder(m_target).CreateElaboratedType(
-            spelling, inner);
+      if (!spelling.empty()) {
+        clike_typesystem::Builder builder(m_target);
+        return builder.CreateElaboratedType(spelling,
+                                            builder.ToLocalReference(inner));
+      }
       return inner;
     }
     return {};
@@ -76,7 +78,7 @@ CompilerType ClangTypeConverter::Convert(clang::QualType qt) {
   // BuiltinType/RecordType checks below, all of which use qt->getAs<T>() --
   // that desugars through (and so silently drops) any local qualifier.
   if (qt.hasLocalQualifiers()) {
-    if (CompilerType inner = Convert(qt.getLocalUnqualifiedType()))
+    if (CompilerType inner = ConvertForReference(qt.getLocalUnqualifiedType()))
       return clike_typesystem::Builder(m_target).CreateCVQualifiedType(
           inner, qt.isLocalConstQualified(), qt.isLocalVolatileQualified());
     return {};
@@ -126,6 +128,10 @@ clang::QualType ClangTypeConverter::Desugar(clang::QualType qt) {
   if (const auto *deduced = qt->getContainedDeducedType())
     return deduced->getDeducedType();
   return qt;
+}
+
+CompilerType ClangTypeConverter::ConvertForReference(clang::QualType qt) {
+  return clike_typesystem::Builder(m_target).ToLocalReference(Convert(qt));
 }
 
 CompilerType ClangTypeConverter::ConvertViaReverseMap(clang::QualType qt,
@@ -208,9 +214,11 @@ CompilerType ClangTypeConverter::ConvertViaReverseMap(clang::QualType qt,
   if (mapped && direct == m_generator.m_reverse.end() &&
       qt.getAsOpaquePtr() != qt.getCanonicalType().getAsOpaquePtr()) {
     std::string spelling = qt.getAsString(m_ast.getPrintingPolicy());
-    if (!spelling.empty())
-      return clike_typesystem::Builder(m_target).CreateElaboratedType(
-          spelling, mapped);
+    if (!spelling.empty()) {
+      clike_typesystem::Builder builder(m_target);
+      return builder.CreateElaboratedType(spelling,
+                                          builder.ToLocalReference(mapped));
+    }
   }
   return mapped;
 }
@@ -320,7 +328,7 @@ CompilerType ClangTypeConverter::ConvertRecord(const clang::RecordType *rt) {
         const auto *base_rd = base.getType()->getAsCXXRecordDecl();
         if (!base_rd)
           continue;
-        CompilerType base_type = Convert(base.getType());
+        CompilerType base_type = ConvertForReference(base.getType());
         if (!base_type)
           return {};
         const bool is_virtual = base.isVirtual();
@@ -333,7 +341,7 @@ CompilerType ClangTypeConverter::ConvertRecord(const clang::RecordType *rt) {
     }
     unsigned field_idx = 0;
     for (const clang::FieldDecl *fd : rd->fields()) {
-      CompilerType field_type = Convert(fd->getType());
+      CompilerType field_type = ConvertForReference(fd->getType());
       if (!field_type)
         return {};
       uint64_t bit_offset = layout.getFieldOffset(field_idx++);
@@ -363,7 +371,7 @@ CompilerType ClangTypeConverter::ConvertRecord(const clang::RecordType *rt) {
 CompilerType ClangTypeConverter::ConvertTypedef(
     const clang::TypedefType *tdt) {
   clang::TypedefNameDecl *decl = tdt->getDecl();
-  CompilerType underlying = Convert(decl->getUnderlyingType());
+  CompilerType underlying = ConvertForReference(decl->getUnderlyingType());
   if (!underlying)
     return {};
   CompilerType result = clike_typesystem::Builder(m_target).CreateTypedefType(
@@ -435,7 +443,7 @@ CompilerType ClangTypeConverter::ConvertObjCObjectPointer(
   }
   // A pointer to an Objective-C class (`Foo *`) the parser formed. Map the
   // pointee interface and wrap it in a cpp pointer.
-  if (CompilerType pointee = Convert(objc_ptr->getPointeeType()))
+  if (CompilerType pointee = ConvertForReference(objc_ptr->getPointeeType()))
     return clike_typesystem::Builder(m_target).CreatePointerType(pointee);
   return {};
 }
@@ -444,31 +452,31 @@ CompilerType ClangTypeConverter::ConvertDerived(clang::QualType qt) {
   if (const auto *objc_ptr = qt->getAs<clang::ObjCObjectPointerType>())
     return ConvertObjCObjectPointer(objc_ptr);
   if (qt->isReferenceType()) {
-    if (CompilerType pointee = Convert(qt->getPointeeType()))
+    if (CompilerType pointee = ConvertForReference(qt->getPointeeType()))
       return clike_typesystem::Builder(m_target).CreateReferenceType(
           pointee, qt->isRValueReferenceType());
   } else if (qt->isPointerType()) {
-    if (CompilerType pointee = Convert(qt->getPointeeType()))
+    if (CompilerType pointee = ConvertForReference(qt->getPointeeType()))
       return clike_typesystem::Builder(m_target).CreatePointerType(pointee);
   } else if (const auto *bpt = qt->getAs<clang::BlockPointerType>()) {
     // A block-literal expression (`^int(int){...}`) has a block-pointer type
     // (`int (^)(int)`). Rebuild it as a block pointer over its (function)
     // pointee so the result can be sized and stored.
-    if (CompilerType pointee = Convert(bpt->getPointeeType()))
+    if (CompilerType pointee = ConvertForReference(bpt->getPointeeType()))
       return clike_typesystem::Builder(m_target).CreateBlockPointerType(pointee);
   } else if (const auto *cx = qt->getAs<clang::ComplexType>()) {
     // A complex value produced by the expression (e.g. `a + (1.0f + 2.0fi)`)
     // maps back to a TypeSystemClike ComplexType over its mapped element.
-    if (CompilerType element = Convert(cx->getElementType()))
+    if (CompilerType element = ConvertForReference(cx->getElementType()))
       return clike_typesystem::Builder(m_target).CreateComplexType(element);
   } else if (const auto *fpt = qt->getAs<clang::FunctionProtoType>()) {
     // A function type the parser formed (e.g. the pointee of a function-pointer
     // cast result). Rebuild it so a pointer to it can be sized/stored.
-    CompilerType ret = Convert(fpt->getReturnType());
+    CompilerType ret = ConvertForReference(fpt->getReturnType());
     clike_typesystem::Builder builder(m_target);
     CompilerType fn = builder.CreateFunctionType(ret, fpt->isVariadic());
     for (clang::QualType param : fpt->param_types()) {
-      CompilerType clike_param = Convert(param);
+      CompilerType clike_param = ConvertForReference(param);
       if (!clike_param)
         return {};
       builder.AddParameter(fn, clike_param);
@@ -478,7 +486,7 @@ CompilerType ClangTypeConverter::ConvertDerived(clang::QualType qt) {
     // A vector type (e.g. an ext_vector `float __attribute__((ext_vector_type(4)))`
     // or a vector-format reinterpretation result). Rebuild it as a cpp vector
     // array so it can be sized and formatted as a vector.
-    if (CompilerType element = Convert(vt->getElementType())) {
+    if (CompilerType element = ConvertForReference(vt->getElementType())) {
       CompilerType arr = clike_typesystem::Builder(m_target).CreateArrayType(
           element, vt->getNumElements());
       if (auto *arr_type = llvm::dyn_cast_or_null<clike_typesystem::ArrayType>(
@@ -491,7 +499,7 @@ CompilerType ClangTypeConverter::ConvertDerived(clang::QualType qt) {
     // `u"hello"` string literal). Map the element type recursively and rebuild
     // the array so the result type can be sized. A constant array carries its
     // element count; an incomplete array (`char[]`) has no bound.
-    if (CompilerType element = Convert(at->getElementType())) {
+    if (CompilerType element = ConvertForReference(at->getElementType())) {
       std::optional<uint64_t> num_elements;
       if (const auto *cat = llvm::dyn_cast<clang::ConstantArrayType>(at))
         num_elements = cat->getSize().getZExtValue();
@@ -552,7 +560,7 @@ void ClangTypeConverter::FillObjCInterface(const clang::ObjCInterfaceDecl *def,
   // runtime owns the non-fragile layout), but clang lays ObjC interfaces out
   // itself, so a nominal 0 offset is fine here.
   for (const clang::ObjCIvarDecl *ivar : def->ivars()) {
-    CompilerType ivar_type = Convert(ivar->getType());
+    CompilerType ivar_type = ConvertForReference(ivar->getType());
     if (!ivar_type)
       continue;
     builder.AddField(*iface, builder.GetIdentifier(ivar->getName()),
@@ -593,13 +601,13 @@ void ClangTypeConverter::AddObjCMethod(clike_typesystem::ObjCInterfaceType &ifac
   if (returns_instancetype)
     ret = m_target.GetBasicTypeFromAST(lldb::eBasicTypeObjCID);
   else
-    ret = Convert(method->getReturnType());
+    ret = ConvertForReference(method->getReturnType());
   if (!ret)
     return;
   clike_typesystem::Builder builder(m_target);
   CompilerType fn = builder.CreateFunctionType(ret, method->isVariadic());
   for (const clang::ParmVarDecl *param : method->parameters()) {
-    CompilerType param_type = Convert(param->getType());
+    CompilerType param_type = ConvertForReference(param->getType());
     if (!param_type)
       return;
     builder.AddParameter(fn, param_type);

@@ -124,6 +124,17 @@ public:
   /// member. All Identifiers must be created this way.
   Identifier GetIdentifier(llvm::StringRef name);
 
+  /// Return \p type in a form that a type this Builder's Context owns may
+  /// reference: \p type itself when this Context already owns it, and otherwise
+  /// a ForeignType stand-in that records the Context which does (see
+  /// clike_typesystem::ForeignType). A reference stores a bare pointer, so
+  /// without this a cross-Context reference would lose track of where the
+  /// referenced type lives.
+  ///
+  /// An invalid CompilerType, or one belonging to another kind of type system,
+  /// is returned unchanged -- there is nothing to stand in for.
+  CompilerType ToLocalReference(const CompilerType &type);
+
   /// Intern a namespace (see Context::GetNamespace).
   const Namespace *GetNamespace(llvm::StringRef name, const Namespace *parent,
                                 bool is_inline);

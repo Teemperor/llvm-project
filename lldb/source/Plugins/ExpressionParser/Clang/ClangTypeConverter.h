@@ -65,6 +65,16 @@ public:
   CompilerType Convert(clang::QualType qt);
 
 private:
+  /// Convert \p qt like Convert(), but return it in the form a type built in the
+  /// target may *reference* (as a pointee, element, field, parameter, ...).
+  ///
+  /// Convert() deliberately hands back a type still owned by the
+  /// TypeSystemClike that parsed it, so that its completion state stays
+  /// reachable (see ConvertViaReverseMap). A reference stores a bare pointer, so
+  /// a target-owned type cannot record such a type directly without losing
+  /// track of which Context owns it; this wraps it in a ForeignType that does.
+  /// See clike_typesystem::ForeignType and Builder::ToLocalReference.
+  CompilerType ConvertForReference(clang::QualType qt);
   /// Peel a deduced `auto`/`decltype(auto)` type down to the type deduction
   /// resolved it to; returns \p qt unchanged if it isn't a deduced type. The
   /// result is null if deduction hasn't run yet (an undeduced `auto`).

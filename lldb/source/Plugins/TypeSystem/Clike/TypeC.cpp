@@ -29,12 +29,16 @@ std::optional<uint64_t> PointerType::GetByteSize() const {
 
 unsigned CVQualifiedType::GetCVRMask(const Type *t) {
   unsigned quals = 0;
+  // A stand-in for a type another Context owns carries no qualifiers of its own
+  // (see ForeignType), so peel one at every step of the chain -- otherwise a
+  // `volatile` below it would be missed.
+  t = ForeignType::Strip(t);
   while (auto *cv = llvm::dyn_cast_or_null<CVQualifiedType>(t)) {
     if (cv->IsConst())
       quals |= 0x1;
     if (cv->IsVolatile())
       quals |= 0x4;
-    t = cv->GetUnderlyingType();
+    t = ForeignType::Strip(cv->GetUnderlyingType());
   }
   return quals;
 }
