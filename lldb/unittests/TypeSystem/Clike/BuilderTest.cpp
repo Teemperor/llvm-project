@@ -8,6 +8,7 @@
 
 #include "Plugins/TypeSystem/Clike/Builder.h"
 #include "Plugins/TypeSystem/Clike/Type.h"
+#include "Plugins/TypeSystem/Clike/TypeC.h"
 #include "Plugins/TypeSystem/Clike/TypeCpp.h"
 #include "Plugins/TypeSystem/Clike/TypeSystemClike.h"
 
@@ -37,6 +38,43 @@ TEST_F(BuilderTest, CreateAndCompleteRecord) {
   EXPECT_FALSE(r->IsComplete());
   builder.SetRecordComplete(*r);
   EXPECT_TRUE(r->IsComplete());
+}
+
+// A reference to a type another type system owns is stood in for by a
+// ForeignType automatically, whether it arrives as a CompilerType or as a bare
+// node -- so a type never ends up referencing another Context's type directly
+// (the invariant Context::AssertOwnsRef checks).
+TEST_F(BuilderTest, ReferenceToAnotherTypeSystemIsStoodIn) {
+  auto other_ts = std::make_shared<TypeSystemClike>(
+      "other", llvm::Triple("x86_64-pc-linux-gnu"));
+  CompilerType other_record =
+      Builder(*other_ts).CreateRecordType("Foo", 4, /*is_cpp_class=*/false);
+  auto *other_node = static_cast<clike_typesystem::Type *>(
+      other_record.GetOpaqueQualType());
+
+  Builder builder(*ts);
+  auto *pointer = llvm::cast<PointerType>(static_cast<clike_typesystem::Type *>(
+      builder.CreatePointerType(other_record).GetOpaqueQualType()));
+  auto *stand_in = llvm::dyn_cast<ForeignType>(pointer->GetPointeeType());
+  ASSERT_NE(stand_in, nullptr);
+  EXPECT_EQ(stand_in->GetReferencedType(), other_node);
+
+  // Same via the raw-node entry points (what the DWARF parser uses).
+  auto *record = llvm::cast<RecordType>(static_cast<clike_typesystem::Type *>(
+      builder.CreateRecordType("Bar", 8, /*is_cpp_class=*/true)
+          .GetOpaqueQualType()));
+  builder.AddField(*record, builder.GetIdentifier("foo"), other_node,
+                   /*byte_offset=*/0);
+  ASSERT_EQ(record->GetNumFields(), 1u);
+  EXPECT_EQ(record->GetFieldAtIndex(0)->type.Get(), stand_in);
+
+  // A type this Builder's own type system owns is referenced directly.
+  CompilerType local_int = builder.GetBuiltinType(
+      "int", 4, lldb::eEncodingSint, lldb::eFormatDecimal);
+  auto *local_pointer =
+      llvm::cast<PointerType>(static_cast<clike_typesystem::Type *>(
+          builder.CreatePointerType(local_int).GetOpaqueQualType()));
+  EXPECT_EQ(local_pointer->GetPointeeType(), local_int.GetOpaqueQualType());
 }
 
 // AddField appends a data member with the given name/type/offset.

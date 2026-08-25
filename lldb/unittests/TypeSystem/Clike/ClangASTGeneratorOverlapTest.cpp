@@ -220,10 +220,14 @@ TEST_F(ClangASTGeneratorOverlapTest, MemberSizeComesFromTheClangType) {
       static_cast<clike_typesystem::Type *>(
           other_builder.CreateRecordType("BBox", 24, /*is_cpp_class=*/true)
               .GetOpaqueQualType()));
+  // The other module's own `long`: a Context's builtins belong to it like any
+  // other type, so this record must not reference this fixture's ones.
+  CompilerType other_long = other_builder.GetBuiltinType(
+      "long", 8, lldb::eEncodingSint, lldb::eFormatDecimal);
   other_builder.AddField(other_bbox, other_builder.GetIdentifier("a"),
-                         Raw(GetLong()), 0);
+                         Raw(other_long), 0);
   other_builder.AddField(other_bbox, other_builder.GetIdentifier("b"),
-                         Raw(GetLong()), 8);
+                         Raw(other_long), 8);
   other_builder.AddField(
       other_bbox, other_builder.GetIdentifier("c"),
       Raw(other_builder.GetBuiltinType("char", 1, lldb::eEncodingSint,

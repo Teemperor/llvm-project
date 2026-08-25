@@ -200,12 +200,19 @@ public:
   void AddEnumerator(EnumType &enum_type, Identifier name, uint64_t value);
 
 private:
-  /// Wrap a CompilerType into a TypeRef naming the Type it refers to. An empty
+  /// \p type as a node this Builder's Context may reference directly: itself
+  /// when this Context owns it, and otherwise the ForeignType standing in for it
+  /// (ToLocalReference is this in CompilerType terms). Every reference stored
+  /// through a Builder goes through here, which is what upholds the invariant
+  /// Context::AssertOwnsRef checks.
+  Type *ToLocalNode(Type *type) const;
+  /// Wrap a CompilerType into a TypeRef naming the Type it refers to, standing
+  /// it in through a ForeignType if another Context owns it. An empty
   /// CompilerType (e.g. the `void *` pointee), or one belonging to another kind
   /// of type system, yields an empty TypeRef.
-  static TypeRef ToTypeRef(const CompilerType &type);
-  /// Wrap a Type that this Builder's Context owns (e.g. one the DWARF parser
-  /// resolved through this type system) into a TypeRef.
+  TypeRef ToTypeRef(const CompilerType &type);
+  /// Wrap a Type (e.g. one the DWARF parser resolved) into a TypeRef, likewise
+  /// standing it in through a ForeignType if another Context owns it.
   TypeRef ToTypeRef(Type *type) const;
 
   TypeSystemClike &m_ts;

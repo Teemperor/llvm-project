@@ -44,7 +44,12 @@ struct Decl {
 class Context {
 public:
   explicit Context(const LanguageOpts &opts)
-      : m_opts(opts), builtin_types(opts, identifiers) {}
+      : m_opts(opts), builtin_types(opts, identifiers) {
+    // The canonical builtins are created by KnownBuiltinTypes rather than
+    // through Track, so claim ownership of them here.
+    builtin_types.ForEachType(
+        [this](Type *type) { type->SetOwningContext(*this); });
+  }
 
   const LanguageOpts &GetLanguageOpts() const { return m_opts; }
 
@@ -184,25 +189,37 @@ public:
   void AddField(RecordType &record, Identifier name, TypeRef type,
                 uint64_t byte_offset, uint32_t bitfield_bit_size = 0,
                 uint32_t bitfield_bit_offset = 0) {
+    AssertOwnsType(record);
+    AssertOwnsRef(type);
     record.AddField(name, type, byte_offset, bitfield_bit_size,
                     bitfield_bit_offset);
   }
   void AddBaseClass(ClassType &record, TypeRef type, uint64_t byte_offset,
                     bool is_virtual = false,
                     std::optional<uint64_t> vbase_offset_offset = std::nullopt) {
+    AssertOwnsType(record);
+    AssertOwnsRef(type);
     record.AddBaseClass(type, byte_offset, is_virtual, vbase_offset_offset);
   }
   void SetPolymorphic(ClassType &record) { record.SetPolymorphic(); }
   void SetObjCSuperClass(ObjCInterfaceType &record, TypeRef superclass) {
+    AssertOwnsType(record);
+    AssertOwnsRef(superclass);
     record.SetSuperClass(superclass);
   }
   void AddObjCMethod(ObjCInterfaceType &record, ObjCMethod method) {
+    AssertOwnsType(record);
+    AssertOwnsRef(method.type);
     record.AddObjCMethod(std::move(method));
   }
   void AddTemplateArgument(ClassType &record, TemplateArgument arg) {
+    AssertOwnsType(record);
+    AssertOwnsRef(arg.type);
     record.AddTemplateArgument(arg);
   }
   void AddNestedType(RecordType &record, Identifier name, TypeRef type) {
+    AssertOwnsType(record);
+    AssertOwnsRef(type);
     record.AddNestedType(name, type);
   }
   void AddEnumerator(EnumType &enum_type, Identifier name, uint64_t value) {
@@ -210,12 +227,18 @@ public:
   }
   void AddParameter(FunctionType &func, TypeRef type,
                     Identifier name = Identifier()) {
+    AssertOwnsType(func);
+    AssertOwnsRef(type);
     func.AddParameter(type, name);
   }
   void AddMemberFunction(ClassType &record, MemberFunction method) {
+    AssertOwnsType(record);
+    AssertOwnsRef(method.type);
     record.AddMemberFunction(method);
   }
   void AddStaticDataMember(ClassType &record, StaticDataMember member) {
+    AssertOwnsType(record);
+    AssertOwnsRef(member.type);
     record.AddStaticDataMember(member);
   }
   /// @}
@@ -251,8 +274,39 @@ public:
 private:
   template <typename T> T *Track(std::unique_ptr<T> type) {
     T *result = type.get();
+    result->SetOwningContext(*this);
     m_types.push_back(std::move(type));
     return result;
+  }
+
+  /// The invariant every reference in the type model must satisfy: a type may
+  /// only reference types that its own Context owns. A type another Context owns
+  /// has to be referenced through a ForeignType (see GetForeignType) -- that
+  /// node is what keeps the owning Context recoverable, since a TypeRef itself
+  /// is nothing but a pointer.
+  ///
+  /// Every entry point that stores a reference (the factories and the
+  /// structural mutators above) checks its arguments with these, so a violation
+  /// is caught where it is introduced -- rather than much later, as a type that
+  /// mysteriously can't be completed or outlives the Context that owns it.
+  /// Both compile away entirely without assertions.
+  /// @{
+  void AssertOwnsRef(TypeRef ref) const {
+    assert((!ref || Owns(ref.Get())) &&
+           "a type may only reference types its own Context owns -- use "
+           "Context::GetForeignType for a type another Context owns");
+  }
+  void AssertOwnsType(const Type &type) const {
+    assert(Owns(&type) &&
+           "this Context does not own the type being created or modified");
+  }
+  /// @}
+
+  /// Whether this Context owns \p type -- i.e. created it, or holds it as one of
+  /// its canonical builtins. Cheap, and available in every build: a type records
+  /// its owner (Type::GetOwningContext).
+  bool Owns(const Type *type) const {
+    return type && &type->GetOwningContext() == this;
   }
 
   std::vector<std::unique_ptr<Type>> m_types;
