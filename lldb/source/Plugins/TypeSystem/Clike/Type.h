@@ -143,6 +143,19 @@ public:
 
   virtual ~Type() = default;
 
+  /// The Context that owns this type (and every Identifier it names). Recorded
+  /// when the type is created, so that the owner of a type is a *fact* about the
+  /// node rather than a claim made by whoever hands it around: a CompilerType's
+  /// type system is not necessarily the one that owns the node inside it (e.g.
+  /// TypeSystemClike::GetPointeeType tags a pointee with the *pointer's* type
+  /// system). Consulted when a reference to this type is stored, to decide
+  /// whether it needs to go through a ForeignType -- see
+  /// Builder::ToLocalReference and Context::AssertOwnsRef.
+  Context &GetOwningContext() const {
+    assert(m_context && "every type is owned by the Context that created it");
+    return *m_context;
+  }
+
   /// The type's own name. For a record this is the fully-qualified,
   /// template-argument-bearing DWARF spelling (used to recover an enclosing
   /// *class* scope that GetDeclContext() can't represent -- see
@@ -279,6 +292,15 @@ public:
   /// be complete up front (an incomplete aggregate simply has no members to
   /// find).
   virtual Type *GetNamedMemberPointee() { return nullptr; }
+
+private:
+  // Set exactly once, when the Context takes ownership of the type -- which is
+  // also the only way a type is created. Gated to Context like the structural
+  // mutators on the concrete kinds.
+  friend class Context;
+  void SetOwningContext(Context &context) { m_context = &context; }
+
+  Context *m_context = nullptr;
 };
 
 /// Null-tolerant wrapper around Type::Desugar(), for the many call sites that

@@ -150,6 +150,15 @@ public:
   /// BuiltinType::GetBasicTypeEnumeration.
   static std::optional<BuiltinKind> KindForBasicType(lldb::BasicType basic_type);
 
+  /// Invoke \p callback for every canonical instance owned here. Used by the
+  /// Context that holds them to claim ownership of them (they are created here
+  /// rather than through Context::Track, which is what stamps the owner onto
+  /// every other type) -- see Type::GetOwningContext.
+  template <typename F> void ForEachType(F callback) const {
+    for (const std::unique_ptr<BuiltinType> &type : m_storage)
+      callback(type.get());
+  }
+
   /// The builtin kind for a value of \p encoding that is \p bit_size bits
   /// wide, or std::nullopt when no builtin has that combination. Backs
   /// TypeSystem::GetBuiltinTypeForEncodingAndBitSize, whose callers (register

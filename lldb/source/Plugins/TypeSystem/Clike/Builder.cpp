@@ -14,14 +14,38 @@ using namespace lldb;
 
 Builder::Builder(TypeSystemClike &ts) : m_ts(ts) {}
 
-TypeRef Builder::ToTypeRef(const CompilerType &type) {
-  auto ts = type.GetTypeSystem().dyn_cast_or_null<TypeSystemClike>();
-  if (!ts)
-    return TypeRef();
-  return TypeRef(TypeSystemClike::GetClikeType(type.GetOpaqueQualType()));
+// Qualified: at file scope `Type` is ambiguous between lldb_private::Type and
+// the clike_typesystem one (the parameter below resolves in class scope).
+clike_typesystem::Type *Builder::ToLocalNode(Type *type) const {
+  if (!type)
+    return nullptr;
+  // Ask the node which Context owns it rather than trusting whoever handed it
+  // over: a CompilerType's type system is not necessarily the one that owns the
+  // node inside it (e.g. TypeSystemClike::GetPointeeType tags a pointee with the
+  // *pointer's* type system), and a bare `Type *` says nothing at all. See
+  // Type::GetOwningContext.
+  Context *owner = &type->GetOwningContext();
+  // A stand-in already names the Context that really owns the type, so peel it
+  // instead of stacking another one on top of it.
+  if (auto *foreign = llvm::dyn_cast<ForeignType>(type)) {
+    owner = &foreign->GetReferencedContext();
+    type = foreign->GetReferencedType();
+  }
+  if (owner == &m_ts.m_context)
+    return type;
+  return m_ts.m_context.GetForeignType(*owner, type);
 }
 
-TypeRef Builder::ToTypeRef(Type *type) const { return TypeRef(type); }
+TypeRef Builder::ToTypeRef(const CompilerType &type) {
+  if (!type.GetTypeSystem().dyn_cast_or_null<TypeSystemClike>())
+    return TypeRef();
+  return TypeRef(
+      ToLocalNode(TypeSystemClike::GetClikeType(type.GetOpaqueQualType())));
+}
+
+TypeRef Builder::ToTypeRef(Type *type) const {
+  return TypeRef(ToLocalNode(type));
+}
 
 CompilerType Builder::GetBuiltinType(llvm::StringRef name,
                                      std::optional<uint64_t> byte_size,
@@ -172,23 +196,12 @@ clike_typesystem::Identifier Builder::GetIdentifier(llvm::StringRef name) {
 }
 
 CompilerType Builder::ToLocalReference(const CompilerType &type) {
-  auto ts = type.GetTypeSystem().dyn_cast_or_null<TypeSystemClike>();
-  if (!ts)
+  if (!type.GetTypeSystem().dyn_cast_or_null<TypeSystemClike>())
     return type;
-  Type *referenced = TypeSystemClike::GetClikeType(type.GetOpaqueQualType());
-  if (!referenced)
-    return type;
-  // A stand-in already names the Context that really owns the type, so peel it
-  // instead of stacking another one on top of it.
-  Context *owner = &ts->m_context;
-  if (auto *foreign = llvm::dyn_cast<ForeignType>(referenced)) {
-    owner = &foreign->GetReferencedContext();
-    referenced = foreign->GetReferencedType();
-  }
-  if (owner == &m_ts.m_context)
-    return m_ts.GetCompilerType(referenced);
-  return m_ts.GetCompilerType(
-      m_ts.m_context.GetForeignType(*owner, referenced));
+  if (Type *local =
+          ToLocalNode(TypeSystemClike::GetClikeType(type.GetOpaqueQualType())))
+    return m_ts.GetCompilerType(local);
+  return type;
 }
 
 void Builder::SetRecordComplete(clike_typesystem::RecordType &record) {

@@ -142,6 +142,44 @@ TEST_F(ContextTest, ComplexByteSizeIsDoubleElement) {
   EXPECT_EQ(complex->GetByteSize(), 8u);
 }
 
+// Every type records the Context that created it, including the canonical
+// builtins (which KnownBuiltinTypes, not Track, creates).
+TEST_F(ContextTest, TypesKnowTheirOwningContext) {
+  Type *record = context.CreateRecordType("Foo", 4, /*is_cpp_class=*/false);
+  EXPECT_EQ(&record->GetOwningContext(), &context);
+  Type *pointer = context.CreatePointerType(record);
+  EXPECT_EQ(&pointer->GetOwningContext(), &context);
+  Type *builtin = context.GetBuiltinType(BuiltinKind::Int);
+  EXPECT_EQ(&builtin->GetOwningContext(), &context);
+}
+
+// A type another Context owns is referenced through a ForeignType standing in
+// for it, which records that Context. The stand-ins are interned, so the same
+// foreign type is always reached through the same node (type identity is node
+// identity).
+TEST_F(ContextTest, ForeignTypeStandsInForAnotherContextsType) {
+  LanguageOpts other_opts{llvm::Triple("x86_64-pc-linux-gnu")};
+  Context other{other_opts};
+  Type *foreign_record = other.CreateRecordType("Foo", 4,
+                                                /*is_cpp_class=*/false);
+
+  ForeignType *stand_in = context.GetForeignType(other, foreign_record);
+  ASSERT_NE(stand_in, nullptr);
+  EXPECT_EQ(stand_in->GetReferencedType(), foreign_record);
+  EXPECT_EQ(&stand_in->GetReferencedContext(), &other);
+  // The stand-in itself belongs to the referring Context, so a type here may
+  // reference it like any local type.
+  EXPECT_EQ(&stand_in->GetOwningContext(), &context);
+  EXPECT_EQ(context.GetForeignType(other, foreign_record), stand_in);
+
+  // It is transparent: it desugars to, and answers for, what it stands in for.
+  EXPECT_EQ(stand_in->Desugar(), foreign_record);
+  EXPECT_EQ(ForeignType::Strip(stand_in), foreign_record);
+  EXPECT_EQ(stand_in->GetName().GetName(), "Foo");
+  EXPECT_EQ(stand_in->GetByteSize(), 4u);
+  EXPECT_TRUE(stand_in->IsAggregate());
+}
+
 // GetOrCreateDecl deduplicates by (kind, payload): the same payload always
 // maps to the same Decl, but different payloads or kinds map to distinct ones.
 TEST_F(ContextTest, DeclInterning) {

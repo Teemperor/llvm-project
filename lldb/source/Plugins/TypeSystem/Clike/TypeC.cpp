@@ -20,11 +20,9 @@ char FunctionType::ID = 0;
 char ComplexType::ID = 0;
 
 std::optional<uint64_t> PointerType::GetByteSize() const {
-  // A pointer is the target's pointer width, recovered from the Context that
-  // created this pointer (Context::CreatePointerType always records it, so this
-  // works for a `void *` too, which has no pointee to ask).
-  assert(m_context && "a pointer type must know its Context");
-  return m_context->GetPointerSize();
+  // A pointer is the target's pointer width, taken from the Context that owns
+  // this type -- so this works for a `void *` too, which has no pointee to ask.
+  return GetOwningContext().GetPointerSize();
 }
 
 unsigned CVQualifiedType::GetCVRMask(const Type *t) {
