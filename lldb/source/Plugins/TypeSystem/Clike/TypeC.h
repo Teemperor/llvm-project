@@ -120,6 +120,12 @@ public:
   Type *GetPointeeType() const { return m_pointee_type.Get(); }
   void SetPointeeType(TypeRef type) { m_pointee_type = type; }
 
+  /// The Context that owns this pointer type (recorded at creation by
+  /// Context::CreatePointerType, which is the only way a pointer is made).
+  /// A pointer needs it to size itself -- see GetByteSize.
+  Context &GetContext() const { return *m_context; }
+  void SetContext(Context &context) { m_context = &context; }
+
   /// True if this is a function-pointer type (`void (*)(int)`), matching
   /// clang's isFunctionPointerType(). A block pointer (`int (^)(int)`) is not
   /// one despite also pointing at a function type, and neither is a *reference*
@@ -131,12 +137,11 @@ public:
   /// Out-of-line: BlockPointerType and FunctionType are declared below.
   bool IsFunctionPointer() const;
 
-  // A pointer's size is the target's pointer width, so it isn't stored on every
+  // A pointer's size is the target's pointer width, which is a property of the
+  // target rather than of the individual pointer, so it isn't stored per
   // pointer: it is recovered from the owning Context (which knows the target
-  // triple) reached through the pointee reference. Defined out-of-line because
-  // it needs Context's definition. See PointerType::GetByteSize in TypeC.cpp
-  // and Context::CreatePointerType (which guarantees the pointee reference
-  // always carries a Context, even for `void *`).
+  // triple). Defined out-of-line because it needs Context's definition. See
+  // PointerType::GetByteSize in TypeC.cpp.
   std::optional<uint64_t> GetByteSize() const override;
 
   // A pointer is pointer-aligned, which is its own size -- not the
@@ -160,6 +165,9 @@ public:
   Type *GetNamedMemberPointee() override;
 
 private:
+  /// The Context that created (and owns) this pointer; never null once the
+  /// pointer has been created. Only used to recover the target's pointer width.
+  Context *m_context = nullptr;
   TypeRef m_pointee_type;
 };
 

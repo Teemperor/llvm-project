@@ -104,7 +104,8 @@ PointerType *Context::CreatePointerType(TypeRef pointee_type) {
   if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
     return it->second;
   auto type = std::make_unique<PointerType>();
-  type->SetPointeeType(WithOwningContext(pointee_type));
+  type->SetPointeeType(pointee_type);
+  type->SetContext(*this);
   PointerType *result = Track(std::move(type));
   m_pointer_map[key] = result;
   return result;
@@ -117,7 +118,8 @@ BlockPointerType *Context::CreateBlockPointerType(TypeRef pointee_type) {
   if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
     return llvm::cast<BlockPointerType>(it->second);
   auto type = std::make_unique<BlockPointerType>();
-  type->SetPointeeType(WithOwningContext(pointee_type));
+  type->SetPointeeType(pointee_type);
+  type->SetContext(*this);
   BlockPointerType *result = Track(std::move(type));
   m_pointer_map[key] = result;
   return result;
@@ -226,4 +228,21 @@ ComplexType *Context::CreateComplexType(TypeRef element_type) {
   auto type = std::make_unique<ComplexType>();
   type->SetElementType(element_type);
   return Track(std::move(type));
+}
+
+ForeignType *Context::GetForeignType(Context &owner, Type *type) {
+  assert(&owner != this &&
+         "a reference within a single Context needs no ForeignType");
+  assert(type && "a foreign reference must name a type");
+  // Interned by (owning Context, type) so that two references to the same
+  // foreign type share one node -- both to avoid re-creating it and so that
+  // type identity (which is node identity) is stable.
+  auto key = std::make_pair(&owner, type);
+  if (auto it = m_foreign_type_map.find(key); it != m_foreign_type_map.end())
+    return it->second;
+  auto foreign = std::make_unique<ForeignType>();
+  foreign->SetReferencedType(owner, type);
+  ForeignType *result = Track(std::move(foreign));
+  m_foreign_type_map[key] = result;
+  return result;
 }

@@ -18,13 +18,10 @@ TypeRef Builder::ToTypeRef(const CompilerType &type) {
   auto ts = type.GetTypeSystem().dyn_cast_or_null<TypeSystemClike>();
   if (!ts)
     return TypeRef();
-  return TypeRef(ts->m_context,
-                 TypeSystemClike::GetClikeType(type.GetOpaqueQualType()));
+  return TypeRef(TypeSystemClike::GetClikeType(type.GetOpaqueQualType()));
 }
 
-TypeRef Builder::ToTypeRef(Type *type) const {
-  return TypeRef(m_ts.m_context, type);
-}
+TypeRef Builder::ToTypeRef(Type *type) const { return TypeRef(type); }
 
 CompilerType Builder::GetBuiltinType(llvm::StringRef name,
                                      std::optional<uint64_t> byte_size,
