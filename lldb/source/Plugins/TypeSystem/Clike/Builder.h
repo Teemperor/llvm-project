@@ -189,10 +189,9 @@ public:
   void AddEnumerator(EnumType &enum_type, Identifier name, uint64_t value);
 
 private:
-  /// Wrap a CompilerType into a TypeRef that pairs the referenced Type with the
-  /// Context that owns it (derived from the CompilerType's own type system, so
-  /// the reference stays correct even when it points into another Context). An
-  /// empty CompilerType (e.g. the `void *` pointee) yields an empty TypeRef.
+  /// Wrap a CompilerType into a TypeRef naming the Type it refers to. An empty
+  /// CompilerType (e.g. the `void *` pointee), or one belonging to another kind
+  /// of type system, yields an empty TypeRef.
   static TypeRef ToTypeRef(const CompilerType &type);
   /// Wrap a Type that this Builder's Context owns (e.g. one the DWARF parser
   /// resolved through this type system) into a TypeRef.

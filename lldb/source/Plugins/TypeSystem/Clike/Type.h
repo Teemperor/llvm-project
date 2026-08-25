@@ -47,32 +47,35 @@ struct TemplateArgument;
 struct MemberFunction;
 struct StaticDataMember;
 
-/// References a type, potentially in another Context. Type nodes are owned by
-/// their Context, so a bare `Type *` does not by itself say where a referenced
-/// type lives; a TypeRef pairs the type pointer with its owning Context. Every
-/// type class stores TypeRefs (never a bare `Type *`) to reference other types,
-/// because a type may reference another type in a different Context.
+/// References a type owned by the same Context. Every type class stores
+/// TypeRefs (never a bare `Type *`) to reference other types, so that the
+/// distinction between "no type" (e.g. the pointee of a `void *`) and a type is
+/// spelled explicitly rather than as a raw null pointer.
+///
+/// A TypeRef is exactly pointer-sized and says nothing about which Context owns
+/// what it points at: the referenced type is understood to belong to the same
+/// Context as the type holding the reference. A reference to a type in
+/// *another* Context is spelled by pointing at a ForeignType node -- owned by
+/// the referring Context -- which records the foreign type's owning Context.
+/// See ForeignType at the bottom of this header.
 class TypeRef {
 public:
   TypeRef() = default;
-  TypeRef(Context &context, Type *type) : m_context(&context), m_type(type) {}
+  TypeRef(Type *type) : m_type(type) {}
 
   /// The referenced type, or null for an empty reference (e.g. the pointee of
   /// a `void *`).
   Type *Get() const { return m_type; }
-  /// The Context that owns the referenced type, or null for an empty reference.
-  Context *GetContext() const { return m_context; }
 
   /// True when this refers to a type (false for an empty reference).
   explicit operator bool() const { return m_type != nullptr; }
 
 private:
-  Context *m_context = nullptr;
   Type *m_type = nullptr;
 };
 
-static_assert(sizeof(TypeRef) <= sizeof(void *) * 2,
-              "TypeRef is expected to be a small reference class!");
+static_assert(sizeof(TypeRef) == sizeof(void *),
+              "TypeRef is expected to be pointer-sized!");
 
 /// A single data member of a record type.
 struct Field {
@@ -553,7 +556,7 @@ private:
 /// desugaring in TypeSystemClike). The transparent virtual queries forward to the
 /// underlying type; subclasses override the ones that must differ (e.g. a
 /// typedef reports its own name and type class). The concrete sugar kinds live
-/// in TypeC.h.
+/// in TypeC.h, apart from ForeignType (below), which is language-neutral.
 class SugarType : public llvm::RTTIExtends<SugarType, Type> {
 public:
   static char ID;
@@ -611,6 +614,83 @@ public:
 
 private:
   TypeRef m_underlying_type;
+};
+
+/// A stand-in for a type that *another* Context owns.
+///
+/// Types are owned by the Context that created them, and a TypeRef is a bare
+/// pointer that says nothing about ownership, so a type cannot refer to one in
+/// another Context directly. Nearly every reference is within a single Context
+/// (the DWARF parser builds a module's types through that module's own type
+/// system), so making every reference carry an owning Context -- as the
+/// two-word TypeRef this replaces did -- made every type in the graph pay for
+/// the rare cross-Context case. A ForeignType localizes that cost to the cases
+/// that need it: it is a node owned by the *referring* Context that pairs the
+/// referenced type with the Context that owns it, so the reference itself stays
+/// a plain TypeRef pointing at this node. Created (and interned) by
+/// Context::GetForeignType.
+///
+/// It is transparent sugar: Desugar() skips straight to the referenced type and
+/// every query forwards to it, so a consumer that doesn't care where a type
+/// lives never has to know this node is in the chain. Only code that needs the
+/// owning Context -- e.g. to reach the TypeSystemClike a type belongs to --
+/// looks for it (llvm::dyn_cast<ForeignType>).
+///
+/// Nothing creates one yet: the references that cross a Context today (a
+/// scratch-context pointer or reference to a module-owned record, formed while
+/// converting a clang type back to this model) are still stored as plain
+/// pointers, which is all the Context they used to carry ever amounted to --
+/// PointerType now records its own Context to size itself. Routing them through
+/// this node means teaching the two places that dispatch on a type's kind
+/// *without* desugaring first -- BuildDisplayNameImpl in TypeName.cpp and
+/// ClangASTGenerator::GenerateType -- to see through it.
+class ForeignType : public llvm::RTTIExtends<ForeignType, SugarType> {
+public:
+  static char ID;
+
+  /// The Context that owns the referenced type. Never this node's own Context.
+  Context &GetReferencedContext() const { return *m_referenced_context; }
+  /// The type this node stands in for, owned by GetReferencedContext(). Never
+  /// null (enforced by Context::GetForeignType).
+  Type *GetReferencedType() const { return GetUnderlyingType(); }
+  void SetReferencedType(Context &context, Type *type) {
+    assert(type && "a foreign reference must name a type");
+    m_referenced_context = &context;
+    SetUnderlyingType(type);
+  }
+
+  // SugarType forwards the layout/value/children queries, but not the ones a
+  // typedef answers for itself (its name) or that only some kinds carry (an
+  // explicit alignment, polymorphism, pointer transparency). A ForeignType has
+  // no identity of its own at all -- it must be indistinguishable from the type
+  // it stands in for -- so forward those too.
+  Identifier GetName() const override {
+    return GetReferencedType()->GetName();
+  }
+  Identifier GetUnqualifiedName() const override {
+    return GetReferencedType()->GetUnqualifiedName();
+  }
+  const Namespace *GetDeclContext() const override {
+    return GetReferencedType()->GetDeclContext();
+  }
+  std::optional<uint64_t> GetAlignInBits() const override {
+    return GetReferencedType()->GetAlignInBits();
+  }
+  std::optional<uint64_t> GetAlignmentInBits() const override {
+    return GetReferencedType()->GetAlignmentInBits();
+  }
+  bool IsPolymorphic() const override {
+    return GetReferencedType()->IsPolymorphic();
+  }
+  Type *GetTransparentChildPointee() override {
+    return GetReferencedType()->GetTransparentChildPointee();
+  }
+  Type *GetNamedMemberPointee() override {
+    return GetReferencedType()->GetNamedMemberPointee();
+  }
+
+private:
+  Context *m_referenced_context = nullptr;
 };
 
 } // namespace clike_typesystem

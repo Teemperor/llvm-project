@@ -11,6 +11,7 @@ using namespace lldb_private::clike_typesystem;
 char Type::ID = 0;
 char RecordType::ID = 0;
 char SugarType::ID = 0;
+char ForeignType::ID = 0;
 
 std::optional<uint64_t> Type::GetAlignmentInBits() const {
   // Prefer an explicitly-recorded alignment (e.g. an `alignas(...)` type, whose

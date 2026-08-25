@@ -83,8 +83,8 @@ TEST_F(ContextTest, GetBuiltinTypeBespokeFallback) {
 // twice returns the identical instance.
 TEST_F(ContextTest, PointerTypesAreUniqued) {
   Type *record = context.CreateRecordType("Foo", 4, false);
-  PointerType *p1 = context.CreatePointerType(TypeRef(context, record));
-  PointerType *p2 = context.CreatePointerType(TypeRef(context, record));
+  PointerType *p1 = context.CreatePointerType(record);
+  PointerType *p2 = context.CreatePointerType(record);
   EXPECT_EQ(p1, p2);
   EXPECT_EQ(p1->GetPointeeType(), record);
   EXPECT_EQ(p1->GetByteSize(), 8u);
@@ -94,9 +94,9 @@ TEST_F(ContextTest, PointerTypesAreUniqued) {
 // (the block pointer is a separate BlockPointerType kind).
 TEST_F(ContextTest, BlockPointerDistinctFromPlainPointer) {
   Type *record = context.CreateRecordType("Foo", 4, false);
-  PointerType *plain = context.CreatePointerType(TypeRef(context, record));
+  PointerType *plain = context.CreatePointerType(record);
   BlockPointerType *block =
-      context.CreateBlockPointerType(TypeRef(context, record));
+      context.CreateBlockPointerType(record);
   EXPECT_NE(static_cast<Type *>(plain), static_cast<Type *>(block));
   EXPECT_TRUE(llvm::isa<BlockPointerType>(block));
   EXPECT_FALSE(llvm::isa<BlockPointerType>(plain));
@@ -115,7 +115,7 @@ TEST_F(ContextTest, VoidPointer) {
 TEST_F(ContextTest, TypedefInheritsByteSize) {
   Type *record = context.CreateRecordType("Foo", 16, false);
   TypedefType *td =
-      context.CreateTypedefType("FooAlias", TypeRef(context, record));
+      context.CreateTypedefType("FooAlias", record);
   EXPECT_EQ(td->GetByteSize(), 16u);
   EXPECT_EQ(td->GetUnderlyingType(), record);
 }
@@ -126,11 +126,11 @@ TEST_F(ContextTest, ArrayByteSizeComputed) {
   BuiltinType *elem =
       context.GetBuiltinType("int", 4, lldb::eEncodingSint, lldb::eFormatDecimal);
   ArrayType *bounded =
-      context.CreateArrayType(TypeRef(context, elem), /*num_elements=*/10);
+      context.CreateArrayType(elem, /*num_elements=*/10);
   EXPECT_EQ(bounded->GetByteSize(), 40u);
 
   ArrayType *unbounded =
-      context.CreateArrayType(TypeRef(context, elem), std::nullopt);
+      context.CreateArrayType(elem, std::nullopt);
   EXPECT_FALSE(unbounded->GetByteSize().has_value());
 }
 
@@ -138,7 +138,7 @@ TEST_F(ContextTest, ArrayByteSizeComputed) {
 TEST_F(ContextTest, ComplexByteSizeIsDoubleElement) {
   BuiltinType *elem = context.GetBuiltinType(
       "float", 4, lldb::eEncodingIEEE754, lldb::eFormatFloat);
-  ComplexType *complex = context.CreateComplexType(TypeRef(context, elem));
+  ComplexType *complex = context.CreateComplexType(elem);
   EXPECT_EQ(complex->GetByteSize(), 8u);
 }
 

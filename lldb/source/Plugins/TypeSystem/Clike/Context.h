@@ -151,6 +151,13 @@ public:
   /// element's.
   ComplexType *CreateComplexType(TypeRef element_type);
 
+  /// Reference a type that another Context owns: returns a node owned by *this*
+  /// Context standing in for \p type (which \p owner owns), so the reference
+  /// itself stays a plain TypeRef. See ForeignType. Interned by (owner, type),
+  /// so a given foreign type always maps to the same node. \p owner must be a
+  /// different Context -- a reference within one Context needs no such node.
+  ForeignType *GetForeignType(Context &owner, Type *type);
+
   /// Structural mutation of already-created record types. These are the gated
   /// entry points for the mutations that happen during lazy completion; the
   /// corresponding Type methods are private and befriend this class.
@@ -248,17 +255,6 @@ private:
     return result;
   }
 
-  /// Return \p ref, but with this Context filled in as its owning Context when
-  /// it doesn't already name one. Used so a pointer's pointee reference always
-  /// carries a Context -- even a `void *`, whose pointee is empty -- letting
-  /// PointerType::GetByteSize recover the target pointer size without storing
-  /// it per pointer.
-  TypeRef WithOwningContext(TypeRef ref) {
-    if (ref.GetContext())
-      return ref;
-    return TypeRef(*this, ref.Get());
-  }
-
   std::vector<std::unique_ptr<Type>> m_types;
   /// Interned namespaces, owned for the Context's lifetime, plus a dedup map
   /// keyed by (parent, interned-name pointer, is_inline).
@@ -270,6 +266,10 @@ private:
   /// equality) and a plain `T *` stays distinct from a block `T (^)`. See
   /// CreatePointerType / CreateBlockPointerType.
   std::map<std::pair<Type *, bool>, PointerType *> m_pointer_map;
+  /// Uniquing map for the ForeignType nodes standing in for types other
+  /// Contexts own, keyed by (owning Context, type), so a given foreign type is
+  /// always referenced through the same node. See GetForeignType.
+  std::map<std::pair<Context *, Type *>, ForeignType *> m_foreign_type_map;
   /// Interned CompilerDecls (static data members / member functions), owned for
   /// the Context's lifetime and deduplicated by (kind, payload).
   std::vector<std::unique_ptr<Decl>> m_decls;
