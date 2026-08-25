@@ -836,6 +836,16 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemClike &ts,
   if (!clike_type)
     return {};
 
+  // A stand-in for a type another Context owns (see clike_typesystem::
+  // ForeignType) is fully transparent here: generate what it references.
+  // Deliberately before the m_generated cache and without the m_reverse/
+  // m_type_owner bookkeeping at the tail of this function: the reverse map has
+  // to keep pointing at the referenced type, whose owning TypeSystemClike is
+  // what ClangTypeConverter must hand back for the type to stay completable
+  // (see m_type_owner). A stand-in would answer with this type system instead.
+  if (auto *foreign = llvm::dyn_cast<ct::ForeignType>(clike_type))
+    return GenerateType(ts, foreign->GetReferencedType(), build_template_spec);
+
   // Return the cached translation if we already generated this type. This also
   // breaks cycles (e.g. a record that transitively points back to itself).
   auto cached = m_generated.find(clike_type);

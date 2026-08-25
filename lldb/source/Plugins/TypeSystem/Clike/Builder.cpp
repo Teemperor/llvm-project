@@ -171,6 +171,26 @@ clike_typesystem::Identifier Builder::GetIdentifier(llvm::StringRef name) {
   return m_ts.m_context.GetIdentifier(name);
 }
 
+CompilerType Builder::ToLocalReference(const CompilerType &type) {
+  auto ts = type.GetTypeSystem().dyn_cast_or_null<TypeSystemClike>();
+  if (!ts)
+    return type;
+  Type *referenced = TypeSystemClike::GetClikeType(type.GetOpaqueQualType());
+  if (!referenced)
+    return type;
+  // A stand-in already names the Context that really owns the type, so peel it
+  // instead of stacking another one on top of it.
+  Context *owner = &ts->m_context;
+  if (auto *foreign = llvm::dyn_cast<ForeignType>(referenced)) {
+    owner = &foreign->GetReferencedContext();
+    referenced = foreign->GetReferencedType();
+  }
+  if (owner == &m_ts.m_context)
+    return m_ts.GetCompilerType(referenced);
+  return m_ts.GetCompilerType(
+      m_ts.m_context.GetForeignType(*owner, referenced));
+}
+
 void Builder::SetRecordComplete(clike_typesystem::RecordType &record) {
   m_ts.m_context.SetComplete(record);
 }

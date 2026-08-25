@@ -282,6 +282,26 @@ private:
   Identifier m_spelling;
 };
 
+/// Peel the wrappers that carry no meaning of their own off \p t -- elaborated
+/// display sugar (ElaboratedType) and a stand-in for a type another Context owns
+/// (ForeignType) -- however they nest, stopping at the first type that means
+/// something. Unlike Type::Desugar this keeps a typedef or a cv-qualifier, which
+/// are meaningful: this is for the callers that must still recognize those (e.g.
+/// IsTypedefType) but shouldn't care about a spelling or an owning Context.
+///
+/// Peeling in a loop rather than one pass of each matters: a scratch Context
+/// spells a foreign typedef it kept the source spelling of as
+/// `Elaborated(Foreign(Typedef))`, so stripping just once in a fixed order would
+/// leave the other wrapper in place.
+inline Type *StripTransparentSugar(Type *t) {
+  while (true) {
+    Type *stripped = ForeignType::Strip(ElaboratedType::Strip(t));
+    if (stripped == t)
+      return t;
+    t = stripped;
+  }
+}
+
 /// A single (name, value) constant of an enumeration.
 struct Enumerator {
   Identifier name;

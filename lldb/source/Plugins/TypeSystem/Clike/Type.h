@@ -632,18 +632,16 @@ private:
 ///
 /// It is transparent sugar: Desugar() skips straight to the referenced type and
 /// every query forwards to it, so a consumer that doesn't care where a type
-/// lives never has to know this node is in the chain. Only code that needs the
-/// owning Context -- e.g. to reach the TypeSystemClike a type belongs to --
-/// looks for it (llvm::dyn_cast<ForeignType>).
+/// lives never has to know this node is in the chain. The places that peek at a
+/// referenced type's *kind* without desugaring (because a typedef must stay
+/// distinguishable, e.g. the name builders in TypeName.cpp) peel it with Strip
+/// instead. Only code that needs the owning Context looks for it directly
+/// (llvm::dyn_cast<ForeignType>).
 ///
-/// Nothing creates one yet: the references that cross a Context today (a
-/// scratch-context pointer or reference to a module-owned record, formed while
-/// converting a clang type back to this model) are still stored as plain
-/// pointers, which is all the Context they used to carry ever amounted to --
-/// PointerType now records its own Context to size itself. Routing them through
-/// this node means teaching the two places that dispatch on a type's kind
-/// *without* desugaring first -- BuildDisplayNameImpl in TypeName.cpp and
-/// ClangASTGenerator::GenerateType -- to see through it.
+/// ClangTypeConverter is what creates these: mapping an expression's clang types
+/// back onto this model reaches types owned by the module that parsed them, and
+/// the reconstructed types it builds around them live in the target (scratch)
+/// Context.
 class ForeignType : public llvm::RTTIExtends<ForeignType, SugarType> {
 public:
   static char ID;
@@ -657,6 +655,20 @@ public:
     assert(type && "a foreign reference must name a type");
     m_referenced_context = &context;
     SetUnderlyingType(type);
+  }
+
+  /// Peel any foreign stand-in off \p t, yielding the type it stands in for.
+  /// For the callers that deliberately don't desugar (a typedef or cv-qualifier
+  /// carries meaning they must not lose) but do need to see the kind of type
+  /// they are looking at, not the fact that it lives in another Context.
+  /// Mirrors ElaboratedType::Strip.
+  static Type *Strip(Type *t) {
+    while (auto *foreign = llvm::dyn_cast_or_null<ForeignType>(t))
+      t = foreign->GetReferencedType();
+    return t;
+  }
+  static const Type *Strip(const Type *t) {
+    return Strip(const_cast<Type *>(t));
   }
 
   // SugarType forwards the layout/value/children queries, but not the ones a
