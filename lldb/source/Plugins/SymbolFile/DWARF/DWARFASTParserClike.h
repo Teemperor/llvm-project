@@ -16,6 +16,7 @@
 
 #include "llvm/ADT/DenseMap.h"
 
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -152,6 +153,27 @@ public:
       const lldb_private::plugin::dwarf::DWARFDIE &die) override {}
 
 private:
+  /// TypeSystemClike understands DWARF 4 and later only.
+  ///
+  /// The older versions are not a subset: DWARF 2 and 3 spell things
+  /// differently rather than less completely (no DW_AT_data_bit_offset, so
+  /// bitfields are described by the DWARF 2 bit-offset triple that has to be
+  /// read relative to the storage unit and byte order; DW_AT_bit_size on
+  /// non-bitfields; no unified DW_AT_high_pc semantics; different reference
+  /// forms). Every one of those would need its own translation, and reading
+  /// such a unit as if it were DWARF 4 does not fail loudly -- it yields types
+  /// that are quietly the wrong size or shape. Rejecting the unit means
+  /// missing types, which is the honest answer and is easy to recognise.
+  ///
+  /// Returns false for a DIE from a unit older than DWARF 4, warning once per
+  /// module so that the missing types have a stated reason.
+  bool IsSupportedDWARFVersion(
+      const lldb_private::plugin::dwarf::DWARFDIE &die);
+
+  /// Warned about an unsupported DWARF version already; see
+  /// IsSupportedDWARFVersion.
+  std::once_flag m_unsupported_version_warning;
+
   lldb::TypeSP
   ParseBaseType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
