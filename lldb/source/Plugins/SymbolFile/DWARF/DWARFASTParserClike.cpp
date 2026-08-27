@@ -83,6 +83,9 @@ Function *DWARFASTParserClike::ParseFunctionFromDWARF(CompileUnit &comp_unit,
   if (die.Tag() != DW_TAG_subprogram)
     return nullptr;
 
+  if (!IsSupportedDWARFVersion(die))
+    return nullptr;
+
   llvm::DWARFAddressRangesVector unused_func_ranges;
   const char *name = nullptr;
   const char *mangled = nullptr;
@@ -1360,6 +1363,33 @@ TypeSP DWARFASTParserClike::ParseFunctionType(const DWARFDIE &die) {
                          Type::ResolveState::Full);
 }
 
+/// The oldest DWARF version TypeSystemClike knows how to read. See
+/// IsSupportedDWARFVersion for why older ones are refused rather than
+/// approximated.
+static constexpr uint16_t kOldestSupportedDWARFVersion = 4;
+
+bool DWARFASTParserClike::IsSupportedDWARFVersion(const DWARFDIE &die) {
+  DWARFUnit *unit = die.GetCU();
+  if (!unit)
+    return false;
+  const uint16_t version = unit->GetVersion();
+  if (version >= kOldestSupportedDWARFVersion)
+    return true;
+
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+  ObjectFile *obj_file = dwarf ? dwarf->GetObjectFile() : nullptr;
+  if (Module *module = obj_file ? obj_file->GetModule().get() : nullptr) {
+    std::call_once(m_unsupported_version_warning, [&] {
+      module->ReportWarning(
+          "DWARF version {0} is not supported; types from this module will be "
+          "missing. Recompile with -gdwarf-{1} or later, or set "
+          "symbols.enable-typesystem-clike to false.",
+          version, kOldestSupportedDWARFVersion);
+    });
+  }
+  return false;
+}
+
 TypeSP DWARFASTParserClike::ParseTypeFromDWARF(const SymbolContext &sc,
                                              const DWARFDIE &die,
                                              bool *type_is_new_ptr) {
@@ -1367,6 +1397,9 @@ TypeSP DWARFASTParserClike::ParseTypeFromDWARF(const SymbolContext &sc,
     *type_is_new_ptr = false;
 
   if (!die)
+    return nullptr;
+
+  if (!IsSupportedDWARFVersion(die))
     return nullptr;
 
   SymbolFileDWARF *dwarf = die.GetDWARF();
@@ -1498,6 +1531,9 @@ ExtractVBaseOffsetOffset(const DWARFDIE &die,
 bool DWARFASTParserClike::CompleteTypeFromDWARF(
     const DWARFDIE &die, Type *type, const CompilerType &compiler_type) {
   if (!die)
+    return false;
+
+  if (!IsSupportedDWARFVersion(die))
     return false;
 
   // A DW_TAG_structure/class/union DIE is always backed by a RecordType.
