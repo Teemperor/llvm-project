@@ -18,6 +18,7 @@
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/UnwindPlan.h"
 #include "lldb/Utility/Flags.h"
+#include "lldb/Utility/Locked.h"
 #include "lldb/Utility/RangeMap.h"
 #include "lldb/lldb-private.h"
 
@@ -128,7 +129,18 @@ private:
   std::optional<FDEEntryMap::Entry>
   GetFirstFDEEntryInRange(const AddressRange &range);
 
-  void GetFDEIndex();
+  /// The parsed FDE index, together with the flag saying whether the index
+  /// has already been built. Both live behind the same lock: an index is
+  /// either fully built or not, there's no partial state visible to readers.
+  struct FDEIndex {
+    FDEEntryMap map;
+    bool initialized = false; // only scan the section for FDEs once
+  };
+
+  /// Builds the FDE index on first access, then returns a locked handle to
+  /// it. Callers must use the handle to read the index; the lock is held for
+  /// the handle's lifetime, so keep it as short-lived as possible.
+  Locked<FDEIndex *, std::mutex> GetFDEIndex();
 
   /// Parsed representation of a Frame Descriptor Entry.
   struct FDE {
@@ -160,9 +172,7 @@ private:
   DataExtractor m_cfi_data;
   bool m_cfi_data_initialized = false; // only copy the section into the DE once
 
-  FDEEntryMap m_fde_index;
-  bool m_fde_index_initialized = false; // only scan the section for FDEs once
-  std::mutex m_fde_index_mutex; // and isolate the thread that does it
+  Guarded<FDEIndex, std::mutex> m_fde_index;
 
   Type m_type;
 

@@ -234,9 +234,9 @@ bool DWARFCallFrameInfo::GetAddressRange(Address addr, AddressRange &range) {
 
   if (m_section_sp.get() == nullptr || m_section_sp->IsEncrypted())
     return false;
-  GetFDEIndex();
+  Locked<FDEIndex *, std::mutex> index = GetFDEIndex();
   FDEEntryMap::Entry *fde_entry =
-      m_fde_index.FindEntryThatContains(addr.GetFileAddress());
+      index->map.FindEntryThatContains(addr.GetFileAddress());
   if (!fde_entry)
     return false;
 
@@ -250,11 +250,11 @@ DWARFCallFrameInfo::GetFirstFDEEntryInRange(const AddressRange &range) {
   if (!m_section_sp || m_section_sp->IsEncrypted())
     return std::nullopt;
 
-  GetFDEIndex();
+  Locked<FDEIndex *, std::mutex> index = GetFDEIndex();
 
   addr_t start_file_addr = range.GetBaseAddress().GetFileAddress();
   const FDEEntryMap::Entry *fde =
-      m_fde_index.FindEntryThatContainsOrFollows(start_file_addr);
+      index->map.FindEntryThatContainsOrFollows(start_file_addr);
   if (fde && fde->DoesIntersect(
                  FDEEntryMap::Range(start_file_addr, range.GetByteSize())))
     return *fde;
@@ -264,14 +264,14 @@ DWARFCallFrameInfo::GetFirstFDEEntryInRange(const AddressRange &range) {
 
 void DWARFCallFrameInfo::GetFunctionAddressAndSizeVector(
     FunctionAddressAndSizeVector &function_info) {
-  GetFDEIndex();
-  const size_t count = m_fde_index.GetSize();
+  Locked<FDEIndex *, std::mutex> index = GetFDEIndex();
+  const size_t count = index->map.GetSize();
   function_info.Clear();
   if (count > 0)
     function_info.Reserve(count);
   for (size_t i = 0; i < count; ++i) {
     const FDEEntryMap::Entry *func_offset_data_entry =
-        m_fde_index.GetEntryAtIndex(i);
+        index->map.GetEntryAtIndex(i);
     if (func_offset_data_entry) {
       FunctionAddressAndSizeVector::Entry function_offset_entry(
           func_offset_data_entry->base, func_offset_data_entry->size);
@@ -462,17 +462,13 @@ void DWARFCallFrameInfo::GetCFIData() {
 // the start/end addresses of the functions and a pointer back to the
 // function's FDE for later expansion. Internalize CIEs as we come across them.
 
-void DWARFCallFrameInfo::GetFDEIndex() {
-  if (m_section_sp.get() == nullptr || m_section_sp->IsEncrypted())
-    return;
+Locked<DWARFCallFrameInfo::FDEIndex *, std::mutex>
+DWARFCallFrameInfo::GetFDEIndex() {
+  Locked<FDEIndex *, std::mutex> index = m_fde_index.Lock();
 
-  if (m_fde_index_initialized)
-    return;
-
-  std::lock_guard<std::mutex> guard(m_fde_index_mutex);
-
-  if (m_fde_index_initialized) // if two threads hit the locker
-    return;
+  if (index->initialized || m_section_sp.get() == nullptr ||
+      m_section_sp->IsEncrypted())
+    return index;
 
   LLDB_SCOPED_TIMERF("%s", m_objfile.GetFileSpec().GetFilename().str().c_str());
 
@@ -508,9 +504,9 @@ void DWARFCallFrameInfo::GetFDEIndex() {
                                           next_entry, current_entry));
       // Don't trust anything in this eh_frame section if we find blatantly
       // invalid data.
-      m_fde_index.Clear();
-      m_fde_index_initialized = true;
-      return;
+      index->map.Clear();
+      index->initialized = true;
+      return index;
     }
 
     // Check if this is a CIE or FDE based on the CIE ID marker
@@ -518,9 +514,9 @@ void DWARFCallFrameInfo::GetFDEIndex() {
       auto cie_sp = ParseCIE(current_entry);
       if (!cie_sp) {
         // Cannot parse, the reason is already logged
-        m_fde_index.Clear();
-        m_fde_index_initialized = true;
-        return;
+        index->map.Clear();
+        index->initialized = true;
+        return index;
       }
 
       m_cie_map[current_entry] = std::move(cie_sp);
@@ -537,9 +533,9 @@ void DWARFCallFrameInfo::GetFDEIndex() {
                                           cie_offset, current_entry));
       // Don't trust anything in this eh_frame section if we find blatantly
       // invalid data.
-      m_fde_index.Clear();
-      m_fde_index_initialized = true;
-      return;
+      index->map.Clear();
+      index->initialized = true;
+      return index;
     }
 
     const CIE *cie = GetCIE(cie_offset);
@@ -558,7 +554,7 @@ void DWARFCallFrameInfo::GetFDEIndex() {
           m_cfi_data, &offset, cie->ptr_encoding & DW_EH_PE_MASK_ENCODING,
           pc_rel_addr, text_addr, data_addr);
       FDEEntryMap::Entry fde(addr, length, current_entry);
-      m_fde_index.Append(fde);
+      index->map.Append(fde);
     } else {
       Debugger::ReportError(llvm::formatv(
           "unable to find CIE at {0:x} for cie_id = {1:x} for entry at {2:x}.",
@@ -566,8 +562,9 @@ void DWARFCallFrameInfo::GetFDEIndex() {
     }
     offset = next_entry;
   }
-  m_fde_index.Sort();
-  m_fde_index_initialized = true;
+  index->map.Sort();
+  index->initialized = true;
+  return index;
 }
 
 std::optional<DWARFCallFrameInfo::FDE>
@@ -1021,10 +1018,10 @@ bool DWARFCallFrameInfo::HandleCommonDwarfOpcode(uint8_t primary_opcode,
 
 void DWARFCallFrameInfo::ForEachFDEEntries(
     const std::function<bool(lldb::addr_t, uint32_t, dw_offset_t)> &callback) {
-  GetFDEIndex();
+  Locked<FDEIndex *, std::mutex> index = GetFDEIndex();
 
-  for (size_t i = 0, c = m_fde_index.GetSize(); i < c; ++i) {
-    const FDEEntryMap::Entry &entry = m_fde_index.GetEntryRef(i);
+  for (size_t i = 0, c = index->map.GetSize(); i < c; ++i) {
+    const FDEEntryMap::Entry &entry = index->map.GetEntryRef(i);
     if (!callback(entry.base, entry.size, entry.data))
       break;
   }
