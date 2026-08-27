@@ -33,6 +33,52 @@
 using namespace lldb_private;
 using namespace clang;
 
+namespace {
+/// Number of source ASTContext locks (see ScopedSourceContextLock) currently
+/// held on the calling thread.
+thread_local unsigned g_source_context_lock_depth = 0;
+
+/// RAII guard for a source ASTContext's lock (a Module's lock, when the
+/// source ASTContext belongs to a Module-scoped TypeSystemClang). Tracks how
+/// many of these are currently held on the calling thread, and once the
+/// outermost one is released, drains any ObjCInterfaceDecl completions that
+/// ClangASTImporter::CompleteObjCInterfaceDecl deferred while one was held.
+///
+/// Completing an ObjCInterfaceDecl can end up asking the Objective-C runtime
+/// for class info debug info doesn't have, which runs code in the process.
+/// The thread that reports the resulting stop needs this same lock to
+/// symbolicate, so running that code while holding it deadlocks the two
+/// threads. Deferring the completion instead - see
+/// ClangASTImporter::CompleteObjCInterfaceDecl - guarantees it only ever
+/// happens once every such lock on this thread has been released.
+class ScopedSourceContextLock {
+public:
+  ScopedSourceContextLock(ClangASTImporter &importer,
+                          std::recursive_mutex &mutex)
+      : m_importer(importer), m_mutex(mutex) {
+    m_mutex.lock();
+    ++g_source_context_lock_depth;
+  }
+
+  ~ScopedSourceContextLock() {
+    bool is_outermost = --g_source_context_lock_depth == 0;
+    m_mutex.unlock();
+    // Only drain once the lock is actually released, and only once for the
+    // outermost of any such locks nested on this thread - draining re-enters
+    // CompleteObjCInterfaceDecl, which would otherwise just defer again.
+    if (is_outermost)
+      m_importer.DrainDeferredObjCInterfaceCompletions();
+  }
+
+  ScopedSourceContextLock(const ScopedSourceContextLock &) = delete;
+  ScopedSourceContextLock &operator=(const ScopedSourceContextLock &) = delete;
+
+private:
+  ClangASTImporter &m_importer;
+  std::recursive_mutex &m_mutex;
+};
+} // namespace
+
 CompilerType ClangASTImporter::CopyType(TypeSystemClang &dst_ast,
                                         const CompilerType &src_type) {
   clang::ASTContext &dst_clang_ast = dst_ast.getASTContext();
@@ -646,10 +692,10 @@ bool ClangASTImporter::importRecordLayoutFromOrigin(
   // Target that has the origin's Module loaded, so take its lock - the same one
   // its TypeSystemClang entry points take. Without it two threads laying out
   // the same record corrupt the origin's layout cache.
-  std::optional<std::lock_guard<std::recursive_mutex>> origin_guard;
+  std::optional<ScopedSourceContextLock> origin_guard;
   if (TypeSystemClang *origin_ast =
           TypeSystemClang::GetASTContext(&origin_record->getASTContext()))
-    origin_guard.emplace(origin_ast->GetMutex());
+    origin_guard.emplace(*this, origin_ast->GetMutex());
 
   std::remove_reference_t<decltype(field_offsets)> origin_field_offsets;
   std::remove_reference_t<decltype(base_offsets)> origin_base_offsets;
@@ -835,6 +881,32 @@ bool ClangASTImporter::CompleteTagDeclWithOrigin(clang::TagDecl *decl,
 }
 
 bool ClangASTImporter::CompleteObjCInterfaceDecl(
+    clang::ObjCInterfaceDecl *interface_decl) {
+  if (g_source_context_lock_depth > 0) {
+    // We're nested inside an import that's holding a source ASTContext's
+    // lock (see ScopedSourceContextLock). Completing this interface can ask
+    // the Objective-C runtime for class info, which runs code in the process
+    // and would deadlock while that lock is held - so defer it and let
+    // DrainDeferredObjCInterfaceCompletions finish it once the lock (and any
+    // other such lock nested on this thread) has been released.
+    m_deferred_objc_interfaces.insert(interface_decl);
+    return true;
+  }
+
+  return CompleteObjCInterfaceDeclImpl(interface_decl);
+}
+
+void ClangASTImporter::DrainDeferredObjCInterfaceCompletions() {
+  while (!m_deferred_objc_interfaces.empty()) {
+    llvm::SmallSetVector<clang::ObjCInterfaceDecl *, 4> pending =
+        std::move(m_deferred_objc_interfaces);
+    m_deferred_objc_interfaces.clear();
+    for (clang::ObjCInterfaceDecl *interface_decl : pending)
+      CompleteObjCInterfaceDeclImpl(interface_decl);
+  }
+}
+
+bool ClangASTImporter::CompleteObjCInterfaceDeclImpl(
     clang::ObjCInterfaceDecl *interface_decl) {
   DeclOrigin decl_origin = GetDeclOrigin(interface_decl);
 
@@ -1060,9 +1132,9 @@ ClangASTImporter::ASTImporterDelegate::ImportImpl(Decl *From) {
   // Module's ASTContext - is shared by every Target that has that Module
   // loaded. Take that ASTContext's lock, the same one its TypeSystemClang entry
   // points take, or the import races every other thread parsing types into it.
-  std::optional<std::lock_guard<std::recursive_mutex>> source_guard;
+  std::optional<ScopedSourceContextLock> source_guard;
   if (TypeSystemClang *source_ast = TypeSystemClang::GetASTContext(m_source_ctx))
-    source_guard.emplace(source_ast->GetMutex());
+    source_guard.emplace(m_main, source_ast->GetMutex());
 
   // FIXME: The Minimal import mode of clang::ASTImporter does not correctly
   // import Lambda definitions. Work around this for now by not importing
@@ -1158,9 +1230,9 @@ ClangASTImporter::ASTImporterDelegate::ImportImpl(Decl *From) {
 void ClangASTImporter::ASTImporterDelegate::ImportDefinitionTo(
     clang::Decl *to, clang::Decl *from) {
   // Same as in ImportImpl: `from` lives in the shared source ASTContext.
-  std::optional<std::lock_guard<std::recursive_mutex>> source_guard;
+  std::optional<ScopedSourceContextLock> source_guard;
   if (TypeSystemClang *source_ast = TypeSystemClang::GetASTContext(m_source_ctx))
-    source_guard.emplace(source_ast->GetMutex());
+    source_guard.emplace(m_main, source_ast->GetMutex());
 
   Log *log = GetLog(LLDBLog::Expressions);
 

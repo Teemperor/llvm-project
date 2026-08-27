@@ -134,7 +134,21 @@ public:
   /// Recursive for two reasons: the entry points call each other, and clang
   /// calls back into them (ClangExternalASTSourceCallbacks) from inside an
   /// operation the caller already holds this lock for.
-  std::recursive_mutex &GetMutex() const { return m_mutex; }
+  ///
+  /// For a Module-scoped instance this is that Module's lock, which is also
+  /// the lock its SymbolFile takes. Both have to be the same lock: SymbolFile
+  /// parses types into this ASTContext while holding the Module's lock, and
+  /// this ASTContext completes types through the SymbolFile from inside its
+  /// own entry points. Two separate locks would be taken in both orders and
+  /// deadlock.
+  std::recursive_mutex &GetMutex() const { return *m_mutex_ptr; }
+
+  /// Makes GetMutex() hand out \p mutex instead of this instance's own lock.
+  ///
+  /// \p mutex has to outlive this type system. Only called while this instance
+  /// is created, as changing the lock of a type system that is already in use
+  /// would leave its ASTContext unguarded.
+  void SetSharedMutex(std::recursive_mutex &mutex) { m_mutex_ptr = &mutex; }
 
   // llvm casting support
   bool isA(const void *ClassID) const override { return ClassID == &ID; }
@@ -1221,6 +1235,8 @@ private:
   std::string m_target_triple;
   /// See GetMutex(). Mutable so that const entry points can take it.
   mutable std::recursive_mutex m_mutex;
+  /// See GetMutex(). Points to m_mutex unless SetSharedMutex() replaced it.
+  std::recursive_mutex *m_mutex_ptr = &m_mutex;
   std::unique_ptr<clang::ASTContext> m_ast_up;
   std::unique_ptr<clang::LangOptions> m_language_options_up;
   std::unique_ptr<clang::FileManager> m_file_manager_up;

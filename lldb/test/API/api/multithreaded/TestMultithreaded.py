@@ -117,16 +117,6 @@ class SBBreakpointCallbackCase(TestBase):
     # clang-cl does not support throw or catch (llvm.org/pr24538)
     @skipIfWindows
     @skipIfHostIncompatibleWithTarget
-    # LLDB deadlocks when two threads complete the same type of a shared
-    # module: one thread holds the Module's lock in SymbolFileDWARF::FindTypes
-    # and waits for the TypeSystemClang lock, while the other holds the
-    # TypeSystemClang lock in TypeSystemClang::CompleteTagDecl and waits for the
-    # Module's lock. Making both the same lock fixes this, but then the lock is
-    # held while an expression runs code in the inferior (see
-    # ClangASTImporter::ASTImporterDelegate::ImportImpl completing a type
-    # through the Objective-C runtime), which deadlocks with the private state
-    # thread. The test is expected to hang until this is fixed.
-    @expectedFailureAll
     def test_concurrent_expressions_shared_module(self):
         """Test that expressions for the same module can be evaluated and their
         results inspected from several threads at the same time.

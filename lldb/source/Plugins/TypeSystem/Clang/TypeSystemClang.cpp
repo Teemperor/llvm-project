@@ -541,7 +541,13 @@ lldb::TypeSystemSP TypeSystemClang::CreateInstance(lldb::LanguageType language,
   if (module) {
     std::string ast_name =
         "ASTContext for '" + module->GetFileSpec().GetPath() + "'";
-    return std::make_shared<TypeSystemClang>(ast_name, triple);
+    auto type_system = std::make_shared<TypeSystemClang>(ast_name, triple);
+    // This ASTContext is filled in by the Module's SymbolFile, which does that
+    // while holding the Module's lock. Guard the ASTContext with that same lock
+    // so that parsing types into it and completing types from it can't deadlock
+    // each other. See TypeSystemClang::GetMutex().
+    type_system->SetSharedMutex(module->GetMutex());
+    return type_system;
   } else if (target && target->IsValid())
     return std::make_shared<ScratchTypeSystemClang>(*target, triple);
   return lldb::TypeSystemSP();

@@ -30,6 +30,7 @@
 #include "Plugins/ExpressionParser/Clang/CxxModuleHandler.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SetVector.h"
 
 namespace lldb_private {
 
@@ -175,7 +176,22 @@ public:
 
   bool CompleteTagDeclWithOrigin(clang::TagDecl *decl, clang::TagDecl *origin);
 
+  /// Completes the given ObjCInterfaceDecl, unless a source ASTContext's lock
+  /// (see ScopedSourceContextLock) is currently held on this thread, in which
+  /// case the completion is deferred until that lock is released.
+  ///
+  /// Completing an ObjCInterfaceDecl can ask the Objective-C runtime for
+  /// class info that debug info doesn't have, which runs code in the process.
+  /// Doing that while holding a source ASTContext's lock - which, for a
+  /// Module's ASTContext, is also the lock the process's private state thread
+  /// needs to report the resulting stop - deadlocks the two threads.
   bool CompleteObjCInterfaceDecl(clang::ObjCInterfaceDecl *interface_decl);
+
+  /// Completes ObjCInterfaceDecls that CompleteObjCInterfaceDecl deferred
+  /// while a source ASTContext's lock was held on this thread. Called once
+  /// that lock (and any other such lock nested inside it on this thread) has
+  /// been released.
+  void DrainDeferredObjCInterfaceCompletions();
 
   bool CompleteAndFetchChildren(clang::QualType type);
 
@@ -470,11 +486,23 @@ public:
 
   DeclOrigin GetDeclOrigin(const clang::Decl *decl);
 
+  /// The actual implementation of CompleteObjCInterfaceDecl, run either
+  /// directly or from DrainDeferredObjCInterfaceCompletions.
+  bool CompleteObjCInterfaceDeclImpl(clang::ObjCInterfaceDecl *interface_decl);
+
   clang::FileManager m_file_manager;
   typedef llvm::DenseMap<const clang::RecordDecl *, LayoutInfo>
       RecordDeclToLayoutMap;
 
   RecordDeclToLayoutMap m_record_decl_to_layout_map;
+
+  /// ObjCInterfaceDecls that CompleteObjCInterfaceDecl deferred because a
+  /// source ASTContext's lock was held on this thread when it was called.
+  /// Each ClangASTImporter instance belongs to one Target and is only ever
+  /// used by the thread that's currently evaluating an expression for that
+  /// Target, so this doesn't need its own lock.
+  llvm::SmallSetVector<clang::ObjCInterfaceDecl *, 4>
+      m_deferred_objc_interfaces;
 };
 
 template <class D> class TaggedASTDecl {
