@@ -130,6 +130,21 @@ public:
     return SharedLockedType(m_mutex, GetClikeType(type));
   }
 
+  /// Same idea as SharedLockedType/GetTypeForRead, but for the opaque
+  /// CompilerDecl pointers handed out by the DeclGet*/GetTypeForDecl family
+  /// (see clike_typesystem::Decl -- a tagged reference to a StaticDataMember
+  /// or MemberFunction). There is no write counterpart: a Decl is created
+  /// once by Context::GetOrCreateDecl and never mutated afterward, so every
+  /// consumer only ever needs read access.
+  using SharedLockedDecl =
+      lldb_private::SharedLockedPtr<clike_typesystem::Decl, llvm::sys::RWMutex>;
+
+  /// The ONLY sanctioned way to get a read-only Decl* out of an opaque decl.
+  SharedLockedDecl GetDeclForRead(void *opaque_decl) const {
+    return SharedLockedDecl(
+        m_mutex, static_cast<const clike_typesystem::Decl *>(opaque_decl));
+  }
+
   /// The target triple this type system was created for (used e.g. to build a
   /// throwaway Clang AST for ABI/vtable-layout queries).
   const llvm::Triple &GetTriple() const { return m_triple; }

@@ -188,8 +188,7 @@ void TypeSystemClike::Terminate() {
 
 ConstString TypeSystemClike::DeclGetName(void *opaque_decl) {
   // TypeSystemClike's CompilerDecls are tagged clike_typesystem::Decl references.
-  auto read_lock = LockForRead();
-  auto *decl = static_cast<const clike_typesystem::Decl *>(opaque_decl);
+  SharedLockedDecl decl = GetDeclForRead(opaque_decl);
   if (!decl)
     return ConstString();
   switch (decl->kind) {
@@ -206,8 +205,7 @@ ConstString TypeSystemClike::DeclGetName(void *opaque_decl) {
 }
 
 ConstString TypeSystemClike::DeclGetMangledName(void *opaque_decl) {
-  auto read_lock = LockForRead();
-  auto *decl = static_cast<const clike_typesystem::Decl *>(opaque_decl);
+  SharedLockedDecl decl = GetDeclForRead(opaque_decl);
   if (!decl)
     return ConstString();
   switch (decl->kind) {
@@ -224,8 +222,7 @@ ConstString TypeSystemClike::DeclGetMangledName(void *opaque_decl) {
 }
 
 CompilerType TypeSystemClike::GetTypeForDecl(void *opaque_decl) {
-  auto read_lock = LockForRead();
-  auto *decl = static_cast<const clike_typesystem::Decl *>(opaque_decl);
+  SharedLockedDecl decl = GetDeclForRead(opaque_decl);
   if (!decl)
     return CompilerType();
   switch (decl->kind) {
@@ -242,8 +239,7 @@ CompilerType TypeSystemClike::GetTypeForDecl(void *opaque_decl) {
 }
 
 Scalar TypeSystemClike::DeclGetConstantValue(void *opaque_decl) {
-  auto read_lock = LockForRead();
-  auto *decl = static_cast<const clike_typesystem::Decl *>(opaque_decl);
+  SharedLockedDecl decl = GetDeclForRead(opaque_decl);
   if (!decl || decl->kind != clike_typesystem::Decl::Kind::StaticDataMember)
     return Scalar();
   auto *member =
