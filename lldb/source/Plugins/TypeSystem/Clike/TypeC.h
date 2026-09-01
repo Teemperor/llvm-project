@@ -268,6 +268,9 @@ public:
       t = el->GetUnderlyingType();
     return t;
   }
+  static const Type *Strip(const Type *t) {
+    return Strip(const_cast<Type *>(t));
+  }
 
 private:
   Identifier m_spelling;
@@ -291,6 +294,9 @@ inline Type *StripTransparentSugar(Type *t) {
       return t;
     t = stripped;
   }
+}
+inline const Type *StripTransparentSugar(const Type *t) {
+  return StripTransparentSugar(const_cast<Type *>(t));
 }
 
 /// A single (name, value) constant of an enumeration.
