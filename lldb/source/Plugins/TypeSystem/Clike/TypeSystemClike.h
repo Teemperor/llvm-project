@@ -11,14 +11,17 @@
 
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
+#include "lldb/Utility/Locked.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/Support/RWMutex.h"
 #include "llvm/TargetParser/Triple.h"
 
 #include "Builder.h"
 #include "Context.h"
 
 #include <memory>
+#include <shared_mutex>
 
 class DWARFASTParserClike;
 
@@ -64,9 +67,67 @@ public:
   CompilerType GetOwningClassForFunction(Block &function_block);
 
   /// Wrap one of our own Type nodes into a CompilerType owned by this system.
-  CompilerType GetCompilerType(clike_typesystem::Type *type);  /// Recover the Type node backing a CompilerType created by this system.
+  CompilerType GetCompilerType(clike_typesystem::Type *type);
+  /// A CompilerType's opaque pointer isn't itself const-tracked -- constness
+  /// here is only a lock-scope safety net inside this class's own query
+  /// methods (see the locking note below), not a property of the Type graph.
+  /// Wrapping a `const Type *` obtained from a read lock is safe: it neither
+  /// mutates the pointee now nor grants the caller a way to later, since any
+  /// subsequent mutation still has to go through a public TypeSystemClike
+  /// method, which takes its own lock.
+  CompilerType GetCompilerType(const clike_typesystem::Type *type) {
+    return GetCompilerType(const_cast<clike_typesystem::Type *>(type));
+  }
+
+  /// Recover the Type node backing a CompilerType created by this system,
+  /// WITHOUT taking this instance's lock. This is intentionally unlocked: it
+  /// exists for callers that are either (a) not part of this class's own
+  /// query API (the expression-parser plugins and clike_typesystem::Builder,
+  /// which run under their own, separate single-threading guarantees -- see
+  /// the class-level locking note below), or (b) already holding this
+  /// instance's lock themselves. New code inside TypeSystemClike.cpp must NOT
+  /// call this directly -- use GetTypeForRead/GetTypeForWrite instead, so the
+  /// lock can never be forgotten.
   static clike_typesystem::Type *GetClikeType(lldb::opaque_compiler_type_t type) {
     return static_cast<clike_typesystem::Type *>(type);
+  }
+
+  /// Locking. TypeSystemClike protects its own Type/Context state with a
+  /// single reader/writer lock. GetTypeForWrite/GetTypeForRead below are the
+  /// ONLY sanctioned way for a query method to turn an opaque_compiler_type_t
+  /// into a Type* -- the returned RAII object bundles the lock together with
+  /// the pointer (via lldb_private::Locked/SharedLocked, see Utility/Locked.h)
+  /// so the lock can't be dropped while the pointer is still in use, and a
+  /// read lock only ever hands out a `const Type *`, so it is impossible to
+  /// mutate through it (mutation happens only through clike_typesystem::
+  /// Builder, which requires a non-const Type* / TypeSystemClike&).
+  ///
+  /// The single mutex is intentionally non-recursive (see llvm::sys::RWMutex):
+  /// every public method that needs the lock takes it exactly once, at its
+  /// own entry point, and delegates to a private "*Impl" (or, for the
+  /// completion family, "*AssumingWriteLocked") method that assumes the lock
+  /// is already held and never re-locks -- including when it recurses onto a
+  /// *different* Type* reachable from the first (base classes, pointees,
+  /// template arguments, ...), since those are protected by this same single
+  /// mutex. DWARFASTParserClike is a friend for exactly this reason: its
+  /// CompleteTypeFromDWARF/CompleteMemberFunctionsFromDWARF only ever run
+  /// nested inside GetCompleteType/CompleteMemberFunctions (which already
+  /// hold the write lock), so they call the *AssumingWriteLocked entry points
+  /// directly instead of re-entering the public, locking ones.
+  using LockedType =
+      lldb_private::LockedPtr<clike_typesystem::Type, llvm::sys::RWMutex>;
+  using SharedLockedType =
+      lldb_private::SharedLockedPtr<clike_typesystem::Type, llvm::sys::RWMutex>;
+
+  /// The ONLY sanctioned way to get a mutable Type* out of an opaque compiler
+  /// type. Do not let the raw pointer outlive the returned LockedType.
+  LockedType GetTypeForWrite(lldb::opaque_compiler_type_t type) {
+    return LockedType(m_mutex, GetClikeType(type));
+  }
+  /// The ONLY sanctioned way to get a read-only Type* out of an opaque
+  /// compiler type. The pointer is `const`, so it cannot be used to mutate.
+  SharedLockedType GetTypeForRead(lldb::opaque_compiler_type_t type) const {
+    return SharedLockedType(m_mutex, GetClikeType(type));
   }
 
   /// The target triple this type system was created for (used e.g. to build a
@@ -341,6 +402,97 @@ public:
 
 private:
   friend class clike_typesystem::Builder;
+  friend class ::DWARFASTParserClike;
+
+  /// Acquire the write lock without an associated Type* yet, for methods
+  /// that allocate/complete a *new* node rather than starting from an
+  /// existing opaque_compiler_type_t (e.g. GetPointerDiffType,
+  /// GetBasicTypeFromAST, CreateGenericFunctionPrototype).
+  [[nodiscard]] std::unique_lock<llvm::sys::RWMutex> LockForWrite() {
+    return std::unique_lock<llvm::sys::RWMutex>(m_mutex);
+  }
+  [[nodiscard]] std::shared_lock<llvm::sys::RWMutex> LockForRead() const {
+    return std::shared_lock<llvm::sys::RWMutex>(m_mutex);
+  }
+
+  /// Completion, assuming the write lock is already held by the caller (see
+  /// the locking note above GetTypeForWrite/GetTypeForRead). The public
+  /// GetCompleteType is a thin locking wrapper around this; so are the other
+  /// TypeSystemClike.cpp methods that lazily complete a type before reading
+  /// its fields. DWARFASTParserClike also calls this directly for
+  /// base-class completion, which always happens nested inside an outer
+  /// GetCompleteType/CompleteMemberFunctions call on the same thread.
+  clike_typesystem::Type *
+  CompleteTypeAssumingWriteLocked(clike_typesystem::Type *type);
+
+  /// GetBasicTypeFromAST, assuming the write lock is already held. Its
+  /// id/Class/SEL branch unconditionally allocates via Builder, so it can't
+  /// be called reentrantly through the public, locking GetBasicTypeFromAST.
+  /// DWARFASTParserClike::ParseTypedef calls this instead of the public entry
+  /// when it is itself running nested inside a completion (tracked by its own
+  /// m_completion_depth counter).
+  CompilerType
+  GetBasicTypeFromASTAssumingWriteLocked(lldb::BasicType basic_type);
+
+  /// CompleteMemberFunctions, assuming the write lock is already held (see
+  /// CompleteTypeAssumingWriteLocked). Called by the public
+  /// CompleteMemberFunctions and by every query method that lazily parses
+  /// member functions before reading them.
+  void CompleteMemberFunctionsAssumingWriteLocked(clike_typesystem::Type *type);
+
+  /// CompleteTemplateInstantiationForName, assuming the write lock is already
+  /// held. Used for this method's own self-recursion and by GetTypeName/
+  /// GetDisplayTypeName, which already hold the lock themselves.
+  void CompleteTemplateInstantiationForNameAssumingWriteLocked(
+      clike_typesystem::Type *t);
+
+  /// GetTypeName, assuming the write lock is already held. Used by
+  /// DumpTypeDescription, which needs a type's name for several of its own
+  /// Type* nodes while already holding the lock for the whole dump.
+  ConstString GetTypeNameAssumingWriteLocked(clike_typesystem::Type *t,
+                                             bool BaseOnly);
+
+  /// GetDisplayTypeName, assuming the write lock is already held. Used by
+  /// GetChildCompilerTypeAtIndexImpl to name an incomplete pointee in an
+  /// error message while already holding the lock.
+  ConstString
+  GetDisplayTypeNameAssumingWriteLocked(clike_typesystem::Type *t);
+
+  /// Helper for DumpTypeDescription; assumes the write lock is already held.
+  void AppendMemberDeclAssumingWriteLocked(Stream &s,
+                                           clike_typesystem::Type *field_type,
+                                           llvm::StringRef name);
+
+  /// CreateRuntimeObjCInterface, assuming the write lock is already held.
+  /// Used for this method's own superclass-chain self-recursion.
+  CompilerType CreateRuntimeObjCInterfaceAssumingWriteLocked(
+      ConstString class_name, Process &process, ObjCLanguageRuntime &runtime);
+
+  bool IsArrayTypeImpl(const clike_typesystem::Type *type,
+                       CompilerType *element_type, uint64_t *size,
+                       bool *is_incomplete);
+
+  bool IsIntegerTypeImpl(const clike_typesystem::Type *type, bool &is_signed);
+
+  bool IsPromotableIntegerTypeImpl(const clike_typesystem::Type *type);
+
+  llvm::Expected<uint32_t>
+  GetNumChildrenImpl(clike_typesystem::Type *type, bool omit_empty_base_classes,
+                     const ExecutionContext *exe_ctx);
+
+  llvm::Expected<CompilerType> GetChildCompilerTypeAtIndexImpl(
+      clike_typesystem::Type *type, ExecutionContext *exe_ctx, size_t idx,
+      bool transparent_pointers, bool omit_empty_base_classes,
+      bool ignore_array_bounds, std::string &child_name,
+      uint32_t &child_byte_size, int32_t &child_byte_offset,
+      uint32_t &child_bitfield_bit_size, uint32_t &child_bitfield_bit_offset,
+      bool &child_is_base_class, bool &child_is_deref_of_parent,
+      ValueObject *valobj, uint64_t &language_flags);
+
+  llvm::Expected<uint32_t>
+  GetIndexOfChildWithNameImpl(clike_typesystem::Type *type,
+                              llvm::StringRef name,
+                              bool omit_empty_base_classes);
 
   // Recursive worker for GetIndexOfChildMemberWithName. `descend_anon_fields`
   // controls whether an unnamed (anonymous union/struct) field is transparently
@@ -351,7 +503,7 @@ private:
   // propagate through a further base class -- i.e. `derived.member` does not find
   // a member that lives in an anonymous field of one of `derived`'s bases.
   size_t GetIndexOfChildMemberWithNameImpl(
-      lldb::opaque_compiler_type_t type, llvm::StringRef name,
+      clike_typesystem::Type *type, llvm::StringRef name,
       bool omit_empty_base_classes, bool descend_anon_fields,
       std::vector<uint32_t> &child_indexes);
 
@@ -360,7 +512,7 @@ private:
   /// referenced by pointer, so base-class queries on `Foo *` are answered by the
   /// interface `Foo`.
   clike_typesystem::Type *
-  GetObjCBaseClassBearingType(lldb::opaque_compiler_type_t type);
+  GetObjCBaseClassBearingType(clike_typesystem::Type *type);
 
   /// Recursive worker for GetFullyUnqualifiedType: strip top-level
   /// cv-qualifiers and recurse through pointer/reference/array pointees so the
@@ -396,6 +548,11 @@ private:
   /// must still resolve a hidden ivar reconstructed from the runtime (see the
   /// hidden-ivars test). Only a fallback: an explicit exe_ctx always wins.
   lldb::ProcessWP m_last_seen_process_wp;
+
+  /// Protects m_context (and thus every Type it owns) plus m_runtime_objc_types
+  /// and m_last_seen_process_wp above. See the locking note above
+  /// GetTypeForWrite/GetTypeForRead.
+  mutable llvm::sys::RWMutex m_mutex;
 };
 
 } // namespace lldb_private

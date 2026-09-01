@@ -43,6 +43,7 @@
 
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/DenseSet.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
 
@@ -1079,7 +1080,14 @@ TypeSP DWARFASTParserClike::ParseTypedef(const DWARFDIE &die) {
     else if (name == "SEL")
       basic_type = lldb::eBasicTypeObjCSel;
     if (basic_type) {
-      CompilerType basic = m_ts.GetBasicTypeFromAST(*basic_type);
+      // Reachable both as a fresh top-level DWARF parse and nested inside a
+      // record completion (e.g. resolving a member's type), so pick the
+      // lock-free entry point when we know we're already nested (tracked by
+      // m_completion_depth -- see CompleteTypeFromDWARF).
+      CompilerType basic = m_completion_depth > 0
+                                ? m_ts.GetBasicTypeFromASTAssumingWriteLocked(
+                                      *basic_type)
+                                : m_ts.GetBasicTypeFromAST(*basic_type);
       if (basic) {
         Declaration decl = GetDIEDeclaration(die);
         return dwarf->MakeType(
@@ -1530,6 +1538,15 @@ ExtractVBaseOffsetOffset(const DWARFDIE &die,
 
 bool DWARFASTParserClike::CompleteTypeFromDWARF(
     const DWARFDIE &die, Type *type, const CompilerType &compiler_type) {
+  // Entering here always means TypeSystemClike::GetCompleteType already holds
+  // the write lock on this same thread (this is SymbolFile::CompleteType's
+  // delegate). Track that with an explicit counter (rather than a recursive
+  // lock) so nested completion calls below know to use the lock-free
+  // "AssumingWriteLocked" entry points instead of re-entering the public,
+  // locking ones.
+  ++m_completion_depth;
+  llvm::scope_exit depth_guard([&] { --m_completion_depth; });
+
   if (!die)
     return false;
 
@@ -1870,7 +1887,7 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
   auto complete_and_check_polymorphic = [&](clike_typesystem::Type *base) {
     if (!base)
       return false;
-    m_ts.GetCompleteType(static_cast<lldb::opaque_compiler_type_t>(base));
+    m_ts.CompleteTypeAssumingWriteLocked(base);
     return base->IsPolymorphic();
   };
 
@@ -1972,7 +1989,7 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
       continue;
     clike_typesystem::Type *base = member_types[i];
     if (base)
-      m_ts.GetCompleteType(static_cast<lldb::opaque_compiler_type_t>(base));
+      m_ts.CompleteTypeAssumingWriteLocked(base);
     std::optional<uint64_t> base_byte_size =
         base ? base->GetByteSize() : std::nullopt;
     if (!base_byte_size) {
@@ -2034,7 +2051,7 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
         continue;
       clike_typesystem::Type *base = member_types[i];
       if (base)
-        m_ts.GetCompleteType(static_cast<lldb::opaque_compiler_type_t>(base));
+        m_ts.CompleteTypeAssumingWriteLocked(base);
       uint64_t base_bits = base ? base->GetByteSize().value_or(0) * 8 : 0;
       if (member.byte_offset * 8 + base_bits > vtable_ptr_end_bits) {
         bases_fit_before_vtable_end = false;
@@ -2266,6 +2283,12 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
 
 void DWARFASTParserClike::CompleteMemberFunctionsFromDWARF(
     clike_typesystem::RecordType &record) {
+  // Same reentrancy tracking as CompleteTypeFromDWARF: entering here always
+  // means TypeSystemClike::CompleteMemberFunctions already holds the write
+  // lock on this same thread.
+  ++m_completion_depth;
+  llvm::scope_exit depth_guard([&] { --m_completion_depth; });
+
   // Serialize under the type-system lock, matching CompleteTypeFromDWARF. Parse
   // the member functions at most once (parsing again would append duplicates),
   // so mark them parsed up front.

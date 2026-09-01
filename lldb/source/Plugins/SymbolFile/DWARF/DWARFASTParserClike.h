@@ -221,6 +221,16 @@ private:
 
   lldb_private::TypeSystemClike &m_ts;
 
+  /// Nonzero while running inside CompleteTypeFromDWARF/
+  /// CompleteMemberFunctionsFromDWARF (bumped/restored by an RAII guard at
+  /// their entry) -- i.e. whenever TypeSystemClike's write lock is already
+  /// held by this thread. An ambiguous call site (reachable both fresh and
+  /// nested, e.g. ParseTypedef's GetBasicTypeFromAST call) checks this to
+  /// pick the lock-free "AssumingWriteLocked" entry point instead of
+  /// re-entering the public, locking one and deadlocking. Not a lock itself
+  /// -- just an explicit marker of "the caller already holds it".
+  unsigned m_completion_depth = 0;
+
   /// Maps each record that was completed via CompleteTypeFromDWARF to its
   /// defining DIE, so that CompleteMemberFunctionsFromDWARF can re-find the DIE
   /// to parse the record's member functions on demand (the forward-declaration
