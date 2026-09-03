@@ -355,8 +355,7 @@ bool ClikeExpressionDeclMap::FindExternalVisibleDecls(
   // which recursed until the stack ran out.
   if (!m_active_lookups.insert(ii).second)
     return false;
-  auto end_lookup =
-      llvm::make_scope_exit([&] { m_active_lookups.erase(ii); });
+  llvm::scope_exit end_lookup([&] { m_active_lookups.erase(ii); });
 
   if (const auto *nsd = llvm::dyn_cast<clang::NamespaceDecl>(dc)) {
     if (nsd->getName() == "$__lldb_local_vars")
@@ -1897,7 +1896,8 @@ bool ClikeExpressionDeclMap::LookupInNamespace(
     llvm::SmallVectorImpl<clang::NamedDecl *> &decls) {
   auto it = m_namespace_maps.find(nsd);
   if (it == m_namespace_maps.end())
-    return false;  const NamespaceMap &map = it->second;
+    return false;
+  const NamespaceMap &map = it->second;
   auto *dc = const_cast<clang::NamespaceDecl *>(nsd);
 
   // A name inside a namespace can be a nested namespace, a type, a variable or

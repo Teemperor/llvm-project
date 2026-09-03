@@ -119,14 +119,14 @@ public:
   ///
   /// \return
   ///     True if parsing is possible; false if it is unsafe to continue.
-  bool WillParse(ExecutionContext &exe_ctx, Materializer *materializer);
+  bool WillParse(ExecutionContext &exe_ctx, Materializer *materializer) override;
 
-  void InstallCodeGenerator(clang::ASTConsumer *code_gen);
+  void InstallCodeGenerator(clang::ASTConsumer *code_gen) override;
 
-  void InstallDiagnosticManager(DiagnosticManager &diag_manager);
+  void InstallDiagnosticManager(DiagnosticManager &diag_manager) override;
 
   /// Disable the state needed for parsing and IR transformation.
-  void DidParse();
+  void DidParse() override;
 
   /// [Used by IRForTarget] Add a variable to the list of persistent
   ///     variables for the process.
@@ -143,9 +143,9 @@ public:
   ///
   /// \return
   ///     True on success; false otherwise.
-  virtual bool AddPersistentVariable(const clang::NamedDecl *decl,
-                                     ConstString name, TypeFromParser type,
-                                     bool is_result, bool is_lvalue);
+  bool AddPersistentVariable(const clang::NamedDecl *decl, ConstString name,
+                             TypeFromParser type, bool is_result,
+                             bool is_lvalue) override;
 
   /// [Used by IRForTarget] Add a variable to the struct that needs to
   ///     be materialized each time the expression runs.
@@ -169,14 +169,14 @@ public:
   ///     True on success; false otherwise.
   bool AddValueToStruct(const clang::NamedDecl *decl, ConstString name,
                         llvm::Value *value, size_t size,
-                        lldb::offset_t alignment);
+                        lldb::offset_t alignment) override;
 
   /// [Used by IRForTarget] Finalize the struct, laying out the position of
   /// each object in it.
   ///
   /// \return
   ///     True on success; false otherwise.
-  bool DoStructLayout();
+  bool DoStructLayout() override;
 
   /// [Used by IRForTarget] Get general information about the laid-out struct
   /// after DoStructLayout() has been called.
@@ -193,7 +193,7 @@ public:
   /// \return
   ///     True if the information could be retrieved; false otherwise.
   bool GetStructInfo(uint32_t &num_elements, size_t &size,
-                     lldb::offset_t &alignment);
+                     lldb::offset_t &alignment) override;
 
   /// [Used by IRForTarget] Get specific information about one field of the
   /// laid-out struct after DoStructLayout() has been called.
@@ -226,7 +226,7 @@ public:
   ///     True if the information could be retrieved; false otherwise.
   bool GetStructElement(const clang::NamedDecl *&decl, llvm::Value *&value,
                         lldb::offset_t &offset, ConstString &name,
-                        uint32_t index);
+                        uint32_t index) override;
 
   /// [Used by IRForTarget] Get information about a function given its Decl.
   ///
@@ -267,7 +267,7 @@ public:
                                 Module *module = nullptr);
 
   lldb::addr_t GetSymbolAddress(ConstString name,
-                                lldb::SymbolType symbol_type);
+                                lldb::SymbolType symbol_type) override;
 
   struct TargetInfo {
     lldb::ByteOrder byte_order = lldb::eByteOrderInvalid;

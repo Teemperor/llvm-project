@@ -1654,9 +1654,9 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
     bool is_virtual = false;
     // For a virtual base: the vtable-pointer-relative byte offset extracted from
     // its DW_AT_data_member_location expression (see BaseClass), if recognized.
-    std::optional<uint64_t> vbase_offset_offset;
+    std::optional<uint64_t> vbase_offset_offset = std::nullopt;
     // For a static data member: its DW_AT_const_value, if present.
-    std::optional<uint64_t> const_value;
+    std::optional<uint64_t> const_value = std::nullopt;
   };
   std::vector<MemberInfo> members;
 
