@@ -6,14 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// The language-neutral core of the type model: the Type base class, the
-// references/structs its API is expressed in, and the mixins and bases shared
-// by every concrete type kind. The concrete kinds themselves live in the
-// per-language headers next to this one:
-//
-//   TypeC.h    -- C types (struct, array, pointer, enum, function, sugar, ...)
-//   TypeCpp.h  -- C++-only types (class, reference, pointer-to-member, ...)
-//   TypeObjC.h -- Objective-C types (@interface and its methods)
+// A type model for "C-like" languages.
 //
 //===----------------------------------------------------------------------===//
 
@@ -47,17 +40,12 @@ struct TemplateArgument;
 struct MemberFunction;
 struct StaticDataMember;
 
-/// References a type owned by the same Context. Every type class stores
-/// TypeRefs (never a bare `Type *`) to reference other types, so that the
-/// distinction between "no type" (e.g. the pointee of a `void *`) and a type is
-/// spelled explicitly rather than as a raw null pointer.
+/// References a type owned by the same Context.
 ///
-/// A TypeRef is exactly pointer-sized and says nothing about which Context owns
-/// what it points at: the referenced type is understood to belong to the same
-/// Context as the type holding the reference. A reference to a type in
-/// *another* Context is spelled by pointing at a ForeignType node -- owned by
-/// the referring Context -- which records the foreign type's owning Context.
-/// See ForeignType at the bottom of this header.
+/// This is currently a wrapper around a Type pointer and is used to allow
+/// other ways to reference types in the future.
+///
+/// For referencing a type in another Context, \see ForeignType
 class TypeRef {
 public:
   TypeRef() = default;
