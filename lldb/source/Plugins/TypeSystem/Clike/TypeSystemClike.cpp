@@ -187,66 +187,44 @@ void TypeSystemClike::Terminate() {
 
 
 ConstString TypeSystemClike::DeclGetName(void *opaque_decl) {
-  // TypeSystemClike's CompilerDecls are tagged clike_typesystem::Decl references.
+  // TypeSystemClike's CompilerDecls wrap a clike_typesystem::Decl reference.
   SharedLockedDecl decl = GetDeclForRead(opaque_decl);
   if (!decl)
     return ConstString();
-  switch (decl->kind) {
-  case clike_typesystem::Decl::Kind::StaticDataMember:
-    return ConstString(
-        static_cast<const clike_typesystem::StaticDataMember *>(decl->payload)
-            ->name.GetName());
-  case clike_typesystem::Decl::Kind::MemberFunction:
-    return ConstString(
-        static_cast<const clike_typesystem::MemberFunction *>(decl->payload)
-            ->name.GetName());
-  }
-  return ConstString();
+  return std::visit(
+      [](const auto *member) { return ConstString(member->name.GetName()); },
+      decl->payload);
 }
 
 ConstString TypeSystemClike::DeclGetMangledName(void *opaque_decl) {
   SharedLockedDecl decl = GetDeclForRead(opaque_decl);
   if (!decl)
     return ConstString();
-  switch (decl->kind) {
-  case clike_typesystem::Decl::Kind::StaticDataMember:
-    return ConstString(
-        static_cast<const clike_typesystem::StaticDataMember *>(decl->payload)
-            ->mangled_name.GetName());
-  case clike_typesystem::Decl::Kind::MemberFunction:
-    return ConstString(
-        static_cast<const clike_typesystem::MemberFunction *>(decl->payload)
-            ->mangled_name.GetName());
-  }
-  return ConstString();
+  return std::visit(
+      [](const auto *member) {
+        return ConstString(member->mangled_name.GetName());
+      },
+      decl->payload);
 }
 
 CompilerType TypeSystemClike::GetTypeForDecl(void *opaque_decl) {
   SharedLockedDecl decl = GetDeclForRead(opaque_decl);
   if (!decl)
     return CompilerType();
-  switch (decl->kind) {
-  case clike_typesystem::Decl::Kind::StaticDataMember:
-    return GetCompilerType(
-        static_cast<const clike_typesystem::StaticDataMember *>(decl->payload)
-            ->type.Get());
-  case clike_typesystem::Decl::Kind::MemberFunction:
-    return GetCompilerType(
-        static_cast<const clike_typesystem::MemberFunction *>(decl->payload)
-            ->type.Get());
-  }
-  return CompilerType();
+  return std::visit(
+      [this](const auto *member) { return GetCompilerType(member->type.Get()); },
+      decl->payload);
 }
 
 Scalar TypeSystemClike::DeclGetConstantValue(void *opaque_decl) {
   SharedLockedDecl decl = GetDeclForRead(opaque_decl);
-  if (!decl || decl->kind != clike_typesystem::Decl::Kind::StaticDataMember)
+  if (!decl)
     return Scalar();
-  auto *member =
-      static_cast<const clike_typesystem::StaticDataMember *>(decl->payload);
-  if (!member->HasConstValue())
+  const auto *const *member =
+      std::get_if<const clike_typesystem::StaticDataMember *>(&decl->payload);
+  if (!member || !(*member)->HasConstValue())
     return Scalar();
-  clike_typesystem::Type *type = member->type.Get();
+  clike_typesystem::Type *type = (*member)->type.Get();
   if (!type)
     return Scalar();
   clike_typesystem::Type *desugared = Desugar(type);
@@ -257,7 +235,7 @@ Scalar TypeSystemClike::DeclGetConstantValue(void *opaque_decl) {
   // signed integral member (e.g. `static constexpr long = 47`) reads back
   // correctly.
   bool is_signed = desugared->GetEncoding() == lldb::eEncodingSint;
-  llvm::APInt value(*byte_size * 8, *member->const_value, is_signed);
+  llvm::APInt value(*byte_size * 8, *(*member)->const_value, is_signed);
   return Scalar(llvm::APSInt(value, !is_signed));
 }
 
@@ -1180,9 +1158,8 @@ TypeSystemClike::GetMemberFunctionAtIndex(opaque_compiler_type_t type,
   }
   // Hand out a tagged Decl so GetMangledName/GetDemangledName can recover the
   // linkage name; the (return/argument) types come from the function type.
-  CompilerDecl decl(this,
-                    const_cast<clike_typesystem::Decl *>(m_context.GetOrCreateDecl(
-                        clike_typesystem::Decl::Kind::MemberFunction, method)));
+  CompilerDecl decl(this, const_cast<clike_typesystem::Decl *>(
+                              m_context.GetOrCreateDecl(method)));
   return TypeMemberFunctionImpl(GetCompilerType(method->type.Get()), decl,
                                 method->name.GetName().str(), kind);
 }
@@ -1739,12 +1716,11 @@ CompilerDecl TypeSystemClike::GetStaticFieldWithName(opaque_compiler_type_t type
     const clike_typesystem::StaticDataMember *member =
         record->GetStaticDataMemberAtIndex(i);
     if (member->name.GetName() == name)
-      // The opaque decl is a tagged clike_typesystem::Decl; the Decl* query
+      // The opaque decl wraps a clike_typesystem::Decl; the Decl* query
       // methods (DeclGetName / GetTypeForDecl / DeclGetConstantValue) interpret
       // it.
-      return CompilerDecl(
-          this, const_cast<clike_typesystem::Decl *>(m_context.GetOrCreateDecl(
-                    clike_typesystem::Decl::Kind::StaticDataMember, member)));
+      return CompilerDecl(this, const_cast<clike_typesystem::Decl *>(
+                                    m_context.GetOrCreateDecl(member)));
   }
   return CompilerDecl();
 }
