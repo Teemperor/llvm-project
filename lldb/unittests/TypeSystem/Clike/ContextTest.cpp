@@ -180,23 +180,22 @@ TEST_F(ContextTest, ForeignTypeStandsInForAnotherContextsType) {
   EXPECT_TRUE(stand_in->IsAggregate());
 }
 
-// GetOrCreateDecl deduplicates by (kind, payload): the same payload always
-// maps to the same Decl, but different payloads or kinds map to distinct ones.
+// GetOrCreateDecl deduplicates by payload: the same payload pointer always
+// maps to the same Decl, and a different payload -- whether a different
+// object of the same alternative (StaticDataMember/MemberFunction) or an
+// object of the other alternative -- maps to a distinct one.
 TEST_F(ContextTest, DeclInterning) {
-  int payload_a = 0;
-  int payload_b = 0;
-  const Decl *d1 =
-      context.GetOrCreateDecl(Decl::Kind::MemberFunction, &payload_a);
-  const Decl *d2 =
-      context.GetOrCreateDecl(Decl::Kind::MemberFunction, &payload_a);
+  MemberFunction payload_a;
+  MemberFunction payload_b;
+  const Decl *d1 = context.GetOrCreateDecl(&payload_a);
+  const Decl *d2 = context.GetOrCreateDecl(&payload_a);
   EXPECT_EQ(d1, d2);
 
-  const Decl *d3 =
-      context.GetOrCreateDecl(Decl::Kind::MemberFunction, &payload_b);
+  const Decl *d3 = context.GetOrCreateDecl(&payload_b);
   EXPECT_NE(d1, d3);
 
-  const Decl *d4 =
-      context.GetOrCreateDecl(Decl::Kind::StaticDataMember, &payload_a);
+  StaticDataMember payload_c;
+  const Decl *d4 = context.GetOrCreateDecl(&payload_c);
   EXPECT_NE(d1, d4);
 }
 

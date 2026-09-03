@@ -132,8 +132,8 @@ public:
 
   /// Same idea as SharedLockedType/GetTypeForRead, but for the opaque
   /// CompilerDecl pointers handed out by the DeclGet*/GetTypeForDecl family
-  /// (see clike_typesystem::Decl -- a tagged reference to a StaticDataMember
-  /// or MemberFunction). There is no write counterpart: a Decl is created
+  /// (see clike_typesystem::Decl -- a variant of StaticDataMember/
+  /// MemberFunction). There is no write counterpart: a Decl is created
   /// once by Context::GetOrCreateDecl and never mutated afterward, so every
   /// consumer only ever needs read access.
   using SharedLockedDecl =

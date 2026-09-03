@@ -33,13 +33,12 @@ const Namespace *Context::GetNamespace(Identifier name, const Namespace *parent,
   return ns;
 }
 
-const Decl *Context::GetOrCreateDecl(Decl::Kind kind, const void *payload) {
-  auto key = std::make_pair(kind, payload);
-  if (auto it = m_decl_map.find(key); it != m_decl_map.end())
+const Decl *Context::GetOrCreateDecl(Decl::Payload payload) {
+  if (auto it = m_decl_map.find(payload); it != m_decl_map.end())
     return it->second;
-  m_decls.push_back(std::make_unique<Decl>(Decl{kind, payload}));
+  m_decls.push_back(std::make_unique<Decl>(Decl{payload}));
   const Decl *result = m_decls.back().get();
-  m_decl_map[key] = result;
+  m_decl_map[payload] = result;
   return result;
 }
 
