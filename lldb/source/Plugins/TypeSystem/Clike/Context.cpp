@@ -101,7 +101,7 @@ PointerType *Context::CreatePointerType(TypeRef pointee_type) {
   // instance and thus compare equal (SBType/CompilerType equality is identity of
   // the opaque type). This mirrors clang, whose ASTContext uniques pointer types.
   AssertOwnsRef(pointee_type);
-  auto key = std::make_pair(pointee_type.Get(), /*is_block=*/false);
+  auto key = std::make_pair(pointee_type.GetOrNone(), /*is_block=*/false);
   if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
     return it->second;
   auto type = std::make_unique<PointerType>();
@@ -115,7 +115,7 @@ BlockPointerType *Context::CreateBlockPointerType(TypeRef pointee_type) {
   // Uniqued like a plain pointer (see CreatePointerType), but the is-block bit
   // in the key keeps a block `T (^)` distinct from a plain `T *`.
   AssertOwnsRef(pointee_type);
-  auto key = std::make_pair(pointee_type.Get(), /*is_block=*/true);
+  auto key = std::make_pair(pointee_type.GetOrNone(), /*is_block=*/true);
   if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
     return llvm::cast<BlockPointerType>(it->second);
   auto type = std::make_unique<BlockPointerType>();
@@ -152,7 +152,7 @@ MemberPointerType *Context::CreateMemberPointerType(TypeRef pointee_type,
   // `this` adjustment); a pointer to a non-static data member is one pointer
   // wide (the byte offset of the member).
   uint64_t pointer_size = m_opts.GetBuiltinSizes().pointer_size;
-  type->SetByteSize(llvm::isa<FunctionType>(pointee_type.Get())
+  type->SetByteSize(llvm::isa<FunctionType>(pointee_type.GetOrNone())
                         ? 2 * pointer_size
                         : pointer_size);
   return Track(std::move(type));

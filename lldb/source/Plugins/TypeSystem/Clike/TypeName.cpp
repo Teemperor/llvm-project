@@ -312,7 +312,7 @@ BuildTemplateArgName(const clike_typesystem::TemplateArgument &arg,
                      bool hide_default_args,
                      bool keep_inline_namespaces = false) {
   if (arg.kind == lldb::eTemplateArgumentKindType)
-    return arg.type.Get() ? BuildDisplayNameImpl(arg.type.Get(), hide_default_args,
+    return arg.type.GetOrNone() ? BuildDisplayNameImpl(arg.type.GetOrNone(), hide_default_args,
                                              keep_inline_namespaces)
                           : std::string("void");
   // A template-template argument (e.g. `T1` in `C<float, T1>`) is kept by name
@@ -321,7 +321,7 @@ BuildTemplateArgName(const clike_typesystem::TemplateArgument &arg,
     return arg.name.GetName().str();
   // Integral (non-type) argument: render according to the argument's type,
   // mirroring clang's TemplateArgument::print.
-  clike_typesystem::Type *value_type = arg.type.Get();
+  clike_typesystem::Type *value_type = arg.type.GetOrNone();
   if (value_type) {
     // An enum-typed argument prints as `EnumName::Enumerator` when the value
     // matches one of the enumerators, mirroring clang's TemplateArgument::print
@@ -420,13 +420,13 @@ static bool NeedsTemplateNameReconstruction(clike_typesystem::Type *t) {
     const clike_typesystem::TemplateArgument *arg =
         rec->GetTemplateArgumentAtIndex(i);
     if (arg->kind == lldb::eTemplateArgumentKindType) {
-      if (NeedsTemplateNameReconstruction(arg->type.Get()))
+      if (NeedsTemplateNameReconstruction(arg->type.GetOrNone()))
         return true;
       continue;
     }
     if (arg->kind != lldb::eTemplateArgumentKindIntegral)
       continue;
-    clike_typesystem::Type *value_type = arg->type.Get();
+    clike_typesystem::Type *value_type = arg->type.GetOrNone();
     if (llvm::isa_and_nonnull<clike_typesystem::EnumType>(value_type))
       return true;
     if (auto *builtin =

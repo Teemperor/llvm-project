@@ -49,7 +49,7 @@ bool RecordType::HasFields(Type *t,
     return true;
   for (uint32_t i = 0, n = t->GetNumBaseClasses(); i < n; ++i) {
     const BaseClass *base = t->GetBaseClassAtIndex(i);
-    if (base && HasFields(base->type.Get(), complete))
+    if (base && HasFields(base->type.GetOrNone(), complete))
       return true;
   }
   return false;
@@ -67,9 +67,9 @@ Type *RecordType::GetHomogeneousAggregateBase(uint32_t &num_fields) const {
   uint32_t count = 0;
   for (uint32_t i = 0, e = GetNumFields(); i != e; ++i) {
     const Field *field = GetFieldAtIndex(i);
-    if (!field || !field->type.Get())
+    if (!field || !field->type.GetOrNone())
       return nullptr;
-    Type *field_type = clike_typesystem::Desugar(field->type.Get());
+    Type *field_type = clike_typesystem::Desugar(field->type.GetOrNone());
     uint64_t field_bitwidth = field_type->GetByteSize().value_or(0) * 8;
 
     if (field_type->GetEncoding() == lldb::eEncodingIEEE754) {

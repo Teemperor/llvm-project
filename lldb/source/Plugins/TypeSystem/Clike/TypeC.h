@@ -47,7 +47,7 @@ class ArrayType : public llvm::RTTIExtends<ArrayType, Type> {
 public:
   static char ID;
 
-  Type *GetElementType() const { return m_element_type.Get(); }
+  Type *GetElementType() const { return m_element_type.GetOrNone(); }
   void SetElementType(TypeRef type) { m_element_type = type; }
 
   /// Number of elements, or std::nullopt for an array of unknown bound.
@@ -84,7 +84,7 @@ public:
     std::optional<uint64_t> num_elements = GetNumElements();
     if (!num_elements)
       return std::nullopt;
-    const Type *element = m_element_type.Get();
+    const Type *element = m_element_type.GetOrNone();
     if (!element)
       return std::nullopt;
     if (std::optional<uint64_t> elem_size = element->GetByteSize())
@@ -117,7 +117,7 @@ public:
 
   /// The type this pointer points to. E.g., for `int *` this is `int`.
   /// May be null for `void *`.
-  Type *GetPointeeType() const { return m_pointee_type.Get(); }
+  Type *GetPointeeType() const { return m_pointee_type.GetOrNone(); }
   void SetPointeeType(TypeRef type) { m_pointee_type = type; }
 
   /// True if this is a function-pointer type (`void (*)(int)`), matching
@@ -314,7 +314,7 @@ class EnumType : public llvm::RTTIExtends<EnumType, NamedType<ByteSizedType<Type
 public:
   static char ID;
 
-  Type *GetUnderlyingType() const { return m_underlying_type.Get(); }
+  Type *GetUnderlyingType() const { return m_underlying_type.GetOrNone(); }
   void SetUnderlyingType(TypeRef type) { m_underlying_type = type; }
 
   bool IsScoped() const { return m_is_scoped; }
@@ -323,7 +323,7 @@ public:
   /// True when the underlying integer type is signed.
   bool IsSigned() const {
     return !m_underlying_type ||
-           m_underlying_type.Get()->GetEncoding() == lldb::eEncodingSint;
+           m_underlying_type.Get().GetEncoding() == lldb::eEncodingSint;
   }
 
   const std::vector<Enumerator> &GetEnumerators() const {
@@ -331,7 +331,7 @@ public:
   }
 
   lldb::Encoding GetEncoding() const override {
-    return m_underlying_type ? m_underlying_type.Get()->GetEncoding()
+    return m_underlying_type ? m_underlying_type.Get().GetEncoding()
                              : lldb::eEncodingSint;
   }
   lldb::Format GetFormat() const override { return lldb::eFormatEnum; }
@@ -368,20 +368,20 @@ class ComplexType : public llvm::RTTIExtends<ComplexType, Type> {
 public:
   static char ID;
 
-  Type *GetElementType() const { return m_element_type.Get(); }
+  Type *GetElementType() const { return m_element_type.GetOrNone(); }
   void SetElementType(TypeRef type) { m_element_type = type; }
 
   /// Complex-float when the element is a floating-point type, else
   /// complex-integer.
   bool IsFloat() const {
     return m_element_type &&
-           m_element_type.Get()->GetEncoding() == lldb::eEncodingIEEE754;
+           m_element_type.Get().GetEncoding() == lldb::eEncodingIEEE754;
   }
 
   // A complex value is two contiguous components of the element type. Computed
   // on demand rather than stored (the element size may only be known later).
   std::optional<uint64_t> GetByteSize() const override {
-    const Type *element = m_element_type.Get();
+    const Type *element = m_element_type.GetOrNone();
     if (!element)
       return std::nullopt;
     if (std::optional<uint64_t> element_size = element->GetByteSize())
@@ -417,13 +417,13 @@ class FunctionType : public llvm::RTTIExtends<FunctionType, Type> {
 public:
   static char ID;
 
-  Type *GetReturnType() const { return m_return_type.Get(); }
+  Type *GetReturnType() const { return m_return_type.GetOrNone(); }
   void SetReturnType(TypeRef type) { m_return_type = type; }
 
   uint32_t GetNumParameters() const { return m_params.size(); }
   Type *GetParameterAtIndex(uint32_t idx) const {
     if (idx < m_params.size())
-      return m_params[idx].Get();
+      return m_params[idx].GetOrNone();
     return nullptr;
   }
 

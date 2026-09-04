@@ -66,7 +66,7 @@ TEST_F(BuilderTest, ReferenceToAnotherTypeSystemIsStoodIn) {
   builder.AddField(*record, builder.GetIdentifier("foo"), other_node,
                    /*byte_offset=*/0);
   ASSERT_EQ(record->GetNumFields(), 1u);
-  EXPECT_EQ(record->GetFieldAtIndex(0)->type.Get(), stand_in);
+  EXPECT_EQ(record->GetFieldAtIndex(0)->type.GetOrNone(), stand_in);
 
   // A type this Builder's own type system owns is referenced directly.
   CompilerType local_int = builder.GetBuiltinType(
@@ -95,7 +95,7 @@ TEST_F(BuilderTest, AddField) {
   ASSERT_NE(f, nullptr);
   EXPECT_EQ(f->name.GetName(), "x");
   EXPECT_EQ(f->byte_offset, 0u);
-  EXPECT_EQ(f->type.Get(), int_type.GetOpaqueQualType());
+  EXPECT_EQ(f->type.GetOrNone(), int_type.GetOpaqueQualType());
 }
 
 // AddBaseClass only works on a ClassType (only those track base classes);
@@ -113,7 +113,7 @@ TEST_F(BuilderTest, AddBaseClass) {
                        static_cast<clike_typesystem::Type *>(base.GetOpaqueQualType()),
                        /*byte_offset=*/0);
   ASSERT_EQ(derived_class->GetNumBaseClasses(), 1u);
-  EXPECT_EQ(derived_class->GetBaseClassAtIndex(0)->type.Get(),
+  EXPECT_EQ(derived_class->GetBaseClassAtIndex(0)->type.GetOrNone(),
            base.GetOpaqueQualType());
 }
 
@@ -135,7 +135,7 @@ TEST_F(BuilderTest, AddTemplateArgument) {
   ASSERT_EQ(r->GetNumTemplateArguments(), 1u);
   const TemplateArgument *arg = r->GetTemplateArgumentAtIndex(0);
   EXPECT_EQ(arg->kind, lldb::eTemplateArgumentKindType);
-  EXPECT_EQ(arg->type.Get(), int_type.GetOpaqueQualType());
+  EXPECT_EQ(arg->type.GetOrNone(), int_type.GetOpaqueQualType());
   EXPECT_TRUE(r->IsTemplateInstantiation());
 }
 

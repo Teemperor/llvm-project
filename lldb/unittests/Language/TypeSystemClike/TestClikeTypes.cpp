@@ -146,6 +146,6 @@ TEST(ClikeTypesTest, ClassTypeBaseClasses) {
   ASSERT_EQ(as_class->GetNumBaseClasses(), 1u);
   const BaseClass *b = as_class->GetBaseClassAtIndex(0);
   ASSERT_NE(b, nullptr);
-  EXPECT_EQ(b->type.Get(), base);
+  EXPECT_EQ(b->type.GetOrNone(), base);
   EXPECT_EQ(b->byte_offset, 0u);
 }
