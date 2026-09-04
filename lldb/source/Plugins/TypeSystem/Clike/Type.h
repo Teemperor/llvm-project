@@ -6,7 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// A type model for "C-like" languages.
+// A type model for "C-like" languages. This header declares the basic classes
+// needed for the Type base class interface.
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,17 +34,15 @@ class Context;
 class Namespace;
 class Type;
 
-// The C++-only members a record can carry. RecordType's API mentions them (so
-// a caller holding a `RecordType *` can ask for them generically) but only
-// ClassType stores any, so their definitions live in TypeCpp.h.
 struct TemplateArgument;
 struct MemberFunction;
 struct StaticDataMember;
 
 /// References a type owned by the same Context.
 ///
-/// This is currently a wrapper around a Type pointer and is used to allow
-/// other ways to reference types in the future.
+/// This is currently a wrapper around a Type pointer. In the future this could
+/// also reference types that are no longer in memory (e.g., because they have
+/// been deallocated to free up space).
 ///
 /// For referencing a type in another Context, \see ForeignType
 class TypeRef {
@@ -51,8 +50,7 @@ public:
   TypeRef() = default;
   TypeRef(Type *type) : m_type(type) {}
 
-  /// The referenced type. Only valid on a non-empty reference; use GetOrNone
-  /// for a reference that may be empty.
+  /// The referenced type.
   Type &Get() const {
     assert(m_type && "TypeRef::Get() on an empty reference -- use GetOrNone()");
     return *m_type;
@@ -131,9 +129,7 @@ struct BaseClass {
 /// "no name" for a structural type).
 class Type : public llvm::RTTIExtends<Type, llvm::RTTIRoot> {
 public:
-  /// LLVM-style RTTI support (isa<>/cast<>/dyn_cast<>). Because Type already
-  /// has a vtable, RTTIExtends implements this via a virtual dispatch keyed on
-  /// the per-class `ID` address, so no per-object discriminator is needed.
+  /// LLVM-style RTTI support.
   static char ID;
 
   virtual ~Type() = default;
