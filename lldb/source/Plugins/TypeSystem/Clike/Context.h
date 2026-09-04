@@ -295,7 +295,7 @@ private:
   /// Both compile away entirely without assertions.
   /// @{
   void AssertOwnsRef(TypeRef ref) const {
-    assert((!ref || Owns(ref.Get())) &&
+    assert((!ref || Owns(ref.GetOrNone())) &&
            "a type may only reference types its own Context owns -- use "
            "Context::GetForeignType for a type another Context owns");
   }

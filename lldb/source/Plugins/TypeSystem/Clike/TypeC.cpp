@@ -47,7 +47,7 @@ bool PointerType::IsFunctionPointer() const {
 }
 
 Type *PointerType::GetTransparentChildPointee() {
-  Type *pointee = m_pointee_type.Get();
+  Type *pointee = m_pointee_type.GetOrNone();
   if (!pointee)
     return nullptr; // `void *` has no children.
   // A pointer to an ObjC interface is always transparent: an ObjC object is
@@ -62,7 +62,7 @@ Type *PointerType::GetTransparentChildPointee() {
 }
 
 Type *PointerType::GetNamedMemberPointee() {
-  Type *pointee = m_pointee_type.Get();
+  Type *pointee = m_pointee_type.GetOrNone();
   return pointee && pointee->IsAggregate() ? pointee : nullptr;
 }
 
@@ -76,7 +76,7 @@ uint32_t PointerType::GetTypeInfo() const {
   // ObjCLanguage::IsNilReference prints a null `id` as "nil" instead of "0x0".
   // (Sugar between the pointer and the interface is peeled by the caller via
   // Desugar; the pointee stored here is normally the interface directly.)
-  if (IsObjCObjectType(m_pointee_type.Get()))
+  if (IsObjCObjectType(m_pointee_type.GetOrNone()))
     info |= lldb::eTypeIsObjC;
   return info;
 }

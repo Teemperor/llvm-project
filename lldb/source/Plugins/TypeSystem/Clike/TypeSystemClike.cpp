@@ -80,7 +80,7 @@ ReadVirtualBaseOffset(TypeSystemClike &ts, clike_typesystem::RecordType *derived
   if (!vbase_offset_offset && derived)
     vbase_offset_offset = ClangASTGenerator::ComputeVBaseOffsetOffset(
         ts, ts.GetTriple(), ts.GetCompilerType(derived),
-        ts.GetCompilerType(base.type.Get()));
+        ts.GetCompilerType(base.type.GetOrNone()));
   if (!vbase_offset_offset)
     return std::nullopt;
 
@@ -212,7 +212,7 @@ CompilerType TypeSystemClike::GetTypeForDecl(void *opaque_decl) {
   if (!decl)
     return CompilerType();
   return std::visit(
-      [this](const auto *member) { return GetCompilerType(member->type.Get()); },
+      [this](const auto *member) { return GetCompilerType(member->type.GetOrNone()); },
       decl->payload);
 }
 
@@ -224,7 +224,7 @@ Scalar TypeSystemClike::DeclGetConstantValue(void *opaque_decl) {
       std::get_if<const clike_typesystem::StaticDataMember *>(&decl->payload);
   if (!member || !(*member)->HasConstValue())
     return Scalar();
-  clike_typesystem::Type *type = (*member)->type.Get();
+  clike_typesystem::Type *type = (*member)->type.GetOrNone();
   if (!type)
     return Scalar();
   clike_typesystem::Type *desugared = Desugar(type);
@@ -861,7 +861,7 @@ void TypeSystemClike::CompleteTemplateInstantiationForNameAssumingWriteLocked(
     const clike_typesystem::TemplateArgument *arg =
         rec->GetTemplateArgumentAtIndex(i);
     if (arg->kind == lldb::eTemplateArgumentKindType)
-      CompleteTemplateInstantiationForNameAssumingWriteLocked(arg->type.Get());
+      CompleteTemplateInstantiationForNameAssumingWriteLocked(arg->type.GetOrNone());
   }
 }
 
@@ -1130,7 +1130,7 @@ TypeSystemClike::GetMemberFunctionAtIndex(opaque_compiler_type_t type,
     MemberFunctionKind kind = method->is_class_method
                                   ? lldb::eMemberFunctionKindStaticMethod
                                   : lldb::eMemberFunctionKindInstanceMethod;
-    return TypeMemberFunctionImpl(GetCompilerType(method->type.Get()),
+    return TypeMemberFunctionImpl(GetCompilerType(method->type.GetOrNone()),
                                   CompilerDecl(), name, kind);
   }
 
@@ -1160,7 +1160,7 @@ TypeSystemClike::GetMemberFunctionAtIndex(opaque_compiler_type_t type,
   // linkage name; the (return/argument) types come from the function type.
   CompilerDecl decl(this, const_cast<clike_typesystem::Decl *>(
                               m_context.GetOrCreateDecl(method)));
-  return TypeMemberFunctionImpl(GetCompilerType(method->type.Get()), decl,
+  return TypeMemberFunctionImpl(GetCompilerType(method->type.GetOrNone()), decl,
                                 method->name.GetName().str(), kind);
 }
 
@@ -1573,7 +1573,7 @@ llvm::Expected<uint32_t> TypeSystemClike::GetNumChildrenImpl(
     uint32_t non_empty_bases = 0;
     for (uint32_t i = 0; i < num_bases; ++i) {
       const clike_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
-      if (base && clike_typesystem::RecordType::HasFields(base->type.Get(), complete))
+      if (base && clike_typesystem::RecordType::HasFields(base->type.GetOrNone(), complete))
         ++non_empty_bases;
     }
     num_bases = non_empty_bases;
@@ -1699,7 +1699,7 @@ CompilerType TypeSystemClike::GetFieldAtIndex(opaque_compiler_type_t type,
     *bitfield_bit_size_ptr = field->bitfield_bit_size;
   if (is_bitfield_ptr)
     *is_bitfield_ptr = field->IsBitfield();
-  return GetCompilerType(field->type.Get());
+  return GetCompilerType(field->type.GetOrNone());
 }
 
 CompilerDecl TypeSystemClike::GetStaticFieldWithName(opaque_compiler_type_t type,
@@ -1778,7 +1778,7 @@ TypeSystemClike::GetDirectBaseClassAtIndex(opaque_compiler_type_t type,
     return CompilerType();
   if (bit_offset_ptr)
     *bit_offset_ptr = base->byte_offset * 8;
-  return GetCompilerType(base->type.Get());
+  return GetCompilerType(base->type.GetOrNone());
 }
 
 CompilerType TypeSystemClike::GetVirtualBaseClassAtIndex(
@@ -1987,7 +1987,7 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
     if (!base)
       continue;
     if (omit_empty_base_classes &&
-        !clike_typesystem::RecordType::HasFields(base->type.Get(), complete))
+        !clike_typesystem::RecordType::HasFields(base->type.GetOrNone(), complete))
       continue;
     if (visible_base_idx == idx) {
       // Name the base-class child by its (possibly sugar-wrapped) type name
@@ -1995,10 +1995,10 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
       // result can be an elaborated/spelling-sugar wrapper whose own m_name is
       // empty (the real name sits on the underlying type), so fall back to the
       // display type name in that case.
-      child_name = base->type.Get()->GetName().GetName().str();
+      child_name = base->type.Get().GetName().GetName().str();
       if (child_name.empty())
         child_name =
-            GetTypeNameAssumingWriteLocked(base->type.Get(), /*BaseOnly=*/false)
+            GetTypeNameAssumingWriteLocked(base->type.GetOrNone(), /*BaseOnly=*/false)
                 .GetString();
       child_byte_offset = base->byte_offset;
       // A virtual base has no constant offset: its subobject can sit at
@@ -2026,10 +2026,10 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
         if (vbase_off)
           child_byte_offset = *vbase_off;
       }
-      if (std::optional<uint64_t> byte_size = base->type.Get()->GetByteSize())
+      if (std::optional<uint64_t> byte_size = base->type.Get().GetByteSize())
         child_byte_size = *byte_size;
       child_is_base_class = true;
-      return GetCompilerType(base->type.Get());
+      return GetCompilerType(base->type.GetOrNone());
     }
     ++visible_base_idx;
   }
@@ -2056,13 +2056,13 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
       }
     }
   }
-  if (std::optional<uint64_t> byte_size = field->type.Get()->GetByteSize())
+  if (std::optional<uint64_t> byte_size = field->type.Get().GetByteSize())
     child_byte_size = *byte_size;
   if (field->IsBitfield()) {
     child_bitfield_bit_size = field->bitfield_bit_size;
     child_bitfield_bit_offset = field->bitfield_bit_offset;
   }
-  return GetCompilerType(field->type.Get());
+  return GetCompilerType(field->type.GetOrNone());
 }
 
 llvm::Expected<uint32_t>
@@ -2107,14 +2107,14 @@ llvm::Expected<uint32_t> TypeSystemClike::GetIndexOfChildWithNameImpl(
     if (!base)
       continue;
     if (omit_empty_base_classes &&
-        !clike_typesystem::RecordType::HasFields(base->type.Get(), complete))
+        !clike_typesystem::RecordType::HasFields(base->type.GetOrNone(), complete))
       continue;
-    if (base->type.Get()->GetName().GetName() == name)
+    if (base->type.Get().GetName().GetName() == name)
       return visible_base_idx;
     // A sugar-wrapped base (see GetChildCompilerTypeAtIndex) has an empty raw
     // name; match it by its display type name instead.
-    if (base->type.Get()->GetName().GetName().empty() &&
-        GetTypeNameAssumingWriteLocked(base->type.Get(), /*BaseOnly=*/false)
+    if (base->type.Get().GetName().GetName().empty() &&
+        GetTypeNameAssumingWriteLocked(base->type.GetOrNone(), /*BaseOnly=*/false)
                 .GetStringRef() == name)
       return visible_base_idx;
     ++visible_base_idx;
@@ -2182,7 +2182,7 @@ size_t TypeSystemClike::GetIndexOfChildMemberWithNameImpl(
   uint32_t total_bases = t->GetNumBaseClasses();
   auto base_is_visible = [&](const clike_typesystem::BaseClass *base) {
     return base && (!omit_empty_base_classes ||
-                    clike_typesystem::RecordType::HasFields(base->type.Get(), complete));
+                    clike_typesystem::RecordType::HasFields(base->type.GetOrNone(), complete));
   };
   uint32_t num_visible_bases = 0;
   for (uint32_t i = 0; i < total_bases; ++i)
@@ -2207,7 +2207,7 @@ size_t TypeSystemClike::GetIndexOfChildMemberWithNameImpl(
       // An anonymous field of the starting record still injects the members of
       // *its* anonymous fields, so keep descending transparently through it.
       if (GetIndexOfChildMemberWithNameImpl(
-              field->type.Get(), name, omit_empty_base_classes,
+              field->type.GetOrNone(), name, omit_empty_base_classes,
               /*descend_anon_fields=*/true, child_indexes))
         return child_indexes.size();
       child_indexes = std::move(save_indices);
@@ -2228,7 +2228,7 @@ size_t TypeSystemClike::GetIndexOfChildMemberWithNameImpl(
     std::vector<uint32_t> save_indices = child_indexes;
     child_indexes.push_back(visible_base_idx);
     if (GetIndexOfChildMemberWithNameImpl(
-            base->type.Get(), name, omit_empty_base_classes,
+            base->type.GetOrNone(), name, omit_empty_base_classes,
             /*descend_anon_fields=*/false, child_indexes))
       return child_indexes.size();
     child_indexes = std::move(save_indices);
@@ -2427,7 +2427,7 @@ static void AppendMemberFunctionDecl(Stream &s,
   using namespace clike_typesystem;
   if (m.is_static)
     s << "static ";
-  FunctionType *fn = llvm::dyn_cast_or_null<FunctionType>(m.type.Get());
+  FunctionType *fn = llvm::dyn_cast_or_null<FunctionType>(m.type.GetOrNone());
   std::string name = m.name.GetName().str();
   if (fn) {
     s << clike_typesystem::BuildFunctionName(fn, name);
@@ -2501,7 +2501,7 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type, Stream &s
              GetTypeNameAssumingWriteLocked(t, /*BaseOnly=*/true).GetCString());
     if (const clike_typesystem::BaseClass *super = iface->GetBaseClassAtIndex(0))
       s.Printf(" : %s",
-               GetTypeNameAssumingWriteLocked(super->type.Get(),
+               GetTypeNameAssumingWriteLocked(super->type.GetOrNone(),
                                               /*BaseOnly=*/true)
                    .GetCString());
     s.PutCString(" {\n");
@@ -2510,7 +2510,7 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type, Stream &s
       if (!field)
         continue;
       s.PutCString("    ");
-      AppendMemberDeclAssumingWriteLocked(s, field->type.Get(), field->name.GetName());
+      AppendMemberDeclAssumingWriteLocked(s, field->type.GetOrNone(), field->name.GetName());
       s.PutCString(";\n");
     }
     s.PutCString("}\n");
@@ -2540,7 +2540,7 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type, Stream &s
       if (!field)
         continue;
       s.PutCString("    ");
-      AppendMemberDeclAssumingWriteLocked(s, field->type.Get(), field->name.GetName());
+      AppendMemberDeclAssumingWriteLocked(s, field->type.GetOrNone(), field->name.GetName());
       if (field->IsBitfield())
         s.Printf(" : %u", field->bitfield_bit_size);
       s.PutCString(";\n");
@@ -2965,9 +2965,9 @@ CompilerType TypeSystemClike::GetTypeTemplateArgument(opaque_compiler_type_t typ
       // Type above) by returning the actual `void` builtin rather than an
       // invalid CompilerType, matching TypeSystemClang (whose `void`
       // QualType is always valid).
-      if (!arg->type.Get())
+      if (!arg->type.GetOrNone())
         return clike_typesystem::Builder(*this).GetVoidType();
-      return GetCompilerType(arg->type.Get());
+      return GetCompilerType(arg->type.GetOrNone());
     }
   return CompilerType();
 }
@@ -2988,19 +2988,19 @@ TypeSystemClike::GetIntegralTemplateArgument(opaque_compiler_type_t type,
     return std::nullopt;
   // A pointer/reference-typed argument (e.g. `&temp1.member`) has no integral
   // value; report it as absent rather than a bogus scalar.
-  if (clike_typesystem::Type *arg_type = arg->type.Get())
+  if (clike_typesystem::Type *arg_type = arg->type.GetOrNone())
     if (llvm::isa<clike_typesystem::PointerType>(arg_type) ||
         llvm::isa<clike_typesystem::ReferenceType>(arg_type))
       return std::nullopt;
 
   // Reconstruct the value with the argument type's signedness.
   Scalar value;
-  if (arg->type && arg->type.Get()->GetEncoding() == eEncodingSint)
+  if (arg->type && arg->type.Get().GetEncoding() == eEncodingSint)
     value = static_cast<int64_t>(arg->integral_value);
   else
     value = arg->integral_value;
   return CompilerType::IntegralTemplateArgument{value,
-                                                GetCompilerType(arg->type.Get())};
+                                                GetCompilerType(arg->type.GetOrNone())};
 }
 
 CompilerType

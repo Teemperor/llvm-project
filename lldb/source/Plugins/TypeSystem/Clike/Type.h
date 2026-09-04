@@ -51,9 +51,16 @@ public:
   TypeRef() = default;
   TypeRef(Type *type) : m_type(type) {}
 
+  /// The referenced type. Only valid on a non-empty reference; use GetOrNone
+  /// for a reference that may be empty.
+  Type &Get() const {
+    assert(m_type && "TypeRef::Get() on an empty reference -- use GetOrNone()");
+    return *m_type;
+  }
+
   /// The referenced type, or null for an empty reference (e.g. the pointee of
   /// a `void *`).
-  Type *Get() const { return m_type; }
+  Type *GetOrNone() const { return m_type; }
 
   /// True when this refers to a type (false for an empty reference).
   explicit operator bool() const { return m_type != nullptr; }
@@ -479,7 +486,7 @@ public:
   Type *GetNestedTypeWithName(llvm::StringRef name) const {
     for (const auto &entry : m_nested_types)
       if (entry.first.GetName() == name)
-        return entry.second.Get();
+        return entry.second.GetOrNone();
     return nullptr;
   }
 
@@ -575,7 +582,7 @@ public:
   /// Never null: a `const void`/`typedef void` wraps the `void` builtin, so
   /// sugar always has a concrete underlying type (enforced by the Context
   /// factories that create these).
-  Type *GetUnderlyingType() const { return m_underlying_type.Get(); }
+  Type *GetUnderlyingType() const { return &m_underlying_type.Get(); }
   void SetUnderlyingType(TypeRef type) {
     assert(type && "sugar must wrap a type (use the void builtin for void)");
     m_underlying_type = type;
@@ -583,43 +590,43 @@ public:
 
   // Sugar is see-through: forward the value/layout queries to the wrapped type
   // so a `typedef`/`const` of an aggregate still looks like one.
-  Type *Desugar() override { return m_underlying_type.Get()->Desugar(); }
+  Type *Desugar() override { return m_underlying_type.Get().Desugar(); }
   bool IsAggregate() const override {
-    return m_underlying_type.Get()->IsAggregate();
+    return m_underlying_type.Get().IsAggregate();
   }
   bool IsComplete() const override {
-    return m_underlying_type.Get()->IsComplete();
+    return m_underlying_type.Get().IsComplete();
   }
   // Sugar has the same storage as the type it wraps. Forward dynamically rather
   // than relying on a snapshot taken at creation time: the underlying type's
   // size may only become known later (e.g. a target-dependent builtin size or a
   // lazily completed record), and a stale cached 0 would then be wrong.
   std::optional<uint64_t> GetByteSize() const override {
-    return m_underlying_type.Get()->GetByteSize();
+    return m_underlying_type.Get().GetByteSize();
   }
   lldb::Encoding GetEncoding() const override {
-    return m_underlying_type.Get()->GetEncoding();
+    return m_underlying_type.Get().GetEncoding();
   }
   lldb::Format GetFormat() const override {
-    return m_underlying_type.Get()->GetFormat();
+    return m_underlying_type.Get().GetFormat();
   }
   lldb::TypeClass GetTypeClass() const override {
-    return m_underlying_type.Get()->GetTypeClass();
+    return m_underlying_type.Get().GetTypeClass();
   }
   uint32_t GetTypeInfo() const override {
-    return m_underlying_type.Get()->GetTypeInfo();
+    return m_underlying_type.Get().GetTypeInfo();
   }
   uint32_t GetNumFields() const override {
-    return m_underlying_type.Get()->GetNumFields();
+    return m_underlying_type.Get().GetNumFields();
   }
   const Field *GetFieldAtIndex(uint32_t idx) const override {
-    return m_underlying_type.Get()->GetFieldAtIndex(idx);
+    return m_underlying_type.Get().GetFieldAtIndex(idx);
   }
   uint32_t GetNumBaseClasses() const override {
-    return m_underlying_type.Get()->GetNumBaseClasses();
+    return m_underlying_type.Get().GetNumBaseClasses();
   }
   const BaseClass *GetBaseClassAtIndex(uint32_t idx) const override {
-    return m_underlying_type.Get()->GetBaseClassAtIndex(idx);
+    return m_underlying_type.Get().GetBaseClassAtIndex(idx);
   }
 
 private:

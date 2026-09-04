@@ -223,7 +223,7 @@ public:
   static char ID;
 
   /// The type this reference refers to. E.g., for `int &` this is `int`.
-  Type *GetPointeeType() const { return m_pointee_type.Get(); }
+  Type *GetPointeeType() const { return m_pointee_type.GetOrNone(); }
   void SetPointeeType(TypeRef type) { m_pointee_type = type; }
 
   /// True for an rvalue reference (`T &&`), false for an lvalue one (`T &`).
@@ -233,13 +233,13 @@ public:
   // A reference is transparent: its children are those of the referenced type.
   // Like a pointer, this must not force completion of the referent.
   Type *GetTransparentChildPointee() override {
-    Type *pointee = m_pointee_type.Get();
+    Type *pointee = m_pointee_type.GetOrNone();
     if (pointee && pointee->IsAggregate() && pointee->IsComplete())
       return pointee;
     return nullptr;
   }
   Type *GetNamedMemberPointee() override {
-    Type *pointee = m_pointee_type.Get();
+    Type *pointee = m_pointee_type.GetOrNone();
     return pointee && pointee->IsAggregate() ? pointee : nullptr;
   }
 
@@ -292,11 +292,11 @@ public:
 
   /// The type of the pointed-to member: the data member's type, or the member
   /// function's type (a FunctionType).
-  Type *GetPointeeType() const { return m_pointee_type.Get(); }
+  Type *GetPointeeType() const { return m_pointee_type.GetOrNone(); }
   void SetPointeeType(TypeRef type) { m_pointee_type = type; }
 
   /// The class this is a pointer-to-member of.
-  Type *GetContainingType() const { return m_containing_type.Get(); }
+  Type *GetContainingType() const { return m_containing_type.GetOrNone(); }
   void SetContainingType(TypeRef type) { m_containing_type = type; }
 
   /// True for a pointer to a member *function* (`R (C::*)(Args...)`), false for
