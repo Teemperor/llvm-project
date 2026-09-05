@@ -64,6 +64,9 @@ struct ObjCMethod {
   /// yields an unsized `id`. The stored FunctionType's return is a placeholder
   /// (`id`); the generator substitutes `instancetype`.
   bool returns_instancetype = false;
+
+  /// Every other member has a sensible default; the type does not.
+  explicit ObjCMethod(TypeRef type) : type(type) {}
 };
 
 /// An Objective-C class type (`@interface Foo`). Its instance variables

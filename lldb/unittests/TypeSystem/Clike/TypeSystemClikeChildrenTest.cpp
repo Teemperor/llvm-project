@@ -145,6 +145,33 @@ TEST_F(TypeSystemClikeChildrenTest, PointerToScalarHasSingleDerefChild) {
   EXPECT_EQ(child->GetOpaqueQualType(), GetInt().GetOpaqueQualType());
 }
 
+// `void *` is the one pointer with no deref child: its pointee is the `void`
+// builtin (a TypeRef always names a type), so this has to be recognized as
+// void rather than as an absent pointee.
+TEST_F(TypeSystemClikeChildrenTest, VoidPointerHasNoChildren) {
+  CompilerType ptr = builder.CreatePointerType(builder.GetVoidType());
+  auto num_children =
+      ts->GetNumChildren(ptr.GetOpaqueQualType(), false, nullptr);
+  ASSERT_THAT_EXPECTED(num_children, llvm::Succeeded());
+  EXPECT_EQ(*num_children, 0u);
+
+  // Its pointee is still reported (as `void`), matching TypeSystemClang.
+  EXPECT_TRUE(ts->GetPointeeType(ptr.GetOpaqueQualType()).IsVoidType());
+
+  std::string name;
+  uint32_t byte_size = 0;
+  int32_t byte_offset = 0;
+  uint32_t bf_size = 0, bf_offset = 0;
+  bool is_base = false, is_deref = false;
+  uint64_t lang_flags = 0;
+  auto child = ts->GetChildCompilerTypeAtIndex(
+      ptr.GetOpaqueQualType(), nullptr, 0, /*transparent_pointers=*/true, true,
+      false, name, byte_size, byte_offset, bf_size, bf_offset, is_base,
+      is_deref, nullptr, lang_flags);
+  ASSERT_THAT_EXPECTED(child, llvm::Succeeded());
+  EXPECT_FALSE(child->IsValid());
+}
+
 // Even a pointer to a complete aggregate keeps its single non-transparent
 // deref child (idx 0) when transparent_pointers is false -- this is what the
 // DIL `ptr->member` navigation relies on.

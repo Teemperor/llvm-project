@@ -87,10 +87,8 @@ Context::CreateObjCInterfaceType(llvm::StringRef name,
 
 ArrayType *Context::CreateArrayType(TypeRef element_type,
                                     std::optional<uint64_t> num_elements) {
-  assert(element_type && "an array must have an element type");
   AssertOwnsRef(element_type);
-  auto type = std::make_unique<ArrayType>();
-  type->SetElementType(element_type);
+  auto type = std::make_unique<ArrayType>(element_type);
   type->SetNumElements(num_elements);
   return Track(std::move(type));
 }
@@ -101,12 +99,10 @@ PointerType *Context::CreatePointerType(TypeRef pointee_type) {
   // instance and thus compare equal (SBType/CompilerType equality is identity of
   // the opaque type). This mirrors clang, whose ASTContext uniques pointer types.
   AssertOwnsRef(pointee_type);
-  auto key = std::make_pair(pointee_type.GetOrNone(), /*is_block=*/false);
+  auto key = std::make_pair(&pointee_type.Get(), /*is_block=*/false);
   if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
     return it->second;
-  auto type = std::make_unique<PointerType>();
-  type->SetPointeeType(pointee_type);
-  PointerType *result = Track(std::move(type));
+  PointerType *result = Track(std::make_unique<PointerType>(pointee_type));
   m_pointer_map[key] = result;
   return result;
 }
@@ -115,24 +111,19 @@ BlockPointerType *Context::CreateBlockPointerType(TypeRef pointee_type) {
   // Uniqued like a plain pointer (see CreatePointerType), but the is-block bit
   // in the key keeps a block `T (^)` distinct from a plain `T *`.
   AssertOwnsRef(pointee_type);
-  auto key = std::make_pair(pointee_type.GetOrNone(), /*is_block=*/true);
+  auto key = std::make_pair(&pointee_type.Get(), /*is_block=*/true);
   if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
     return llvm::cast<BlockPointerType>(it->second);
-  auto type = std::make_unique<BlockPointerType>();
-  type->SetPointeeType(pointee_type);
-  BlockPointerType *result = Track(std::move(type));
+  BlockPointerType *result =
+      Track(std::make_unique<BlockPointerType>(pointee_type));
   m_pointer_map[key] = result;
   return result;
 }
 
 ReferenceType *Context::CreateReferenceType(TypeRef pointee_type,
                                             bool is_rvalue) {
-  // Unlike a pointer (which can be `void *`), a reference always refers to a
-  // concrete type.
-  assert(pointee_type && "a reference must refer to a type");
   AssertOwnsRef(pointee_type);
-  auto type = std::make_unique<ReferenceType>();
-  type->SetPointeeType(pointee_type);
+  auto type = std::make_unique<ReferenceType>(pointee_type);
   type->SetIsRValue(is_rvalue);
   type->SetByteSize(m_opts.GetBuiltinSizes().pointer_size);
   return Track(std::move(type));
@@ -140,19 +131,16 @@ ReferenceType *Context::CreateReferenceType(TypeRef pointee_type,
 
 MemberPointerType *Context::CreateMemberPointerType(TypeRef pointee_type,
                                                     TypeRef containing_type) {
-  assert(pointee_type && "a pointer-to-member must point to a type");
-  assert(containing_type && "a pointer-to-member must have a containing type");
   AssertOwnsRef(pointee_type);
   AssertOwnsRef(containing_type);
-  auto type = std::make_unique<MemberPointerType>();
-  type->SetPointeeType(pointee_type);
-  type->SetContainingType(containing_type);
+  auto type =
+      std::make_unique<MemberPointerType>(pointee_type, containing_type);
   // Itanium ABI: a pointer to a non-static member function is two pointers
   // wide (the function pointer, or vtable-offset-tagged equivalent, plus the
   // `this` adjustment); a pointer to a non-static data member is one pointer
   // wide (the byte offset of the member).
   uint64_t pointer_size = m_opts.GetBuiltinSizes().pointer_size;
-  type->SetByteSize(llvm::isa<FunctionType>(pointee_type.GetOrNone())
+  type->SetByteSize(llvm::isa<FunctionType>(pointee_type.Get())
                         ? 2 * pointer_size
                         : pointer_size);
   return Track(std::move(type));
@@ -160,26 +148,17 @@ MemberPointerType *Context::CreateMemberPointerType(TypeRef pointee_type,
 
 TypedefType *Context::CreateTypedefType(llvm::StringRef name,
                                         TypeRef underlying_type) {
-  // A typedef always aliases a type. A `typedef void Foo;` is represented by
-  // aliasing the `void` builtin, not by a null underlying type.
-  assert(underlying_type && "a typedef must alias a type");
   AssertOwnsRef(underlying_type);
-  auto type = std::make_unique<TypedefType>();
+  auto type = std::make_unique<TypedefType>(underlying_type);
   type->SetName(GetIdentifier(name));
-  type->SetUnderlyingType(underlying_type);
   return Track(std::move(type));
 }
 
 CVQualifiedType *Context::CreateCVQualifiedType(TypeRef underlying_type,
                                                 bool is_const,
                                                 bool is_volatile) {
-  // A cv-qualified type always qualifies a type. `const/volatile void` (e.g.
-  // the pointee of a `const void *`) qualifies the `void` builtin, not a null
-  // underlying type.
-  assert(underlying_type && "a cv-qualified type must qualify a type");
   AssertOwnsRef(underlying_type);
-  auto type = std::make_unique<CVQualifiedType>();
-  type->SetUnderlyingType(underlying_type);
+  auto type = std::make_unique<CVQualifiedType>(underlying_type);
   type->SetIsConst(is_const);
   type->SetIsVolatile(is_volatile);
   return Track(std::move(type));
@@ -188,12 +167,8 @@ CVQualifiedType *Context::CreateCVQualifiedType(TypeRef underlying_type,
 PtrAuthType *Context::CreatePtrAuthType(TypeRef underlying_type, unsigned key,
                                         bool addr_discriminated,
                                         unsigned extra_discriminator) {
-  // The pointer-auth qualifier always qualifies a pointer (or a typedef of
-  // one), so it always has an underlying type.
-  assert(underlying_type && "a __ptrauth type must qualify a type");
   AssertOwnsRef(underlying_type);
-  auto type = std::make_unique<PtrAuthType>();
-  type->SetUnderlyingType(underlying_type);
+  auto type = std::make_unique<PtrAuthType>(underlying_type);
   type->SetKey(key);
   type->SetAddressDiscriminated(addr_discriminated);
   type->SetExtraDiscriminator(extra_discriminator);
@@ -202,11 +177,9 @@ PtrAuthType *Context::CreatePtrAuthType(TypeRef underlying_type, unsigned key,
 
 ElaboratedType *Context::CreateElaboratedType(llvm::StringRef spelling,
                                               TypeRef underlying_type) {
-  assert(underlying_type && "elaborated sugar must wrap a type");
   AssertOwnsRef(underlying_type);
-  auto type = std::make_unique<ElaboratedType>();
+  auto type = std::make_unique<ElaboratedType>(underlying_type);
   type->SetSpelling(GetIdentifier(spelling));
-  type->SetUnderlyingType(underlying_type);
   return Track(std::move(type));
 }
 
@@ -214,10 +187,9 @@ EnumType *Context::CreateEnumType(llvm::StringRef name,
                                   std::optional<uint64_t> byte_size,
                                   TypeRef underlying_type, bool is_scoped) {
   AssertOwnsRef(underlying_type);
-  auto type = std::make_unique<EnumType>();
+  auto type = std::make_unique<EnumType>(underlying_type);
   type->SetName(GetIdentifier(name));
   type->SetByteSize(byte_size);
-  type->SetUnderlyingType(underlying_type);
   type->SetIsScoped(is_scoped);
   return Track(std::move(type));
 }
@@ -226,8 +198,7 @@ FunctionType *Context::CreateFunctionType(TypeRef return_type,
                                           bool is_variadic,
                                           bool use_void_for_empty_params) {
   AssertOwnsRef(return_type);
-  auto type = std::make_unique<FunctionType>();
-  type->SetReturnType(return_type);
+  auto type = std::make_unique<FunctionType>(return_type);
   type->SetIsVariadic(is_variadic);
   type->SetUseVoidForEmptyParams(use_void_for_empty_params);
   return Track(std::move(type));
@@ -235,26 +206,21 @@ FunctionType *Context::CreateFunctionType(TypeRef return_type,
 
 ComplexType *Context::CreateComplexType(TypeRef element_type) {
   AssertOwnsRef(element_type);
-  auto type = std::make_unique<ComplexType>();
-  type->SetElementType(element_type);
-  return Track(std::move(type));
+  return Track(std::make_unique<ComplexType>(element_type));
 }
 
-ForeignType *Context::GetForeignType(Context &owner, Type *type) {
+ForeignType *Context::GetForeignType(Context &owner, Type &type) {
   assert(&owner != this &&
          "a reference within a single Context needs no ForeignType");
-  assert(type && "a foreign reference must name a type");
-  assert(owner.Owns(type) &&
+  assert(owner.Owns(&type) &&
          "a foreign reference must name the Context that owns the type");
   // Interned by (owning Context, type) so that two references to the same
   // foreign type share one node -- both to avoid re-creating it and so that
   // type identity (which is node identity) is stable.
-  auto key = std::make_pair(&owner, type);
+  auto key = std::make_pair(&owner, &type);
   if (auto it = m_foreign_type_map.find(key); it != m_foreign_type_map.end())
     return it->second;
-  auto foreign = std::make_unique<ForeignType>();
-  foreign->SetReferencedType(owner, type);
-  ForeignType *result = Track(std::move(foreign));
+  ForeignType *result = Track(std::make_unique<ForeignType>(owner, type));
   m_foreign_type_map[key] = result;
   return result;
 }

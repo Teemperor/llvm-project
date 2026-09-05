@@ -177,7 +177,8 @@ lldb_private::formatters::StdlibCoroutineHandleSyntheticFrontEnd::Update() {
     clike_typesystem::Builder builder(*clike_ts);
     coro_func_type = builder.CreateFunctionType(void_type,
                                                 /*is_variadic=*/false);
-    builder.AddParameter(coro_func_type, coro_frame_type);
+    if (!builder.AddParameter(coro_func_type, coro_frame_type))
+      return lldb::ChildCacheState::eRefetch;
   }
   CompilerType coro_func_ptr_type = coro_func_type.GetPointerType();
   ValueObjectSP resume_ptr_sp = CreateChildValueObjectFromAddress(

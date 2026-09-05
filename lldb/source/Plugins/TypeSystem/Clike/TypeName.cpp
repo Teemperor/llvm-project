@@ -198,11 +198,11 @@ static std::string BuildPtrAuthQualifier(const clike_typesystem::PtrAuthType *pa
 static std::string BuildFunctionNameImpl(clike_typesystem::FunctionType *fn,
                                      llvm::StringRef decl,
                                      bool keep_inline_namespaces = false) {
-  std::string ret = fn->GetReturnType()
-                        ? BuildDisplayNameImpl(fn->GetReturnType(),
-                                           /*hide_default_args=*/true,
-                                           keep_inline_namespaces)
-                        : std::string("void");
+  // A function that returns nothing returns the `void` builtin, so there is
+  // always a return type to name.
+  std::string ret = BuildDisplayNameImpl(fn->GetReturnType(),
+                                         /*hide_default_args=*/true,
+                                         keep_inline_namespaces);
   std::string params;
   for (uint32_t i = 0, e = fn->GetNumParameters(); i != e; ++i) {
     if (!params.empty())
@@ -311,17 +311,19 @@ static std::string
 BuildTemplateArgName(const clike_typesystem::TemplateArgument &arg,
                      bool hide_default_args,
                      bool keep_inline_namespaces = false) {
+  // A type argument always has a type (a `void` argument names the `void`
+  // builtin); only a template-template argument, handled next, has none.
   if (arg.kind == lldb::eTemplateArgumentKindType)
-    return arg.type.GetOrNone() ? BuildDisplayNameImpl(arg.type.GetOrNone(), hide_default_args,
-                                             keep_inline_namespaces)
-                          : std::string("void");
+    return BuildDisplayNameImpl(&arg.type->Get(), hide_default_args,
+                                keep_inline_namespaces);
   // A template-template argument (e.g. `T1` in `C<float, T1>`) is kept by name
   // only; print that name.
   if (arg.kind == lldb::eTemplateArgumentKindTemplate)
     return arg.name.GetName().str();
   // Integral (non-type) argument: render according to the argument's type,
   // mirroring clang's TemplateArgument::print.
-  clike_typesystem::Type *value_type = arg.type.GetOrNone();
+  clike_typesystem::Type *value_type =
+      arg.type ? &arg.type->Get() : nullptr;
   if (value_type) {
     // An enum-typed argument prints as `EnumName::Enumerator` when the value
     // matches one of the enumerators, mirroring clang's TemplateArgument::print
@@ -420,13 +422,14 @@ static bool NeedsTemplateNameReconstruction(clike_typesystem::Type *t) {
     const clike_typesystem::TemplateArgument *arg =
         rec->GetTemplateArgumentAtIndex(i);
     if (arg->kind == lldb::eTemplateArgumentKindType) {
-      if (NeedsTemplateNameReconstruction(arg->type.GetOrNone()))
+      if (NeedsTemplateNameReconstruction(&arg->type->Get()))
         return true;
       continue;
     }
     if (arg->kind != lldb::eTemplateArgumentKindIntegral)
       continue;
-    clike_typesystem::Type *value_type = arg->type.GetOrNone();
+    clike_typesystem::Type *value_type =
+        arg->type ? &arg->type->Get() : nullptr;
     if (llvm::isa_and_nonnull<clike_typesystem::EnumType>(value_type))
       return true;
     if (auto *builtin =
@@ -485,14 +488,14 @@ static std::string BuildDisplayNameImpl(clike_typesystem::Type *t,
   }
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
     clike_typesystem::Type *pointee = ForeignType::Strip(ptr->GetPointeeType());
-    if (auto *fn = llvm::dyn_cast_or_null<FunctionType>(pointee))
+    if (auto *fn = llvm::dyn_cast<FunctionType>(pointee))
       return BuildFunctionNameImpl(
           fn, llvm::isa<BlockPointerType>(ptr) ? "(^)" : "(*)",
           keep_inline_namespaces);
-    std::string pointee_name =
-        pointee ? BuildDisplayNameImpl(pointee, hide_default_args,
-                                   keep_inline_namespaces)
-                : std::string("void");
+    // `void *` needs no special case: its pointee is the `void` builtin, whose
+    // name is "void".
+    std::string pointee_name = BuildDisplayNameImpl(pointee, hide_default_args,
+                                                    keep_inline_namespaces);
     // Clang omits the space between a pointer/reference sigil and a following
     // '*' (e.g. "int **", "void **", "int &*"), but keeps it after a plain
     // type name ("int *").
@@ -502,13 +505,11 @@ static std::string BuildDisplayNameImpl(clike_typesystem::Type *t,
   }
   if (auto *ref = llvm::dyn_cast<ReferenceType>(t)) {
     clike_typesystem::Type *pointee = ForeignType::Strip(ref->GetPointeeType());
-    if (auto *fn = llvm::dyn_cast_or_null<FunctionType>(pointee))
+    if (auto *fn = llvm::dyn_cast<FunctionType>(pointee))
       return BuildFunctionNameImpl(fn, ref->IsRValue() ? "(&&)" : "(&)",
                                keep_inline_namespaces);
-    std::string pointee_name =
-        pointee ? BuildDisplayNameImpl(pointee, hide_default_args,
-                                   keep_inline_namespaces)
-                : std::string("void");
+    std::string pointee_name = BuildDisplayNameImpl(pointee, hide_default_args,
+                                                    keep_inline_namespaces);
     const bool tight = !pointee_name.empty() &&
                        (pointee_name.back() == '*' || pointee_name.back() == '&');
     llvm::StringRef sigil = ref->IsRValue() ? "&&" : "&";
@@ -517,12 +518,9 @@ static std::string BuildDisplayNameImpl(clike_typesystem::Type *t,
   if (auto *fn = llvm::dyn_cast<FunctionType>(t))
     return BuildFunctionNameImpl(fn, "", keep_inline_namespaces);
   if (auto *cx = llvm::dyn_cast<ComplexType>(t)) {
-    std::string element = cx->GetElementType()
-                              ? BuildDisplayNameImpl(cx->GetElementType(),
-                                                 hide_default_args,
-                                                 keep_inline_namespaces)
-                              : std::string("float");
-    return "_Complex " + element;
+    return "_Complex " + BuildDisplayNameImpl(cx->GetElementType(),
+                                              hide_default_args,
+                                              keep_inline_namespaces);
   }
   if (auto *cv = llvm::dyn_cast<CVQualifiedType>(t)) {
     std::string qualifier;
@@ -530,11 +528,8 @@ static std::string BuildDisplayNameImpl(clike_typesystem::Type *t,
       qualifier += "const";
     if (cv->IsVolatile())
       qualifier += qualifier.empty() ? "volatile" : " volatile";
-    std::string underlying = cv->GetUnderlyingType()
-                                 ? BuildDisplayNameImpl(cv->GetUnderlyingType(),
-                                                     hide_default_args,
-                                                     keep_inline_namespaces)
-                                 : "";
+    std::string underlying = BuildDisplayNameImpl(
+        cv->GetUnderlyingType(), hide_default_args, keep_inline_namespaces);
     // A cv-qualifier on a pointer itself is a declarator suffix (`T *const`),
     // not a prefix (`const T *`, which would instead qualify the pointee) --
     // matching the PtrAuthType case below and clang's own type printer. This
@@ -683,10 +678,9 @@ std::string clike_typesystem::BuildCanonicalName(Type *t, bool base_only) {
   // Pointers have no name of their own either; build "<pointee> *".
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
     Type *pointee = ForeignType::Strip(ptr->GetPointeeType());
-    if (llvm::isa_and_nonnull<FunctionType>(pointee))
+    if (llvm::isa<FunctionType>(pointee))
       return BuildDisplayNameImpl(t);
-    std::string pointee_name =
-        pointee ? BuildCanonicalName(pointee, base_only) : "void";
+    std::string pointee_name = BuildCanonicalName(pointee, base_only);
     // Clang omits the space before '*' when the pointee already ends in a
     // pointer/reference sigil ("void **", "int *&"), so keep the two tight.
     const bool tight =
@@ -697,10 +691,9 @@ std::string clike_typesystem::BuildCanonicalName(Type *t, bool base_only) {
   // References likewise: "<pointee> &" or "<pointee> &&".
   if (auto *ref = llvm::dyn_cast<ReferenceType>(t)) {
     Type *pointee = ForeignType::Strip(ref->GetPointeeType());
-    if (llvm::isa_and_nonnull<FunctionType>(pointee))
+    if (llvm::isa<FunctionType>(pointee))
       return BuildDisplayNameImpl(t);
-    std::string pointee_name =
-        pointee ? BuildCanonicalName(pointee, base_only) : "void";
+    std::string pointee_name = BuildCanonicalName(pointee, base_only);
     const bool tight =
         !pointee_name.empty() &&
         (pointee_name.back() == '*' || pointee_name.back() == '&');
@@ -715,8 +708,7 @@ std::string clike_typesystem::BuildCanonicalName(Type *t, bool base_only) {
   // `const Enum` prints as `Enum` (while `const int` stays `const int`).
   if (auto *cv = llvm::dyn_cast<CVQualifiedType>(t)) {
     std::string underlying_name =
-        cv->GetUnderlyingType() ? BuildCanonicalName(cv->GetUnderlyingType(), base_only)
-                                : "";
+        BuildCanonicalName(cv->GetUnderlyingType(), base_only);
     // Look through display/cv sugar to the leaf type to decide whether the
     // qualifiers are spelled.
     Type *leaf = ForeignType::Strip(cv->GetUnderlyingType());

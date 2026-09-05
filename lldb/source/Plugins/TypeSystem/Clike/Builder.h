@@ -103,8 +103,14 @@ public:
   /// Append a parameter type to a FunctionType created by CreateFunctionType.
   /// \p name is the parameter's declared name (empty if unnamed), preserved so
   /// a synthesized clang ParmVarDecl can carry it into diagnostics.
-  void AddParameter(CompilerType function_type, CompilerType param_type,
-                    llvm::StringRef name = {});
+  ///
+  /// Returns false (adding nothing) when \p function_type is not a function
+  /// type, or when \p param_type names no type this Context can reference --
+  /// in which case the signature can't be modeled faithfully and the caller
+  /// should give up on the function rather than carry on with a short one.
+  [[nodiscard]] bool AddParameter(CompilerType function_type,
+                                  CompilerType param_type,
+                                  llvm::StringRef name = {});
   /// Add a member function to \p record. Member functions are C++-only, so this
   /// takes a ClassType.
   void AddMemberFunction(ClassType &record, llvm::StringRef name,
@@ -208,12 +214,23 @@ private:
   Type *ToLocalNode(Type *type) const;
   /// Wrap a CompilerType into a TypeRef naming the Type it refers to, standing
   /// it in through a ForeignType if another Context owns it. An empty
-  /// CompilerType (e.g. the `void *` pointee), or one belonging to another kind
-  /// of type system, yields an empty TypeRef.
-  TypeRef ToTypeRef(const CompilerType &type);
+  /// CompilerType, or one belonging to another kind of type system, has no
+  /// node to name and so yields std::nullopt; the caller decides what that
+  /// means for the reference it was about to store (usually: don't build the
+  /// type at all).
+  std::optional<TypeRef> ToTypeRef(const CompilerType &type);
   /// Wrap a Type (e.g. one the DWARF parser resolved) into a TypeRef, likewise
-  /// standing it in through a ForeignType if another Context owns it.
-  TypeRef ToTypeRef(Type *type) const;
+  /// standing it in through a ForeignType if another Context owns it. Null
+  /// yields std::nullopt.
+  std::optional<TypeRef> ToTypeRef(Type *type) const;
+  /// ToTypeRef, falling back to the `void` builtin when there is no type to
+  /// name. For the references DWARF spells as absent but C spells as `void`: a
+  /// pointer with no DW_AT_type is `void *`, and a subroutine with none returns
+  /// `void`. Modelling those as a reference to `void` (rather than as no
+  /// reference) is what lets every consumer skip a null check -- and mirrors
+  /// how sugar already wraps the `void` builtin for `const void` /
+  /// `typedef void`.
+  TypeRef ToTypeRefOrVoid(const CompilerType &type);
 
   TypeSystemClike &m_ts;
 };

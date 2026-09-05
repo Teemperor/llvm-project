@@ -26,7 +26,7 @@ using namespace lldb_private::clike_typesystem;
 TEST(ClikeTypesTest, IsAMember) {
   BuiltinType builtin;
   StructType record;
-  PointerType pointer;
+  PointerType pointer{TypeRef(builtin)};
 
   EXPECT_TRUE(builtin.isA<Type>());
   EXPECT_TRUE(record.isA<Type>());
@@ -48,7 +48,7 @@ TEST(ClikeTypesTest, IsAMember) {
 TEST(ClikeTypesTest, Isa) {
   BuiltinType builtin;
   StructType record;
-  PointerType pointer;
+  PointerType pointer{TypeRef(builtin)};
 
   Type *as_builtin = &builtin;
   Type *as_record = &record;
@@ -142,10 +142,10 @@ TEST(ClikeTypesTest, ClassTypeBaseClasses) {
   EXPECT_EQ(as_class->GetNumBaseClasses(), 0u);
   // Base classes are added through the Context (the gated mutation entry
   // point); ClassType::AddBaseClass itself is private.
-  context.AddBaseClass(*as_class, base, /*byte_offset=*/0);
+  context.AddBaseClass(*as_class, TypeRef(*base), /*byte_offset=*/0);
   ASSERT_EQ(as_class->GetNumBaseClasses(), 1u);
   const BaseClass *b = as_class->GetBaseClassAtIndex(0);
   ASSERT_NE(b, nullptr);
-  EXPECT_EQ(b->type.GetOrNone(), base);
+  EXPECT_EQ(&b->type.Get(), base);
   EXPECT_EQ(b->byte_offset, 0u);
 }
