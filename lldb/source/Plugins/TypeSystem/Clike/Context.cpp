@@ -87,7 +87,6 @@ Context::CreateObjCInterfaceType(llvm::StringRef name,
 
 ArrayType *Context::CreateArrayType(TypeRef element_type,
                                     std::optional<uint64_t> num_elements) {
-  AssertOwnsRef(element_type);
   auto type = std::make_unique<ArrayType>(element_type);
   type->SetNumElements(num_elements);
   return Track(std::move(type));
@@ -98,7 +97,6 @@ PointerType *Context::CreatePointerType(TypeRef pointee_type) {
   // `T *` (e.g. a variable's type and `SBType::GetPointerType()`) are the same
   // instance and thus compare equal (SBType/CompilerType equality is identity of
   // the opaque type). This mirrors clang, whose ASTContext uniques pointer types.
-  AssertOwnsRef(pointee_type);
   auto key = std::make_pair(&pointee_type.Get(), /*is_block=*/false);
   if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
     return it->second;
@@ -110,7 +108,6 @@ PointerType *Context::CreatePointerType(TypeRef pointee_type) {
 BlockPointerType *Context::CreateBlockPointerType(TypeRef pointee_type) {
   // Uniqued like a plain pointer (see CreatePointerType), but the is-block bit
   // in the key keeps a block `T (^)` distinct from a plain `T *`.
-  AssertOwnsRef(pointee_type);
   auto key = std::make_pair(&pointee_type.Get(), /*is_block=*/true);
   if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
     return llvm::cast<BlockPointerType>(it->second);
@@ -122,7 +119,6 @@ BlockPointerType *Context::CreateBlockPointerType(TypeRef pointee_type) {
 
 ReferenceType *Context::CreateReferenceType(TypeRef pointee_type,
                                             bool is_rvalue) {
-  AssertOwnsRef(pointee_type);
   auto type = std::make_unique<ReferenceType>(pointee_type);
   type->SetIsRValue(is_rvalue);
   type->SetByteSize(m_opts.GetBuiltinSizes().pointer_size);
@@ -131,8 +127,6 @@ ReferenceType *Context::CreateReferenceType(TypeRef pointee_type,
 
 MemberPointerType *Context::CreateMemberPointerType(TypeRef pointee_type,
                                                     TypeRef containing_type) {
-  AssertOwnsRef(pointee_type);
-  AssertOwnsRef(containing_type);
   auto type =
       std::make_unique<MemberPointerType>(pointee_type, containing_type);
   // Itanium ABI: a pointer to a non-static member function is two pointers
@@ -148,7 +142,6 @@ MemberPointerType *Context::CreateMemberPointerType(TypeRef pointee_type,
 
 TypedefType *Context::CreateTypedefType(llvm::StringRef name,
                                         TypeRef underlying_type) {
-  AssertOwnsRef(underlying_type);
   auto type = std::make_unique<TypedefType>(underlying_type);
   type->SetName(GetIdentifier(name));
   return Track(std::move(type));
@@ -157,7 +150,6 @@ TypedefType *Context::CreateTypedefType(llvm::StringRef name,
 CVQualifiedType *Context::CreateCVQualifiedType(TypeRef underlying_type,
                                                 bool is_const,
                                                 bool is_volatile) {
-  AssertOwnsRef(underlying_type);
   auto type = std::make_unique<CVQualifiedType>(underlying_type);
   type->SetIsConst(is_const);
   type->SetIsVolatile(is_volatile);
@@ -167,7 +159,6 @@ CVQualifiedType *Context::CreateCVQualifiedType(TypeRef underlying_type,
 PtrAuthType *Context::CreatePtrAuthType(TypeRef underlying_type, unsigned key,
                                         bool addr_discriminated,
                                         unsigned extra_discriminator) {
-  AssertOwnsRef(underlying_type);
   auto type = std::make_unique<PtrAuthType>(underlying_type);
   type->SetKey(key);
   type->SetAddressDiscriminated(addr_discriminated);
@@ -177,7 +168,6 @@ PtrAuthType *Context::CreatePtrAuthType(TypeRef underlying_type, unsigned key,
 
 ElaboratedType *Context::CreateElaboratedType(llvm::StringRef spelling,
                                               TypeRef underlying_type) {
-  AssertOwnsRef(underlying_type);
   auto type = std::make_unique<ElaboratedType>(underlying_type);
   type->SetSpelling(GetIdentifier(spelling));
   return Track(std::move(type));
@@ -186,7 +176,6 @@ ElaboratedType *Context::CreateElaboratedType(llvm::StringRef spelling,
 EnumType *Context::CreateEnumType(llvm::StringRef name,
                                   std::optional<uint64_t> byte_size,
                                   TypeRef underlying_type, bool is_scoped) {
-  AssertOwnsRef(underlying_type);
   auto type = std::make_unique<EnumType>(underlying_type);
   type->SetName(GetIdentifier(name));
   type->SetByteSize(byte_size);
@@ -197,7 +186,6 @@ EnumType *Context::CreateEnumType(llvm::StringRef name,
 FunctionType *Context::CreateFunctionType(TypeRef return_type,
                                           bool is_variadic,
                                           bool use_void_for_empty_params) {
-  AssertOwnsRef(return_type);
   auto type = std::make_unique<FunctionType>(return_type);
   type->SetIsVariadic(is_variadic);
   type->SetUseVoidForEmptyParams(use_void_for_empty_params);
@@ -205,22 +193,6 @@ FunctionType *Context::CreateFunctionType(TypeRef return_type,
 }
 
 ComplexType *Context::CreateComplexType(TypeRef element_type) {
-  AssertOwnsRef(element_type);
   return Track(std::make_unique<ComplexType>(element_type));
 }
 
-ForeignType *Context::GetForeignType(Context &owner, Type &type) {
-  assert(&owner != this &&
-         "a reference within a single Context needs no ForeignType");
-  assert(owner.Owns(&type) &&
-         "a foreign reference must name the Context that owns the type");
-  // Interned by (owning Context, type) so that two references to the same
-  // foreign type share one node -- both to avoid re-creating it and so that
-  // type identity (which is node identity) is stable.
-  auto key = std::make_pair(&owner, &type);
-  if (auto it = m_foreign_type_map.find(key); it != m_foreign_type_map.end())
-    return it->second;
-  ForeignType *result = Track(std::make_unique<ForeignType>(owner, type));
-  m_foreign_type_map[key] = result;
-  return result;
-}

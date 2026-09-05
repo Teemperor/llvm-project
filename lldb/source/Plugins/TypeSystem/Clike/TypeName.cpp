@@ -449,12 +449,6 @@ static std::string BuildDisplayNameImpl(clike_typesystem::Type *t,
   using namespace clike_typesystem;
   if (!t)
     return "";
-  // Where a type lives never changes how its name is spelled, so peel any
-  // stand-in for a type another Context owns (see ForeignType). Done here, at
-  // the top of the recursion, so every nested type (pointee, element, argument,
-  // ...) is peeled too.
-  t = ForeignType::Strip(t);
-
   // Composite types have no name of their own; build them from their parts.
   if (llvm::isa<ArrayType>(t)) {
     // A vector type (DW_AT_GNU_vector) is spelled like clang's ext_vector
@@ -481,13 +475,13 @@ static std::string BuildDisplayNameImpl(clike_typesystem::Type *t,
         dims += llvm::formatv("[{0}]", *n).str();
       else
         dims += "[]";
-      cur = ForeignType::Strip(array->GetElementType());
+      cur = array->GetElementType();
     }
     return BuildDisplayNameImpl(cur, hide_default_args, keep_inline_namespaces) +
            dims;
   }
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
-    clike_typesystem::Type *pointee = ForeignType::Strip(ptr->GetPointeeType());
+    clike_typesystem::Type *pointee = ptr->GetPointeeType();
     if (auto *fn = llvm::dyn_cast<FunctionType>(pointee))
       return BuildFunctionNameImpl(
           fn, llvm::isa<BlockPointerType>(ptr) ? "(^)" : "(*)",
@@ -504,7 +498,7 @@ static std::string BuildDisplayNameImpl(clike_typesystem::Type *t,
     return pointee_name + (tight ? "*" : " *");
   }
   if (auto *ref = llvm::dyn_cast<ReferenceType>(t)) {
-    clike_typesystem::Type *pointee = ForeignType::Strip(ref->GetPointeeType());
+    clike_typesystem::Type *pointee = ref->GetPointeeType();
     if (auto *fn = llvm::dyn_cast<FunctionType>(pointee))
       return BuildFunctionNameImpl(fn, ref->IsRValue() ? "(&&)" : "(&)",
                                keep_inline_namespaces);
@@ -537,8 +531,7 @@ static std::string BuildDisplayNameImpl(clike_typesystem::Type *t,
     // pointee (`const T *const`) has already rendered its own leading `const`
     // as part of `underlying` (via the pointee's own CVQualifiedType), so no
     // double-prefixing happens here.
-    if (llvm::isa_and_nonnull<PointerType>(
-            ForeignType::Strip(cv->GetUnderlyingType()))) {
+    if (llvm::isa<PointerType>(cv->GetUnderlyingType())) {
       // No space between the `*` and the qualifier (`T *const`), matching
       // clang's declarator-suffix spelling.
       const bool tight =
@@ -553,8 +546,7 @@ static std::string BuildDisplayNameImpl(clike_typesystem::Type *t,
     std::string qualifier = BuildPtrAuthQualifier(pa);
     // Clang spells the qualifier as a declarator suffix on a pointer
     // (`int *__ptrauth(...)`) but as a prefix otherwise (`__ptrauth(...) intp`).
-    if (llvm::isa_and_nonnull<PointerType>(
-            ForeignType::Strip(pa->GetUnderlyingType())))
+    if (llvm::isa<PointerType>(pa->GetUnderlyingType()))
       return underlying + qualifier;
     return qualifier + " " + underlying;
   }
@@ -635,10 +627,7 @@ std::string clike_typesystem::BuildCanonicalName(Type *t, bool base_only) {
   // the *display* name, so a formatter keyed on `Struct` still matches a
   // `::Struct`-spelled value. Typedefs are kept (they are meaningful, distinct
   // names).
-  // A stand-in for a type another Context owns is peeled along with it: a
-  // type's canonical name doesn't depend on which Context holds it (see
-  // ForeignType), and the two wrappers can nest either way around.
-  t = StripTransparentSugar(t);
+  t = ElaboratedType::Strip(t);
   // Arrays have no name of their own; build "<element>[<count>]". For a
   // multidimensional array the nesting is outermost-dimension first, so peel
   // the whole chain and print the dimensions in source order after the
@@ -664,7 +653,7 @@ std::string clike_typesystem::BuildCanonicalName(Type *t, bool base_only) {
         dims += llvm::formatv("[{0}]", *num_elements).str();
       else
         dims += "[]";
-      cur = ForeignType::Strip(array->GetElementType());
+      cur = array->GetElementType();
     }
     std::string element_name = BuildCanonicalName(cur, base_only);
     return element_name + dims;
@@ -677,7 +666,7 @@ std::string clike_typesystem::BuildCanonicalName(Type *t, bool base_only) {
     return BuildDisplayNameImpl(t);
   // Pointers have no name of their own either; build "<pointee> *".
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
-    Type *pointee = ForeignType::Strip(ptr->GetPointeeType());
+    Type *pointee = ptr->GetPointeeType();
     if (llvm::isa<FunctionType>(pointee))
       return BuildDisplayNameImpl(t);
     std::string pointee_name = BuildCanonicalName(pointee, base_only);
@@ -690,7 +679,7 @@ std::string clike_typesystem::BuildCanonicalName(Type *t, bool base_only) {
   }
   // References likewise: "<pointee> &" or "<pointee> &&".
   if (auto *ref = llvm::dyn_cast<ReferenceType>(t)) {
-    Type *pointee = ForeignType::Strip(ref->GetPointeeType());
+    Type *pointee = ref->GetPointeeType();
     if (llvm::isa<FunctionType>(pointee))
       return BuildDisplayNameImpl(t);
     std::string pointee_name = BuildCanonicalName(pointee, base_only);
@@ -711,20 +700,18 @@ std::string clike_typesystem::BuildCanonicalName(Type *t, bool base_only) {
         BuildCanonicalName(cv->GetUnderlyingType(), base_only);
     // Look through display/cv sugar to the leaf type to decide whether the
     // qualifiers are spelled.
-    Type *leaf = ForeignType::Strip(cv->GetUnderlyingType());
-    while (leaf) {
+    Type *leaf = cv->GetUnderlyingType();
+    while (true) {
       if (auto *el = llvm::dyn_cast<ElaboratedType>(leaf))
-        leaf = ForeignType::Strip(el->GetUnderlyingType());
-      else if (auto *inner =
-                   llvm::dyn_cast<CVQualifiedType>(leaf))
-        leaf = ForeignType::Strip(inner->GetUnderlyingType());
+        leaf = el->GetUnderlyingType();
+      else if (auto *inner = llvm::dyn_cast<CVQualifiedType>(leaf))
+        leaf = inner->GetUnderlyingType();
       else
         break;
     }
-    const bool drop_qualifiers =
-        leaf && (llvm::isa<RecordType>(leaf) ||
-                 llvm::isa<EnumType>(leaf) ||
-                 llvm::isa<TypedefType>(leaf));
+    const bool drop_qualifiers = llvm::isa<RecordType>(leaf) ||
+                                 llvm::isa<EnumType>(leaf) ||
+                                 llvm::isa<TypedefType>(leaf);
     if (drop_qualifiers)
       return underlying_name;
     std::string result;
@@ -741,8 +728,7 @@ std::string clike_typesystem::BuildCanonicalName(Type *t, bool base_only) {
     std::string qualifier = BuildPtrAuthQualifier(pa);
     // Suffix on a pointer (`int *__ptrauth(...)`), prefix otherwise
     // (`__ptrauth(...) intp`), matching clang's spelling.
-    if (llvm::isa_and_nonnull<PointerType>(
-            ForeignType::Strip(pa->GetUnderlyingType())))
+    if (llvm::isa<PointerType>(pa->GetUnderlyingType()))
       return underlying + qualifier;
     return qualifier + " " + underlying;
   }

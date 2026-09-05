@@ -40,11 +40,11 @@ TEST_F(BuilderTest, CreateAndCompleteRecord) {
   EXPECT_TRUE(r->IsComplete());
 }
 
-// A reference to a type another type system owns is stood in for by a
-// ForeignType automatically, whether it arrives as a CompilerType or as a bare
-// node -- so a type never ends up referencing another Context's type directly
-// (the invariant Context::AssertOwnsRef checks).
-TEST_F(BuilderTest, ReferenceToAnotherTypeSystemIsStoodIn) {
+// A type another Context owns is referenced directly, whether it arrives as a
+// CompilerType or as a bare node: a reference names a node, and the node
+// records which Context owns it, so nothing has to be interposed to keep that
+// recoverable.
+TEST_F(BuilderTest, ReferenceToAnotherTypeSystemIsDirect) {
   auto other_ts = std::make_shared<TypeSystemClike>(
       "other", llvm::Triple("x86_64-pc-linux-gnu"));
   CompilerType other_record =
@@ -55,9 +55,10 @@ TEST_F(BuilderTest, ReferenceToAnotherTypeSystemIsStoodIn) {
   Builder builder(*ts);
   auto *pointer = llvm::cast<PointerType>(static_cast<clike_typesystem::Type *>(
       builder.CreatePointerType(other_record).GetOpaqueQualType()));
-  auto *stand_in = llvm::dyn_cast<ForeignType>(pointer->GetPointeeType());
-  ASSERT_NE(stand_in, nullptr);
-  EXPECT_EQ(stand_in->GetReferencedType(), other_node);
+  EXPECT_EQ(pointer->GetPointeeType(), other_node);
+  // The pointer is ours; the type it points at still belongs to the other one,
+  // and says so.
+  EXPECT_NE(&pointer->GetOwningContext(), &other_node->GetOwningContext());
 
   // Same via the raw-node entry points (what the DWARF parser uses).
   auto *record = llvm::cast<RecordType>(static_cast<clike_typesystem::Type *>(
@@ -66,9 +67,9 @@ TEST_F(BuilderTest, ReferenceToAnotherTypeSystemIsStoodIn) {
   builder.AddField(*record, builder.GetIdentifier("foo"), other_node,
                    /*byte_offset=*/0);
   ASSERT_EQ(record->GetNumFields(), 1u);
-  EXPECT_EQ(&record->GetFieldAtIndex(0)->type.Get(), stand_in);
+  EXPECT_EQ(&record->GetFieldAtIndex(0)->type.Get(), other_node);
 
-  // A type this Builder's own type system owns is referenced directly.
+  // A type this Builder's own type system owns is referenced the same way.
   CompilerType local_int = builder.GetBuiltinType(
       "int", 4, lldb::eEncodingSint, lldb::eFormatDecimal);
   auto *local_pointer =

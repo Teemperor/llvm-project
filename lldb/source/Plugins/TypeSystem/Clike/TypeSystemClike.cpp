@@ -2448,8 +2448,7 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type, Stream &s
   // only special-cases a type that IS itself a TypedefType, printing
   // "typedef <name>" and leaving the underlying type alone, matching
   // TypeSystemClang::DumpTypeDescription's `case clang::Type::Typedef`.
-  if (llvm::isa<clike_typesystem::TypedefType>(
-          clike_typesystem::ForeignType::Strip(tt.get()))) {
+  if (llvm::isa<clike_typesystem::TypedefType>(tt.get())) {
     s.PutCString("typedef ");
     s.PutCString(GetTypeNameAssumingWriteLocked(tt.get(), /*BaseOnly=*/true)
                      .GetStringRef());
@@ -2714,8 +2713,7 @@ bool TypeSystemClike::IsConst(opaque_compiler_type_t type) {
   SharedLockedType t = GetTypeForRead(type);
   if (!t)
     return false;
-  if (auto *cv = llvm::dyn_cast<clike_typesystem::CVQualifiedType>(
-          clike_typesystem::ForeignType::Strip(t.get())))
+  if (auto *cv = llvm::dyn_cast<clike_typesystem::CVQualifiedType>(t.get()))
     return cv->IsConst();
   return false;
 }
@@ -2761,7 +2759,7 @@ bool TypeSystemClike::IsTypedefType(opaque_compiler_type_t type) {
   if (!t)
     return false;
   return llvm::isa<clike_typesystem::TypedefType>(
-      clike_typesystem::StripTransparentSugar(t.get()));
+      clike_typesystem::ElaboratedType::Strip(t.get()));
 }
 
 CompilerType TypeSystemClike::GetTypedefedType(opaque_compiler_type_t type) {
@@ -2769,7 +2767,7 @@ CompilerType TypeSystemClike::GetTypedefedType(opaque_compiler_type_t type) {
   if (!t)
     return CompilerType();
   if (auto *td = llvm::dyn_cast<clike_typesystem::TypedefType>(
-          clike_typesystem::StripTransparentSugar(t.get())))
+          clike_typesystem::ElaboratedType::Strip(t.get())))
     return GetCompilerType(td->GetUnderlyingType());
   return CompilerType();
 }

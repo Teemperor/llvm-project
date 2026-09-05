@@ -130,17 +130,6 @@ public:
   /// member. All Identifiers must be created this way.
   Identifier GetIdentifier(llvm::StringRef name);
 
-  /// Return \p type in a form that a type this Builder's Context owns may
-  /// reference: \p type itself when this Context already owns it, and otherwise
-  /// a ForeignType stand-in that records the Context which does (see
-  /// clike_typesystem::ForeignType). A reference stores a bare pointer, so
-  /// without this a cross-Context reference would lose track of where the
-  /// referenced type lives.
-  ///
-  /// An invalid CompilerType, or one belonging to another kind of type system,
-  /// is returned unchanged -- there is nothing to stand in for.
-  CompilerType ToLocalReference(const CompilerType &type);
-
   /// Intern a namespace (see Context::GetNamespace).
   const Namespace *GetNamespace(llvm::StringRef name, const Namespace *parent,
                                 bool is_inline);
@@ -206,21 +195,17 @@ public:
   void AddEnumerator(EnumType &enum_type, Identifier name, uint64_t value);
 
 private:
-  /// \p type as a node this Builder's Context may reference directly: itself
-  /// when this Context owns it, and otherwise the ForeignType standing in for it
-  /// (ToLocalReference is this in CompilerType terms). Every reference stored
-  /// through a Builder goes through here, which is what upholds the invariant
-  /// Context::AssertOwnsRef checks.
-  Type *ToLocalNode(Type *type) const;
-  /// Wrap a CompilerType into a TypeRef naming the Type it refers to, standing
-  /// it in through a ForeignType if another Context owns it. An empty
-  /// CompilerType, or one belonging to another kind of type system, has no
-  /// node to name and so yields std::nullopt; the caller decides what that
-  /// means for the reference it was about to store (usually: don't build the
-  /// type at all).
+  /// Wrap a CompilerType into a TypeRef naming the Type it refers to. An empty
+  /// CompilerType, or one belonging to another kind of type system, has no node
+  /// to name and so yields std::nullopt; the caller decides what that means for
+  /// the reference it was about to store (usually: don't build the type at
+  /// all).
+  ///
+  /// The type need not be one this Builder's Context owns -- a reference is
+  /// free to name a type another Context created, since the node itself records
+  /// who owns it (see Type::GetOwningContext).
   std::optional<TypeRef> ToTypeRef(const CompilerType &type);
-  /// Wrap a Type (e.g. one the DWARF parser resolved) into a TypeRef, likewise
-  /// standing it in through a ForeignType if another Context owns it. Null
+  /// Wrap a Type (e.g. one the DWARF parser resolved) into a TypeRef. Null
   /// yields std::nullopt.
   std::optional<TypeRef> ToTypeRef(Type *type) const;
   /// ToTypeRef, falling back to the `void` builtin when there is no type to

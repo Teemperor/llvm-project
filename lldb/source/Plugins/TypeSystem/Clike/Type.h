@@ -54,7 +54,9 @@ struct StaticDataMember;
 /// std::optional<TypeRef> at the one place it occurs, so it stays visible in
 /// the type of the field rather than hiding in every use of it.
 ///
-/// For referencing a type in another Context, \see ForeignType
+/// A reference may name a type that another Context owns (an expression result
+/// built in the target's scratch Context around types the module that parsed
+/// them owns). Nothing extra is needed for that: \see Type::GetOwningContext.
 class TypeRef {
 public:
   explicit TypeRef(Type &type) : m_type(&type) {}
@@ -138,9 +140,10 @@ public:
   /// node rather than a claim made by whoever hands it around: a CompilerType's
   /// type system is not necessarily the one that owns the node inside it (e.g.
   /// TypeSystemClike::GetPointeeType tags a pointee with the *pointer's* type
-  /// system). Consulted when a reference to this type is stored, to decide
-  /// whether it needs to go through a ForeignType -- see
-  /// Builder::ToLocalReference and Context::AssertOwnsRef.
+  /// system). This is also what makes a reference to a type in *another*
+  /// Context self-describing: a TypeRef is a bare pointer, but the node it
+  /// names always knows who owns it, so the owner is recoverable from any
+  /// reference without the reference having to carry it.
   Context &GetOwningContext() const {
     assert(m_context && "every type is owned by the Context that created it");
     return *m_context;
@@ -568,7 +571,7 @@ private:
 /// desugaring in TypeSystemClike). The transparent virtual queries forward to the
 /// underlying type; subclasses override the ones that must differ (e.g. a
 /// typedef reports its own name and type class). The concrete sugar kinds live
-/// in TypeC.h, apart from ForeignType (below), which is language-neutral.
+/// in TypeC.h.
 class SugarType : public llvm::RTTIExtends<SugarType, Type> {
 public:
   static char ID;
@@ -626,93 +629,6 @@ private:
   TypeRef m_underlying_type;
 };
 
-/// A stand-in for a type that *another* Context owns.
-///
-/// Types are owned by the Context that created them, and a TypeRef is a bare
-/// pointer that says nothing about ownership, so a type cannot refer to one in
-/// another Context directly. Nearly every reference is within a single Context
-/// (the DWARF parser builds a module's types through that module's own type
-/// system), so making every reference carry an owning Context -- as the
-/// two-word TypeRef this replaces did -- made every type in the graph pay for
-/// the rare cross-Context case. A ForeignType localizes that cost to the cases
-/// that need it: it is a node owned by the *referring* Context that pairs the
-/// referenced type with the Context that owns it, so the reference itself stays
-/// a plain TypeRef pointing at this node. Created (and interned) by
-/// Context::GetForeignType.
-///
-/// It is transparent sugar: Desugar() skips straight to the referenced type and
-/// every query forwards to it, so a consumer that doesn't care where a type
-/// lives never has to know this node is in the chain. The places that peek at a
-/// referenced type's *kind* without desugaring (because a typedef must stay
-/// distinguishable, e.g. the name builders in TypeName.cpp) peel it with Strip
-/// instead. Only code that needs the owning Context looks for it directly
-/// (llvm::dyn_cast<ForeignType>).
-///
-/// ClangTypeConverter is what creates these: mapping an expression's clang types
-/// back onto this model reaches types owned by the module that parsed them, and
-/// the reconstructed types it builds around them live in the target (scratch)
-/// Context.
-class ForeignType : public llvm::RTTIExtends<ForeignType, SugarType> {
-public:
-  static char ID;
-
-  ForeignType(Context &referenced_context, Type &type)
-      : llvm::RTTIExtends<ForeignType, SugarType>(TypeRef(type)),
-        m_referenced_context(&referenced_context) {}
-
-  /// The Context that owns the referenced type. Never this node's own Context.
-  Context &GetReferencedContext() const { return *m_referenced_context; }
-  /// The type this node stands in for, owned by GetReferencedContext(). Never
-  /// null (the constructor takes it by reference).
-  Type *GetReferencedType() const { return GetUnderlyingType(); }
-
-  /// Peel any foreign stand-in off \p t, yielding the type it stands in for.
-  /// For the callers that deliberately don't desugar (a typedef or cv-qualifier
-  /// carries meaning they must not lose) but do need to see the kind of type
-  /// they are looking at, not the fact that it lives in another Context.
-  /// Mirrors ElaboratedType::Strip.
-  static Type *Strip(Type *t) {
-    while (auto *foreign = llvm::dyn_cast_or_null<ForeignType>(t))
-      t = foreign->GetReferencedType();
-    return t;
-  }
-  static const Type *Strip(const Type *t) {
-    return Strip(const_cast<Type *>(t));
-  }
-
-  // SugarType forwards the layout/value/children queries, but not the ones a
-  // typedef answers for itself (its name) or that only some kinds carry (an
-  // explicit alignment, polymorphism, pointer transparency). A ForeignType has
-  // no identity of its own at all -- it must be indistinguishable from the type
-  // it stands in for -- so forward those too.
-  Identifier GetName() const override {
-    return GetReferencedType()->GetName();
-  }
-  Identifier GetUnqualifiedName() const override {
-    return GetReferencedType()->GetUnqualifiedName();
-  }
-  const Namespace *GetDeclContext() const override {
-    return GetReferencedType()->GetDeclContext();
-  }
-  std::optional<uint64_t> GetAlignInBits() const override {
-    return GetReferencedType()->GetAlignInBits();
-  }
-  std::optional<uint64_t> GetAlignmentInBits() const override {
-    return GetReferencedType()->GetAlignmentInBits();
-  }
-  bool IsPolymorphic() const override {
-    return GetReferencedType()->IsPolymorphic();
-  }
-  Type *GetTransparentChildPointee() override {
-    return GetReferencedType()->GetTransparentChildPointee();
-  }
-  Type *GetNamedMemberPointee() override {
-    return GetReferencedType()->GetNamedMemberPointee();
-  }
-
-private:
-  Context *m_referenced_context;
-};
 
 } // namespace clike_typesystem
 } // namespace lldb_private
