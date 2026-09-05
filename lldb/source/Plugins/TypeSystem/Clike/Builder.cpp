@@ -14,28 +14,6 @@ using namespace lldb;
 
 Builder::Builder(TypeSystemClike &ts) : m_ts(ts) {}
 
-// Qualified: at file scope `Type` is ambiguous between lldb_private::Type and
-// the clike_typesystem one (the parameter below resolves in class scope).
-clike_typesystem::Type *Builder::ToLocalNode(Type *type) const {
-  if (!type)
-    return nullptr;
-  // Ask the node which Context owns it rather than trusting whoever handed it
-  // over: a CompilerType's type system is not necessarily the one that owns the
-  // node inside it (e.g. TypeSystemClike::GetPointeeType tags a pointee with the
-  // *pointer's* type system), and a bare `Type *` says nothing at all. See
-  // Type::GetOwningContext.
-  Context *owner = &type->GetOwningContext();
-  // A stand-in already names the Context that really owns the type, so peel it
-  // instead of stacking another one on top of it.
-  if (auto *foreign = llvm::dyn_cast<ForeignType>(type)) {
-    owner = &foreign->GetReferencedContext();
-    type = foreign->GetReferencedType();
-  }
-  if (owner == &m_ts.m_context)
-    return type;
-  return m_ts.m_context.GetForeignType(*owner, *type);
-}
-
 std::optional<TypeRef> Builder::ToTypeRef(const CompilerType &type) {
   if (!type.GetTypeSystem().dyn_cast_or_null<TypeSystemClike>())
     return std::nullopt;
@@ -43,9 +21,9 @@ std::optional<TypeRef> Builder::ToTypeRef(const CompilerType &type) {
 }
 
 std::optional<TypeRef> Builder::ToTypeRef(Type *type) const {
-  if (Type *local = ToLocalNode(type))
-    return TypeRef(*local);
-  return std::nullopt;
+  if (!type)
+    return std::nullopt;
+  return TypeRef(*type);
 }
 
 TypeRef Builder::ToTypeRefOrVoid(const CompilerType &type) {
@@ -254,15 +232,6 @@ void Builder::AddStaticDataMember(clike_typesystem::ClassType &record,
 
 clike_typesystem::Identifier Builder::GetIdentifier(llvm::StringRef name) {
   return m_ts.m_context.GetIdentifier(name);
-}
-
-CompilerType Builder::ToLocalReference(const CompilerType &type) {
-  if (!type.GetTypeSystem().dyn_cast_or_null<TypeSystemClike>())
-    return type;
-  if (Type *local =
-          ToLocalNode(TypeSystemClike::GetClikeType(type.GetOpaqueQualType())))
-    return m_ts.GetCompilerType(local);
-  return type;
 }
 
 void Builder::SetRecordComplete(clike_typesystem::RecordType &record) {

@@ -156,31 +156,31 @@ TEST_F(ContextTest, TypesKnowTheirOwningContext) {
   EXPECT_EQ(&builtin->GetOwningContext(), &context);
 }
 
-// A type another Context owns is referenced through a ForeignType standing in
-// for it, which records that Context. The stand-ins are interned, so the same
-// foreign type is always reached through the same node (type identity is node
-// identity).
-TEST_F(ContextTest, ForeignTypeStandsInForAnotherContextsType) {
+// A type may reference one another Context owns directly: the referenced node
+// records its own owner, so nothing has to be interposed to keep that
+// recoverable, and type identity stays node identity across Contexts.
+TEST_F(ContextTest, ReferenceToAnotherContextsTypeIsDirect) {
   LanguageOpts other_opts{llvm::Triple("x86_64-pc-linux-gnu")};
   Context other{other_opts};
   Type *foreign_record = other.CreateRecordType("Foo", 4,
                                                 /*is_cpp_class=*/false);
+  EXPECT_EQ(&foreign_record->GetOwningContext(), &other);
 
-  ForeignType *stand_in = context.GetForeignType(other, *foreign_record);
-  ASSERT_NE(stand_in, nullptr);
-  EXPECT_EQ(stand_in->GetReferencedType(), foreign_record);
-  EXPECT_EQ(&stand_in->GetReferencedContext(), &other);
-  // The stand-in itself belongs to the referring Context, so a type here may
-  // reference it like any local type.
-  EXPECT_EQ(&stand_in->GetOwningContext(), &context);
-  EXPECT_EQ(context.GetForeignType(other, *foreign_record), stand_in);
+  // A pointer created here points straight at it -- no wrapper node, and the
+  // pointer is still ours (it takes its width from this Context).
+  PointerType *ptr = context.CreatePointerType(TypeRef(*foreign_record));
+  EXPECT_EQ(&ptr->GetOwningContext(), &context);
+  EXPECT_EQ(ptr->GetPointeeType(), foreign_record);
+  EXPECT_EQ(&ptr->GetPointeeType()->GetOwningContext(), &other);
 
-  // It is transparent: it desugars to, and answers for, what it stands in for.
-  EXPECT_EQ(stand_in->Desugar(), foreign_record);
-  EXPECT_EQ(ForeignType::Strip(stand_in), foreign_record);
-  EXPECT_EQ(stand_in->GetName().GetName(), "Foo");
-  EXPECT_EQ(stand_in->GetByteSize(), 4u);
-  EXPECT_TRUE(stand_in->IsAggregate());
+  // The pointee needs no unwrapping to be recognized for what it is.
+  EXPECT_TRUE(llvm::isa<RecordType>(ptr->GetPointeeType()));
+  EXPECT_EQ(ptr->GetPointeeType()->GetName().GetName(), "Foo");
+  EXPECT_EQ(ptr->GetPointeeType()->GetByteSize(), 4u);
+
+  // Pointer uniquing keys on the referenced node, so two `Foo *` formed here
+  // are still the same instance.
+  EXPECT_EQ(context.CreatePointerType(TypeRef(*foreign_record)), ptr);
 }
 
 // GetOrCreateDecl deduplicates by payload: the same payload pointer always

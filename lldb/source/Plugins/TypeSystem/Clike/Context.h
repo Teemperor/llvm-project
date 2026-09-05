@@ -159,13 +159,6 @@ public:
   /// element's.
   ComplexType *CreateComplexType(TypeRef element_type);
 
-  /// Reference a type that another Context owns: returns a node owned by *this*
-  /// Context standing in for \p type (which \p owner owns), so the reference
-  /// itself stays a plain TypeRef. See ForeignType. Interned by (owner, type),
-  /// so a given foreign type always maps to the same node. \p owner must be a
-  /// different Context -- a reference within one Context needs no such node.
-  ForeignType *GetForeignType(Context &owner, Type &type);
-
   /// Structural mutation of already-created record types. These are the gated
   /// entry points for the mutations that happen during lazy completion; the
   /// corresponding Type methods are private and befriend this class.
@@ -193,7 +186,6 @@ public:
                 uint64_t byte_offset, uint32_t bitfield_bit_size = 0,
                 uint32_t bitfield_bit_offset = 0) {
     AssertOwnsType(record);
-    AssertOwnsRef(type);
     record.AddField(name, type, byte_offset, bitfield_bit_size,
                     bitfield_bit_offset);
   }
@@ -201,29 +193,23 @@ public:
                     bool is_virtual = false,
                     std::optional<uint64_t> vbase_offset_offset = std::nullopt) {
     AssertOwnsType(record);
-    AssertOwnsRef(type);
     record.AddBaseClass(type, byte_offset, is_virtual, vbase_offset_offset);
   }
   void SetPolymorphic(ClassType &record) { record.SetPolymorphic(); }
   void SetObjCSuperClass(ObjCInterfaceType &record, TypeRef superclass) {
     AssertOwnsType(record);
-    AssertOwnsRef(superclass);
     record.SetSuperClass(superclass);
   }
   void AddObjCMethod(ObjCInterfaceType &record, ObjCMethod method) {
     AssertOwnsType(record);
-    AssertOwnsRef(method.type);
     record.AddObjCMethod(std::move(method));
   }
   void AddTemplateArgument(ClassType &record, TemplateArgument arg) {
     AssertOwnsType(record);
-    if (arg.type)
-      AssertOwnsRef(*arg.type);
     record.AddTemplateArgument(arg);
   }
   void AddNestedType(RecordType &record, Identifier name, TypeRef type) {
     AssertOwnsType(record);
-    AssertOwnsRef(type);
     record.AddNestedType(name, type);
   }
   void AddEnumerator(EnumType &enum_type, Identifier name, uint64_t value) {
@@ -232,17 +218,14 @@ public:
   void AddParameter(FunctionType &func, TypeRef type,
                     Identifier name = Identifier()) {
     AssertOwnsType(func);
-    AssertOwnsRef(type);
     func.AddParameter(type, name);
   }
   void AddMemberFunction(ClassType &record, MemberFunction method) {
     AssertOwnsType(record);
-    AssertOwnsRef(method.type);
     record.AddMemberFunction(method);
   }
   void AddStaticDataMember(ClassType &record, StaticDataMember member) {
     AssertOwnsType(record);
-    AssertOwnsRef(member.type);
     record.AddStaticDataMember(member);
   }
   /// @}
@@ -284,28 +267,16 @@ private:
     return result;
   }
 
-  /// The invariant every reference in the type model must satisfy: a type may
-  /// only reference types that its own Context owns. A type another Context owns
-  /// has to be referenced through a ForeignType (see GetForeignType) -- that
-  /// node is what keeps the owning Context recoverable, since a TypeRef itself
-  /// is nothing but a pointer.
-  ///
-  /// Every entry point that stores a reference (the factories and the
-  /// structural mutators above) checks its arguments with these, so a violation
-  /// is caught where it is introduced -- rather than much later, as a type that
-  /// mysteriously can't be completed or outlives the Context that owns it.
-  /// Both compile away entirely without assertions.
-  /// @{
-  void AssertOwnsRef(TypeRef ref) const {
-    assert(Owns(&ref.Get()) &&
-           "a type may only reference types its own Context owns -- use "
-           "Context::GetForeignType for a type another Context owns");
-  }
+  /// Every entry point that creates or mutates a type checks that this Context
+  /// is the one that owns it, so a mutation aimed at the wrong Context is
+  /// caught where it is introduced. The types a type *references* are not
+  /// checked: a reference may name a type another Context owns (see
+  /// Type::GetOwningContext, which keeps that recoverable). Compiles away
+  /// entirely without assertions.
   void AssertOwnsType(const Type &type) const {
     assert(Owns(&type) &&
            "this Context does not own the type being created or modified");
   }
-  /// @}
 
   /// Whether this Context owns \p type -- i.e. created it, or holds it as one of
   /// its canonical builtins. Cheap, and available in every build: a type records
@@ -325,10 +296,6 @@ private:
   /// equality) and a plain `T *` stays distinct from a block `T (^)`. See
   /// CreatePointerType / CreateBlockPointerType.
   std::map<std::pair<Type *, bool>, PointerType *> m_pointer_map;
-  /// Uniquing map for the ForeignType nodes standing in for types other
-  /// Contexts own, keyed by (owning Context, type), so a given foreign type is
-  /// always referenced through the same node. See GetForeignType.
-  std::map<std::pair<Context *, Type *>, ForeignType *> m_foreign_type_map;
   /// Interned CompilerDecls (static data members / member functions), owned for
   /// the Context's lifetime and deduplicated by payload.
   std::vector<std::unique_ptr<Decl>> m_decls;

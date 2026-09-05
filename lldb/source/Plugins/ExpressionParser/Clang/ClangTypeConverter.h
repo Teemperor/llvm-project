@@ -60,21 +60,18 @@ public:
                      clang::ASTContext *source_ast = nullptr);
 
   /// Map \p qt (a Clang type) back to its clike_typesystem origin. Returns an
-  /// invalid CompilerType if the type can't be mapped. The returned
-  /// CompilerType is owned by the target TypeSystemClike.
+  /// invalid CompilerType if the type can't be mapped.
+  ///
+  /// A type the expression parser merely *reached* is handed back still owned by
+  /// the TypeSystemClike that parsed it, so that its completion state -- the
+  /// forward-decl-to-DIE map, the SymbolFile -- stays reachable (see
+  /// ConvertViaReverseMap); only types this converter has to *rebuild* are
+  /// created in the target. Either can be referenced by a type built in the
+  /// target: a reference names a node, and the node records its own owner (see
+  /// clike_typesystem::Type::GetOwningContext).
   CompilerType Convert(clang::QualType qt);
 
 private:
-  /// Convert \p qt like Convert(), but return it in the form a type built in the
-  /// target may *reference* (as a pointee, element, field, parameter, ...).
-  ///
-  /// Convert() deliberately hands back a type still owned by the
-  /// TypeSystemClike that parsed it, so that its completion state stays
-  /// reachable (see ConvertViaReverseMap). A reference stores a bare pointer, so
-  /// a target-owned type cannot record such a type directly without losing
-  /// track of which Context owns it; this wraps it in a ForeignType that does.
-  /// See clike_typesystem::ForeignType and Builder::ToLocalReference.
-  CompilerType ConvertForReference(clang::QualType qt);
   /// Peel a deduced `auto`/`decltype(auto)` type down to the type deduction
   /// resolved it to; returns \p qt unchanged if it isn't a deduced type. The
   /// result is null if deduction hasn't run yet (an undeduced `auto`).
