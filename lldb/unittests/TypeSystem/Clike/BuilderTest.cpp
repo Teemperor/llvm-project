@@ -66,7 +66,7 @@ TEST_F(BuilderTest, ReferenceToAnotherTypeSystemIsStoodIn) {
   builder.AddField(*record, builder.GetIdentifier("foo"), other_node,
                    /*byte_offset=*/0);
   ASSERT_EQ(record->GetNumFields(), 1u);
-  EXPECT_EQ(record->GetFieldAtIndex(0)->type.GetOrNone(), stand_in);
+  EXPECT_EQ(&record->GetFieldAtIndex(0)->type.Get(), stand_in);
 
   // A type this Builder's own type system owns is referenced directly.
   CompilerType local_int = builder.GetBuiltinType(
@@ -95,7 +95,7 @@ TEST_F(BuilderTest, AddField) {
   ASSERT_NE(f, nullptr);
   EXPECT_EQ(f->name.GetName(), "x");
   EXPECT_EQ(f->byte_offset, 0u);
-  EXPECT_EQ(f->type.GetOrNone(), int_type.GetOpaqueQualType());
+  EXPECT_EQ(&f->type.Get(), int_type.GetOpaqueQualType());
 }
 
 // AddBaseClass only works on a ClassType (only those track base classes);
@@ -113,8 +113,8 @@ TEST_F(BuilderTest, AddBaseClass) {
                        static_cast<clike_typesystem::Type *>(base.GetOpaqueQualType()),
                        /*byte_offset=*/0);
   ASSERT_EQ(derived_class->GetNumBaseClasses(), 1u);
-  EXPECT_EQ(derived_class->GetBaseClassAtIndex(0)->type.GetOrNone(),
-           base.GetOpaqueQualType());
+  EXPECT_EQ(&derived_class->GetBaseClassAtIndex(0)->type.Get(),
+            base.GetOpaqueQualType());
 }
 
 // AddTemplateArgument records a type-kind template argument (e.g. the `int`
@@ -135,7 +135,7 @@ TEST_F(BuilderTest, AddTemplateArgument) {
   ASSERT_EQ(r->GetNumTemplateArguments(), 1u);
   const TemplateArgument *arg = r->GetTemplateArgumentAtIndex(0);
   EXPECT_EQ(arg->kind, lldb::eTemplateArgumentKindType);
-  EXPECT_EQ(arg->type.GetOrNone(), int_type.GetOpaqueQualType());
+  EXPECT_EQ(&arg->type->Get(), int_type.GetOpaqueQualType());
   EXPECT_TRUE(r->IsTemplateInstantiation());
 }
 
@@ -154,6 +154,66 @@ TEST_F(BuilderTest, AddTemplateTemplateArgument) {
   EXPECT_EQ(arg->kind, lldb::eTemplateArgumentKindTemplate);
   EXPECT_EQ(arg->name.GetName(), "T1");
   EXPECT_FALSE(arg->type);
+}
+
+// A TypeRef always names a type, so the Builder resolves the three things
+// debug info spells as "no type" into real ones: a missing pointee is `void`,
+// a missing enum base is `int`, and a `void` template type argument (which
+// DWARF spells by omitting DW_AT_type) is the `void` builtin.
+TEST_F(BuilderTest, AbsentTypesResolveToRealOnes) {
+  Builder builder(*ts);
+
+  // `void *`: DW_TAG_pointer_type with no DW_AT_type.
+  auto *void_ptr = llvm::cast<PointerType>(static_cast<clike_typesystem::Type *>(
+      builder.CreatePointerType(CompilerType()).GetOpaqueQualType()));
+  EXPECT_TRUE(IsVoid(void_ptr->GetPointeeType()));
+  // ... and it is uniqued with a pointer to an explicitly-spelled `void`.
+  EXPECT_EQ(builder.CreatePointerType(builder.GetVoidType()).GetOpaqueQualType(),
+            static_cast<clike_typesystem::Type *>(void_ptr));
+
+  // An opaque enum records no base type; C says such an enum is an `int`.
+  auto *opaque_enum = llvm::cast<EnumType>(static_cast<clike_typesystem::Type *>(
+      builder
+          .CreateEnumType("E", /*byte_size=*/std::nullopt, CompilerType(),
+                          /*is_scoped=*/false)
+          .GetOpaqueQualType()));
+  ASSERT_NE(opaque_enum->GetUnderlyingType(), nullptr);
+  EXPECT_EQ(opaque_enum->GetUnderlyingType()->GetName().GetName(), "int");
+  EXPECT_TRUE(opaque_enum->IsSigned());
+  EXPECT_EQ(opaque_enum->GetEncoding(), lldb::eEncodingSint);
+
+  // A `void` type argument, e.g. `coroutine_handle<void>`.
+  CompilerType record = builder.CreateRecordType("coroutine_handle<void>", 8,
+                                                 /*is_cpp_class=*/true);
+  auto *r = llvm::cast<ClassType>(
+      static_cast<clike_typesystem::Type *>(record.GetOpaqueQualType()));
+  builder.AddTemplateArgument(*r, lldb::eTemplateArgumentKindType,
+                              /*type=*/nullptr, /*integral_value=*/0,
+                              /*is_default=*/false);
+  ASSERT_EQ(r->GetNumTemplateArguments(), 1u);
+  const TemplateArgument *arg = r->GetTemplateArgumentAtIndex(0);
+  ASSERT_TRUE(arg->type);
+  EXPECT_TRUE(IsVoid(&arg->type->Get()));
+}
+
+// A function type always has a return type: nothing-returned is `void`. A
+// parameter, by contrast, has no such fallback, so AddParameter reports that
+// it could not model one rather than silently shortening the signature.
+TEST_F(BuilderTest, FunctionReturnFallsBackToVoidButParametersDoNot) {
+  Builder builder(*ts);
+  CompilerType fn_type =
+      builder.CreateFunctionType(CompilerType(), /*is_variadic=*/false);
+  auto *fn = llvm::cast<FunctionType>(
+      static_cast<clike_typesystem::Type *>(fn_type.GetOpaqueQualType()));
+  EXPECT_TRUE(IsVoid(fn->GetReturnType()));
+
+  EXPECT_FALSE(builder.AddParameter(fn_type, CompilerType()));
+  EXPECT_EQ(fn->GetNumParameters(), 0u);
+
+  CompilerType int_type = builder.GetBuiltinType(
+      "int", 4, lldb::eEncodingSint, lldb::eFormatDecimal);
+  EXPECT_TRUE(builder.AddParameter(fn_type, int_type));
+  EXPECT_EQ(fn->GetNumParameters(), 1u);
 }
 
 // Two Builder-created pointers to the same pointee (through the same

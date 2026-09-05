@@ -80,7 +80,7 @@ ReadVirtualBaseOffset(TypeSystemClike &ts, clike_typesystem::RecordType *derived
   if (!vbase_offset_offset && derived)
     vbase_offset_offset = ClangASTGenerator::ComputeVBaseOffsetOffset(
         ts, ts.GetTriple(), ts.GetCompilerType(derived),
-        ts.GetCompilerType(base.type.GetOrNone()));
+        ts.GetCompilerType(&base.type.Get()));
   if (!vbase_offset_offset)
     return std::nullopt;
 
@@ -212,7 +212,7 @@ CompilerType TypeSystemClike::GetTypeForDecl(void *opaque_decl) {
   if (!decl)
     return CompilerType();
   return std::visit(
-      [this](const auto *member) { return GetCompilerType(member->type.GetOrNone()); },
+      [this](const auto *member) { return GetCompilerType(&member->type.Get()); },
       decl->payload);
 }
 
@@ -224,11 +224,8 @@ Scalar TypeSystemClike::DeclGetConstantValue(void *opaque_decl) {
       std::get_if<const clike_typesystem::StaticDataMember *>(&decl->payload);
   if (!member || !(*member)->HasConstValue())
     return Scalar();
-  clike_typesystem::Type *type = (*member)->type.GetOrNone();
-  if (!type)
-    return Scalar();
-  clike_typesystem::Type *desugared = Desugar(type);
-  std::optional<uint64_t> byte_size = type->GetByteSize();
+  clike_typesystem::Type *desugared = (*member)->type.Get().Desugar();
+  std::optional<uint64_t> byte_size = desugared->GetByteSize();
   if (!byte_size)
     return Scalar();
   // Interpret the raw constant bits using the member type's signedness so a
@@ -467,12 +464,10 @@ bool TypeSystemClike::IsBlockPointerType(
     return false;
   // Report the corresponding function-pointer type (a plain pointer to the
   // block's function type), mirroring TypeSystemClang.
-  if (function_pointer_type_ptr) {
-    if (clike_typesystem::Type *fn = ptr->GetPointeeType())
-      *function_pointer_type_ptr =
-          clike_typesystem::Builder(*this).CreatePointerType(
-              GetCompilerType(fn));
-  }
+  if (function_pointer_type_ptr)
+    *function_pointer_type_ptr =
+        clike_typesystem::Builder(*this).CreatePointerType(
+            GetCompilerType(ptr->GetPointeeType()));
   return true;
 }
 
@@ -555,21 +550,18 @@ bool TypeSystemClike::IsPossibleDynamicType(opaque_compiler_type_t type,
   // An Objective-C object is always accessed through a pointer (`Foo *` / `id`).
   // A pointer to an ObjC interface is a possible dynamic type when checking ObjC.
   if (auto *ptr = llvm::dyn_cast<clike_typesystem::PointerType>(t)) {
-    clike_typesystem::Type *pointee =
-        ptr->GetPointeeType() ? Desugar(ptr->GetPointeeType()) : nullptr;
-    if (pointee) {
-      if (llvm::isa<clike_typesystem::ObjCInterfaceType>(pointee)) {
-        if (check_objc) {
-          set_target(pointee);
-          return true;
-        }
-        return false;
-      }
-      // `id` is modeled as a pointer to the opaque `objc_object` record.
-      if (check_objc && clike_typesystem::IsOpaqueObjCObjectRecord(pointee)) {
+    clike_typesystem::Type *pointee = ptr->GetPointeeType()->Desugar();
+    if (llvm::isa<clike_typesystem::ObjCInterfaceType>(pointee)) {
+      if (check_objc) {
         set_target(pointee);
         return true;
       }
+      return false;
+    }
+    // `id` is modeled as a pointer to the opaque `objc_object` record.
+    if (check_objc && clike_typesystem::IsOpaqueObjCObjectRecord(pointee)) {
+      set_target(pointee);
+      return true;
     }
   }
 
@@ -583,9 +575,9 @@ bool TypeSystemClike::IsPossibleDynamicType(opaque_compiler_type_t type,
   clike_typesystem::Type *pointee = nullptr;
   bool is_reference = false;
   if (auto *ptr = llvm::dyn_cast<clike_typesystem::PointerType>(t)) {
-    pointee = ptr->GetPointeeType() ? Desugar(ptr->GetPointeeType()) : nullptr;
+    pointee = ptr->GetPointeeType()->Desugar();
   } else if (auto *ref = llvm::dyn_cast<clike_typesystem::ReferenceType>(t)) {
-    pointee = ref->GetPointeeType() ? Desugar(ref->GetPointeeType()) : nullptr;
+    pointee = ref->GetPointeeType()->Desugar();
     is_reference = true;
   }
 
@@ -861,7 +853,7 @@ void TypeSystemClike::CompleteTemplateInstantiationForNameAssumingWriteLocked(
     const clike_typesystem::TemplateArgument *arg =
         rec->GetTemplateArgumentAtIndex(i);
     if (arg->kind == lldb::eTemplateArgumentKindType)
-      CompleteTemplateInstantiationForNameAssumingWriteLocked(arg->type.GetOrNone());
+      CompleteTemplateInstantiationForNameAssumingWriteLocked(&arg->type->Get());
   }
 }
 
@@ -946,8 +938,7 @@ LanguageType TypeSystemClike::GetMinimumLanguage(opaque_compiler_type_t type) {
     // to the "plain non-record type" C default below (a reference is never
     // itself the "plain scalar" case that default exists for).
     if (auto *ref = llvm::dyn_cast<clike_typesystem::ReferenceType>(t))
-      if (clike_typesystem::Type *referent = ref->GetPointeeType())
-        t = Desugar(referent);
+      t = ref->GetPointeeType()->Desugar();
     // An Objective-C interface (or a pointer to one, i.e. an ObjC object like
     // `NSObject *`) is an Objective-C construct. Reporting ObjC is what routes
     // it to the ObjC language runtime for dynamic-type resolution (see
@@ -1130,7 +1121,7 @@ TypeSystemClike::GetMemberFunctionAtIndex(opaque_compiler_type_t type,
     MemberFunctionKind kind = method->is_class_method
                                   ? lldb::eMemberFunctionKindStaticMethod
                                   : lldb::eMemberFunctionKindInstanceMethod;
-    return TypeMemberFunctionImpl(GetCompilerType(method->type.GetOrNone()),
+    return TypeMemberFunctionImpl(GetCompilerType(&method->type.Get()),
                                   CompilerDecl(), name, kind);
   }
 
@@ -1160,7 +1151,7 @@ TypeSystemClike::GetMemberFunctionAtIndex(opaque_compiler_type_t type,
   // linkage name; the (return/argument) types come from the function type.
   CompilerDecl decl(this, const_cast<clike_typesystem::Decl *>(
                               m_context.GetOrCreateDecl(method)));
-  return TypeMemberFunctionImpl(GetCompilerType(method->type.GetOrNone()), decl,
+  return TypeMemberFunctionImpl(GetCompilerType(&method->type.Get()), decl,
                                 method->name.GetName().str(), kind);
 }
 
@@ -1169,23 +1160,17 @@ CompilerType TypeSystemClike::GetPointeeType(opaque_compiler_type_t type) {
   if (!tt)
     return CompilerType();
   const clike_typesystem::Type *desugared = Desugar(tt.get());
-  if (auto *ptr = llvm::dyn_cast<clike_typesystem::PointerType>(desugared)) {
-    // A null pointee models `void *` (see PointerType). Surface the canonical
-    // void builtin so callers (e.g. CompilerType::IsPointerToVoid) can identify
-    // it via GetBasicTypeEnumeration().
-    if (clike_typesystem::Type *pointee = ptr->GetPointeeType())
-      return GetCompilerType(pointee);
-    return GetCompilerType(
-        m_context.GetBuiltinType(clike_typesystem::BuiltinKind::Void));
-  }
+  // A `void *` points at the `void` builtin, so this is a valid CompilerType
+  // for every pointer -- which is what callers like
+  // CompilerType::IsPointerToVoid expect (and what TypeSystemClang, whose
+  // `void` QualType is always valid, does).
+  if (auto *ptr = llvm::dyn_cast<clike_typesystem::PointerType>(desugared))
+    return GetCompilerType(ptr->GetPointeeType());
   // A reference's "pointee" is the referenced type, matching
   // TypeSystemClang::GetPointeeType (clang::Type::getPointeeType() answers
-  // both pointers and references). Unlike a pointer, a reference always
-  // refers to a concrete type (there is no `void &`), so no void fallback is
-  // needed here.
+  // both pointers and references).
   if (auto *ref = llvm::dyn_cast<clike_typesystem::ReferenceType>(desugared))
-    if (clike_typesystem::Type *referent = ref->GetPointeeType())
-      return GetCompilerType(referent);
+    return GetCompilerType(ref->GetPointeeType());
   return CompilerType();
 }
 
@@ -1243,7 +1228,7 @@ TypeSystemClike::GetTypeForFormatters(opaque_compiler_type_t type) {
   if (auto *ptr = llvm::dyn_cast<clike_typesystem::PointerType>(t)) {
     clike_typesystem::Type *pointee = ptr->GetPointeeType();
     clike_typesystem::Type *stripped = strip_cv(pointee);
-    if (stripped != pointee && stripped)
+    if (stripped != pointee)
       return clike_typesystem::Builder(*this).CreatePointerType(
           GetCompilerType(stripped));
   }
@@ -1255,7 +1240,7 @@ TypeSystemClike::GetTypeForFormatters(opaque_compiler_type_t type) {
   if (auto *array = llvm::dyn_cast<clike_typesystem::ArrayType>(t)) {
     clike_typesystem::Type *element = array->GetElementType();
     clike_typesystem::Type *stripped = strip_cv(element);
-    if (stripped != element && stripped)
+    if (stripped != element)
       return clike_typesystem::Builder(*this).CreateArrayType(
           GetCompilerType(stripped), array->GetNumElements());
   }
@@ -1532,12 +1517,14 @@ llvm::Expected<uint32_t> TypeSystemClike::GetNumChildrenImpl(
   if (auto *ptr = llvm::dyn_cast<clike_typesystem::PointerType>(t)) {
     if (clike_typesystem::Type *pointee = ptr->GetTransparentChildPointee())
       return GetNumChildrenImpl(pointee, omit_empty_base_classes, exe_ctx);
-    return ptr->GetPointeeType() ? 1 : 0;
+    // `void *` is the exception: there is nothing to show behind it, so it
+    // gets no deref child either.
+    return clike_typesystem::IsVoid(ptr->GetPointeeType()) ? 0 : 1;
   }
   if (auto *ref = llvm::dyn_cast<clike_typesystem::ReferenceType>(t)) {
     if (clike_typesystem::Type *pointee = ref->GetTransparentChildPointee())
       return GetNumChildrenImpl(pointee, omit_empty_base_classes, exe_ctx);
-    return ref->GetPointeeType() ? 1 : 0;
+    return 1;
   }
   if (!t->IsAggregate())
     return 0;
@@ -1573,7 +1560,7 @@ llvm::Expected<uint32_t> TypeSystemClike::GetNumChildrenImpl(
     uint32_t non_empty_bases = 0;
     for (uint32_t i = 0; i < num_bases; ++i) {
       const clike_typesystem::BaseClass *base = t->GetBaseClassAtIndex(i);
-      if (base && clike_typesystem::RecordType::HasFields(base->type.GetOrNone(), complete))
+      if (base && clike_typesystem::RecordType::HasFields(&base->type.Get(), complete))
         ++non_empty_bases;
     }
     num_bases = non_empty_bases;
@@ -1699,7 +1686,7 @@ CompilerType TypeSystemClike::GetFieldAtIndex(opaque_compiler_type_t type,
     *bitfield_bit_size_ptr = field->bitfield_bit_size;
   if (is_bitfield_ptr)
     *is_bitfield_ptr = field->IsBitfield();
-  return GetCompilerType(field->type.GetOrNone());
+  return GetCompilerType(&field->type.Get());
 }
 
 CompilerDecl TypeSystemClike::GetStaticFieldWithName(opaque_compiler_type_t type,
@@ -1731,12 +1718,13 @@ TypeSystemClike::GetObjCBaseClassBearingType(clike_typesystem::Type *type) {
   // An Objective-C object is always handled through a pointer (`Foo *`), so a
   // pointer to an ObjC interface answers base-class queries as the interface
   // `Foo` itself would. This does not apply to ordinary C++ pointers.
-  if (auto *ptr = llvm::dyn_cast<clike_typesystem::PointerType>(t))
-    if (clike_typesystem::Type *pointee = ptr->GetPointeeType())
-      if (llvm::isa<clike_typesystem::ObjCInterfaceType>(Desugar(pointee))) {
-        CompleteTypeAssumingWriteLocked(pointee);
-        return Desugar(pointee);
-      }
+  if (auto *ptr = llvm::dyn_cast<clike_typesystem::PointerType>(t)) {
+    clike_typesystem::Type *pointee = ptr->GetPointeeType();
+    if (llvm::isa<clike_typesystem::ObjCInterfaceType>(pointee->Desugar())) {
+      CompleteTypeAssumingWriteLocked(pointee);
+      return pointee->Desugar();
+    }
+  }
   return t;
 }
 
@@ -1778,7 +1766,7 @@ TypeSystemClike::GetDirectBaseClassAtIndex(opaque_compiler_type_t type,
     return CompilerType();
   if (bit_offset_ptr)
     *bit_offset_ptr = base->byte_offset * 8;
-  return GetCompilerType(base->type.GetOrNone());
+  return GetCompilerType(&base->type.Get());
 }
 
 CompilerType TypeSystemClike::GetVirtualBaseClassAtIndex(
@@ -1880,7 +1868,7 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
   // path relies on).
   if (auto *ptr = llvm::dyn_cast<clike_typesystem::PointerType>(t)) {
     clike_typesystem::Type *pointee = ptr->GetPointeeType();
-    if (!pointee)
+    if (clike_typesystem::IsVoid(pointee))
       return CompilerType(); // Can't dereference `void *`.
 
     // A pointer to an ObjC interface, like any other aggregate pointee, is
@@ -1932,8 +1920,6 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
   // the referenced aggregate's members or the single referenced value.
   if (auto *ref = llvm::dyn_cast<clike_typesystem::ReferenceType>(t)) {
     clike_typesystem::Type *pointee = ref->GetPointeeType();
-    if (!pointee)
-      return CompilerType();
 
     // As with pointers, only expand an already-complete referent transparently
     // so that merely inspecting the reference doesn't force its completion.
@@ -1987,7 +1973,7 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
     if (!base)
       continue;
     if (omit_empty_base_classes &&
-        !clike_typesystem::RecordType::HasFields(base->type.GetOrNone(), complete))
+        !clike_typesystem::RecordType::HasFields(&base->type.Get(), complete))
       continue;
     if (visible_base_idx == idx) {
       // Name the base-class child by its (possibly sugar-wrapped) type name
@@ -1998,7 +1984,7 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
       child_name = base->type.Get().GetName().GetName().str();
       if (child_name.empty())
         child_name =
-            GetTypeNameAssumingWriteLocked(base->type.GetOrNone(), /*BaseOnly=*/false)
+            GetTypeNameAssumingWriteLocked(&base->type.Get(), /*BaseOnly=*/false)
                 .GetString();
       child_byte_offset = base->byte_offset;
       // A virtual base has no constant offset: its subobject can sit at
@@ -2029,7 +2015,7 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
       if (std::optional<uint64_t> byte_size = base->type.Get().GetByteSize())
         child_byte_size = *byte_size;
       child_is_base_class = true;
-      return GetCompilerType(base->type.GetOrNone());
+      return GetCompilerType(&base->type.Get());
     }
     ++visible_base_idx;
   }
@@ -2062,7 +2048,7 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
     child_bitfield_bit_size = field->bitfield_bit_size;
     child_bitfield_bit_offset = field->bitfield_bit_offset;
   }
-  return GetCompilerType(field->type.GetOrNone());
+  return GetCompilerType(&field->type.Get());
 }
 
 llvm::Expected<uint32_t>
@@ -2107,14 +2093,14 @@ llvm::Expected<uint32_t> TypeSystemClike::GetIndexOfChildWithNameImpl(
     if (!base)
       continue;
     if (omit_empty_base_classes &&
-        !clike_typesystem::RecordType::HasFields(base->type.GetOrNone(), complete))
+        !clike_typesystem::RecordType::HasFields(&base->type.Get(), complete))
       continue;
     if (base->type.Get().GetName().GetName() == name)
       return visible_base_idx;
     // A sugar-wrapped base (see GetChildCompilerTypeAtIndex) has an empty raw
     // name; match it by its display type name instead.
     if (base->type.Get().GetName().GetName().empty() &&
-        GetTypeNameAssumingWriteLocked(base->type.GetOrNone(), /*BaseOnly=*/false)
+        GetTypeNameAssumingWriteLocked(&base->type.Get(), /*BaseOnly=*/false)
                 .GetStringRef() == name)
       return visible_base_idx;
     ++visible_base_idx;
@@ -2182,7 +2168,7 @@ size_t TypeSystemClike::GetIndexOfChildMemberWithNameImpl(
   uint32_t total_bases = t->GetNumBaseClasses();
   auto base_is_visible = [&](const clike_typesystem::BaseClass *base) {
     return base && (!omit_empty_base_classes ||
-                    clike_typesystem::RecordType::HasFields(base->type.GetOrNone(), complete));
+                    clike_typesystem::RecordType::HasFields(&base->type.Get(), complete));
   };
   uint32_t num_visible_bases = 0;
   for (uint32_t i = 0; i < total_bases; ++i)
@@ -2201,13 +2187,13 @@ size_t TypeSystemClike::GetIndexOfChildMemberWithNameImpl(
       child_indexes.push_back(num_visible_bases + i);
       return child_indexes.size();
     }
-    if (descend_anon_fields && field_name.empty() && field->type) {
+    if (descend_anon_fields && field_name.empty()) {
       std::vector<uint32_t> save_indices = child_indexes;
       child_indexes.push_back(num_visible_bases + i);
       // An anonymous field of the starting record still injects the members of
       // *its* anonymous fields, so keep descending transparently through it.
       if (GetIndexOfChildMemberWithNameImpl(
-              field->type.GetOrNone(), name, omit_empty_base_classes,
+              &field->type.Get(), name, omit_empty_base_classes,
               /*descend_anon_fields=*/true, child_indexes))
         return child_indexes.size();
       child_indexes = std::move(save_indices);
@@ -2228,7 +2214,7 @@ size_t TypeSystemClike::GetIndexOfChildMemberWithNameImpl(
     std::vector<uint32_t> save_indices = child_indexes;
     child_indexes.push_back(visible_base_idx);
     if (GetIndexOfChildMemberWithNameImpl(
-            base->type.GetOrNone(), name, omit_empty_base_classes,
+            &base->type.Get(), name, omit_empty_base_classes,
             /*descend_anon_fields=*/false, child_indexes))
       return child_indexes.size();
     child_indexes = std::move(save_indices);
@@ -2427,7 +2413,7 @@ static void AppendMemberFunctionDecl(Stream &s,
   using namespace clike_typesystem;
   if (m.is_static)
     s << "static ";
-  FunctionType *fn = llvm::dyn_cast_or_null<FunctionType>(m.type.GetOrNone());
+  FunctionType *fn = llvm::dyn_cast<FunctionType>(&m.type.Get());
   std::string name = m.name.GetName().str();
   if (fn) {
     s << clike_typesystem::BuildFunctionName(fn, name);
@@ -2501,7 +2487,7 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type, Stream &s
              GetTypeNameAssumingWriteLocked(t, /*BaseOnly=*/true).GetCString());
     if (const clike_typesystem::BaseClass *super = iface->GetBaseClassAtIndex(0))
       s.Printf(" : %s",
-               GetTypeNameAssumingWriteLocked(super->type.GetOrNone(),
+               GetTypeNameAssumingWriteLocked(&super->type.Get(),
                                               /*BaseOnly=*/true)
                    .GetCString());
     s.PutCString(" {\n");
@@ -2510,7 +2496,7 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type, Stream &s
       if (!field)
         continue;
       s.PutCString("    ");
-      AppendMemberDeclAssumingWriteLocked(s, field->type.GetOrNone(), field->name.GetName());
+      AppendMemberDeclAssumingWriteLocked(s, &field->type.Get(), field->name.GetName());
       s.PutCString(";\n");
     }
     s.PutCString("}\n");
@@ -2540,7 +2526,7 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type, Stream &s
       if (!field)
         continue;
       s.PutCString("    ");
-      AppendMemberDeclAssumingWriteLocked(s, field->type.GetOrNone(), field->name.GetName());
+      AppendMemberDeclAssumingWriteLocked(s, &field->type.Get(), field->name.GetName());
       if (field->IsBitfield())
         s.Printf(" : %u", field->bitfield_bit_size);
       s.PutCString(";\n");
@@ -2834,16 +2820,14 @@ TypeSystemClike::GetFullyUnqualifiedTypeImpl(clike_typesystem::Type *t) {
     clike_typesystem::Type *stripped = GetFullyUnqualifiedTypeImpl(pointee);
     if (stripped != pointee)
       return static_cast<clike_typesystem::Type *>(
-          builder
-              .CreatePointerType(stripped ? GetCompilerType(stripped)
-                                          : CompilerType())
+          builder.CreatePointerType(GetCompilerType(stripped))
               .GetOpaqueQualType());
     return t;
   }
   if (auto *ref = llvm::dyn_cast<clike_typesystem::ReferenceType>(t)) {
     clike_typesystem::Type *pointee = ref->GetPointeeType();
     clike_typesystem::Type *stripped = GetFullyUnqualifiedTypeImpl(pointee);
-    if (stripped && stripped != pointee)
+    if (stripped != pointee)
       return static_cast<clike_typesystem::Type *>(
           builder.CreateReferenceType(GetCompilerType(stripped), ref->IsRValue())
               .GetOpaqueQualType());
@@ -2852,7 +2836,7 @@ TypeSystemClike::GetFullyUnqualifiedTypeImpl(clike_typesystem::Type *t) {
   if (auto *array = llvm::dyn_cast<clike_typesystem::ArrayType>(t)) {
     clike_typesystem::Type *element = array->GetElementType();
     clike_typesystem::Type *stripped = GetFullyUnqualifiedTypeImpl(element);
-    if (stripped && stripped != element)
+    if (stripped != element)
       return static_cast<clike_typesystem::Type *>(
           builder
               .CreateArrayType(GetCompilerType(stripped),
@@ -2958,16 +2942,11 @@ CompilerType TypeSystemClike::GetTypeTemplateArgument(opaque_compiler_type_t typ
             record->GetTemplateArgumentAtIndex(idx)) {
       if (arg->kind != lldb::eTemplateArgumentKindType)
         return CompilerType();
-      // A `void` type-kind argument (e.g. `coroutine_handle<void>`) has a null
-      // TypeRef: DWARF encodes `void` by omitting DW_AT_type on the
-      // DW_TAG_template_type_parameter DIE, and TypeRef's null state normally
-      // means "no argument". Disambiguate using the kind (already confirmed
-      // Type above) by returning the actual `void` builtin rather than an
-      // invalid CompilerType, matching TypeSystemClang (whose `void`
-      // QualType is always valid).
-      if (!arg->type.GetOrNone())
-        return clike_typesystem::Builder(*this).GetVoidType();
-      return GetCompilerType(arg->type.GetOrNone());
+      // A type argument always names a type -- a `void` argument (e.g.
+      // `coroutine_handle<void>`, which DWARF spells by omitting DW_AT_type)
+      // names the `void` builtin, so this is never an invalid CompilerType.
+      // That matches TypeSystemClang, whose `void` QualType is always valid.
+      return GetCompilerType(&arg->type->Get());
     }
   return CompilerType();
 }
@@ -2988,19 +2967,19 @@ TypeSystemClike::GetIntegralTemplateArgument(opaque_compiler_type_t type,
     return std::nullopt;
   // A pointer/reference-typed argument (e.g. `&temp1.member`) has no integral
   // value; report it as absent rather than a bogus scalar.
-  if (clike_typesystem::Type *arg_type = arg->type.GetOrNone())
-    if (llvm::isa<clike_typesystem::PointerType>(arg_type) ||
-        llvm::isa<clike_typesystem::ReferenceType>(arg_type))
+  if (arg->type)
+    if (llvm::isa<clike_typesystem::PointerType>(&arg->type->Get()) ||
+        llvm::isa<clike_typesystem::ReferenceType>(&arg->type->Get()))
       return std::nullopt;
 
   // Reconstruct the value with the argument type's signedness.
   Scalar value;
-  if (arg->type && arg->type.Get().GetEncoding() == eEncodingSint)
+  if (arg->type && arg->type->Get().GetEncoding() == eEncodingSint)
     value = static_cast<int64_t>(arg->integral_value);
   else
     value = arg->integral_value;
-  return CompilerType::IntegralTemplateArgument{value,
-                                                GetCompilerType(arg->type.GetOrNone())};
+  return CompilerType::IntegralTemplateArgument{
+      value, GetCompilerType(arg->type ? &arg->type->Get() : nullptr)};
 }
 
 CompilerType

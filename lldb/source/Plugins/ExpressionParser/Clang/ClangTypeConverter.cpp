@@ -473,13 +473,14 @@ CompilerType ClangTypeConverter::ConvertDerived(clang::QualType qt) {
     // A function type the parser formed (e.g. the pointee of a function-pointer
     // cast result). Rebuild it so a pointer to it can be sized/stored.
     CompilerType ret = ConvertForReference(fpt->getReturnType());
+    if (!ret)
+      return {};
     clike_typesystem::Builder builder(m_target);
     CompilerType fn = builder.CreateFunctionType(ret, fpt->isVariadic());
     for (clang::QualType param : fpt->param_types()) {
       CompilerType clike_param = ConvertForReference(param);
-      if (!clike_param)
+      if (!clike_param || !builder.AddParameter(fn, clike_param))
         return {};
-      builder.AddParameter(fn, clike_param);
     }
     return fn;
   } else if (const clang::VectorType *vt = qt->getAs<clang::VectorType>()) {
@@ -608,9 +609,8 @@ void ClangTypeConverter::AddObjCMethod(clike_typesystem::ObjCInterfaceType &ifac
   CompilerType fn = builder.CreateFunctionType(ret, method->isVariadic());
   for (const clang::ParmVarDecl *param : method->parameters()) {
     CompilerType param_type = ConvertForReference(param->getType());
-    if (!param_type)
+    if (!param_type || !builder.AddParameter(fn, param_type))
       return;
-    builder.AddParameter(fn, param_type);
   }
 
   // Format the name exactly like the DWARF/runtime path so a merge can dedup by

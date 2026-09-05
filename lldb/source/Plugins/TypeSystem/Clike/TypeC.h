@@ -47,8 +47,9 @@ class ArrayType : public llvm::RTTIExtends<ArrayType, Type> {
 public:
   static char ID;
 
-  Type *GetElementType() const { return m_element_type.GetOrNone(); }
-  void SetElementType(TypeRef type) { m_element_type = type; }
+  explicit ArrayType(TypeRef element_type) : m_element_type(element_type) {}
+
+  Type *GetElementType() const { return &m_element_type.Get(); }
 
   /// Number of elements, or std::nullopt for an array of unknown bound.
   std::optional<uint64_t> GetNumElements() const {
@@ -84,10 +85,7 @@ public:
     std::optional<uint64_t> num_elements = GetNumElements();
     if (!num_elements)
       return std::nullopt;
-    const Type *element = m_element_type.GetOrNone();
-    if (!element)
-      return std::nullopt;
-    if (std::optional<uint64_t> elem_size = element->GetByteSize())
+    if (std::optional<uint64_t> elem_size = m_element_type.Get().GetByteSize())
       return *elem_size * *num_elements;
     return std::nullopt;
   }
@@ -115,10 +113,12 @@ class PointerType : public llvm::RTTIExtends<PointerType, Type> {
 public:
   static char ID;
 
-  /// The type this pointer points to. E.g., for `int *` this is `int`.
-  /// May be null for `void *`.
-  Type *GetPointeeType() const { return m_pointee_type.GetOrNone(); }
-  void SetPointeeType(TypeRef type) { m_pointee_type = type; }
+  explicit PointerType(TypeRef pointee_type) : m_pointee_type(pointee_type) {}
+
+  /// The type this pointer points to. E.g., for `int *` this is `int`. Never
+  /// null: a `void *` points at the `void` builtin (see TypeRef), so use
+  /// BuiltinType::IsVoid to recognize one rather than testing for absence.
+  Type *GetPointeeType() const { return &m_pointee_type.Get(); }
 
   /// True if this is a function-pointer type (`void (*)(int)`), matching
   /// clang's isFunctionPointerType(). A block pointer (`int (^)(int)`) is not
@@ -174,6 +174,8 @@ private:
 class BlockPointerType
     : public llvm::RTTIExtends<BlockPointerType, PointerType> {
 public:
+  using RTTIExtends::RTTIExtends;
+
   static char ID;
 };
 
@@ -181,6 +183,8 @@ public:
 /// like the type it aliases.
 class TypedefType : public llvm::RTTIExtends<TypedefType, NamedType<SugarType>> {
 public:
+  using RTTIExtends::RTTIExtends;
+
   static char ID;
 
   lldb::TypeClass GetTypeClass() const override {
@@ -196,6 +200,8 @@ public:
 /// the type name.
 class CVQualifiedType : public llvm::RTTIExtends<CVQualifiedType, SugarType> {
 public:
+  using RTTIExtends::RTTIExtends;
+
   static char ID;
 
   bool IsConst() const { return m_is_const; }
@@ -223,6 +229,8 @@ private:
 /// authentication bits off the raw pointer value and print `__ptrauth(...)`.
 class PtrAuthType : public llvm::RTTIExtends<PtrAuthType, SugarType> {
 public:
+  using RTTIExtends::RTTIExtends;
+
   static char ID;
 
   /// The pointer-authentication key (a small integer, e.g. 2 for the data key).
@@ -252,6 +260,8 @@ private:
 /// TypeSystemClang's RemoveWrappingTypes.
 class ElaboratedType : public llvm::RTTIExtends<ElaboratedType, SugarType> {
 public:
+  using RTTIExtends::RTTIExtends;
+
   static char ID;
 
   /// The source spelling to use for the display name (e.g. `::Struct`).
@@ -314,16 +324,20 @@ class EnumType : public llvm::RTTIExtends<EnumType, NamedType<ByteSizedType<Type
 public:
   static char ID;
 
-  Type *GetUnderlyingType() const { return m_underlying_type.GetOrNone(); }
-  void SetUnderlyingType(TypeRef type) { m_underlying_type = type; }
+  explicit EnumType(TypeRef underlying_type)
+      : m_underlying_type(underlying_type) {}
+
+  /// The integer type backing this enum. Never null: debug info that records
+  /// no base type gets the `int` C would have chosen (see
+  /// Builder::CreateEnumType).
+  Type *GetUnderlyingType() const { return &m_underlying_type.Get(); }
 
   bool IsScoped() const { return m_is_scoped; }
   void SetIsScoped(bool is_scoped) { m_is_scoped = is_scoped; }
 
   /// True when the underlying integer type is signed.
   bool IsSigned() const {
-    return !m_underlying_type ||
-           m_underlying_type.Get().GetEncoding() == lldb::eEncodingSint;
+    return m_underlying_type.Get().GetEncoding() == lldb::eEncodingSint;
   }
 
   const std::vector<Enumerator> &GetEnumerators() const {
@@ -331,8 +345,7 @@ public:
   }
 
   lldb::Encoding GetEncoding() const override {
-    return m_underlying_type ? m_underlying_type.Get().GetEncoding()
-                             : lldb::eEncodingSint;
+    return m_underlying_type.Get().GetEncoding();
   }
   lldb::Format GetFormat() const override { return lldb::eFormatEnum; }
   lldb::TypeClass GetTypeClass() const override {
@@ -368,23 +381,21 @@ class ComplexType : public llvm::RTTIExtends<ComplexType, Type> {
 public:
   static char ID;
 
-  Type *GetElementType() const { return m_element_type.GetOrNone(); }
-  void SetElementType(TypeRef type) { m_element_type = type; }
+  explicit ComplexType(TypeRef element_type) : m_element_type(element_type) {}
+
+  Type *GetElementType() const { return &m_element_type.Get(); }
 
   /// Complex-float when the element is a floating-point type, else
   /// complex-integer.
   bool IsFloat() const {
-    return m_element_type &&
-           m_element_type.Get().GetEncoding() == lldb::eEncodingIEEE754;
+    return m_element_type.Get().GetEncoding() == lldb::eEncodingIEEE754;
   }
 
   // A complex value is two contiguous components of the element type. Computed
   // on demand rather than stored (the element size may only be known later).
   std::optional<uint64_t> GetByteSize() const override {
-    const Type *element = m_element_type.GetOrNone();
-    if (!element)
-      return std::nullopt;
-    if (std::optional<uint64_t> element_size = element->GetByteSize())
+    if (std::optional<uint64_t> element_size =
+            m_element_type.Get().GetByteSize())
       return *element_size * 2;
     return std::nullopt;
   }
@@ -417,13 +428,16 @@ class FunctionType : public llvm::RTTIExtends<FunctionType, Type> {
 public:
   static char ID;
 
-  Type *GetReturnType() const { return m_return_type.GetOrNone(); }
-  void SetReturnType(TypeRef type) { m_return_type = type; }
+  explicit FunctionType(TypeRef return_type) : m_return_type(return_type) {}
+
+  /// The declared return type. Never null: a function returning nothing
+  /// returns the `void` builtin.
+  Type *GetReturnType() const { return &m_return_type.Get(); }
 
   uint32_t GetNumParameters() const { return m_params.size(); }
   Type *GetParameterAtIndex(uint32_t idx) const {
     if (idx < m_params.size())
-      return m_params[idx].GetOrNone();
+      return &m_params[idx].Get();
     return nullptr;
   }
 

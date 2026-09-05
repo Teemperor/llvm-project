@@ -211,9 +211,8 @@ void clike_typesystem::AddRuntimeObjCMethod(Builder &builder,
   for (size_t i = 3; i < sig.GetNumTypes(); ++i) {
     llvm::StringRef param_enc = sig.GetTypeAtIndex(i);
     CompilerType param_type = RealizeObjCEncoding(builder, param_enc);
-    if (!param_type)
+    if (!param_type || !builder.AddParameter(func_type, param_type))
       return;
-    builder.AddParameter(func_type, param_type);
   }
 
   std::string full_name = (llvm::Twine(is_class_method ? "+[" : "-[") +

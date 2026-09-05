@@ -181,6 +181,15 @@ private:
       m_by_kind{};
 };
 
+/// True if \p t is `void`, looking through sugar. Since a `void *` points at
+/// the `void` builtin rather than at nothing (see TypeRef), this -- not a null
+/// check -- is how the handful of places that must treat an opaque pointer
+/// specially recognize one.
+inline bool IsVoid(const Type *t) {
+  const auto *builtin = llvm::dyn_cast_or_null<BuiltinType>(Desugar(t));
+  return builtin && builtin->IsVoid();
+}
+
 }
 } // namespace lldb_private
 

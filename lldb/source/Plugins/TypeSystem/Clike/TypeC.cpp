@@ -43,27 +43,27 @@ unsigned CVQualifiedType::GetCVRMask(const Type *t) {
 
 bool PointerType::IsFunctionPointer() const {
   return !llvm::isa<BlockPointerType>(this) &&
-         llvm::isa_and_nonnull<FunctionType>(clike_typesystem::Desugar(GetPointeeType()));
+         llvm::isa<FunctionType>(GetPointeeType()->Desugar());
 }
 
 Type *PointerType::GetTransparentChildPointee() {
-  Type *pointee = m_pointee_type.GetOrNone();
-  if (!pointee)
-    return nullptr; // `void *` has no children.
+  Type *pointee = GetPointeeType();
   // A pointer to an ObjC interface is always transparent: an ObjC object is
   // only ever reached through a pointer, so its children are the interface's
   // ivars/superclass. (The interface is completed by the caller, which has the
   // SymbolFile.)
   if (llvm::isa<ObjCInterfaceType>(pointee->Desugar()))
     return pointee;
+  // `void *` falls out here rather than needing its own check: `void` is
+  // neither an aggregate nor an ObjC interface.
   if (pointee->IsAggregate() && pointee->IsComplete())
     return pointee;
   return nullptr;
 }
 
 Type *PointerType::GetNamedMemberPointee() {
-  Type *pointee = m_pointee_type.GetOrNone();
-  return pointee && pointee->IsAggregate() ? pointee : nullptr;
+  Type *pointee = GetPointeeType();
+  return pointee->IsAggregate() ? pointee : nullptr;
 }
 
 uint32_t PointerType::GetTypeInfo() const {
@@ -76,7 +76,7 @@ uint32_t PointerType::GetTypeInfo() const {
   // ObjCLanguage::IsNilReference prints a null `id` as "nil" instead of "0x0".
   // (Sugar between the pointer and the interface is peeled by the caller via
   // Desugar; the pointee stored here is normally the interface directly.)
-  if (IsObjCObjectType(m_pointee_type.GetOrNone()))
+  if (IsObjCObjectType(GetPointeeType()))
     info |= lldb::eTypeIsObjC;
   return info;
 }

@@ -101,8 +101,9 @@ public:
   ArrayType *CreateArrayType(TypeRef element_type,
                              std::optional<uint64_t> num_elements);
 
-  /// Create a pointer type pointing to \p pointee_type (which may be empty for
-  /// `void *`). Its byte size is the target's pointer size.
+  /// Create a pointer type pointing to \p pointee_type. A `void *` points at
+  /// the `void` builtin (see TypeRef), not at "nothing". Its byte size is the
+  /// target's pointer size.
   PointerType *CreatePointerType(TypeRef pointee_type);
 
   /// Create an Apple "blocks" pointer (`int (^)(int)`), whose pointee is a
@@ -141,8 +142,8 @@ public:
                                        TypeRef underlying_type);
 
   /// Create an enumeration type. \p underlying_type is the integer type backing
-  /// the enum (may be empty when unknown). Enumerators are added afterwards via
-  /// AddEnumerator during completion.
+  /// the enum. Enumerators are added afterwards via AddEnumerator during
+  /// completion.
   EnumType *CreateEnumType(llvm::StringRef name,
                            std::optional<uint64_t> byte_size,
                            TypeRef underlying_type, bool is_scoped);
@@ -163,7 +164,7 @@ public:
   /// itself stays a plain TypeRef. See ForeignType. Interned by (owner, type),
   /// so a given foreign type always maps to the same node. \p owner must be a
   /// different Context -- a reference within one Context needs no such node.
-  ForeignType *GetForeignType(Context &owner, Type *type);
+  ForeignType *GetForeignType(Context &owner, Type &type);
 
   /// Structural mutation of already-created record types. These are the gated
   /// entry points for the mutations that happen during lazy completion; the
@@ -216,7 +217,8 @@ public:
   }
   void AddTemplateArgument(ClassType &record, TemplateArgument arg) {
     AssertOwnsType(record);
-    AssertOwnsRef(arg.type);
+    if (arg.type)
+      AssertOwnsRef(*arg.type);
     record.AddTemplateArgument(arg);
   }
   void AddNestedType(RecordType &record, Identifier name, TypeRef type) {
@@ -295,7 +297,7 @@ private:
   /// Both compile away entirely without assertions.
   /// @{
   void AssertOwnsRef(TypeRef ref) const {
-    assert((!ref || Owns(ref.GetOrNone())) &&
+    assert(Owns(&ref.Get()) &&
            "a type may only reference types its own Context owns -- use "
            "Context::GetForeignType for a type another Context owns");
   }

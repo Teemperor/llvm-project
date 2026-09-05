@@ -44,27 +44,26 @@ struct StaticDataMember;
 /// also reference types that are no longer in memory (e.g., because they have
 /// been deallocated to free up space).
 ///
+/// A TypeRef always names a type: there is no empty state, so no consumer has
+/// to handle one. The two things debug info spells as "no type" are modeled as
+/// real types instead -- `void` (a pointer with no DW_AT_type is a pointer to
+/// the `void` builtin, exactly as sugar wraps it for `const void`), and an
+/// absent enum base (which falls back to `int`). Where a reference is genuinely
+/// optional rather than absent-meaning-void -- a template-template argument,
+/// which names a template and has no type at all -- that is spelled
+/// std::optional<TypeRef> at the one place it occurs, so it stays visible in
+/// the type of the field rather than hiding in every use of it.
+///
 /// For referencing a type in another Context, \see ForeignType
 class TypeRef {
 public:
-  TypeRef() = default;
-  TypeRef(Type *type) : m_type(type) {}
+  explicit TypeRef(Type &type) : m_type(&type) {}
 
   /// The referenced type.
-  Type &Get() const {
-    assert(m_type && "TypeRef::Get() on an empty reference -- use GetOrNone()");
-    return *m_type;
-  }
-
-  /// The referenced type, or null for an empty reference (e.g. the pointee of
-  /// a `void *`).
-  Type *GetOrNone() const { return m_type; }
-
-  /// True when this refers to a type (false for an empty reference).
-  explicit operator bool() const { return m_type != nullptr; }
+  Type &Get() const { return *m_type; }
 
 private:
-  Type *m_type = nullptr;
+  Type *m_type;
 };
 
 static_assert(sizeof(TypeRef) == sizeof(void *),
@@ -295,7 +294,8 @@ private:
 };
 
 /// Null-tolerant wrapper around Type::Desugar(), for the many call sites that
-/// desugar a type that may not exist (an absent pointee, an unset TypeRef).
+/// desugar a `Type *` that may not exist (a lookup that found nothing, a
+/// pointee peeled off a type that turned out not to be a pointer).
 inline Type *Desugar(Type *t) { return t ? t->Desugar() : nullptr; }
 inline const Type *Desugar(const Type *t) { return t ? t->Desugar() : nullptr; }
 
@@ -307,6 +307,8 @@ inline const Type *Desugar(const Type *t) { return t ? t->Desugar() : nullptr; }
 /// overrides are written once instead of copy-pasted per class.
 template <typename Base> class NamedType : public Base {
 public:
+  using Base::Base;
+
   Identifier GetName() const override { return m_name; }
   void SetName(Identifier name) { m_name = name; }
   const Namespace *GetDeclContext() const override { return m_decl_context; }
@@ -331,6 +333,8 @@ private:
 /// pointer width (see PointerType et al.) do NOT use this.
 template <typename Base> class ByteSizedType : public Base {
 public:
+  using Base::Base;
+
   std::optional<uint64_t> GetByteSize() const override {
     return m_byte_size == kNoByteSize ? std::nullopt
                                       : std::optional<uint64_t>(m_byte_size);
@@ -482,7 +486,7 @@ public:
   Type *GetNestedTypeWithName(llvm::StringRef name) const {
     for (const auto &entry : m_nested_types)
       if (entry.first.GetName() == name)
-        return entry.second.GetOrNone();
+        return &entry.second.Get();
     return nullptr;
   }
 
@@ -537,13 +541,8 @@ private:
   void AddField(Identifier name, TypeRef type, uint64_t byte_offset,
                 uint32_t bitfield_bit_size = 0,
                 uint32_t bitfield_bit_offset = 0) {
-    Field f;
-    f.name = name;
-    f.type = type;
-    f.byte_offset = byte_offset;
-    f.bitfield_bit_size = bitfield_bit_size;
-    f.bitfield_bit_offset = bitfield_bit_offset;
-    m_fields.push_back(f);
+    m_fields.push_back(Field{name, type, byte_offset, bitfield_bit_size,
+                             bitfield_bit_offset});
   }
   void AddNestedType(Identifier name, TypeRef type) {
     m_nested_types.emplace_back(name, type);
@@ -574,15 +573,13 @@ class SugarType : public llvm::RTTIExtends<SugarType, Type> {
 public:
   static char ID;
 
+  explicit SugarType(TypeRef underlying_type)
+      : m_underlying_type(underlying_type) {}
+
   /// The immediately-wrapped type. Peel repeatedly to reach the canonical type.
   /// Never null: a `const void`/`typedef void` wraps the `void` builtin, so
-  /// sugar always has a concrete underlying type (enforced by the Context
-  /// factories that create these).
+  /// sugar always has a concrete underlying type.
   Type *GetUnderlyingType() const { return &m_underlying_type.Get(); }
-  void SetUnderlyingType(TypeRef type) {
-    assert(type && "sugar must wrap a type (use the void builtin for void)");
-    m_underlying_type = type;
-  }
 
   // Sugar is see-through: forward the value/layout queries to the wrapped type
   // so a `typedef`/`const` of an aggregate still looks like one.
@@ -659,16 +656,15 @@ class ForeignType : public llvm::RTTIExtends<ForeignType, SugarType> {
 public:
   static char ID;
 
+  ForeignType(Context &referenced_context, Type &type)
+      : llvm::RTTIExtends<ForeignType, SugarType>(TypeRef(type)),
+        m_referenced_context(&referenced_context) {}
+
   /// The Context that owns the referenced type. Never this node's own Context.
   Context &GetReferencedContext() const { return *m_referenced_context; }
   /// The type this node stands in for, owned by GetReferencedContext(). Never
-  /// null (enforced by Context::GetForeignType).
+  /// null (the constructor takes it by reference).
   Type *GetReferencedType() const { return GetUnderlyingType(); }
-  void SetReferencedType(Context &context, Type *type) {
-    assert(type && "a foreign reference must name a type");
-    m_referenced_context = &context;
-    SetUnderlyingType(type);
-  }
 
   /// Peel any foreign stand-in off \p t, yielding the type it stands in for.
   /// For the callers that deliberately don't desugar (a typedef or cv-qualifier
@@ -715,7 +711,7 @@ public:
   }
 
 private:
-  Context *m_referenced_context = nullptr;
+  Context *m_referenced_context;
 };
 
 } // namespace clike_typesystem

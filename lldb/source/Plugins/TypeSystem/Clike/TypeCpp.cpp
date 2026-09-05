@@ -11,5 +11,5 @@ char ReferenceType::ID = 0;
 char MemberPointerType::ID = 0;
 
 bool MemberPointerType::IsMemberFunctionPointer() const {
-  return llvm::isa_and_nonnull<FunctionType>(clike_typesystem::Desugar(GetPointeeType()));
+  return llvm::isa<FunctionType>(GetPointeeType()->Desugar());
 }

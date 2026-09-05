@@ -58,7 +58,12 @@ struct StaticDataMember {
 /// type.
 struct TemplateArgument {
   /// Type argument: the argument's type. Integral argument: the value's type.
-  TypeRef type;
+  /// std::nullopt only for a template-template argument, which names a
+  /// template rather than a type and so has none (see `name` below); this is
+  /// the one reference in the model that is genuinely optional rather than
+  /// absent-meaning-void -- a `void` type argument (DWARF omits DW_AT_type for
+  /// it) is stored as the `void` builtin like any other type.
+  std::optional<TypeRef> type;
   /// Template argument (a template-template parameter, e.g. the `T1` in
   /// `C<float, T1>`): the referenced template's name. Such arguments are not a
   /// modeled type, so only their spelling is kept -- enough to reconstruct the
@@ -124,9 +129,9 @@ struct MemberFunction {
 
   // The flags above are packed bit-fields, which can't carry default member
   // initializers before C++20 (LLVM builds as C++17), so they are defaulted
-  // here.
-  MemberFunction()
-      : is_static(false), is_const(false), is_volatile(false),
+  // here. The type has no sensible default at all, so it is required.
+  explicit MemberFunction(TypeRef type)
+      : type(type), is_static(false), is_const(false), is_volatile(false),
         is_virtual(false), ref_qualifier(RefQualifier::None),
         kind(MemberFunctionKind::Method) {}
 };
@@ -222,9 +227,10 @@ class ReferenceType : public llvm::RTTIExtends<ReferenceType, Type> {
 public:
   static char ID;
 
+  explicit ReferenceType(TypeRef pointee_type) : m_pointee_type(pointee_type) {}
+
   /// The type this reference refers to. E.g., for `int &` this is `int`.
-  Type *GetPointeeType() const { return m_pointee_type.GetOrNone(); }
-  void SetPointeeType(TypeRef type) { m_pointee_type = type; }
+  Type *GetPointeeType() const { return &m_pointee_type.Get(); }
 
   /// True for an rvalue reference (`T &&`), false for an lvalue one (`T &`).
   bool IsRValue() const { return m_is_rvalue; }
@@ -233,14 +239,14 @@ public:
   // A reference is transparent: its children are those of the referenced type.
   // Like a pointer, this must not force completion of the referent.
   Type *GetTransparentChildPointee() override {
-    Type *pointee = m_pointee_type.GetOrNone();
-    if (pointee && pointee->IsAggregate() && pointee->IsComplete())
+    Type *pointee = &m_pointee_type.Get();
+    if (pointee->IsAggregate() && pointee->IsComplete())
       return pointee;
     return nullptr;
   }
   Type *GetNamedMemberPointee() override {
-    Type *pointee = m_pointee_type.GetOrNone();
-    return pointee && pointee->IsAggregate() ? pointee : nullptr;
+    Type *pointee = &m_pointee_type.Get();
+    return pointee->IsAggregate() ? pointee : nullptr;
   }
 
   // A reference is represented by an address, so it has the (small) target
@@ -290,14 +296,15 @@ class MemberPointerType
 public:
   static char ID;
 
+  MemberPointerType(TypeRef pointee_type, TypeRef containing_type)
+      : m_pointee_type(pointee_type), m_containing_type(containing_type) {}
+
   /// The type of the pointed-to member: the data member's type, or the member
   /// function's type (a FunctionType).
-  Type *GetPointeeType() const { return m_pointee_type.GetOrNone(); }
-  void SetPointeeType(TypeRef type) { m_pointee_type = type; }
+  Type *GetPointeeType() const { return &m_pointee_type.Get(); }
 
   /// The class this is a pointer-to-member of.
-  Type *GetContainingType() const { return m_containing_type.GetOrNone(); }
-  void SetContainingType(TypeRef type) { m_containing_type = type; }
+  Type *GetContainingType() const { return &m_containing_type.Get(); }
 
   /// True for a pointer to a member *function* (`R (C::*)(Args...)`), false for
   /// a pointer to a data member (`T C::*`). Out-of-line: telling them apart

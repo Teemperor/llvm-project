@@ -83,8 +83,8 @@ TEST_F(ContextTest, GetBuiltinTypeBespokeFallback) {
 // twice returns the identical instance.
 TEST_F(ContextTest, PointerTypesAreUniqued) {
   Type *record = context.CreateRecordType("Foo", 4, false);
-  PointerType *p1 = context.CreatePointerType(record);
-  PointerType *p2 = context.CreatePointerType(record);
+  PointerType *p1 = context.CreatePointerType(TypeRef(*record));
+  PointerType *p2 = context.CreatePointerType(TypeRef(*record));
   EXPECT_EQ(p1, p2);
   EXPECT_EQ(p1->GetPointeeType(), record);
   EXPECT_EQ(p1->GetByteSize(), 8u);
@@ -94,9 +94,9 @@ TEST_F(ContextTest, PointerTypesAreUniqued) {
 // (the block pointer is a separate BlockPointerType kind).
 TEST_F(ContextTest, BlockPointerDistinctFromPlainPointer) {
   Type *record = context.CreateRecordType("Foo", 4, false);
-  PointerType *plain = context.CreatePointerType(record);
+  PointerType *plain = context.CreatePointerType(TypeRef(*record));
   BlockPointerType *block =
-      context.CreateBlockPointerType(record);
+      context.CreateBlockPointerType(TypeRef(*record));
   EXPECT_NE(static_cast<Type *>(plain), static_cast<Type *>(block));
   EXPECT_TRUE(llvm::isa<BlockPointerType>(block));
   EXPECT_FALSE(llvm::isa<BlockPointerType>(plain));
@@ -104,10 +104,13 @@ TEST_F(ContextTest, BlockPointerDistinctFromPlainPointer) {
   EXPECT_TRUE(llvm::isa<PointerType>(block));
 }
 
-// A pointer to an empty (void) TypeRef models `void *`.
+// `void *` is a pointer to the `void` builtin, not a pointer to nothing: a
+// TypeRef always names a type.
 TEST_F(ContextTest, VoidPointer) {
-  PointerType *p = context.CreatePointerType(TypeRef());
-  EXPECT_EQ(p->GetPointeeType(), nullptr);
+  BuiltinType *void_type = context.GetBuiltinType(BuiltinKind::Void);
+  PointerType *p = context.CreatePointerType(TypeRef(*void_type));
+  EXPECT_EQ(p->GetPointeeType(), void_type);
+  EXPECT_TRUE(IsVoid(p->GetPointeeType()));
   EXPECT_EQ(p->GetByteSize(), 8u);
 }
 
@@ -115,7 +118,7 @@ TEST_F(ContextTest, VoidPointer) {
 TEST_F(ContextTest, TypedefInheritsByteSize) {
   Type *record = context.CreateRecordType("Foo", 16, false);
   TypedefType *td =
-      context.CreateTypedefType("FooAlias", record);
+      context.CreateTypedefType("FooAlias", TypeRef(*record));
   EXPECT_EQ(td->GetByteSize(), 16u);
   EXPECT_EQ(td->GetUnderlyingType(), record);
 }
@@ -126,11 +129,11 @@ TEST_F(ContextTest, ArrayByteSizeComputed) {
   BuiltinType *elem =
       context.GetBuiltinType("int", 4, lldb::eEncodingSint, lldb::eFormatDecimal);
   ArrayType *bounded =
-      context.CreateArrayType(elem, /*num_elements=*/10);
+      context.CreateArrayType(TypeRef(*elem), /*num_elements=*/10);
   EXPECT_EQ(bounded->GetByteSize(), 40u);
 
   ArrayType *unbounded =
-      context.CreateArrayType(elem, std::nullopt);
+      context.CreateArrayType(TypeRef(*elem), std::nullopt);
   EXPECT_FALSE(unbounded->GetByteSize().has_value());
 }
 
@@ -138,7 +141,7 @@ TEST_F(ContextTest, ArrayByteSizeComputed) {
 TEST_F(ContextTest, ComplexByteSizeIsDoubleElement) {
   BuiltinType *elem = context.GetBuiltinType(
       "float", 4, lldb::eEncodingIEEE754, lldb::eFormatFloat);
-  ComplexType *complex = context.CreateComplexType(elem);
+  ComplexType *complex = context.CreateComplexType(TypeRef(*elem));
   EXPECT_EQ(complex->GetByteSize(), 8u);
 }
 
@@ -147,7 +150,7 @@ TEST_F(ContextTest, ComplexByteSizeIsDoubleElement) {
 TEST_F(ContextTest, TypesKnowTheirOwningContext) {
   Type *record = context.CreateRecordType("Foo", 4, /*is_cpp_class=*/false);
   EXPECT_EQ(&record->GetOwningContext(), &context);
-  Type *pointer = context.CreatePointerType(record);
+  Type *pointer = context.CreatePointerType(TypeRef(*record));
   EXPECT_EQ(&pointer->GetOwningContext(), &context);
   Type *builtin = context.GetBuiltinType(BuiltinKind::Int);
   EXPECT_EQ(&builtin->GetOwningContext(), &context);
@@ -163,14 +166,14 @@ TEST_F(ContextTest, ForeignTypeStandsInForAnotherContextsType) {
   Type *foreign_record = other.CreateRecordType("Foo", 4,
                                                 /*is_cpp_class=*/false);
 
-  ForeignType *stand_in = context.GetForeignType(other, foreign_record);
+  ForeignType *stand_in = context.GetForeignType(other, *foreign_record);
   ASSERT_NE(stand_in, nullptr);
   EXPECT_EQ(stand_in->GetReferencedType(), foreign_record);
   EXPECT_EQ(&stand_in->GetReferencedContext(), &other);
   // The stand-in itself belongs to the referring Context, so a type here may
   // reference it like any local type.
   EXPECT_EQ(&stand_in->GetOwningContext(), &context);
-  EXPECT_EQ(context.GetForeignType(other, foreign_record), stand_in);
+  EXPECT_EQ(context.GetForeignType(other, *foreign_record), stand_in);
 
   // It is transparent: it desugars to, and answers for, what it stands in for.
   EXPECT_EQ(stand_in->Desugar(), foreign_record);
@@ -185,8 +188,11 @@ TEST_F(ContextTest, ForeignTypeStandsInForAnotherContextsType) {
 // object of the same alternative (StaticDataMember/MemberFunction) or an
 // object of the other alternative -- maps to a distinct one.
 TEST_F(ContextTest, DeclInterning) {
-  MemberFunction payload_a;
-  MemberFunction payload_b;
+  BuiltinType *void_type = context.GetBuiltinType(BuiltinKind::Void);
+  FunctionType *fn = context.CreateFunctionType(TypeRef(*void_type),
+                                                /*is_variadic=*/false);
+  MemberFunction payload_a{TypeRef(*fn)};
+  MemberFunction payload_b{TypeRef(*fn)};
   const Decl *d1 = context.GetOrCreateDecl(&payload_a);
   const Decl *d2 = context.GetOrCreateDecl(&payload_a);
   EXPECT_EQ(d1, d2);
@@ -194,7 +200,8 @@ TEST_F(ContextTest, DeclInterning) {
   const Decl *d3 = context.GetOrCreateDecl(&payload_b);
   EXPECT_NE(d1, d3);
 
-  StaticDataMember payload_c;
+  StaticDataMember payload_c{Identifier(), TypeRef(*void_type), Identifier(),
+                             std::nullopt};
   const Decl *d4 = context.GetOrCreateDecl(&payload_c);
   EXPECT_NE(d1, d4);
 }

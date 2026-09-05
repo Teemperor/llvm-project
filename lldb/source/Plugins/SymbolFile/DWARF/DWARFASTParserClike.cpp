@@ -1263,6 +1263,14 @@ TypeSP DWARFASTParserClike::ParseEnum(const DWARFDIE &die) {
       byte_size = 4;
   }
 
+  // An enum always has an integer type backing it (see EnumType), so supply
+  // the one C would have chosen when the producer recorded none: a signed
+  // integer of the recorded width, or plain `int` when there was no width
+  // either. Mirrors DWARFASTParserClang::ParseEnum.
+  if (!underlying_type)
+    underlying_type = m_ts.GetBuiltinTypeForEncodingAndBitSize(
+        lldb::eEncodingSint, *byte_size * 8);
+
   CompilerType enum_type;
   {
     clike_typesystem::Builder ts(m_ts);
@@ -1354,13 +1362,17 @@ TypeSP DWARFASTParserClike::ParseFunctionType(const DWARFDIE &die) {
 
   CompilerType function_type;
   {
+    // An absent return type is `void` -- CreateFunctionType fills that in.
     clike_typesystem::Builder builder(m_ts);
-    if (!return_type)
-      return_type = builder.GetVoidType();
     function_type = builder.CreateFunctionType(return_type, is_variadic,
                                                use_void_for_empty_params);
-    for (size_t i = 0; i < params.size(); ++i)
-      builder.AddParameter(function_type, params[i], param_names[i]);
+    for (size_t i = 0; i < params.size(); ++i) {
+      // A parameter type that can't be referenced would leave the function
+      // with a silently shortened signature, which is worse than having no
+      // function type at all (a caller would type-check a call against it).
+      if (!builder.AddParameter(function_type, params[i], param_names[i]))
+        return nullptr;
+    }
   }
 
   Declaration decl = GetDIEDeclaration(die);
@@ -2536,8 +2548,8 @@ void DWARFASTParserClike::CompleteObjCMethodsFromDWARF(
                      .str();
       CompilerType setter_ft =
           ts.CreateFunctionType(ts.GetVoidType(), /*is_variadic=*/false);
-      ts.AddParameter(setter_ft, prop_ct);
-      add_accessor(setter, setter_ft);
+      if (ts.AddParameter(setter_ft, prop_ct))
+        add_accessor(setter, setter_ft);
     }
   };
 

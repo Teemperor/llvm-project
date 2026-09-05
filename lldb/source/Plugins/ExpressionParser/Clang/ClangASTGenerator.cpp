@@ -679,18 +679,21 @@ clang::CXXRecordDecl *ClangASTGenerator::TryGetStdModuleSpecialization(
     if (!arg)
       return nullptr;
     if (arg->kind == lldb::eTemplateArgumentKindType) {
+      if (!arg->type)
+        return nullptr;
       clang::QualType arg_qt =
-          GenerateType(ts, arg->type.GetOrNone(), /*build_template_spec=*/true);
+          GenerateType(ts, &arg->type->Get(), /*build_template_spec=*/true);
       if (arg_qt.isNull())
         return nullptr;
       args.push_back(clang::TemplateArgument(ast.getCanonicalType(arg_qt)));
     } else if (arg->kind == lldb::eTemplateArgumentKindIntegral) {
-      clang::QualType arg_qt = GenerateType(ts, arg->type.GetOrNone());
+      if (!arg->type)
+        return nullptr;
+      clang::QualType arg_qt = GenerateType(ts, &arg->type->Get());
       if (arg_qt.isNull() || !arg_qt->isIntegralOrEnumerationType())
         return nullptr;
-      ct::Type *arg_type = arg->type.GetOrNone();
       const bool is_signed =
-          arg_type && arg_type->GetEncoding() == lldb::eEncodingSint;
+          arg->type->Get().GetEncoding() == lldb::eEncodingSint;
       unsigned width = ast.getIntWidth(arg_qt);
       llvm::APSInt value(llvm::APInt(width, arg->integral_value, is_signed),
                          !is_signed);
@@ -753,8 +756,10 @@ clang::CXXRecordDecl *ClangASTGenerator::BuildClassTemplateSpecializationDecl(
       // (e.g. the `SmallVector<V>` in `DenseMap<K, SmallVector<V>>`) from being
       // force-completed just to name it here -- which would otherwise cascade
       // through the whole template-argument graph.
+      if (!arg->type)
+        return nullptr;
       clang::QualType arg_qt =
-          GenerateType(ts, arg->type.GetOrNone(), /*build_template_spec=*/false);
+          GenerateType(ts, &arg->type->Get(), /*build_template_spec=*/false);
       if (arg_qt.isNull())
         return nullptr;
       args.push_back(clang::TemplateArgument(arg_qt));
@@ -762,12 +767,13 @@ clang::CXXRecordDecl *ClangASTGenerator::BuildClassTemplateSpecializationDecl(
           ast, tu, clang::SourceLocation(), clang::SourceLocation(), depth, i,
           /*Id=*/nullptr, /*Typename=*/false, /*ParameterPack=*/false));
     } else if (arg->kind == lldb::eTemplateArgumentKindIntegral) {
-      clang::QualType arg_qt = GenerateType(ts, arg->type.GetOrNone());
+      if (!arg->type)
+        return nullptr;
+      clang::QualType arg_qt = GenerateType(ts, &arg->type->Get());
       if (arg_qt.isNull() || !arg_qt->isIntegralOrEnumerationType())
         return nullptr;
-      ct::Type *arg_type = arg->type.GetOrNone();
       const bool is_signed =
-          arg_type && arg_type->GetEncoding() == lldb::eEncodingSint;
+          arg->type->Get().GetEncoding() == lldb::eEncodingSint;
       unsigned width = ast.getIntWidth(arg_qt);
       llvm::APSInt value(llvm::APInt(width, arg->integral_value, is_signed),
                          !is_signed);
@@ -1022,14 +1028,12 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemClike &ts,
     if (!full_name.empty())
       m_records_by_name[full_name] = result.getAsOpaquePtr();
   } else if (auto *ptr = llvm::dyn_cast<ct::PointerType>(clike_type)) {
-    clang::QualType pointee;
-    if (ct::Type *p = ptr->GetPointeeType())
-      // A pointee stays a lazy forward declaration: don't force-complete it
-      // (and don't build a template specialization decl for it) just to form
-      // the pointer type. See GenerateType's build_template_spec doc.
-      pointee = GenerateType(ts, p, /*build_template_spec=*/false);
-    else
-      pointee = ast.VoidTy;
+    // A pointee stays a lazy forward declaration: don't force-complete it
+    // (and don't build a template specialization decl for it) just to form
+    // the pointer type. See GenerateType's build_template_spec doc. A `void *`
+    // pointee is the `void` builtin, which maps to ast.VoidTy like any other.
+    clang::QualType pointee =
+        GenerateType(ts, ptr->GetPointeeType(), /*build_template_spec=*/false);
     if (!pointee.isNull()) {
       // A pointer to an Objective-C class (`Foo *`) must be a clang
       // ObjCObjectPointerType, not a plain PointerType, so member access
@@ -1038,8 +1042,8 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemClike &ts,
       // TypedefBaseClass; TypedefBaseClass *`), so desugar before checking --
       // otherwise the pointer stays a plain PointerType and `.`/`->` member
       // access fails with "not a structure or union".
-      if (llvm::isa_and_nonnull<ct::ObjCInterfaceType>(
-              Desugar(ptr->GetPointeeType())) &&
+      if (llvm::isa<ct::ObjCInterfaceType>(
+              ptr->GetPointeeType()->Desugar()) &&
           pointee->isObjCObjectType())
         result = ast.getObjCObjectPointerType(pointee);
       // An Apple "blocks" pointer (`int (^)(int)`) wraps a function type but
@@ -1134,9 +1138,9 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemClike &ts,
     // elaborated record couldn't be referenced).
     result = GenerateType(ts, elab->GetUnderlyingType());
   } else if (auto *en = llvm::dyn_cast<ct::EnumType>(clike_type)) {
-    clang::QualType integer;
-    if (ct::Type *ut = en->GetUnderlyingType())
-      integer = GenerateType(ts, ut);
+    // An enum always has an integer type backing it (`int` when the debug
+    // info recorded none -- see Builder::CreateEnumType).
+    clang::QualType integer = GenerateType(ts, en->GetUnderlyingType());
     if (integer.isNull())
       integer = ast.IntTy;
 
@@ -1182,8 +1186,7 @@ clang::QualType ClangASTGenerator::GenerateType(TypeSystemClike &ts,
                              num_negative);
     result = ast.getCanonicalTagType(decl);
   } else if (auto *fn = llvm::dyn_cast<ct::FunctionType>(clike_type)) {
-    clang::QualType ret =
-        fn->GetReturnType() ? GenerateType(ts, fn->GetReturnType()) : ast.VoidTy;
+    clang::QualType ret = GenerateType(ts, fn->GetReturnType());
     if (ret.isNull())
       ret = ast.VoidTy;
     llvm::SmallVector<clang::QualType, 4> params;
@@ -1587,7 +1590,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
       // A base only needs completing for layout (EnsureComplete below), not a
       // template specialization decl -- build it lazily.
       clang::QualType base_qt =
-          GenerateType(*ts, base->type.GetOrNone(), /*build_template_spec=*/false);
+          GenerateType(*ts, &base->type.Get(), /*build_template_spec=*/false);
       if (base_qt.isNull())
         continue;
       EnsureComplete(base_qt);
@@ -1678,7 +1681,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     // not need a template specialization decl of its own here; build it lazily
     // so a template-typed field doesn't drag its whole specialization graph in.
     clang::QualType field_qt =
-        GenerateType(*ts, field->type.GetOrNone(), /*build_template_spec=*/false);
+        GenerateType(*ts, &field->type.Get(), /*build_template_spec=*/false);
     if (field_qt.isNull())
       continue;
     // A field held by value (directly or as an array element) is embedded in
@@ -1695,7 +1698,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
     // contiguous.
     uint64_t storage_bits = 0;
     if (!field->IsBitfield() && !IsEmptyRecordForLayout(field_qt))
-      storage_bits = FieldStorageSizeInBits(ast, field_qt, field->type.GetOrNone());
+      storage_bits = FieldStorageSizeInBits(ast, field_qt, &field->type.Get());
     bool mark_no_unique_address = false;
 
     // A bitfield still takes part in the overlap check below even though it
@@ -1887,7 +1890,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   ts->CompleteMemberFunctions(rec);
   for (uint32_t i = 0; i < rec->GetNumMemberFunctions(); ++i) {
     const ct::MemberFunction *mf = rec->GetMemberFunctionAtIndex(i);
-    clang::QualType method_qt = GenerateType(*ts, mf->type.GetOrNone());
+    clang::QualType method_qt = GenerateType(*ts, &mf->type.Get());
     if (method_qt.isNull())
       continue;
     // The clike_typesystem FunctionType doesn't carry the method's cv-qualifiers
@@ -2043,7 +2046,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
           clang::AsmLabelAttr::CreateImplicit(ast, mf->asm_label.GetName()));
     BuildParams(method, method_qt,
                 llvm::dyn_cast_or_null<ct::FunctionType>(
-                    Desugar(mf->type.GetOrNone())));
+                    Desugar(&mf->type.Get())));
     decl->addDecl(method);
   }
 
@@ -2055,7 +2058,7 @@ void ClangASTGenerator::PopulateRecord(clang::RecordDecl *record_decl) {
   // asm label when the declaration carried one).
   for (uint32_t i = 0; i < rec->GetNumStaticDataMembers(); ++i) {
     const ct::StaticDataMember *sm = rec->GetStaticDataMemberAtIndex(i);
-    clang::QualType member_qt = GenerateType(*ts, sm->type.GetOrNone());
+    clang::QualType member_qt = GenerateType(*ts, &sm->type.Get());
     if (member_qt.isNull())
       continue;
 
@@ -2381,7 +2384,7 @@ void ClangASTGenerator::PopulateObjCInterface(
 
   // Superclass (modeled as the interface's single base class).
   if (const ct::BaseClass *super = iface->GetBaseClassAtIndex(0)) {
-    clang::QualType super_qt = GenerateType(*ts, super->type.GetOrNone());
+    clang::QualType super_qt = GenerateType(*ts, &super->type.Get());
     if (!super_qt.isNull() && super_qt->isObjCObjectType()) {
       if (auto *super_obj = super_qt->getAs<clang::ObjCObjectType>()) {
         if (clang::ObjCInterfaceDecl *super_decl = super_obj->getInterface()) {
@@ -2396,7 +2399,7 @@ void ClangASTGenerator::PopulateObjCInterface(
   // Ivars, added as ObjCIvarDecls (not FieldDecls).
   for (uint32_t i = 0; i < iface->GetNumFields(); ++i) {
     const ct::Field *field = iface->GetFieldAtIndex(i);
-    clang::QualType ivar_qt = GenerateType(*ts, field->type.GetOrNone());
+    clang::QualType ivar_qt = GenerateType(*ts, &field->type.Get());
     if (ivar_qt.isNull())
       continue;
     EnsureComplete(ivar_qt);
@@ -2508,7 +2511,7 @@ void ClangASTGenerator::AddObjCMethod(clang::ObjCInterfaceDecl *iface_decl,
 
   // Build the (self/_cmd-stripped) function prototype for the return type and
   // parameter types.
-  clang::QualType fn_qt = GenerateType(ts, method.type.GetOrNone());
+  clang::QualType fn_qt = GenerateType(ts, &method.type.Get());
   const auto *proto = fn_qt.isNull()
                           ? nullptr
                           : fn_qt->getAs<clang::FunctionProtoType>();
