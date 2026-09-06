@@ -110,11 +110,17 @@ ReadVirtualBaseOffset(TypeSystemClike &ts, clike_typesystem::RecordType *derived
   if (obj_addr == LLDB_INVALID_ADDRESS || obj_addr == 0)
     return std::nullopt;
 
-  Status err;
-  lldb::addr_t vtable_ptr = process->ReadPointerFromMemory(obj_addr, err);
-  if (err.Fail() || vtable_ptr == LLDB_INVALID_ADDRESS)
+  llvm::Expected<lldb::addr_t> vtable_ptr_or_err =
+      process->ReadPointerFromMemory(obj_addr);
+  if (!vtable_ptr_or_err) {
+    llvm::consumeError(vtable_ptr_or_err.takeError());
+    return std::nullopt;
+  }
+  const lldb::addr_t vtable_ptr = *vtable_ptr_or_err;
+  if (vtable_ptr == LLDB_INVALID_ADDRESS)
     return std::nullopt;
 
+  Status err;
   const uint32_t addr_size = process->GetAddressByteSize();
   int64_t offset = process->ReadSignedIntegerFromMemory(
       vtable_ptr - *vbase_offset_offset, addr_size, INT64_MAX, err);
@@ -1027,6 +1033,23 @@ CompilerType TypeSystemClike::GetOwningClassForFunction(Block &function_block) {
 
 uint32_t TypeSystemClike::GetPointerByteSize() {
   return m_context.GetLanguageOpts().GetBuiltinSizes().pointer_size;
+}
+
+CompilerType TypeSystemClike::GetSizeType() {
+  // `size_t` is the unsigned integer type wide enough to hold any object size,
+  // i.e. one of pointer width -- which is what clang's
+  // ASTContext::getSizeType() resolves to as well. Answer with the canonical
+  // builtin of that width (`unsigned long` on a 64-bit target) rather than a
+  // bespoke `size_t`, so it compares equal to the same type reached any other
+  // way.
+  auto read_lock = LockForRead();
+  std::optional<clike_typesystem::BuiltinKind> kind =
+      clike_typesystem::KnownBuiltinTypes::KindForEncodingAndBitSize(
+          lldb::eEncodingUint,
+          m_context.GetLanguageOpts().GetBuiltinSizes().pointer_size * 8);
+  if (!kind)
+    return CompilerType();
+  return GetCompilerType(m_context.GetBuiltinType(*kind));
 }
 
 CompilerType TypeSystemClike::GetPointerDiffType(bool is_signed) {

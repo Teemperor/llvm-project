@@ -707,7 +707,7 @@ clang::CXXRecordDecl *ClangASTGenerator::TryGetStdModuleSpecialization(
   // arguments; otherwise create it against the module's class template so it
   // instantiates from the module's (source-backed) pattern. Mirrors
   // CxxModuleHandler::tryInstantiateStdTemplate.
-  void *insert_pos = nullptr;
+  llvm::FoldingSetInsertToken insert_pos;
   clang::ClassTemplateSpecializationDecl *result =
       class_template->findSpecialization(args, insert_pos);
   if (result)
@@ -821,7 +821,7 @@ clang::CXXRecordDecl *ClangASTGenerator::BuildClassTemplateSpecializationDecl(
   spec->setDeclContext(decl_ctx);
   spec->setInstantiationOf(class_template);
   spec->setTemplateArgs(clang::TemplateArgumentList::CreateCopy(ast, args));
-  void *insert_pos = nullptr;
+  llvm::FoldingSetInsertToken insert_pos;
   if (!class_template->findSpecialization(args, insert_pos))
     class_template->AddSpecialization(spec, insert_pos);
   spec->setDeclName(decl_name);
