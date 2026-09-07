@@ -2268,9 +2268,23 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
         const char *mangled =
             member.referencing_die.GetMangledName(
                 /*substitute_name_allowed=*/false);
+        // A constant is only folded when it actually fits what the model can
+        // hold (see StaticDataMember::const_value, a uint64_t). A wider one --
+        // an `__int128` member's DW_AT_const_value, emitted as a 16-byte block
+        // -- would otherwise be read as a meaningless 64-bit number and
+        // reported as the member's value. Dropping it instead leaves the member
+        // with no constant, so it resolves through its runtime address like any
+        // other and reports an honest error when there isn't one. Matches
+        // TypeSystemClang, which also declines to fold these.
+        std::optional<uint64_t> const_value = member.const_value;
+        if (const_value) {
+          std::optional<uint64_t> byte_size =
+              member_type->Desugar()->GetByteSize();
+          if (!byte_size || *byte_size > sizeof(uint64_t))
+            const_value = std::nullopt;
+        }
         ts.AddStaticDataMember(*clike_class, member.name, member_type,
-                               mangled ? mangled : "",
-                               member.const_value);
+                               mangled ? mangled : "", const_value);
       }
       break;
     }

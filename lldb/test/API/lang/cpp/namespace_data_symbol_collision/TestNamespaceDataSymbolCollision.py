@@ -15,7 +15,10 @@ from lldbsuite.test import lldbutil
 
 class TestCase(TestBase):
     @skipIfWindows
-    @expectedFailureAll
+    # The bug this documents is in the TypeSystemClang path, which is what runs
+    # when symbols.enable-typesystem-clike is turned off. TypeSystemClike
+    # resolves the namespace correctly, so only expect the failure there.
+    @expectedFailureAll(setting=("symbols.enable-typesystem-clike", "false"))
     def test(self):
         self.build()
         lldbutil.run_to_source_breakpoint(

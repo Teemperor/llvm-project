@@ -1036,20 +1036,15 @@ uint32_t TypeSystemClike::GetPointerByteSize() {
 }
 
 CompilerType TypeSystemClike::GetSizeType() {
-  // `size_t` is the unsigned integer type wide enough to hold any object size,
-  // i.e. one of pointer width -- which is what clang's
-  // ASTContext::getSizeType() resolves to as well. Answer with the canonical
-  // builtin of that width (`unsigned long` on a 64-bit target) rather than a
-  // bespoke `size_t`, so it compares equal to the same type reached any other
-  // way.
-  auto read_lock = LockForRead();
-  std::optional<clike_typesystem::BuiltinKind> kind =
-      clike_typesystem::KnownBuiltinTypes::KindForEncodingAndBitSize(
-          lldb::eEncodingUint,
-          m_context.GetLanguageOpts().GetBuiltinSizes().pointer_size * 8);
-  if (!kind)
-    return CompilerType();
-  return GetCompilerType(m_context.GetBuiltinType(*kind));
+  // The type of a `sizeof` result. Clang spells this builtin `__size_t`, sized
+  // as a pointer, so model it as a bespoke builtin of that name and width --
+  // exactly as GetPointerDiffType does for `__ptrdiff_t` -- rather than as the
+  // canonical unsigned type of the same width, so a value object created from
+  // it reports the name callers expect.
+  clike_typesystem::Builder builder(*this);
+  return builder.GetBuiltinType(
+      "__size_t", m_context.GetLanguageOpts().GetBuiltinSizes().pointer_size,
+      lldb::eEncodingUint, lldb::eFormatUnsigned);
 }
 
 CompilerType TypeSystemClike::GetPointerDiffType(bool is_signed) {
