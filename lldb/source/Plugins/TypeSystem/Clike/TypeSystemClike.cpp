@@ -1581,119 +1581,222 @@ Format TypeSystemClike::GetFormat(opaque_compiler_type_t type) {
   return t ? t->GetFormat() : eFormatDefault;
 }
 
+namespace {
+/// One Objective-C class's data as reported by the runtime's ClassDescriptor,
+/// gathered without touching any TypeSystemClike (see GatherRuntimeObjCClassChain).
+struct RuntimeObjCClassData {
+  ConstString class_name;
+  struct Method {
+    std::string selector;
+    std::string types;
+    bool is_class_method;
+  };
+  std::vector<Method> methods;
+  struct Ivar {
+    std::string name;
+    std::string type;
+    lldb::addr_t offset_ptr;
+    uint64_t size;
+  };
+  std::vector<Ivar> ivars;
+};
+
+/// Resolve \p class_name to a ClassDescriptor via the runtime's name->isa map,
+/// falling back to the `OBJC_CLASS_$_<name>` symbol's address (which is
+/// exactly the isa an instance of the class carries) for a dynamically
+/// registered class that map is missing.
+ObjCLanguageRuntime::ClassDescriptorSP
+ResolveObjCClassDescriptor(ConstString class_name, Process &process,
+                          ObjCLanguageRuntime &runtime) {
+  if (ObjCLanguageRuntime::ClassDescriptorSP descriptor =
+          runtime.GetClassDescriptorFromClassName(class_name))
+    return descriptor;
+  ConstString class_symbol(("OBJC_CLASS_$_" + class_name.GetStringRef()).str());
+  SymbolContextList sc_list;
+  process.GetTarget().GetImages().FindSymbolsWithNameAndType(
+      class_symbol, lldb::eSymbolTypeObjCClass, sc_list);
+  for (const SymbolContext &sc : sc_list) {
+    if (!sc.symbol)
+      continue;
+    lldb::addr_t isa = sc.symbol->GetLoadAddress(&process.GetTarget());
+    if (isa == LLDB_INVALID_ADDRESS)
+      continue;
+    if (ObjCLanguageRuntime::ClassDescriptorSP descriptor =
+            runtime.GetClassDescriptorFromISA(isa))
+      return descriptor;
+  }
+  return ObjCLanguageRuntime::ClassDescriptorSP();
+}
+
+/// Gather \p class_name's data, and transitively its superclass chain's (in
+/// derived-to-base order), from the live ObjC runtime. Entirely independent of
+/// any TypeSystemClike: every call this makes -- resolving a class by name or
+/// isa, walking to its superclass, describing its methods/ivars -- goes
+/// through Process/ObjCLanguageRuntime only, so this can run (and must run;
+/// see TypeSystemClike::CreateRuntimeObjCInterface) before any TypeSystemClike
+/// lock is taken. A cycle (a real ObjC hierarchy has none, but corrupted
+/// runtime metadata might) is guarded by \p seen, mirroring the guard the
+/// locked build phase used to get for free from its "already published" map.
+llvm::SmallVector<RuntimeObjCClassData, 4>
+GatherRuntimeObjCClassChain(ConstString class_name, Process &process,
+                           ObjCLanguageRuntime &runtime) {
+  llvm::SmallVector<RuntimeObjCClassData, 4> chain;
+  llvm::DenseSet<const char *> seen;
+  ConstString cur_name = class_name;
+  ObjCLanguageRuntime::ClassDescriptorSP descriptor =
+      ResolveObjCClassDescriptor(cur_name, process, runtime);
+  while (descriptor && seen.insert(cur_name.GetCString()).second) {
+    RuntimeObjCClassData data;
+    data.class_name = cur_name;
+    descriptor->Describe(
+        /*superclass_func=*/nullptr,
+        /*instance_method_func=*/
+        [&](const char *name, const char *types) -> bool {
+          data.methods.push_back({name, types, /*is_class_method=*/false});
+          return false;
+        },
+        /*class_method_func=*/
+        [&](const char *name, const char *types) -> bool {
+          data.methods.push_back({name, types, /*is_class_method=*/true});
+          return false;
+        },
+        [&](const char *name, const char *type, lldb::addr_t offset_ptr,
+            uint64_t size) -> bool {
+          if (name && name[0])
+            data.ivars.push_back({name, type ? type : "", offset_ptr, size});
+          return false;
+        });
+
+    // Chase the runtime's own superclass chain (rather than relying on any
+    // debug info) so a class whose ivars are recovered from the runtime still
+    // reports its inheritance -- e.g. `NSObject` as a child -- matching the
+    // DWARF-derived case.
+    ObjCLanguageRuntime::ClassDescriptorSP super_descriptor =
+        descriptor->GetSuperclass();
+    ConstString super_name =
+        super_descriptor ? super_descriptor->GetClassName() : ConstString();
+    if (super_name == cur_name)
+      super_name = ConstString();
+    chain.push_back(std::move(data));
+    if (!super_name)
+      break;
+    cur_name = super_name;
+    descriptor = super_descriptor;
+  }
+  return chain;
+}
+} // namespace
+
 CompilerType
 TypeSystemClike::CreateRuntimeObjCInterface(ConstString class_name,
                                           Process &process,
                                           ObjCLanguageRuntime &runtime) {
-  auto write_lock = LockForWrite();
-  return CreateRuntimeObjCInterfaceAssumingWriteLocked(class_name, process,
-                                                       runtime);
-}
-
-CompilerType TypeSystemClike::CreateRuntimeObjCInterfaceAssumingWriteLocked(
-    ConstString class_name, Process &process, ObjCLanguageRuntime &runtime) {
-  // One runtime-built type per class name in this scratch context.
-  if (auto it = m_runtime_objc_types.find(class_name.GetStringRef());
-      it != m_runtime_objc_types.end())
-    return GetCompilerType(it->second);
-
-  ObjCLanguageRuntime::ClassDescriptorSP descriptor =
-      runtime.GetClassDescriptorFromClassName(class_name);
-  if (!descriptor) {
-    // Dynamically-registered classes are often missing from the runtime's
-    // name->isa map. The `OBJC_CLASS_$_<name>` symbol's address is exactly the
-    // isa an instance of the class carries, so look the descriptor up by that.
-    ConstString class_symbol(
-        ("OBJC_CLASS_$_" + class_name.GetStringRef()).str());
-    SymbolContextList sc_list;
-    process.GetTarget().GetImages().FindSymbolsWithNameAndType(
-        class_symbol, lldb::eSymbolTypeObjCClass, sc_list);
-    for (const SymbolContext &sc : sc_list) {
-      if (!sc.symbol)
-        continue;
-      lldb::addr_t isa = sc.symbol->GetLoadAddress(&process.GetTarget());
-      if (isa == LLDB_INVALID_ADDRESS)
-        continue;
-      descriptor = runtime.GetClassDescriptorFromISA(isa);
-      if (descriptor)
-        break;
-    }
+  // Fast path: an already-built runtime type needs no runtime interaction at
+  // all -- check the cache before doing anything else.
+  {
+    auto read_lock = LockForRead();
+    if (auto it = m_runtime_objc_types.find(class_name.GetStringRef());
+        it != m_runtime_objc_types.end())
+      return GetCompilerType(it->second);
   }
-  if (!descriptor)
+
+  // Phase 1: talk to the process/runtime -- entirely without holding this (or
+  // any other) TypeSystemClike's lock. GetClassDescriptorFromClassName/FromISA
+  // can transitively trigger AppleObjCRuntimeV2::UpdateISAToDescriptorMapIfNeeded,
+  // which JIT-compiles and runs a whole utility-function expression the first
+  // time (or after the process has continued) it is asked about a class; that
+  // expression's own IR generation reaches back into a TypeSystemClike (see
+  // ClangTypeConverter::Convert -> TypeSystemClike::GetBasicTypeFromAST),
+  // possibly one that was never part of any lock set computed before this call
+  // started (see GetLockOrder) -- doing that while this call already held a
+  // lock is exactly the re-entrancy TestExpressionInSyscall's regression
+  // diagnosed (see the revert of "Lock every TypeSystemClike..."). Only phase
+  // 2 below, which just turns this already-gathered data into
+  // clike_typesystem nodes via Builder, touches this instance and needs the
+  // lock.
+  llvm::SmallVector<RuntimeObjCClassData, 4> chain =
+      GatherRuntimeObjCClassChain(class_name, process, runtime);
+  if (chain.empty())
     return CompilerType();
 
-  clike_typesystem::Builder builder(*this);
-  CompilerType iface_ct =
-      builder.CreateObjCInterfaceType(class_name.GetStringRef(), std::nullopt);
-  auto *iface = llvm::cast<clike_typesystem::ObjCInterfaceType>(
-      GetClikeType(iface_ct.GetOpaqueQualType()));
-  // Publish before filling so a self-referential ivar can't recurse forever.
-  m_runtime_objc_types[class_name.GetStringRef()] = iface;
-
-  // Chase the runtime's own superclass chain (rather than relying on any
-  // debug info) so a class whose ivars are recovered from the runtime still
-  // reports its inheritance -- e.g. `NSObject` as a child -- matching the
-  // DWARF-derived case. Recursing here is safe: the class-name map above
-  // guards against infinite recursion for any cycle, and a real ObjC
-  // hierarchy is never cyclic.
-  if (ObjCLanguageRuntime::ClassDescriptorSP super_descriptor =
-          descriptor->GetSuperclass()) {
-    ConstString super_name = super_descriptor->GetClassName();
-    if (super_name && super_name != class_name) {
-      CompilerType super_ct = CreateRuntimeObjCInterfaceAssumingWriteLocked(
-          super_name, process, runtime);
-      if (super_ct) {
-        auto *super_iface = GetClikeType(super_ct.GetOpaqueQualType());
-        builder.SetObjCSuperClass(*iface, super_iface);
-      }
+  // Phase 2: build the chain's types, from the ultimate (possibly
+  // already-cached) base up to `class_name` itself, so each subclass can link
+  // to its already-built superclass.
+  auto write_lock = LockForWrite();
+  clike_typesystem::Type *previous_iface = nullptr;
+  for (const RuntimeObjCClassData &data : llvm::reverse(chain)) {
+    // Another lookup (on this or another thread) may have built this class --
+    // including while phase 1 above ran unlocked -- so this recheck is not
+    // just the class_name fast path above repeated: it is required for
+    // correctness, not merely an optimization.
+    if (auto it = m_runtime_objc_types.find(data.class_name.GetStringRef());
+        it != m_runtime_objc_types.end()) {
+      previous_iface = it->second;
+      continue;
     }
-  }
 
-  descriptor->Describe(
-      /*superclass_func=*/nullptr,
-      /*instance_method_func=*/
-      [&](const char *name, const char *types) -> bool {
-        clike_typesystem::AddRuntimeObjCMethod(builder, *iface, class_name.GetStringRef(), name,
-                            types, /*is_class_method=*/false);
-        return false;
-      },
-      /*class_method_func=*/
-      [&](const char *name, const char *types) -> bool {
-        clike_typesystem::AddRuntimeObjCMethod(builder, *iface, class_name.GetStringRef(), name,
-                            types, /*is_class_method=*/true);
-        return false;
-      },
-      [&](const char *name, const char *type, lldb::addr_t offset_ptr,
-          uint64_t size) -> bool {
-        if (!name || !name[0])
-          return false;
-        // The runtime stores a pointer to the ivar's (32-bit) byte offset.
-        Status error;
-        uint64_t byte_offset =
-            process.ReadUnsignedIntegerFromMemory(offset_ptr, 4, 0, error);
-        llvm::StringRef enc(type ? type : "");
-        CompilerType ivar_type =
-            clike_typesystem::RealizeObjCEncoding(builder, enc);
-        // Fall back to an opaque byte blob of the right size so a member we
-        // can't decode still occupies its slot in the layout.
-        if (!ivar_type)
-          ivar_type = builder.CreateArrayType(
-              builder.GetBuiltinType("char", 1,
-                                     lldb::eEncodingSint, lldb::eFormatChar),
-              size);
-        auto *field_type =
-            GetClikeType(ivar_type.GetOpaqueQualType());
-        builder.AddField(*iface, builder.GetIdentifier(name), field_type,
-                         byte_offset);
-        return false;
-      });
-  builder.SetRecordComplete(*iface);
-  return iface_ct;
+    clike_typesystem::Builder builder(*this);
+    CompilerType iface_ct = builder.CreateObjCInterfaceType(
+        data.class_name.GetStringRef(), std::nullopt);
+    auto *iface = llvm::cast<clike_typesystem::ObjCInterfaceType>(
+        GetClikeType(iface_ct.GetOpaqueQualType()));
+    // Publish before filling so a self-referential ivar can't recurse forever.
+    m_runtime_objc_types[data.class_name.GetStringRef()] = iface;
+
+    if (previous_iface)
+      builder.SetObjCSuperClass(*iface, previous_iface);
+
+    for (const RuntimeObjCClassData::Method &m : data.methods)
+      clike_typesystem::AddRuntimeObjCMethod(
+          builder, *iface, data.class_name.GetStringRef(),
+          m.selector.c_str(), m.types.c_str(), m.is_class_method);
+
+    for (const RuntimeObjCClassData::Ivar &ivar : data.ivars) {
+      // The runtime stores a pointer to the ivar's (32-bit) byte offset. This
+      // is a plain memory read (not a JIT'd call), so it is fine to do here
+      // under the lock, same as it was under the old single-phase code.
+      Status error;
+      uint64_t byte_offset =
+          process.ReadUnsignedIntegerFromMemory(ivar.offset_ptr, 4, 0, error);
+      llvm::StringRef enc(ivar.type);
+      CompilerType ivar_type = clike_typesystem::RealizeObjCEncoding(builder, enc);
+      // Fall back to an opaque byte blob of the right size so a member we
+      // can't decode still occupies its slot in the layout.
+      if (!ivar_type)
+        ivar_type = builder.CreateArrayType(
+            builder.GetBuiltinType("char", 1, lldb::eEncodingSint,
+                                   lldb::eFormatChar),
+            ivar.size);
+      auto *field_type = GetClikeType(ivar_type.GetOpaqueQualType());
+      builder.AddField(*iface, builder.GetIdentifier(ivar.name), field_type,
+                       byte_offset);
+    }
+    builder.SetRecordComplete(*iface);
+    previous_iface = iface;
+  }
+  return GetCompilerType(previous_iface);
 }
 
 CompilerType
 TypeSystemClike::GetRuntimeCompletedObjCType(clike_typesystem::Type *t,
                                            const ExecutionContext *exe_ctx) {
+  // NOTE: every caller of this (the four GetNumChildrenImpl/
+  // GetChildCompilerTypeAtIndexImpl/GetIndexOfChildWithNameImpl/
+  // GetIndexOfChildMemberWithNameImpl query methods) already holds this
+  // instance's lock when it calls in here, and CreateRuntimeObjCInterface
+  // below now does its runtime/process interaction (the part that can
+  // transitively JIT-compile and run a utility-function expression) before
+  // taking any TypeSystemClike lock -- see the comment there. That phase
+  // still runs nested under *this* call's already-held lock, though: unlike
+  // CreateRuntimeObjCInterface's own top-level callers (e.g.
+  // ClikeExpressionDeclMap::LookupType), none of these four query methods
+  // have been restructured to release their lock first. No test currently
+  // exercises that combination (TestExpressionInSyscall/TestTemplateArgs,
+  // the two regressions the "Lock every TypeSystemClike..." revert named,
+  // both go through the unlocked LookupType path), but it is the same class
+  // of hazard, deliberately left unaddressed here to match the scope the
+  // revert itself judged separate ("its own change with its own behavioural
+  // risk").
   auto *objc = llvm::dyn_cast_or_null<clike_typesystem::ObjCInterfaceType>(t);
   if (!objc)
     return CompilerType();

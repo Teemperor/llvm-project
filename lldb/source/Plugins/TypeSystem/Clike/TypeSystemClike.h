@@ -589,11 +589,6 @@ private:
                                            clike_typesystem::Type *field_type,
                                            llvm::StringRef name);
 
-  /// CreateRuntimeObjCInterface, assuming the write lock is already held.
-  /// Used for this method's own superclass-chain self-recursion.
-  CompilerType CreateRuntimeObjCInterfaceAssumingWriteLocked(
-      ConstString class_name, Process &process, ObjCLanguageRuntime &runtime);
-
   bool IsArrayTypeImpl(const clike_typesystem::Type *type,
                        CompilerType *element_type, uint64_t *size,
                        bool *is_incomplete);
