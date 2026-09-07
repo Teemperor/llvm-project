@@ -7,8 +7,6 @@
 //===----------------------------------------------------------------------===//
 
 #include "ScratchTypeSystemClike.h"
-#include "lldb/Core/ModuleList.h"
-#include "lldb/Core/Module.h"
 
 #include "Plugins/ExpressionParser/Clang/ClangFunctionCaller.h"
 #include "Plugins/ExpressionParser/Clang/ClangPersistentVariables.h"
@@ -27,31 +25,7 @@ ScratchTypeSystemClike::ScratchTypeSystemClike(Target &target, llvm::Triple trip
     : TypeSystemClike(std::string("scratch TypeSystemClike for ") +
                         target.GetArchitecture().GetArchitectureName(),
                     std::move(triple)),
-      m_target_wp(target.shared_from_this()) {
-  // See TypeSystemClike::GetScratchInstances: module instances have to be able
-  // to find us before they take any lock.
-  RegisterScratchInstance(this);
-}
-
-ScratchTypeSystemClike::~ScratchTypeSystemClike() {
-  UnregisterScratchInstance(this);
-}
-
-void ScratchTypeSystemClike::AppendLockOrder(
-    llvm::SmallVectorImpl<TypeSystemClike *> &out) const {
-  TypeSystemClike::AppendLockOrder(out);
-  lldb::TargetSP target_sp = m_target_wp.lock();
-  if (!target_sp)
-    return;
-  // Copy the pointers out under the image list's own lock and release it before
-  // returning: GetLockOrder's caller is about to take TypeSystemClike locks, and
-  // holding the module list across that would introduce a second lock order to
-  // reason about.
-  for (const lldb::ModuleSP &module_sp : target_sp->GetImages().Modules())
-    if (module_sp)
-      AppendClikeTypeSystemsOf(*module_sp, out);
-
-}
+      m_target_wp(target.shared_from_this()) {}
 
 UserExpression *ScratchTypeSystemClike::GetUserExpression(
     llvm::StringRef expr, llvm::StringRef prefix, SourceLanguage language,

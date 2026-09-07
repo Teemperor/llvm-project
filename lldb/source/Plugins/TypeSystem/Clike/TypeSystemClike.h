@@ -12,10 +12,7 @@
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
 #include "lldb/Utility/Locked.h"
-#include "llvm/ADT/ArrayRef.h"
-#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
-#include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/Support/RWMutex.h"
 #include "llvm/TargetParser/Triple.h"
@@ -24,7 +21,6 @@
 #include "Context.h"
 
 #include <memory>
-#include <mutex>
 #include <shared_mutex>
 
 class DWARFASTParserClike;
@@ -96,164 +92,58 @@ public:
     return static_cast<clike_typesystem::Type *>(type);
   }
 
-  /// Locking. TypeSystemClike protects its Type/Context state with a single
-  /// reader/writer lock -- but a query is not confined to one instance. A type
-  /// may reference a type another instance owns (a `TypeRef` names a node, and
-  /// the node records its owner -- see clike_typesystem::Type::
-  /// GetOwningContext), and every query method walks such references freely:
-  /// through a pointee, an element, a base class, a field, a template
-  /// argument. Two things create those references:
+  /// Locking. TypeSystemClike protects its own Type/Context state with a
+  /// single reader/writer lock. GetTypeForWrite/GetTypeForRead below are the
+  /// ONLY sanctioned way for a query method to turn an opaque_compiler_type_t
+  /// into a Type* -- the returned RAII object bundles the lock together with
+  /// the pointer (via lldb_private::Locked/SharedLocked, see Utility/Locked.h)
+  /// so the lock can't be dropped while the pointer is still in use, and a
+  /// read lock only ever hands out a `const Type *`, so it is impossible to
+  /// mutate through it (mutation happens only through clike_typesystem::
+  /// Builder, which requires a non-const Type* / TypeSystemClike&).
   ///
-  ///   - `-gmodules` debug info, where each `.pcm` is its own Module with its
-  ///     own TypeSystemClike: a record in one module has a field, base class,
-  ///     typedef target or Objective-C superclass owned by another.
-  ///   - the expression evaluator and data formatters, which build types in
-  ///     the target's *scratch* instance around types the module that parsed
-  ///     them still owns (see ClangTypeConverter).
-  ///
-  /// So a query has to hold the lock of every instance it might reach, and it
-  /// has to take them all up front: acquiring them one at a time as the walk
-  /// arrives would let two queries over overlapping sets each end up holding
-  /// what the other is waiting for. GetLockOrder() answers which instances
-  /// those are (see there), and LockSet takes them in ascending instance
-  /// address -- one global order, which is what makes any two sets safe to
-  /// acquire however they overlap.
-  ///
-  /// GetTypeForWrite/GetTypeForRead below are the ONLY sanctioned way for a
-  /// query method to turn an opaque_compiler_type_t into a Type* -- the
-  /// returned RAII object bundles the locks together with the pointer so they
-  /// can't be dropped while the pointer is still in use, and a read lock only
-  /// ever hands out a `const Type *`, so it is impossible to mutate through it
-  /// (mutation happens only through clike_typesystem::Builder, which requires
-  /// a non-const Type* / TypeSystemClike&).
-  ///
-  /// The locks are intentionally non-recursive (see llvm::sys::RWMutex): every
-  /// public method that needs them takes them exactly once, at its own entry
-  /// point, and delegates to a private "*Impl" (or, for the completion family,
-  /// "*AssumingWriteLocked") method that assumes they are already held and
-  /// never re-locks -- including when it recurses onto a *different* Type*
-  /// reachable from the first, whether that type belongs to this instance or
-  /// to another one in the set. That extends to calling *another*
-  /// TypeSystemClike: an entry point there would try to re-take a lock this
-  /// thread already holds, so those calls go to the non-locking entry points
-  /// too (see GetRuntimeCompletedObjCType). DWARFASTParserClike is a friend
-  /// for the same reason: its CompleteTypeFromDWARF/
-  /// CompleteMemberFunctionsFromDWARF only ever run nested inside
-  /// GetCompleteType/CompleteMemberFunctions, which already hold the locks.
-  ///
-  /// @{
-
-  /// A lock held on a whole set of TypeSystemClike instances at once, taken in
-  /// ascending instance address so that overlapping sets can never deadlock.
-  /// Released in reverse order.
-  class LockSet {
-  public:
-    LockSet() = default;
-    /// Locks every instance in \p ordered, which MUST already be sorted by
-    /// ascending address and free of duplicates (GetLockOrder guarantees
-    /// both). \p exclusive selects a writer or a reader lock; the same choice
-    /// applies to every instance in the set.
-    LockSet(llvm::ArrayRef<TypeSystemClike *> ordered, bool exclusive);
-    ~LockSet() { Release(); }
-
-    LockSet(LockSet &&other)
-        : m_locked(std::move(other.m_locked)), m_exclusive(other.m_exclusive) {
-      other.m_locked.clear();
-    }
-    LockSet &operator=(LockSet &&other) {
-      if (this != &other) {
-        Release();
-        m_locked = std::move(other.m_locked);
-        m_exclusive = other.m_exclusive;
-        other.m_locked.clear();
-      }
-      return *this;
-    }
-    LockSet(const LockSet &) = delete;
-    LockSet &operator=(const LockSet &) = delete;
-
-    /// Whether this lock covers \p ts. Used to assert that a query never
-    /// reaches an instance it did not lock -- the check that would otherwise
-    /// only show up as a rare data race.
-    bool Covers(const TypeSystemClike *ts) const {
-      return llvm::is_contained(m_locked, ts);
-    }
-
-  private:
-    void Release();
-
-    /// The instances actually locked, in acquisition (ascending address)
-    /// order. Almost always exactly one, so this stays on the stack.
-    llvm::SmallVector<TypeSystemClike *, 4> m_locked;
-    bool m_exclusive = false;
-  };
-
-  /// A pointer borrowed under a LockSet: the lock lives exactly as long as the
-  /// borrow. Move-only -- a borrow is always confined to the one query method
-  /// that took it.
-  template <typename PtrT> class LockedIn {
-  public:
-    LockedIn() = default;
-    LockedIn(LockSet locks, PtrT ptr)
-        : m_locks(std::move(locks)), m_ptr(ptr) {}
-
-    LockedIn(LockedIn &&) = default;
-    LockedIn &operator=(LockedIn &&) = default;
-    LockedIn(const LockedIn &) = delete;
-    LockedIn &operator=(const LockedIn &) = delete;
-
-    PtrT operator->() const { return m_ptr; }
-    decltype(auto) operator*() const { return *m_ptr; }
-    PtrT get() const { return m_ptr; }
-    explicit operator bool() const { return m_ptr != nullptr; }
-
-    /// The locks held for this borrow, for asserting coverage as the query
-    /// walks onto types owned by other instances.
-    const LockSet &GetLocks() const { return m_locks; }
-
-  private:
-    LockSet m_locks;
-    PtrT m_ptr = nullptr;
-  };
-
-  using LockedType = LockedIn<clike_typesystem::Type *>;
-  using SharedLockedType = LockedIn<const clike_typesystem::Type *>;
-  /// Same idea, but for the opaque CompilerDecl pointers handed out by the
-  /// DeclGet*/GetTypeForDecl family (see clike_typesystem::Decl -- a variant
-  /// of StaticDataMember/MemberFunction). There is no write counterpart: a
-  /// Decl is created once by Context::GetOrCreateDecl and never mutated
-  /// afterward, so every consumer only ever needs read access.
-  using SharedLockedDecl = LockedIn<const clike_typesystem::Decl *>;
+  /// The single mutex is intentionally non-recursive (see llvm::sys::RWMutex):
+  /// every public method that needs the lock takes it exactly once, at its
+  /// own entry point, and delegates to a private "*Impl" (or, for the
+  /// completion family, "*AssumingWriteLocked") method that assumes the lock
+  /// is already held and never re-locks -- including when it recurses onto a
+  /// *different* Type* reachable from the first (base classes, pointees,
+  /// template arguments, ...), since those are protected by this same single
+  /// mutex. DWARFASTParserClike is a friend for exactly this reason: its
+  /// CompleteTypeFromDWARF/CompleteMemberFunctionsFromDWARF only ever run
+  /// nested inside GetCompleteType/CompleteMemberFunctions (which already
+  /// hold the write lock), so they call the *AssumingWriteLocked entry points
+  /// directly instead of re-entering the public, locking ones.
+  using LockedType =
+      lldb_private::LockedPtr<clike_typesystem::Type, llvm::sys::RWMutex>;
+  using SharedLockedType =
+      lldb_private::SharedLockedPtr<clike_typesystem::Type, llvm::sys::RWMutex>;
 
   /// The ONLY sanctioned way to get a mutable Type* out of an opaque compiler
   /// type. Do not let the raw pointer outlive the returned LockedType.
   LockedType GetTypeForWrite(lldb::opaque_compiler_type_t type) {
-    return LockedType(LockSet(GetLockOrder(), /*exclusive=*/true),
-                      GetClikeType(type));
+    return LockedType(m_mutex, GetClikeType(type));
   }
   /// The ONLY sanctioned way to get a read-only Type* out of an opaque
   /// compiler type. The pointer is `const`, so it cannot be used to mutate.
   SharedLockedType GetTypeForRead(lldb::opaque_compiler_type_t type) const {
-    return SharedLockedType(LockSet(GetLockOrder(), /*exclusive=*/false),
-                            GetClikeType(type));
+    return SharedLockedType(m_mutex, GetClikeType(type));
   }
+
+  /// Same idea as SharedLockedType/GetTypeForRead, but for the opaque
+  /// CompilerDecl pointers handed out by the DeclGet*/GetTypeForDecl family
+  /// (see clike_typesystem::Decl -- a variant of StaticDataMember/
+  /// MemberFunction). There is no write counterpart: a Decl is created
+  /// once by Context::GetOrCreateDecl and never mutated afterward, so every
+  /// consumer only ever needs read access.
+  using SharedLockedDecl =
+      lldb_private::SharedLockedPtr<clike_typesystem::Decl, llvm::sys::RWMutex>;
+
   /// The ONLY sanctioned way to get a read-only Decl* out of an opaque decl.
   SharedLockedDecl GetDeclForRead(void *opaque_decl) const {
     return SharedLockedDecl(
-        LockSet(GetLockOrder(), /*exclusive=*/false),
-        static_cast<const clike_typesystem::Decl *>(opaque_decl));
+        m_mutex, static_cast<const clike_typesystem::Decl *>(opaque_decl));
   }
-
-  /// The instances a query rooted at this one may touch, sorted by ascending
-  /// address and deduplicated -- i.e. exactly the set LockSet must acquire,
-  /// already in the global lock order. Always includes `this`.
-  ///
-  /// This has to be knowable *before* any lock is taken, so it is derived from
-  /// structure that is fixed up front rather than from references observed so
-  /// far: a query that is the first to create a cross-instance reference would
-  /// otherwise walk into an instance it never locked. See ComputeLockOrder.
-  llvm::SmallVector<TypeSystemClike *, 4> GetLockOrder() const;
-  /// @}
 
   /// The target triple this type system was created for (used e.g. to build a
   /// throwaway Clang AST for ABI/vtable-layout queries).
@@ -530,15 +420,15 @@ private:
   friend class clike_typesystem::Builder;
   friend class ::DWARFASTParserClike;
 
-  /// Acquire the locks (see GetLockOrder) without an associated Type* yet, for
-  /// methods that allocate/complete a *new* node rather than starting from an
+  /// Acquire the write lock without an associated Type* yet, for methods
+  /// that allocate/complete a *new* node rather than starting from an
   /// existing opaque_compiler_type_t (e.g. GetPointerDiffType,
   /// GetBasicTypeFromAST, CreateGenericFunctionPrototype).
-  [[nodiscard]] LockSet LockForWrite() {
-    return LockSet(GetLockOrder(), /*exclusive=*/true);
+  [[nodiscard]] std::unique_lock<llvm::sys::RWMutex> LockForWrite() {
+    return std::unique_lock<llvm::sys::RWMutex>(m_mutex);
   }
-  [[nodiscard]] LockSet LockForRead() const {
-    return LockSet(GetLockOrder(), /*exclusive=*/false);
+  [[nodiscard]] std::shared_lock<llvm::sys::RWMutex> LockForRead() const {
+    return std::shared_lock<llvm::sys::RWMutex>(m_mutex);
   }
 
   /// Completion, assuming the write lock is already held by the caller (see
@@ -679,65 +569,6 @@ private:
   /// and m_last_seen_process_wp above. See the locking note above
   /// GetTypeForWrite/GetTypeForRead.
   mutable llvm::sys::RWMutex m_mutex;
-
-protected:
-  /// Populate \p out with the instances a query rooted here may reach, in any
-  /// order and possibly with duplicates -- GetLockOrder sorts and dedups.
-  /// Must not take any TypeSystemClike lock: it runs before they are acquired.
-  /// Called with m_lock_order_mutex held.
-  ///
-  /// The base implementation contributes this instance plus, when it has a
-  /// symbol file, the type systems of the Clang modules that symbol file
-  /// imports (transitively). That list comes straight out of the DWARF -- see
-  /// SymbolFile::ForEachExternalModule -- so it is known without parsing a
-  /// single type, which is what lets the set be complete before locking.
-  virtual void
-  AppendLockOrder(llvm::SmallVectorImpl<TypeSystemClike *> &out) const;
-
-  /// Whether AppendLockOrder can return a different set over time, in which
-  /// case GetLockOrder must recompute on every call instead of caching. Always
-  /// true today: the gmodules import graph is fixed once the symbol file is
-  /// known, but every set also folds in the scratch instances' sets, and those
-  /// follow their target's image list.
-  virtual bool HasDynamicLockOrder() const { return true; }
-
-  /// Append every TypeSystemClike \p module already has to \p out. Shared by
-  /// the base AppendLockOrder (for imported Clang modules) and the scratch
-  /// override (for the target's images).
-  static void
-  AppendClikeTypeSystemsOf(Module &module,
-                           llvm::SmallVectorImpl<TypeSystemClike *> &out);
-
-  /// Like AppendClikeTypeSystemsOf, but *creates* \p module's TypeSystemClike if
-  /// it has none yet. Used for the Clang modules our debug info imports: their
-  /// type systems are created lazily by the very query that first reaches into
-  /// them (see DWARFASTParserClike::FindClangModuleDefinitionType), so waiting
-  /// for one to exist means it is missing from the set exactly when it is first
-  /// needed. The DWARF bounds this list to the real import graph, so it is not
-  /// the open-ended cost that doing the same for every image would be.
-  static void
-  AppendOrCreateClikeTypeSystemOf(Module &module,
-                                  llvm::SmallVectorImpl<TypeSystemClike *> &out);
-
-  /// Every live scratch instance, so a module instance can find the scratches
-  /// that may reach it. A module cannot work that out from its own state -- a
-  /// Module belongs to any number of Targets and nothing maps back the other
-  /// way -- and it has to be knowable *before* locking, so the scratches
-  /// register here as they are created rather than being discovered from a
-  /// query's execution context.
-  static void RegisterScratchInstance(TypeSystemClike *scratch);
-  static void UnregisterScratchInstance(TypeSystemClike *scratch);
-  static llvm::SmallVector<TypeSystemClike *, 2> GetScratchInstances();
-
-private:
-  /// GetLockOrder's cache, used only when !HasDynamicLockOrder().
-  mutable llvm::SmallVector<TypeSystemClike *, 4> m_lock_order;
-  mutable bool m_lock_order_valid = false;
-
-  /// Guards m_lock_order only. Separate from m_mutex, and never held while any
-  /// m_mutex is: the lock order has to be readable before the locks it
-  /// describes are taken.
-  mutable std::mutex m_lock_order_mutex;
 };
 
 } // namespace lldb_private

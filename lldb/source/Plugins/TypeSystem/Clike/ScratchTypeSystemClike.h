@@ -39,7 +39,6 @@ class ScratchTypeSystemClike : public TypeSystemClike {
 
 public:
   ScratchTypeSystemClike(Target &target, llvm::Triple triple);
-  ~ScratchTypeSystemClike() override;
 
   bool isA(const void *ClassID) const override {
     return ClassID == &ID || TypeSystemClike::isA(ClassID);
@@ -66,24 +65,6 @@ public:
   CreateUtilityFunction(std::string text, std::string name) override;
 
   PersistentExpressionState *GetPersistentExpressionState() override;
-
-protected:
-  /// The scratch instance holds the types the expression evaluator and the data
-  /// formatters build, and those are routinely assembled *around* types the
-  /// module that parsed them still owns -- a reconstructed `T *` whose pointee
-  /// belongs to a module, an elaborated spelling over a module's typedef (see
-  /// ClangTypeConverter). It also reaches into module instances by control flow
-  /// alone, with no reference behind it at all: a module answering a child query
-  /// about an Objective-C interface calls in here to have it rebuilt from the
-  /// runtime (see TypeSystemClike::GetRuntimeCompletedObjCType). So rather than
-  /// try to enumerate which modules those are, take the lot: every module in
-  /// the target, plus whatever the base contributes.
-  void
-  AppendLockOrder(llvm::SmallVectorImpl<TypeSystemClike *> &out) const override;
-
-  /// The target's image list grows as libraries are loaded, so unlike a module
-  /// instance the scratch cannot compute its set once.
-  bool HasDynamicLockOrder() const override { return true; }
 
 private:
   lldb::TargetWP m_target_wp;
