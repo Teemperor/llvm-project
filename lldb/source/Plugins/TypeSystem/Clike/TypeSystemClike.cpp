@@ -1270,6 +1270,40 @@ const llvm::fltSemantics &TypeSystemClike::GetFloatTypeSemantics(size_t byte_siz
   return m_context.GetLanguageOpts().GetFloatTypeSemantics(byte_size, format);
 }
 
+// An Objective-C class's DWARF-recorded byte size is a compile-time constant
+// baked into whichever module's debug info produced it (and may be entirely
+// absent, e.g. for a class -- like a tagged-pointer class such as NSIndexSet
+// -- whose implementation lives in another image and was never given a
+// DW_AT_byte_size in this module). It can also be smaller than the class's
+// true instance size when ivars are added downstream of that module -- e.g. a
+// class extension in a different image adds a hidden ivar to a superclass
+// (see the hidden-ivars test): the subclass's own DW_AT_byte_size, emitted by
+// a compile that only saw the superclass's public ivars, doesn't leave room
+// for the hidden one. So the ObjC runtime's authoritative instance size is
+// queried first, mirroring the ivar-offset override in
+// GetChildCompilerTypeAtIndex -- getting this wrong silently undersizes the
+// buffer used to materialize a whole-object expression result (e.g. `*k`),
+// truncating trailing ivars, or (for a runtime-only-sized class with no
+// DW_AT_byte_size at all) makes the class look incomplete.
+static std::optional<uint64_t>
+GetObjCRuntimeInstanceByteSize(const clike_typesystem::Type *t,
+                              Process *process) {
+  if (!process)
+    return std::nullopt;
+  ObjCLanguageRuntime *objc_runtime = ObjCLanguageRuntime::Get(*process);
+  if (!objc_runtime)
+    return std::nullopt;
+  ConstString class_name(t->GetName().GetName());
+  ObjCLanguageRuntime::ClassDescriptorSP descriptor =
+      objc_runtime->GetClassDescriptorFromClassName(class_name);
+  if (!descriptor)
+    return std::nullopt;
+  uint64_t instance_size = descriptor->GetInstanceSize();
+  if (instance_size == 0)
+    return std::nullopt;
+  return instance_size;
+}
+
 llvm::Expected<uint64_t>
 TypeSystemClike::GetBitSize(opaque_compiler_type_t type,
                           ExecutionContextScope *exe_scope) {
@@ -1277,29 +1311,11 @@ TypeSystemClike::GetBitSize(opaque_compiler_type_t type,
   if (!tt)
     return llvm::createStringError("invalid type");
   const clike_typesystem::Type *t = Desugar(tt.get());
-  // An Objective-C class's DWARF-recorded byte size is a compile-time constant
-  // baked into whichever module's debug info produced it. It can be smaller
-  // than the class's true instance size when ivars are added downstream of
-  // that module -- e.g. a class extension in a different image adds a hidden
-  // ivar to a superclass (see the hidden-ivars test): the subclass's own
-  // DW_AT_byte_size, emitted by a compile that only saw the superclass's
-  // public ivars, doesn't leave room for the hidden one. Query the ObjC
-  // runtime's authoritative instance size first, mirroring the ivar-offset
-  // override in GetChildCompilerTypeAtIndex -- getting this wrong silently
-  // undersizes the buffer used to materialize a whole-object expression
-  // result (e.g. `*k`), truncating trailing ivars.
   if (llvm::isa<clike_typesystem::ObjCInterfaceType>(t) && exe_scope) {
     if (lldb::ProcessSP process_sp = exe_scope->CalculateProcess()) {
-      if (ObjCLanguageRuntime *objc_runtime =
-              ObjCLanguageRuntime::Get(*process_sp)) {
-        ConstString class_name(t->GetName().GetName());
-        if (ObjCLanguageRuntime::ClassDescriptorSP descriptor =
-                objc_runtime->GetClassDescriptorFromClassName(class_name)) {
-          uint64_t instance_size = descriptor->GetInstanceSize();
-          if (instance_size != 0)
-            return instance_size * 8;
-        }
-      }
+      if (std::optional<uint64_t> instance_size =
+              GetObjCRuntimeInstanceByteSize(t, process_sp.get()))
+        return *instance_size * 8;
     }
   }
   if (std::optional<uint64_t> byte_size = t->GetByteSize())
@@ -1924,7 +1940,20 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
     // (this is the explicit access that is allowed to force completion of an
     // otherwise-lazy pointee).
     CompleteTypeAssumingWriteLocked(pointee);
-    std::optional<uint64_t> byte_size = pointee->GetByteSize();
+    clike_typesystem::Type *desugared_pointee = Desugar(pointee);
+    // As in GetBitSize, an ObjC class's size may only be known to the
+    // runtime (e.g. a tagged-pointer class like NSIndexSet has no
+    // DW_AT_byte_size at all), so try that before falling back to the
+    // DWARF-recorded size -- otherwise dereferencing such a pointer (e.g. via
+    // a synthetic child provider that wants a dereferenced backend object)
+    // spuriously reports the pointee as incomplete.
+    std::optional<uint64_t> byte_size;
+    if (llvm::isa<clike_typesystem::ObjCInterfaceType>(desugared_pointee) &&
+        exe_ctx)
+      byte_size = GetObjCRuntimeInstanceByteSize(desugared_pointee,
+                                                 exe_ctx->GetProcessPtr());
+    if (!byte_size)
+      byte_size = pointee->GetByteSize();
     if (!byte_size)
       return llvm::createStringError(
           "incomplete type \"" +
