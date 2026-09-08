@@ -14,6 +14,12 @@ class DeclFromSubmoduleTestCase(TestBase):
     @skipIfWindows
     # Lookup for decls in submodules fails in Linux
     @expectedFailureAll(oslist=["linux"])
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="TypeSystemClike does not implement the ClangModulesDeclVendor "
+        "(@import/submodule) decl lookup path",
+    )
     def test_expr(self):
         self.build()
         lldbutil.run_to_source_breakpoint(self, "return 0", lldb.SBFileSpec("main.cpp"))
