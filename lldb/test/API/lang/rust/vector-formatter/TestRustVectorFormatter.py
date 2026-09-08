@@ -12,6 +12,13 @@ from lldbsuite.test import lldbutil
 class TestRustVectorFormatter(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    def setUp(self):
+        TestBase.setUp(self)
+        if self.dbg.GetSetting("symbols.experimental.enable-typesystem-clike").GetBooleanValue():
+            self.skipTest(
+                "Rust is not a language handled by TypeSystemClike (C/C++/Objective-C only)"
+            )
+
     def load_rust_core(self):
         core_yaml_path = self.getSourcePath("main.core.yaml")
         main_yaml_path = self.getSourcePath("main.yaml")
