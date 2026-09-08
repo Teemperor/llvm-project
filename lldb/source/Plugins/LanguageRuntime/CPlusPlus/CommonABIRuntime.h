@@ -58,6 +58,14 @@ protected:
                                 lldb::ModuleSP preferred_module,
                                 bool &any_found) const;
 
+  /// Whether \p type is a C++ class or struct.
+  ///
+  /// The dynamic type found for a vtable symbol has to be one of those. Asked
+  /// via the CompilerType's own type-class bitfield rather than a
+  /// TypeSystemClang-specific query, so it holds regardless of which type
+  /// system backs the type (TypeSystemClang or TypeSystemClike).
+  static bool IsCXXClassOrStruct(const CompilerType &type);
+
   TypeAndOrName GetDynamicTypeInfo(const lldb_private::Address &vtable_addr);
 
   void SetDynamicTypeInfo(const lldb_private::Address &vtable_addr,

@@ -76,7 +76,7 @@ TypeAndOrName ItaniumABIRuntime::FindTypeInfoWithClangVTable(
       continue;
     }
 
-    if (!TypeSystemClang::IsCXXClassType(type_sp->GetForwardCompilerType())) {
+    if (!IsCXXClassOrStruct(type_sp->GetForwardCompilerType())) {
       LLDB_LOG(log,
                "{0:x}: Found __clang_vtable at {1:x} for '{2}' which is not a "
                "CXXClassType. Ignoring",
@@ -203,7 +203,10 @@ bool ItaniumABIRuntime::GetDynamicTypeAndAddress(
   if (!type)
     return true;
 
-  if (TypeSystemClang::AreTypesSame(in_value.GetCompilerType(), type)) {
+  // Use the generic CompilerType comparison (name-based, works across
+  // TypeSystemClang and TypeSystemClike) instead of a TypeSystemClang-specific
+  // ASTContext type comparison.
+  if (in_value.GetCompilerType().CompareTypes(type)) {
     // The dynamic type we found was the same type, so we don't have a
     // dynamic type here...
     return false;
