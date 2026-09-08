@@ -1,0 +1,188 @@
+# LLDB reconstructs the unnamed bitfields a compiler omits from DWARF by
+# treating the gap between the end of the previous member and the start of a
+# bitfield as padding. This is DWARF where the member before the bitfields has
+# an incomplete type (its definition lives in another compile unit), so where it
+# ends is unknown. Check that no bogus unnamed bitfield is invented for the
+# whole (apparent) hole -- such a field is wider than any integer storage unit,
+# which used to crash when its value was printed.
+#
+# Note: this checks the TypeSystemClike behaviour (the default). TypeSystemClang
+# does invent an `int : 256` here, so the test uses the lldb driver rather than
+# lldb-test (which forces TypeSystemClang).
+#
+# DW_TAG_compile_unit
+#   DW_AT_name        ("main.cpp")
+#   DW_AT_language    (DW_LANG_C_plus_plus)
+#
+#   DW_TAG_structure_type
+#     DW_AT_name      ("Incomplete")
+#     DW_AT_declaration (true)
+#
+#   DW_TAG_base_type
+#     DW_AT_name      ("unsigned int")
+#     DW_AT_byte_size (0x04)
+#     DW_AT_encoding  (DW_ATE_unsigned)
+#
+#   DW_TAG_structure_type
+#     DW_AT_name      ("Row")
+#     DW_AT_byte_size (0x30)
+#
+#     DW_TAG_member
+#       DW_AT_name    ("id")
+#       DW_AT_type    (0x00000016 "unsigned int")
+#       DW_AT_data_member_location (0x00)
+#
+#     DW_TAG_member
+#       DW_AT_name    ("payload")
+#       DW_AT_type    (0x00000011 "Incomplete")
+#       DW_AT_data_member_location (0x08)
+#
+#     DW_TAG_member
+#       DW_AT_name    ("generation")
+#       DW_AT_type    (0x00000016 "unsigned int")
+#       DW_AT_bit_size (0x06)
+#       DW_AT_data_bit_offset (0x140)
+#
+#     DW_TAG_member
+#       DW_AT_name    ("visible")
+#       DW_AT_type    (0x00000016 "unsigned int")
+#       DW_AT_bit_size (0x01)
+#       DW_AT_data_bit_offset (0x146)
+#
+#     NULL
+#
+#   NULL
+
+# RUN: yaml2obj %s > %t
+# RUN: %lldb %t -o "image lookup -t Row" -o exit 2>&1 | FileCheck %s
+
+# CHECK: 1 match found
+# CHECK:      struct Row {
+# CHECK-NEXT:     unsigned int id;
+# CHECK-NEXT:     Incomplete payload;
+# CHECK-NEXT:     unsigned int generation : 6;
+# CHECK-NEXT:     unsigned int visible : 1;
+# CHECK-NEXT: }
+
+--- !ELF
+FileHeader:
+  Class:           ELFCLASS64
+  Data:            ELFDATA2LSB
+  Type:            ET_EXEC
+  Machine:         EM_X86_64
+DWARF:
+  debug_str:
+    - main.cpp
+    - Incomplete
+    - Row
+    - id
+    - payload
+    - generation
+    - visible
+    - unsigned int
+  debug_abbrev:
+    - ID:              0
+      Table:
+        - Code:            0x1
+          Tag:             DW_TAG_compile_unit
+          Children:        DW_CHILDREN_yes
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+            - Attribute:       DW_AT_language
+              Form:            DW_FORM_udata
+        - Code:            0x2
+          Tag:             DW_TAG_structure_type
+          Children:        DW_CHILDREN_no
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+            - Attribute:       DW_AT_declaration
+              Form:            DW_FORM_flag_present
+        - Code:            0x3
+          Tag:             DW_TAG_base_type
+          Children:        DW_CHILDREN_no
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+            - Attribute:       DW_AT_byte_size
+              Form:            DW_FORM_data1
+            - Attribute:       DW_AT_encoding
+              Form:            DW_FORM_data1
+        - Code:            0x4
+          Tag:             DW_TAG_structure_type
+          Children:        DW_CHILDREN_yes
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+            - Attribute:       DW_AT_byte_size
+              Form:            DW_FORM_data1
+        - Code:            0x5
+          Tag:             DW_TAG_member
+          Children:        DW_CHILDREN_no
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+            - Attribute:       DW_AT_type
+              Form:            DW_FORM_ref4
+            - Attribute:       DW_AT_data_member_location
+              Form:            DW_FORM_data1
+        - Code:            0x6
+          Tag:             DW_TAG_member
+          Children:        DW_CHILDREN_no
+          Attributes:
+            - Attribute:       DW_AT_name
+              Form:            DW_FORM_strp
+            - Attribute:       DW_AT_type
+              Form:            DW_FORM_ref4
+            - Attribute:       DW_AT_bit_size
+              Form:            DW_FORM_data1
+            - Attribute:       DW_AT_data_bit_offset
+              Form:            DW_FORM_udata
+  debug_info:
+    - Version:         4
+      AbbrevTableID:   0
+      AbbrOffset:      0x0
+      AddrSize:        8
+      Entries:
+        - AbbrCode:        0x1
+          Values:
+            - Value:           0x0
+            - Value:           0x4
+        - AbbrCode:        0x2
+          Values:
+            - Value:           0x9
+        - AbbrCode:        0x3
+          Values:
+            - Value:           0x36
+            - Value:           0x4
+            - Value:           0x7
+        - AbbrCode:        0x4
+          Values:
+            - Value:           0x14
+            - Value:           0x30
+        - AbbrCode:        0x5
+          Values:
+            - Value:           0x18
+            - Value:           0x16
+            - Value:           0x0
+        - AbbrCode:        0x5
+          Values:
+            - Value:           0x1b
+            - Value:           0x11
+            - Value:           0x8
+        - AbbrCode:        0x6
+          Values:
+            - Value:           0x23
+            - Value:           0x16
+            - Value:           0x6
+            - Value:           0x140
+        - AbbrCode:        0x6
+          Values:
+            - Value:           0x2e
+            - Value:           0x16
+            - Value:           0x1
+            - Value:           0x146
+        - AbbrCode:        0x0
+        - AbbrCode:        0x0
+...
