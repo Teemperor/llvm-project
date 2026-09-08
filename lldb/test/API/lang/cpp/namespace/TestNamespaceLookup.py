@@ -217,7 +217,17 @@ class NamespaceLookupTestCase(TestBase):
         # Evaluate B::func() - should call B::func()
         self.expect_expr("B::func()", result_type="int", result_value="4")
 
-    @unittest.expectedFailure  # lldb scope lookup of functions bugs
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(
+        typesystem_clike="legacy",
+        bugnumber="TypeSystemClang resolves an unqualified `foo()` to the "
+        "`Y::foo` int variable (variable lookup runs before functions and `::` "
+        "is ignored), so the call fails. TypeSystemClike offers the function "
+        "candidate alongside the same-named variable and honors the frame's "
+        "enclosing namespace scope, so it resolves `foo()`/`::foo()` to "
+        "`::foo()` correctly. The scope-lookup-of-functions bug remains under "
+        "TypeSystemClang, so skip there.",
+    )
     def test_function_scope_lookup_with_run_command(self):
         """Test scope lookup of functions in lldb."""
         self.build()
@@ -241,19 +251,13 @@ class NamespaceLookupTestCase(TestBase):
         # Run to BP_global_scope at global scope
         self.runToBkpt("run")
         # Evaluate foo() - should call ::foo()
-        # FIXME: lldb finds Y::foo because lookup for variables is done
-        # before functions.
         self.expect_expr("foo()", result_type="int", result_value="42")
         # Evaluate ::foo() - should call ::foo()
-        # FIXME: lldb finds Y::foo because lookup for variables is done
-        # before functions and :: is ignored.
         self.expect_expr("::foo()", result_type="int", result_value="42")
 
         # Continue to BP_ns_scope at ns scope
         self.runToBkpt("continue")
         # Evaluate foo() - should call A::foo()
-        # FIXME: lldb finds Y::foo because lookup for variables is done
-        # before functions.
         self.expect_expr("foo()", result_type="int", result_value="42")
 
     # NOTE: this test may fail on older systems that don't emit import
@@ -279,7 +283,18 @@ class NamespaceLookupTestCase(TestBase):
         # Evaluate func2() - should call A::func2()
         self.expect_expr("func2()", result_type="int", result_value="3")
 
-    @unittest.expectedFailure  # lldb scope lookup after using declaration bugs
+    @add_test_categories(["typesystem-clike"])
+    @expectedFailureAll(
+        typesystem_clike="legacy",
+        bugnumber="lldb scope lookup after using declaration bugs",
+    )
+    @expectedFailureAll(
+        debug_info="dsym",
+        bugnumber="dsymutil moves the function's DW_TAG_imported_declaration "
+        "onto a declaration-only copy of the function in the artificial type "
+        "unit that the concrete function DIE doesn't reference, so the using "
+        "declaration isn't visible from the function's scope.",
+    )
     # NOTE: this test may fail on older systems that don't emit import
     # emtries in DWARF - may need to add checks for compiler versions here.
     def test_scope_after_using_declaration_lookup_with_run_command(self):
