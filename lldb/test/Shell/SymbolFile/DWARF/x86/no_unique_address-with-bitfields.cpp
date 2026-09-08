@@ -1,5 +1,10 @@
+// Force TypeSystemClang: unlike Clang, TypeSystemClike's unnamed-bitfield-gap
+// reconstruction (see the "FIXME"s below) does reconstruct the unnamed
+// bitfields between the no_unique_address members and the following named
+// bitfields, so it inserts extra FieldDecls the checks below don't expect.
+//
 // RUN: %clangxx --target=x86_64-apple-macosx -c -gdwarf -o %t %s
-// RUN: %lldb %t \
+// RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t \
 // RUN:   -o "target var global" \
 // RUN:   -o "target var global2" \
 // RUN:   -o "target var global3" \

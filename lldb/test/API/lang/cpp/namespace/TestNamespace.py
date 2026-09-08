@@ -260,10 +260,17 @@ class NamespaceTestCase(TestBase):
             result_type="bool",
             result_value="true",
         )
-        # FIXME: C++ unqualified namespace lookups currently not supported when instantiating types.
-        self.expect_expr(
-            "NS2::Foo{}.bar() == -3", result_type="bool", result_value="false"
-        )
+        # Unqualified `NS2` resolves to the top-level `::NS2` (bar() == -3)
+        # under TypeSystemClike, not the nested `NS1::NS2`. TypeSystemClang
+        # resolves it to the nested `NS1::NS2` (bar() == -2) instead.
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
+            self.expect_expr(
+                "NS2::Foo{}.bar() == -3", result_type="bool", result_value="true"
+            )
+        else:
+            self.expect_expr(
+                "NS2::Foo{}.bar() == -3", result_type="bool", result_value="false"
+            )
         self.expect_expr(
             "((::B::Bar*)&::B::bar)->x()", result_type="int", result_value="42"
         )

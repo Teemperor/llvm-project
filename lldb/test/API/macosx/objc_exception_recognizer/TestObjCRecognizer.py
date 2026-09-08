@@ -19,6 +19,12 @@ class TestObjCRecognizer(TestBase):
         self.objc_recognizer_test(True)
 
     @requireDarwin
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="Objective-C exception recognizer expression evaluation is "
+        "not yet supported by TypeSystemClike",
+    )
     def test_exception_recognizer_plain(self):
         """There can be many tests in a test case - describe this test here."""
         self.build()

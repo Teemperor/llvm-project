@@ -21,6 +21,13 @@ class CModulesTestCase(TestBase):
     )
     @skipIf(macos_version=["<", "10.12"])
     @expectedFailureNetBSD
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="TypeSystemClike does not fully support clang @import modules "
+        "(ClangModulesDeclVendor): module record types / dedup and the "
+        "efficient-memread accounting this test checks are not reproduced",
+    )
     def test_expr(self):
         self.build()
         exe = self.getBuildArtifact("a.out")
