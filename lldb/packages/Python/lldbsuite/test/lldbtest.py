@@ -1625,6 +1625,9 @@ class Base(unittest.TestCase):
     def getDebugInfo(self):
         return self.getVariant("debug_info")
 
+    def getTypeSystemClike(self):
+        return self.getVariant("typesystem_clike")
+
     def build(
         self,
         *,
@@ -2096,6 +2099,31 @@ def _expand_test_variants(attrname, methods, variant, xfail_fns, skip_fns):
 _test_variants = []
 
 
+def _is_typesystem_clike_test(test_method):
+    """Only expand methods explicitly opted in via
+    @add_test_categories(["typesystem-clike"]) -- this variant is for tests
+    that specifically exercise type-system-sensitive behavior, not the whole
+    suite."""
+    return "typesystem-clike" in getattr(test_method, "categories", [])
+
+
+def _apply_typesystem_clike_setting(test_instance, value):
+    test_instance.runCmd(
+        "settings set symbols.enable-typesystem-clike %s"
+        % ("true" if value == "clike" else "false")
+    )
+
+
+_test_variants.append(
+    TestVariant(
+        name="typesystem_clike",
+        values={"clike": True, "legacy": True},
+        predicate=_is_typesystem_clike_test,
+        setup_fn=_apply_typesystem_clike_setting,
+    )
+)
+
+
 # Variant value combinations that should never be generated. Each entry maps
 # `variant_name -> value`; a method copy is dropped when its already-set
 # variant attributes plus the new value being added match every key in the
@@ -2143,16 +2171,21 @@ class LLDBTestCaseFactory(type):
 
         newattrs = {}
         for attrname, attrvalue in attrs.items():
-            if attrname.startswith("test") and not getattr(
-                attrvalue, "__no_debug_info_test__", False
-            ):
+            if attrname.startswith("test"):
                 # Track only the entries created by THIS attrname so that
                 # variant expansion doesn't accidentally double-expand entries
                 # from a sibling test method whose name happens to be a strict
                 # prefix of attrname (e.g. test_foo vs test_foo_bar).
                 this_attr_entries = {}
-                # Create debug info variants unless NO_DEBUG_INFO_TESTCASE
-                if not original_testcase.NO_DEBUG_INFO_TESTCASE:
+                # Create debug info variants unless NO_DEBUG_INFO_TESTCASE or
+                # @no_debug_info_test. Note this only suppresses the
+                # debug-info-specific first pass below -- a method excluded
+                # from *that* still goes through the generic _test_variants
+                # pass afterwards, so e.g. @no_debug_info_test doesn't also
+                # opt a method out of an unrelated axis like typesystem_clike.
+                if not original_testcase.NO_DEBUG_INFO_TESTCASE and not getattr(
+                    attrvalue, "__no_debug_info_test__", False
+                ):
                     # If any debug info categories were explicitly tagged, assume that list to be
                     # authoritative.  If none were specified, try with all debug info formats.
                     test_method_categories = set(getattr(attrvalue, "categories", []))
@@ -2228,7 +2261,7 @@ class LLDBTestCaseFactory(type):
             else:
                 newattrs[attrname] = attrvalue
 
-        if original_testcase.TEST_WITH_PDB_DEBUG_INFO:
+        if getattr(original_testcase, "TEST_WITH_PDB_DEBUG_INFO", False):
             newattrs["SHARED_BUILD_TESTCASE"] = False
 
         return super(LLDBTestCaseFactory, cls).__new__(cls, name, bases, newattrs)

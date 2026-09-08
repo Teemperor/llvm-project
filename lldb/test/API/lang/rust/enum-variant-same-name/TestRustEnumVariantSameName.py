@@ -10,6 +10,10 @@ from RustEnumValue import RustEnumValue
 class TestRustEnumStructs(TestBase):
     def setUp(self):
         TestBase.setUp(self)
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
+            self.skipTest(
+                "Rust is not a language handled by TypeSystemClike (C/C++/Objective-C only)"
+            )
         src_dir = self.getSourceDir()
         yaml_path = os.path.join(src_dir, "main.yaml")
         obj_path = self.getBuildArtifact("main.o")

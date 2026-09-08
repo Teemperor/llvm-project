@@ -47,6 +47,10 @@ str1_completion = CompletionItem(
 # templates like vector.
 @skipIf(compiler="clang", compiler_version=["<", "16.0"])
 class TestDAP_completions(DAPTestCaseBase):
+    VARIABLE_COMPLETION_DETAIL_BUGNUMBER = (
+        "variable-completion detail type spellings differ under TypeSystemClike"
+    )
+
     def verify_completions(
         self,
         input: str,
@@ -107,6 +111,8 @@ class TestDAP_completions(DAPTestCaseBase):
 
         session.evaluate(f"command unalias {alias_cmd}", context="repl")
 
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(typesystem_clike="clike", bugnumber=VARIABLE_COMPLETION_DETAIL_BUGNUMBER)
     def test_command_completions(self):
         """Tests completion requests for lldb commands, within "repl-mode=command"."""
         session, _ = self.setup_debuggee()
@@ -212,6 +218,8 @@ class TestDAP_completions(DAPTestCaseBase):
         self.verify_non_ascii_completion(session, "√∂xt")  # starts with non-ASCII
         self.verify_non_ascii_completion(session, "one_seç")  # ends with non-ASCII
 
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(typesystem_clike="clike", bugnumber=VARIABLE_COMPLETION_DETAIL_BUGNUMBER)
     def test_variable_completions(self):
         """Tests completion requests in "repl-mode=variable" """
 
@@ -325,6 +333,8 @@ class TestDAP_completions(DAPTestCaseBase):
             frame_id=top_frame_id,
         )
 
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(typesystem_clike="clike", bugnumber=VARIABLE_COMPLETION_DETAIL_BUGNUMBER)
     def test_auto_completions(self):
         """Tests completion requests in "repl-mode=auto"."""
         session, stop_event = self.setup_debuggee()

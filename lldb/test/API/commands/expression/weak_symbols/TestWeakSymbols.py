@@ -16,7 +16,19 @@ class TestWeakSymbolsInExpressions(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
     @requireDarwin
+    @add_test_categories(["typesystem-clike"])
     @skipIf(compiler="clang", compiler_version=["<", "19.0"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="This test brings the weak-symbol declarations into the "
+        "expression's decl context via a Clang `@import Dylib` (a clang module "
+        "import). TypeSystemClike's expression path synthesizes a fresh Clang "
+        "AST from clike_typesystem types and does not consume the clang::Decls "
+        "produced by the ClangModulesDeclVendor, so `@import`ed decls (and thus "
+        "the weak symbols) are not visible to the expression. Clang `@import` "
+        "modules are an intentional, out-of-scope divergence for "
+        "TypeSystemClike, so skip there.",
+    )
     def test_weak_symbol_in_expr(self):
         """Tests that we can refer to weak symbols in expressions."""
         self.build()

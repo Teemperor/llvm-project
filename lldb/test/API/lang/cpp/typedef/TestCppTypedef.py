@@ -60,21 +60,37 @@ class TestCppTypedef(TestBase):
         )
 
         # Try accessing a typedef inside a struct/class.
-        # FIXME: This doesn't actually work. StructTypedef just gets injected
-        # by the local variable in the expression evaluation context.
         self.expect_expr(
             "(ST::StructTypedef)s", result_children=[ValueCheck(value="0.5")]
         )
-        # This doesn't work for the reason above. There is no local variable
-        # injecting OtherStructTypedef so we will actually error here.
-        self.expect(
-            "expression -- (NonLocalVarStruct::OtherStructTypedef)1",
-            error=True,
-            substrs=["no member named 'OtherStructTypedef' in 'NonLocalVarStruct'"],
-        )
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
+            # A nested typedef is resolved directly from debug info under
+            # TypeSystemClike, so it works even without a local variable of
+            # that type in scope to inject it.
+            self.expect_expr(
+                "(NonLocalVarStruct::OtherStructTypedef)1", result_value="1"
+            )
+        else:
+            # TypeSystemClang injects StructTypedef via the local variable in
+            # the expression evaluation context; there is no local variable
+            # injecting OtherStructTypedef so it errors here instead.
+            self.expect(
+                "expression -- (NonLocalVarStruct::OtherStructTypedef)1",
+                error=True,
+                substrs=[
+                    "no member named 'OtherStructTypedef' in 'NonLocalVarStruct'"
+                ],
+            )
 
         # Check the generated Clang AST.
-        self.filecheck("image dump ast a.out", __file__, "--strict-whitespace")
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
+            self.filecheck(
+                "image dump ast a.out",
+                __file__,
+                ["--strict-whitespace", "-check-prefix=CHECK-CLIKE"],
+            )
+        else:
+            self.filecheck("image dump ast a.out", __file__, "--strict-whitespace")
 
 
 # CHECK:      {{^}}|-TypedefDecl {{.*}} GlobalTypedef 'S<float>'
@@ -82,3 +98,11 @@ class TestCppTypedef(TestBase):
 # CHECK-NEXT: {{^}}| `-TypedefDecl {{.*}} NamespaceTypedef 'S<float>'
 # CHECK:      {{^}}|-CXXRecordDecl {{.*}} struct ST definition
 # CHECK:      {{^}}| `-TypedefDecl {{.*}} StructTypedef 'S<float>'
+
+# The AST dump under TypeSystemClike is record-centric: it emits the record
+# definitions the module has produced (TypeSystemClike resolves typedefs and
+# namespaces lazily rather than eagerly materializing standalone
+# TypedefDecls/NamespaceDecls up front).
+# CHECK-CLIKE:      {{^}}|-ClassTemplateSpecializationDecl {{.*}} struct S definition
+# CHECK-CLIKE:      {{^}}|-CXXRecordDecl {{.*}} struct ST definition
+# CHECK-CLIKE:      {{^}}`-CXXRecordDecl {{.*}} struct NonLocalVarStruct definition
