@@ -64,7 +64,7 @@ let Definition = "modulelist", Path = "symbols" in {
 let Definition = "modulelist_experimental", Path = "symbols.experimental" in {
   def EnableTypeSystemClike: Property<"enable-typesystem-clike", "Boolean">,
     Global,
-    DefaultFalse,
+    DefaultTrue,
     Desc<"Use TypeSystemClike to model C/C++/Objective-C types in LLDB.">;
 }
 
