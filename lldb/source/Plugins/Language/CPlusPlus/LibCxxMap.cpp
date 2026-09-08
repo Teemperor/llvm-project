@@ -19,6 +19,7 @@
 #include "lldb/lldb-enumerations.h"
 #include "lldb/lldb-forward.h"
 #include "llvm/Support/ErrorExtras.h"
+#include "llvm/Support/MathExtras.h"
 #include <cstdint>
 #include <locale>
 #include <optional>
@@ -124,6 +125,27 @@ public:
   }
 
 private:
+  /// An upper bound on how many nodes a walk from the root of the tree down to
+  /// a leaf (or back up from a leaf to the root) can visit, derived from the
+  /// number of nodes the tree claims to have.
+  ///
+  /// A red-black tree with N nodes has a height of at most 2 * log2(N + 1), so
+  /// no legitimate descent through __left_/__right_ and no legitimate ascent
+  /// through __parent_ can be longer than that. Bounding those walks by the
+  /// height rather than by the node count matters when the node count itself
+  /// is not trustworthy -- e.g. an uninitialized std::map on the stack, whose
+  /// __size_ is arbitrary garbage. Every step of such a walk creates a
+  /// ValueObject parented on the one from the previous step, and updating a
+  /// ValueObject walks its whole parent chain, so a walk of M steps costs
+  /// O(M^2). A garbage node count in the tens of millions therefore hangs the
+  /// debugger for all practical purposes, whereas the height bound stops the
+  /// walk after a few dozen steps.
+  size_t max_tree_height() const {
+    if (m_max_depth == 0)
+      return 0;
+    return 2 * (llvm::Log2_64(m_max_depth) + 1) + 1;
+  }
+
   /// Mimicks libc++'s __tree_next algorithm, which libc++ uses
   /// in its __tree_iteartor::operator++.
   void next() {
@@ -135,6 +157,7 @@ private:
       return;
     }
     size_t steps = 0;
+    const size_t max_steps = max_tree_height();
     while (!is_left_child(m_entry)) {
       if (m_entry.error()) {
         m_error = true;
@@ -142,7 +165,7 @@ private:
       }
       m_entry.SetEntry(m_entry.parent());
       steps++;
-      if (steps > m_max_depth) {
+      if (steps > max_steps) {
         m_entry = MapEntry();
         return;
       }
@@ -156,6 +179,7 @@ private:
       return MapEntry();
     MapEntry left(x.left());
     size_t steps = 0;
+    const size_t max_steps = max_tree_height();
     while (!left.null()) {
       if (left.error()) {
         m_error = true;
@@ -164,7 +188,7 @@ private:
       x = left;
       left.SetEntry(x.left());
       steps++;
-      if (steps > m_max_depth)
+      if (steps > max_steps)
         return MapEntry();
     }
     return x;
