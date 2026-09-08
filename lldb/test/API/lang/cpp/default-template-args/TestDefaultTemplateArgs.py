@@ -11,6 +11,15 @@ from lldbsuite.test import lldbutil
 @requireExpressionEvaluation
 class TestDefaultTemplateArgs(TestBase):
     @no_debug_info_test
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="This test declares a top-level persistent template ($X) in "
+        "one expression and instantiates it ($X<> / $X<long>) in later ones, "
+        "relying on the decl persisting across expression boundaries. "
+        "TypeSystemClike does not implement persistent type declarations that "
+        "carry across expressions (an intentional, out-of-scope divergence).",
+    )
     def test(self):
         self.build()
         lldbutil.run_to_source_breakpoint(

@@ -15,6 +15,12 @@ class TestSMERegistersDarwin(TestBase):
     @skipUnlessFeature(cpu_feature.AArch64.SME2)
     # thread_set_state/thread_get_state only avail in macOS 15.4+
     @skipIf(macos_version=["<", "15.4"])
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="SME/SVE register expression evaluation is not yet "
+        "supported by TypeSystemClike",
+    )
     def test(self):
         """Test that we can read the contents of the SME/SVE registers on Darwin"""
         self.build()

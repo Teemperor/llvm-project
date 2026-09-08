@@ -20,6 +20,14 @@ class AbiTagStructorsTestCase(TestBase):
     @requireClang
     @expectedFailureAll(oslist=["windows"])
     @requireExpressionEvaluation
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="Calling ABI-tagged constructors/destructors requires "
+        "mangling structor names with their ABI tags, which TypeSystemClike "
+        "intentionally does not implement (an out-of-scope divergence from "
+        "TypeSystemClang).",
+    )
     def test_with_structor_linkage_names(self):
         self.build(dictionary={"CXXFLAGS_EXTRAS": "-gstructor-decl-linkage-names"})
 
@@ -110,6 +118,12 @@ class AbiTagStructorsTestCase(TestBase):
 
         self.expect("expression -- Derived d(16); d", error=True)
 
+    NESTED_STRUCTOR_MANGLING_BUGNUMBER = (
+        "Calling constructors of function-local classes requires function-local "
+        "class structor name mangling, which TypeSystemClike intentionally does "
+        "not implement (an out-of-scope divergence from TypeSystemClang)."
+    )
+
     def do_nested_structor_test(self):
         """
         Test that calling ABI-tagged ctors of function local classes is not supported,
@@ -128,6 +142,8 @@ class AbiTagStructorsTestCase(TestBase):
     @skipIf(compiler=no_match("clang"))
     @expectedFailureAll(oslist=["windows"])
     @requireExpressionEvaluation
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(typesystem_clike="clike", bugnumber=NESTED_STRUCTOR_MANGLING_BUGNUMBER)
     def test_nested_with_structor_linkage_names(self):
         self.build(dictionary={"CXXFLAGS_EXTRAS": "-gstructor-decl-linkage-names"})
         self.do_nested_structor_test()
@@ -135,6 +151,8 @@ class AbiTagStructorsTestCase(TestBase):
     @requireClang
     @expectedFailureAll(oslist=["windows"])
     @requireExpressionEvaluation
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(typesystem_clike="clike", bugnumber=NESTED_STRUCTOR_MANGLING_BUGNUMBER)
     def test_nested_no_structor_linkage_names(self):
         # In older versions of Clang the -gno-structor-decl-linkage-names
         # behaviour was the default.

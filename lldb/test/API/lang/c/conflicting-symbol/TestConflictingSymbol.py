@@ -95,8 +95,9 @@ class TestConflictingSymbols(TestBase):
             substrs=["Multiple internal symbols"],
         )
 
-    @expectedFailureAll(bugnumber="llvm.org/pr35043")
+    @expectedFailureAll(bugnumber="llvm.org/pr35043", typesystem_clike="legacy")
     @skipIfWindows  # This test is "passing" on Windows, but it is a false positive.
+    @add_test_categories(["typesystem-clike"])
     def test_shadowed(self):
         self.build()
         exe = self.getBuildArtifact("a.out")

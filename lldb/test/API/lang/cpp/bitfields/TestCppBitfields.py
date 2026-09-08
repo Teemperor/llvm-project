@@ -51,15 +51,33 @@ class CppBitfieldsTestCase(TestBase):
         )
         self.expect_expr("lbc.c", result_type="unsigned int", result_value="4")
 
-        # Accessing LargeBitsD.
-        self.expect_expr(
-            "lbd",
-            result_children=[
+        # Accessing LargeBitsD. The real gap between `arr` (ends at byte 3,
+        # a byte-aligned but not word-aligned position) and `a` (DWARF-given
+        # DW_AT_data_bit_offset 64) is 40 bits wide -- wider than one 32-bit
+        # storage unit. TypeSystemClike's gap reconstruction fills it with two
+        # synthetic unnamed bitfields (an 8-bit one finishing out the first
+        # word, then a full 32-bit one); TypeSystemClang's independent
+        # reconstruction still rounds the gap's start up to the next 32-bit
+        # word boundary (which happens to not lose any *real* bits here,
+        # unlike the crash this discrepancy was found alongside -- see
+        # other-bugs/typesystemclang-bitfield-gap-word-rounding/README.md),
+        # so it describes the same 32 bits of real gap (32-64) as a single
+        # padding field and leaves the byte-aligned 24-32 span as ordinary,
+        # unrepresented struct padding.
+        if self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue():
+            lbd_children = [
+                ValueCheck(name="arr", type="char[3]", summary='"ab"'),
+                ValueCheck(name="", type="int:8"),
+                ValueCheck(name="", type="int:32"),
+                ValueCheck(name="a", type="unsigned int:20", value="5"),
+            ]
+        else:
+            lbd_children = [
                 ValueCheck(name="arr", type="char[3]", summary='"ab"'),
                 ValueCheck(name="", type="int:32"),
                 ValueCheck(name="a", type="unsigned int:20", value="5"),
-            ],
-        )
+            ]
+        self.expect_expr("lbd", result_children=lbd_children)
         self.expect_expr("lbd.a", result_type="unsigned int", result_value="5")
 
         # Test BitfieldsInStructInUnion.
