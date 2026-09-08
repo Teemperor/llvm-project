@@ -1,7 +1,7 @@
 // XFAIL: *
 
 // RUN: %clang --target=x86_64-apple-macosx -c -gdwarf -o %t %s
-// RUN: %lldb %t \
+// RUN: %lldb -O "settings set symbols.enable-typesystem-clike false" %t \
 // RUN:   -o "expr alignof(OverlappingFields)" \
 // RUN:   -o "expr sizeof(OverlappingFields)" \
 // RUN:   -o exit | FileCheck %s
