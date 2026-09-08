@@ -13,6 +13,7 @@
 #include "lldb/Target/Language.h"
 #include "lldb/Target/Target.h"
 #include "lldb/Utility/Log.h"
+#include "lldb/Utility/Status.h"
 #include "lldb/Utility/Stream.h"
 #include "lldb/ValueObject/ValueObject.h"
 #include "llvm/Support/Error.h"
@@ -737,6 +738,18 @@ void ValueObjectPrinter::PrintChildren(
           any_children_printed = true;
         }
         PrintChild(child_sp, curr_ptr_depth);
+      } else if (Status child_error = synth_valobj.GetChildErrorAtIndex(idx);
+                 child_error.Fail()) {
+        // The child couldn't be created (as opposed to `idx` simply being
+        // out of range): surface why, e.g. a pointer to a type that is
+        // never defined in any compile unit's debug info.
+        if (!any_children_printed) {
+          PrintChildrenPreamble(value_printed, summary_printed);
+          any_children_printed = true;
+        }
+        if (!m_options.m_flat_output)
+          m_stream->Indent();
+        *m_stream << "<" << child_error.AsCString() << ">\n";
       }
     }
 
