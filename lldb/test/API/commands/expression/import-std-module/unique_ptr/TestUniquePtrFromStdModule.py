@@ -8,6 +8,9 @@ from lldbsuite.test import lldbutil
 
 
 class TestUniquePtr(TestBase):
+    def setUp(self):
+        TestBase.setUp(self)
+
     @add_test_categories(["libc++"])
     @skipIf(compiler=no_match("clang"))
     @skipIf(compiler="clang", compiler_version=["<", "9.0"])

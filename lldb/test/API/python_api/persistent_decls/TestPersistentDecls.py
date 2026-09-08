@@ -6,7 +6,7 @@ and values.
 
 import lldb
 import lldbsuite.test.lldbutil as lldbutil
-from lldbsuite.test.decorators import skipIfWasm
+from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 
 
@@ -20,6 +20,12 @@ class TestPersistentDecls(TestBase):
         self.main_source_file = lldb.SBFileSpec("main.c")
         self.types_test()
 
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="persistent expression declarations across expressions "
+        "are not supported by TypeSystemClike",
+    )
     def test_persistent_values(self):
         """Define some values in the expression evaluator and find them."""
         self.build()
