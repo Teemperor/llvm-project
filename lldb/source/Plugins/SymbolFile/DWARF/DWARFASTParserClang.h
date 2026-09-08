@@ -85,6 +85,19 @@ public:
 
   lldb_private::ClangASTImporter &GetClangASTImporter();
 
+  bool CanCompleteTypeFromImporter(
+      const lldb_private::CompilerType &compiler_type) override;
+
+  bool CompleteTypeFromImporter(
+      const lldb_private::CompilerType &compiler_type) override;
+
+  void *GetCachedDeclContext(
+      const lldb_private::plugin::dwarf::DWARFDIE &die) override;
+
+  void LinkCachedDeclContextToDIE(
+      void *decl_ctx,
+      const lldb_private::plugin::dwarf::DWARFDIE &die) override;
+
   /// Extracts an value for a given Clang integer type from a DWARFFormValue.
   ///
   /// \param int_type The Clang type that defines the bit size and signedness
@@ -115,7 +128,8 @@ public:
   GetDIEClassTemplateParams(lldb_private::plugin::dwarf::DWARFDIE die) override;
 
   void MapDeclDIEToDefDIE(const lldb_private::plugin::dwarf::DWARFDIE &decl_die,
-                          const lldb_private::plugin::dwarf::DWARFDIE &def_die);
+                          const lldb_private::plugin::dwarf::DWARFDIE &def_die)
+      override;
 
   /// Get the object parameter DIE if one exists, otherwise returns
   /// a default DWARFDIE.

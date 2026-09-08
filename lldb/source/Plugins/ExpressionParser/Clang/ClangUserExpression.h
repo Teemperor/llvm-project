@@ -63,7 +63,7 @@ public:
 
     /// Return the object that the parser should use when resolving external
     /// values.  May be NULL if everything should be self-contained.
-    ClangExpressionDeclMap *DeclMap() override {
+    ExpressionDeclMap *DeclMap() override {
       return m_expr_decl_map_up.get();
     }
 
@@ -85,15 +85,33 @@ public:
 
     void CommitPersistentDecls() override;
 
+    /// Remember the raw source of the top-level expression currently being
+    /// parsed (along with the synthetic file name it is parsed under), so
+    /// CommitPersistentDecls can stash it (keyed by the names it declared) for
+    /// later textual re-injection. The file name is preserved so a later
+    /// expression that re-injects this source can restore its original
+    /// file/line via a `#line` directive (used for diagnostics).
+    /// See ClangPersistentVariables::RegisterTopLevelSource.
+    void SetPendingTopLevelSource(std::string source, std::string filename) {
+      m_pending_top_level_source = std::move(source);
+      m_pending_top_level_filename = std::move(filename);
+    }
+
   private:
     Target &m_target;
-    std::unique_ptr<ClangExpressionDeclMap> m_expr_decl_map_up;
+    std::unique_ptr<ExpressionDeclMap> m_expr_decl_map_up;
     std::unique_ptr<ASTStructExtractor> m_struct_extractor_up; ///< The class
                                                                ///that generates
                                                                ///the argument
                                                                ///struct layout.
     std::unique_ptr<ASTResultSynthesizer> m_result_synthesizer_up;
     bool m_top_level;
+    /// Raw source of the top-level expression being parsed (see
+    /// SetPendingTopLevelSource); consumed by CommitPersistentDecls.
+    std::string m_pending_top_level_source;
+    /// Synthetic file name the top-level expression is parsed under (e.g.
+    /// "<user expression 8>"); stashed together with the source above.
+    std::string m_pending_top_level_filename;
   };
 
   /// Constructor
@@ -159,7 +177,7 @@ public:
     return &m_type_system_helper;
   }
 
-  ClangExpressionDeclMap *DeclMap() { return m_type_system_helper.DeclMap(); }
+  ExpressionDeclMap *DeclMap() { return m_type_system_helper.DeclMap(); }
 
   void ResetDeclMap() { m_type_system_helper.ResetDeclMap(); }
 

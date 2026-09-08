@@ -23,7 +23,7 @@ class ASTConsumer;
 
 namespace lldb_private {
 
-class ClangExpressionDeclMap;
+class ExpressionDeclMap;
 
 // ClangExpressionHelper
 class ClangExpressionHelper
@@ -35,7 +35,7 @@ public:
 
   /// Return the object that the parser should use when resolving external
   /// values.  May be NULL if everything should be self-contained.
-  virtual ClangExpressionDeclMap *DeclMap() = 0;
+  virtual ExpressionDeclMap *DeclMap() = 0;
 
   /// Return the object that the parser should allow to access ASTs.
   /// May be NULL if the ASTs do not need to be transformed.

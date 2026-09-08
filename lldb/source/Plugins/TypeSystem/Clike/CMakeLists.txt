@@ -1,0 +1,29 @@
+add_lldb_library(lldbPluginTypeSystemClike PLUGIN
+  Builder.cpp
+  BuiltinTypes.cpp
+  Context.cpp
+  Identifier.cpp
+  LanguageOpts.cpp
+  Namespace.cpp
+  ObjCMethodSignature.cpp
+  ScratchTypeSystemClike.cpp
+  Type.cpp
+  TypeC.cpp
+  TypeCpp.cpp
+  TypeName.cpp
+  TypeObjC.cpp
+  TypeSystemClike.cpp
+
+  LINK_COMPONENTS
+    Support
+  LINK_LIBS
+    lldbCore
+    lldbSymbol
+    lldbTarget
+    lldbUtility
+    lldbPluginExpressionParserClang
+    lldbPluginSymbolFileDWARF
+    lldbPluginObjCRuntime
+  CLANG_LIBS
+    clangBasic
+)
