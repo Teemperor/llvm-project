@@ -11,6 +11,10 @@ from lldbsuite.test import lldbutil
 
 class TestObjCRuntimeName(TestBase):
     @skipIf(compiler="clang", compiler_version=["<", "22.0"])
+    @add_test_categories(["typesystem-clike"])
+    # DWARFASTParserClike doesn't read the objc_runtime_name annotation yet, so
+    # the class/ivar symbols are looked up under the source name.
+    @expectedFailureAll(typesystem_clike="clike")
     def test(self):
         self.build()
         lldbutil.run_to_source_breakpoint(self, "break here", lldb.SBFileSpec("main.m"))
