@@ -19,6 +19,7 @@ class FoundationTestCaseNSError(TestBase):
     def test_runtime_types(self):
         """Test commands that require runtime types"""
         self.build()
+
         self.target, process, thread, bkpt = lldbutil.run_to_source_breakpoint(
             self, "// Break here for NSString tests", lldb.SBFileSpec("main.m", False)
         )

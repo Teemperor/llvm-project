@@ -208,7 +208,7 @@ class DynamicValueTestCase(TestBase):
 
         self.assertTrue(this_dynamic)
         this_dynamic_typename = this_dynamic.GetTypeName()
-        self.assertNotEqual(this_dynamic_typename.find("B"), -1)
+        self.assertNotEqual(this_dynamic_typename.find("B"), -1, this_dynamic_typename)
         this_dynamic_loc = int(this_dynamic.GetValue(), 16)
 
         # Make sure we got the right address for "this"
