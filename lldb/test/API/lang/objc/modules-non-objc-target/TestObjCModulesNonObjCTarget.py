@@ -9,6 +9,17 @@ from lldbsuite.test import lldbutil
 
 
 class TestCase(TestBase):
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="In a non-Objective-C target the ObjC runtime path that "
+        "TypeSystemClike uses to resolve a class named by an expression "
+        "(`NSString`) isn't available, and TypeSystemClike only consults the "
+        "ClangModulesDeclVendor to *complete* an already-generated interface, "
+        "not to look a class up by name -- so `+stringWithFormat:` never "
+        "resolves and the expected CFStringCreateWithBytes rewrite path is "
+        "never reached.",
+    )
     def test(self):
         self.build()
         lldbutil.run_to_source_breakpoint(

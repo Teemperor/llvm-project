@@ -138,8 +138,9 @@ class TestCase(TestBase):
         # Test that the virtual bases are correct when v(b)table pointer is offset.
         self.expect_expr("j3", result_type="Joiner3", result_children=children)
 
-    @expectedFailureAll
+    @expectedFailureAll(typesystem_clike="legacy")
     @no_debug_info_test
+    @add_test_categories(["typesystem-clike"])
     def test_invalid_member(self):
         self.build()
         lldbutil.run_to_source_breakpoint(
