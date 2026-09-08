@@ -11,6 +11,7 @@
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/DebuggerEvents.h"
 #include "lldb/Core/Module.h"
+#include "lldb/Core/ModuleList.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/Section.h"
 #include "lldb/Expression/DiagnosticManager.h"
@@ -55,6 +56,7 @@
 #include "AppleObjCRuntimeV2.h"
 #include "AppleObjCTrampolineHandler.h"
 #include "AppleObjCTypeEncodingParser.h"
+#include "ClikeObjCDeclVendor.h"
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclObjC.h"
@@ -2892,8 +2894,18 @@ void AppleObjCRuntimeV2::WarnIfNoExpandedSharedCache() {
 }
 
 DeclVendor *AppleObjCRuntimeV2::GetDeclVendor() {
-  if (!m_decl_vendor_up)
-    m_decl_vendor_up = std::make_unique<AppleObjCDeclVendor>(*this);
+  if (!m_decl_vendor_up) {
+    // ClikeObjCDeclVendor never instantiates a TypeSystemClang (it hands out
+    // TypeSystemClike CompilerTypes instead), unlike AppleObjCDeclVendor. It
+    // can't serve ClangASTSource's legacy ObjC expression-parsing lookups,
+    // but those never run once symbols.experimental.enable-typesystem-clike
+    // installs ClikeExpressionDeclMap instead of ClangExpressionDeclMap -- see
+    // ClikeObjCDeclVendor.h for details.
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike())
+      m_decl_vendor_up = std::make_unique<ClikeObjCDeclVendor>(*this);
+    else
+      m_decl_vendor_up = std::make_unique<AppleObjCDeclVendor>(*this);
+  }
 
   return m_decl_vendor_up.get();
 }
