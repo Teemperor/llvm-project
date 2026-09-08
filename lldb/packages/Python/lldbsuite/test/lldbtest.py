@@ -870,8 +870,7 @@ class Base(unittest.TestCase):
         """Return ports available for connection to a lldb server on the remote platform."""
         return configuration.lldb_platform_available_ports
 
-    @classmethod
-    def setUpCommands(cls):
+    def setUpCommands(self):
         commands = [
             # First of all, clear all settings to have clean state of global properties.
             "settings clear --all",
@@ -900,18 +899,31 @@ class Base(unittest.TestCase):
             "settings set target.check-vo-ownership true",
         ]
 
+        # Apply variant-specific settings. Needed here (in addition to the
+        # runCmd-based application in Base.setUp) so that tests that launch a
+        # separate process controlled via these commands (e.g. lldb-dap tests,
+        # which spawn a standalone lldb-dap subprocess configured via
+        # pre_init_commands) still get e.g. the typesystem_clike axis applied
+        # to that process, not just to self.dbg.
+        for variant in _test_variants:
+            variant_value = self.getVariant(variant.name)
+            if variant_value is not None:
+                command = variant.get_settings_command(variant_value)
+                if command:
+                    commands.append(command)
+
         # Set any user-overridden settings.
         for setting, value in configuration.settings:
             commands.append("setting set -- %s %s" % (setting, value))
 
         # Make sure that a sanitizer LLDB's environment doesn't get passed on.
         if (
-            cls.platformContext
-            and cls.platformContext.shlib_environment_var in os.environ
+            self.platformContext
+            and self.platformContext.shlib_environment_var in os.environ
         ):
             commands.append(
                 "settings set target.env-vars {}=".format(
-                    cls.platformContext.shlib_environment_var
+                    self.platformContext.shlib_environment_var
                 )
             )
 
@@ -1031,6 +1043,15 @@ class Base(unittest.TestCase):
 
         # And the result object.
         self.res = lldb.SBCommandReturnObject()
+
+        # Apply variant-specific settings. Done here (not only in
+        # TestBase.setUp) so that NO_DEBUG_INFO_TESTCASE bases that don't
+        # derive from TestBase (e.g. DAPTestCaseBase, which derives from Base
+        # directly) still get e.g. the typesystem_clike axis applied.
+        for variant in _test_variants:
+            variant_value = self.getVariant(variant.name)
+            if variant_value is not None:
+                variant.apply_settings(self, variant_value)
 
         self.setPlatformWorkingDir()
         self.enableLogChannelsForCurrentTest()
@@ -1619,7 +1640,7 @@ class Base(unittest.TestCase):
         return False
 
     def getVariant(self, variant_name):
-        method = getattr(self, self.testMethodName)
+        method = getattr(self, self._testMethodName)
         return getattr(method, variant_name, None)
 
     def getDebugInfo(self):
@@ -1984,7 +2005,13 @@ class TestVariant:
     """
 
     def __init__(
-        self, name, values, predicate=None, setup_fn=None, attrs_to_preserve=()
+        self,
+        name,
+        values,
+        predicate=None,
+        setup_fn=None,
+        settings_command_fn=None,
+        attrs_to_preserve=(),
     ):
         """Create a new test variant dimension.
 
@@ -2001,8 +2028,13 @@ class TestVariant:
                 given, only methods for which the predicate returns `True`
                 are expanded.  `None` means *every* test method is expanded.
             setup_fn: Optional callable `(test_instance, variant_value)`
-                invoked from `TestBase.setUp` to apply run-time
-                configuration for the given variant value.
+                invoked from `Base.setUp` to apply run-time configuration
+                for the given variant value to `test_instance.dbg`.
+            settings_command_fn: Optional callable `(variant_value) -> str |
+                None` returning a `settings set` command (or `None`) to apply
+                the same configuration to a *separate* lldb/lldb-dap process
+                launched via `TestBase.setUpCommands()` (e.g. an lldb-dap
+                subprocess), which isn't reachable through `test_instance.dbg`.
             attrs_to_preserve: Tuple of attribute names that should be copied
                 from the source method to each expanded copy (e.g.
                 `("debug_info",)` so that a second-pass variant preserves
@@ -2012,6 +2044,7 @@ class TestVariant:
         self.values = values
         self.predicate = predicate
         self.setup_fn = setup_fn
+        self.settings_command_fn = settings_command_fn
         self.attrs_to_preserve = attrs_to_preserve
 
     def should_expand(self, test_method):
@@ -2028,6 +2061,13 @@ class TestVariant:
         """Configure *test_instance* for *variant_value* via the setup_fn."""
         if self.setup_fn:
             self.setup_fn(test_instance, variant_value)
+
+    def get_settings_command(self, variant_value):
+        """Return a `settings set` command applying *variant_value*, for a
+        separately-launched process configured via `setUpCommands()`."""
+        if self.settings_command_fn:
+            return self.settings_command_fn(variant_value)
+        return None
 
 
 def _expand_test_variants(attrname, methods, variant, xfail_fns, skip_fns):
@@ -2114,12 +2154,19 @@ def _apply_typesystem_clike_setting(test_instance, value):
     )
 
 
+def _typesystem_clike_settings_command(value):
+    return "settings set symbols.enable-typesystem-clike %s" % (
+        "true" if value == "clike" else "false"
+    )
+
+
 _test_variants.append(
     TestVariant(
         name="typesystem_clike",
         values={"clike": True, "legacy": True},
         predicate=_is_typesystem_clike_test,
         setup_fn=_apply_typesystem_clike_setting,
+        settings_command_fn=_typesystem_clike_settings_command,
     )
 )
 
