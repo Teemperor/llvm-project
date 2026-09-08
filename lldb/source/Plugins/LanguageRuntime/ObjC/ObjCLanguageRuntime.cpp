@@ -150,9 +150,20 @@ ObjCLanguageRuntime::LookupInCompleteClassCache(ConstString &name) {
     TypeResults results;
     module_sp->FindTypes(query, results);
     for (const TypeSP &type_sp : results.GetTypeMap().Types()) {
-      if (TypeSystemClang::IsObjCObjectOrInterfaceType(
-              type_sp->GetForwardCompilerType())) {
+      CompilerType fwd_type = type_sp->GetForwardCompilerType();
+      if (TypeSystemClang::IsObjCObjectOrInterfaceType(fwd_type)) {
         if (TypePayloadClang(type_sp->GetPayload()).IsCompleteObjCClass()) {
+          m_complete_class_cache[name] = type_sp;
+          return type_sp;
+        }
+        continue;
+      }
+      // TypeSystemClike models ObjC classes as ObjCInterfaceType (not a
+      // clang::ObjCInterfaceType) and does not use the clang type payload.
+      // Accept any ObjC struct/union type whose full definition is available.
+      if ((fwd_type.GetTypeInfo() & lldb::eTypeIsObjC) &&
+          (fwd_type.GetTypeInfo() & lldb::eTypeIsStructUnion)) {
+        if (type_sp->GetFullCompilerType().IsCompleteType()) {
           m_complete_class_cache[name] = type_sp;
           return type_sp;
         }
@@ -490,7 +501,23 @@ ObjCLanguageRuntime::GetRuntimeType(CompilerType base_type) {
   CompilerType class_type;
   bool is_pointer_type = false;
 
-  if (TypeSystemClang::IsObjCObjectPointerType(base_type, &class_type))
+  // Prefer the TypeSystem-neutral check (eTypeIsObjC) so this also covers
+  // TypeSystemClike's ObjCInterfaceType, which is not a clang type and so never
+  // matches TypeSystemClang::IsObjCObjectPointerType /
+  // IsObjCObjectOrInterfaceType (both bail out immediately on a non-clang
+  // CompilerType). `id`/`Class` are excluded (as the clang check above did
+  // via isObjCClassType()/isObjCIdType()): there is no concrete interface to
+  // look up a complete definition for.
+  CompilerType pointee;
+  if (base_type.IsPointerType(&pointee) && pointee.IsValid() &&
+      (pointee.GetTypeInfo() & lldb::eTypeIsObjC) &&
+      (pointee.GetTypeInfo() & lldb::eTypeIsStructUnion)) {
+    class_type = pointee;
+    is_pointer_type = true;
+  } else if ((base_type.GetTypeInfo() & lldb::eTypeIsObjC) &&
+             (base_type.GetTypeInfo() & lldb::eTypeIsStructUnion)) {
+    class_type = base_type;
+  } else if (TypeSystemClang::IsObjCObjectPointerType(base_type, &class_type))
     is_pointer_type = true;
   else if (TypeSystemClang::IsObjCObjectOrInterfaceType(base_type))
     class_type = base_type;
