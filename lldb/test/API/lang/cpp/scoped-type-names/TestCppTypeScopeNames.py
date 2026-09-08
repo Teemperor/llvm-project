@@ -163,6 +163,7 @@ class TestCppTypeScopeNames(TestBase):
         self.assertEqual(mismatches, [], "\n" + "\n".join(mismatches))
 
     @no_debug_info_test
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         self.check_types(EXPECTED)
 
@@ -170,12 +171,14 @@ class TestCppTypeScopeNames(TestBase):
     # 'tmpl_func<int>(int)::A_tmpl_func::B'.
     @expectedFailureAll(oslist=["windows"])
     @no_debug_info_test
+    @add_test_categories(["typesystem-clike"])
     def test_tmpl_func_scope(self):
         self.check_types(EXPECTED_TMPL_FUNC)
 
-    # FIXME: LLDB merges same-named local classes from different functions, so
-    # g_collide2 is reported as 'collide1()::Same::B'.
-    @expectedFailureAll
+    # FIXME: TypeSystemClang merges same-named local classes from different
+    # functions, so g_collide2 is reported as 'collide1()::Same::B'.
+    @expectedFailureAll(clike_typesystem=False)
     @no_debug_info_test
+    @add_test_categories(["typesystem-clike"])
     def test_colliding_local_classes(self):
         self.check_types(EXPECTED_COLLIDING)
