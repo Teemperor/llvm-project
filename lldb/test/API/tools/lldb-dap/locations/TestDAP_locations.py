@@ -15,6 +15,11 @@ class TestDAP_locations(DAPTestCaseBase):
         bugnumber="https://github.com/llvm/llvm-project/issues/203127", archs=["arm64e"]
     )
     @skipIfWasm  # a Wasm function pointer is a table index, not a code address
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="the 'locations' request is not yet supported by TypeSystemClike",
+    )
     def test_locations(self):
         """
         Tests the 'locations' request.

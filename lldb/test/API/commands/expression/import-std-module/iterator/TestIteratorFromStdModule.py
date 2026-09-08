@@ -28,9 +28,12 @@ class TestCase(TestBase):
 
         self.expect_expr("move_begin + 3 == move_end", result_value="true")
 
-    @add_test_categories(["libc++"])
+    @add_test_categories(["libc++", "typesystem-clike"])
     @requireClang
-    @expectedFailureAll(bugnumber="https://github.com/llvm/llvm-project/issues/149477")
+    @expectedFailureAll(
+        bugnumber="https://github.com/llvm/llvm-project/issues/149477",
+        typesystem_clike="legacy",
+    )
     @skipIf(macos_sdk_version=["<", "16.0"])
     def test_xfail(self):
         self.build()

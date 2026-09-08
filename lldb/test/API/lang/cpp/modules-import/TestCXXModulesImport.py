@@ -10,6 +10,12 @@ from lldbsuite.test import lldbutil
 
 
 class CXXModulesImportTestCase(TestBase):
+    CLANG_IMPORT_MODULES_BUGNUMBER = (
+        "This test relies on clang `@import` module support "
+        "(ClangModulesDeclVendor), which TypeSystemClike intentionally does "
+        "not implement, so skip it in that configuration."
+    )
+
     def build(self):
         include = self.getBuildArtifact("include")
         lldbutil.mkdir_p(include)
@@ -22,6 +28,8 @@ class CXXModulesImportTestCase(TestBase):
     @requireDarwin
     @skipIf(macos_version=["<", "10.12"])
     @skipIf(compiler="clang", compiler_version=["<", "14.0"])
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(typesystem_clike="clike", bugnumber=CLANG_IMPORT_MODULES_BUGNUMBER)
     def test_expr(self):
         self.build()
         target, process, thread, bkpt = lldbutil.run_to_source_breakpoint(
@@ -37,6 +45,8 @@ class CXXModulesImportTestCase(TestBase):
     @requireDarwin
     @skipIf(macos_version=["<", "10.12"])
     @skipIf(compiler="clang", compiler_version=["<", "14.0"])
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(typesystem_clike="clike", bugnumber=CLANG_IMPORT_MODULES_BUGNUMBER)
     def test_expr_failing_import(self):
         self.build()
         shutil.rmtree(self.getBuildArtifact("include"))
