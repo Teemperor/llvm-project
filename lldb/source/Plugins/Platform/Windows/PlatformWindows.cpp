@@ -36,7 +36,7 @@
 #include "lldb/Target/Process.h"
 #include "lldb/Utility/ErrorMessages.h"
 #include "lldb/Utility/Status.h"
-
+#include "lldb/ValueObject/ValueObject.h"
 #include "llvm/ADT/ScopeExit.h"
 #include "llvm/Support/ConvertUTF.h"
 #include "llvm/Support/Error.h"
