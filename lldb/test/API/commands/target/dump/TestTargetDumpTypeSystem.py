@@ -6,6 +6,18 @@ import lldbsuite.test.lldbutil as lldbutil
 
 class TestCase(TestBase):
     @no_debug_info_test
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="This test's last check assumes an implementation detail of "
+        "TypeSystemClang: evaluating `expr s` deports (via the ASTImporter) a "
+        "copy of DummyStruct into the *scratch* AST, which is what `target "
+        "dump typesystem` prints. TypeSystemClike has no ASTImporter; by "
+        "design the expression result maps back onto the DummyStruct type "
+        "owned by the *module's* TypeSystemClike (to preserve lazy completion "
+        "-- see ClangTypeConverter::ConvertViaReverseMap), so nothing is ever "
+        "copied into the scratch TypeSystemClike and it correctly stays empty.",
+    )
     def test_dumping(self):
         """Tests dumping an empty and non-empty scratch AST."""
         self.build()
