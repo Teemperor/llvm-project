@@ -58,7 +58,16 @@ class TestTemplateWithSameArg(TestBase):
             ],
         )
 
-    @add_test_categories(["gmodules"])
+    @add_test_categories(["gmodules", "typesystem-clike"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="The rest of this test FileChecks `target module dump ast`, "
+        "which dumps the persistent Clang AST that TypeSystemClang populates "
+        "from debug info via the ASTImporter. TypeSystemClike does not build "
+        "such a persistent Clang AST (it synthesizes one on demand only for "
+        "expressions), so the module AST dump is empty and this "
+        "redeclaration-chain check does not apply.",
+    )
     def test_duplicate_decls(self):
         lldbutil.run_to_source_breakpoint(self, "return 0", self.main_source_file)
 
