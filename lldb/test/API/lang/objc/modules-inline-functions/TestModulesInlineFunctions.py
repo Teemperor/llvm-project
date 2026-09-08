@@ -8,8 +8,17 @@ from lldbsuite.test import lldbutil
 
 
 class ModulesInlineFunctionsTestCase(TestBase):
-    @add_test_categories(["gmodules"])
+    @add_test_categories(["gmodules", "typesystem-clike"])
     @skipIf(macos_version=["<", "10.12"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="TypeSystemClike can transport a module function's signature "
+        "from the ClangModulesDeclVendor, but it binds the call to the "
+        "function's symbol in the target. An *inline* module function "
+        "(isInline, notInline here) is not emitted as a symbol, so there is "
+        "nothing to bind to -- transporting the body itself (as the "
+        "ASTImporter path does) is not implemented.",
+    )
     def test_expr(self):
         self.build()
         exe = self.getBuildArtifact("a.out")

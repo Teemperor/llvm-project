@@ -161,7 +161,12 @@ candidate function not viable: requires single argument 'x', but 2 arguments wer
             value.GetError().GetCString(),
         )
 
-    @add_test_categories(["objc"])
+    @add_test_categories(["objc", "typesystem-clike"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="Relies on `@import Foundation` (Clang @import modules), which "
+        "TypeSystemClike does not support.",
+    )
     def test_source_locations_from_objc_modules(self):
         self.build()
 

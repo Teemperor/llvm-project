@@ -10,6 +10,17 @@ from lldbsuite.test import decorators
 
 
 class TestCase(TestBase):
+    @decorators.add_test_categories(["typesystem-clike"])
+    @decorators.skipIf(
+        typesystem_clike="clike",
+        bugnumber="This test relies on a top-level template declared in one "
+        "expression (`template <typename T> struct X { ... };`) persisting "
+        "into the next expression so `X<int>` can be instantiated. "
+        "TypeSystemClang commits such top-level decls into its scratch AST; "
+        "TypeSystemClike does not implement persistent type declarations that "
+        "carry across expression boundaries (an intentional, out-of-scope "
+        "divergence), so skip there.",
+    )
     def test_typedef(self):
         target = self.dbg.GetDummyTarget()
 

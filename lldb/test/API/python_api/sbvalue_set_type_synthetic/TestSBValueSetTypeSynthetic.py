@@ -9,6 +9,12 @@ from typing import Union
 class TestCase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(
+        typesystem_clike="clike",
+        bugnumber="SBValue::SetType / synthetic-type interrogation not yet "
+        "supported by TypeSystemClike",
+    )
     def test(self):
         self.build()
         target, _, thread, _ = lldbutil.run_to_source_breakpoint(
