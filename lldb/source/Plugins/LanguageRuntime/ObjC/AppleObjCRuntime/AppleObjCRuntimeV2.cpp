@@ -7,11 +7,11 @@
 //===----------------------------------------------------------------------===//
 
 #include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/DebuggerEvents.h"
 #include "lldb/Core/Module.h"
+#include "lldb/Core/ModuleList.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Core/Section.h"
 #include "lldb/Expression/DiagnosticManager.h"
@@ -56,6 +56,7 @@
 #include "AppleObjCRuntimeV2.h"
 #include "AppleObjCTrampolineHandler.h"
 #include "AppleObjCTypeEncodingParser.h"
+#include "ClikeObjCDeclVendor.h"
 
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/DeclObjC.h"
@@ -934,7 +935,7 @@ bool AppleObjCRuntimeV2::GetDynamicTypeAndAddress(
           objc_class_sp->SetType(type_sp);
           class_type_or_name.SetTypeSP(type_sp);
         } else {
-          // try to go for a CompilerType at least
+          // Try to go for a CompilerType at least.
           if (auto *vendor = GetDeclVendor()) {
             auto types = vendor->FindTypes(class_name, /*max_matches*/ 1);
             if (!types.empty())
@@ -1909,6 +1910,22 @@ uint64_t AppleObjCRuntimeV2::SharedCacheImageHeaders::GetVersion() {
   return m_version;
 }
 
+/// The target's scratch type system for C. This may be a ScratchTypeSystemClang
+/// or -- when the setting is on -- a ScratchTypeSystemClike; the runtime only uses
+/// the language-neutral TypeSystem API (builtin/basic/pointer types) on it, so
+/// either works. Using the generic scratch keeps the runtime from depending on
+/// a ScratchTypeSystemClang existing (there is none when TypeSystemClike owns the
+/// scratch slot).
+static lldb::TypeSystemSP GetScratchTypeSystemForObjCRuntime(Target &target) {
+  auto ts_or_err =
+      target.GetScratchTypeSystemForLanguage(lldb::eLanguageTypeC);
+  if (!ts_or_err) {
+    llvm::consumeError(ts_or_err.takeError());
+    return nullptr;
+  }
+  return *ts_or_err;
+}
+
 std::unique_ptr<UtilityFunction>
 AppleObjCRuntimeV2::DynamicClassInfoExtractor::GetClassInfoUtilityFunctionImpl(
     ExecutionContext &exe_ctx, Helper helper, std::string code,
@@ -1917,8 +1934,8 @@ AppleObjCRuntimeV2::DynamicClassInfoExtractor::GetClassInfoUtilityFunctionImpl(
 
   LLDB_LOG(log, "Creating utility function {0}", name);
 
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(exe_ctx.GetTargetRef());
+  lldb::TypeSystemSP scratch_ts_sp =
+      GetScratchTypeSystemForObjCRuntime(exe_ctx.GetTargetRef());
   if (!scratch_ts_sp)
     return {};
 
@@ -1935,7 +1952,7 @@ AppleObjCRuntimeV2::DynamicClassInfoExtractor::GetClassInfoUtilityFunctionImpl(
   CompilerType clang_uint32_t_type =
       scratch_ts_sp->GetBuiltinTypeForEncodingAndBitSize(eEncodingUint, 32);
   CompilerType clang_void_pointer_type =
-      scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
 
   // Make the runner function for our implementation utility function.
   ValueList arguments;
@@ -2058,8 +2075,8 @@ AppleObjCRuntimeV2::SharedCacheClassInfoExtractor::
   LLDB_LOG(log, "Creating utility function {0}",
            g_get_shared_cache_class_info_name);
 
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(exe_ctx.GetTargetRef());
+  lldb::TypeSystemSP scratch_ts_sp =
+      GetScratchTypeSystemForObjCRuntime(exe_ctx.GetTargetRef());
   if (!scratch_ts_sp)
     return {};
 
@@ -2100,7 +2117,7 @@ AppleObjCRuntimeV2::SharedCacheClassInfoExtractor::
   CompilerType clang_uint32_t_type =
       scratch_ts_sp->GetBuiltinTypeForEncodingAndBitSize(eEncodingUint, 32);
   CompilerType clang_void_pointer_type =
-      scratch_ts_sp->GetBasicType(eBasicTypeVoid).GetPointerType();
+      scratch_ts_sp->GetBasicTypeFromAST(eBasicTypeVoid).GetPointerType();
   CompilerType clang_uint64_t_pointer_type =
       scratch_ts_sp->GetBuiltinTypeForEncodingAndBitSize(eEncodingUint, 64)
           .GetPointerType();
@@ -2179,8 +2196,8 @@ AppleObjCRuntimeV2::DynamicClassInfoExtractor::UpdateISAToDescriptorMap(
     return DescriptorMapUpdateResult::Retry();
 
   thread_sp->CalculateExecutionContext(exe_ctx);
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(process->GetTarget());
+  lldb::TypeSystemSP scratch_ts_sp =
+      GetScratchTypeSystemForObjCRuntime(process->GetTarget());
 
   if (!scratch_ts_sp)
     return DescriptorMapUpdateResult::Fail();
@@ -2444,8 +2461,8 @@ AppleObjCRuntimeV2::SharedCacheClassInfoExtractor::UpdateISAToDescriptorMap() {
     return DescriptorMapUpdateResult::Retry();
 
   thread_sp->CalculateExecutionContext(exe_ctx);
-  TypeSystemClangSP scratch_ts_sp =
-      ScratchTypeSystemClang::GetForTarget(process->GetTarget());
+  lldb::TypeSystemSP scratch_ts_sp =
+      GetScratchTypeSystemForObjCRuntime(process->GetTarget());
 
   if (!scratch_ts_sp)
     return DescriptorMapUpdateResult::Fail();
@@ -2882,8 +2899,18 @@ void AppleObjCRuntimeV2::WarnIfNoExpandedSharedCache() {
 }
 
 DeclVendor *AppleObjCRuntimeV2::GetDeclVendor() {
-  if (!m_decl_vendor_up)
-    m_decl_vendor_up = std::make_unique<AppleObjCDeclVendor>(*this);
+  if (!m_decl_vendor_up) {
+    // ClikeObjCDeclVendor never instantiates a TypeSystemClang (it hands out
+    // TypeSystemClike CompilerTypes instead), unlike AppleObjCDeclVendor. It
+    // can't serve ClangASTSource's legacy ObjC expression-parsing lookups,
+    // but those never run once symbols.enable-typesystem-clike installs
+    // ClikeExpressionDeclMap instead of ClangExpressionDeclMap -- see
+    // ClikeObjCDeclVendor.h for details.
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike())
+      m_decl_vendor_up = std::make_unique<ClikeObjCDeclVendor>(*this);
+    else
+      m_decl_vendor_up = std::make_unique<AppleObjCDeclVendor>(*this);
+  }
 
   return m_decl_vendor_up.get();
 }
@@ -3609,12 +3636,12 @@ public:
     if (!abi)
       return;
 
-    TypeSystemClangSP scratch_ts_sp =
-        ScratchTypeSystemClang::GetForTarget(process_sp->GetTarget());
+    lldb::TypeSystemSP scratch_ts_sp =
+        GetScratchTypeSystemForObjCRuntime(process_sp->GetTarget());
     if (!scratch_ts_sp)
       return;
     CompilerType voidstar =
-        scratch_ts_sp->GetBasicType(lldb::eBasicTypeVoid).GetPointerType();
+        scratch_ts_sp->GetBasicTypeFromAST(lldb::eBasicTypeVoid).GetPointerType();
 
     ValueList args;
     Value input_value;
