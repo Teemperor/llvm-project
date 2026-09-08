@@ -523,11 +523,18 @@ ValueObject *ValueObject::CreateChildAtIndex(size_t idx) {
   auto child_or_err = GetCompilerType().GetChildAtIndex(
       &exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
       ignore_array_bounds, this);
-  if (!child_or_err || !child_or_err->type.IsValid()) {
-    LLDB_LOG_ERROR(GetLog(LLDBLog::Types), child_or_err.takeError(),
+  if (!child_or_err) {
+    Status status = Status::FromError(child_or_err.takeError());
+    // Record why this child couldn't be created so that consumers of
+    // GetChildAtIndex's nullptr result (e.g. the value object printer) can
+    // surface the reason instead of silently treating it as "no child".
+    m_children.SetChildErrorAtIndex(idx, status.Clone());
+    LLDB_LOG_ERROR(GetLog(LLDBLog::Types), status.takeError(),
                    "could not find child: {0}");
     return nullptr;
   }
+  if (!child_or_err->type.IsValid())
+    return nullptr;
 
   const ChildTypeInfo &child = *child_or_err;
   return new ValueObjectChild(
