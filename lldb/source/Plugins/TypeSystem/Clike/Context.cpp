@@ -56,6 +56,14 @@ RecordType *Context::CreateRecordType(llvm::StringRef name,
                                             is_class_keyword));
 }
 
+ObjCInterfaceType *
+Context::CreateObjCInterfaceType(llvm::StringRef name,
+                                 std::optional<uint64_t> byte_size,
+                                 DeclScope scope) {
+  return Track(
+      std::make_unique<ObjCInterfaceType>(GetIdentifier(name), scope, byte_size));
+}
+
 ArrayType *Context::CreateArrayType(TypeRef element_type,
                                     std::optional<uint64_t> num_elements,
                                     bool is_vector, uint64_t die_uid) {
