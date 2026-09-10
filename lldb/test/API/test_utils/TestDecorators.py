@@ -123,3 +123,28 @@ class TestDecorators(TestBase):
         except unittest.SkipTest as skip:
             self.assertTrue(is_unsupported(self, str(skip)))
         self._skipped_as_unsupported = False  # this test passes, don't mark it
+
+
+class TestDecoratorsClikeTypeSystem(TestBase):
+    NO_DEBUG_INFO_TESTCASE = True
+
+    def is_clike_typesystem_enabled(self):
+        return self.dbg.GetSetting(
+            "symbols.experimental.enable-typesystem-clike"
+        ).GetBooleanValue()
+
+    @skipIf(clike_typesystem=True)
+    def test_skip_if_enabled(self):
+        self.assertFalse(self.is_clike_typesystem_enabled())
+
+    @skipIf(clike_typesystem=False)
+    def test_skip_if_disabled(self):
+        self.assertTrue(self.is_clike_typesystem_enabled())
+
+    @expectedFailureAll(clike_typesystem=True)
+    def test_xfail_if_enabled(self):
+        self.assertFalse(self.is_clike_typesystem_enabled())
+
+    @expectedFailureAll(clike_typesystem=False)
+    def test_xfail_if_disabled(self):
+        self.assertTrue(self.is_clike_typesystem_enabled())
