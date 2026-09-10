@@ -47,12 +47,34 @@ public:
     uint32_t pointer_size = 0;
   };
 
+  /// Alignments (in bits) of the target-dependent builtin types.
+  struct BuiltinAlignments {
+    uint32_t bool_align = 0;
+    uint32_t short_align = 0;
+    uint32_t int_align = 0;
+    uint32_t long_align = 0;
+    uint32_t long_long_align = 0;
+    uint32_t int128_align = 0;
+    uint32_t wchar_align = 0;
+    uint32_t char16_align = 0;
+    uint32_t char32_align = 0;
+    uint32_t half_align = 0;
+    uint32_t float_align = 0;
+    uint32_t double_align = 0;
+    uint32_t long_double_align = 0;
+    uint32_t float128_align = 0;
+    uint32_t pointer_align = 0;
+  };
+
   /// The language options for \p triple, or an error if Clang cannot describe
   /// the triple.
   static llvm::Expected<LanguageOpts> Create(llvm::Triple triple);
 
   const llvm::Triple &GetTriple() const { return m_triple; }
   const BuiltinSizes &GetBuiltinSizes() const { return m_builtin_sizes; }
+  const BuiltinAlignments &GetBuiltinAlignments() const {
+    return m_builtin_alignments;
+  }
 
   /// The floating point semantics for a float of the given storage size.
   const llvm::fltSemantics &
@@ -63,6 +85,9 @@ public:
   ///
   /// Returns std::nullopt if the bit width is invalid for the target.
   std::optional<uint64_t> GetBitIntByteSize(unsigned bits) const;
+
+  /// The alignment (in bits) of a `_BitInt(bits)` on this target.
+  uint64_t GetBitIntAlignInBits(unsigned bits) const;
 
 private:
   /// The target's float formats.
@@ -75,11 +100,13 @@ private:
   };
 
   LanguageOpts(llvm::Triple triple, std::unique_ptr<clang::TargetInfo> target,
-               BuiltinSizes sizes, FloatSemantics semantics);
+               BuiltinSizes sizes, BuiltinAlignments alignments,
+               FloatSemantics semantics);
 
   llvm::Triple m_triple;
   std::unique_ptr<clang::TargetInfo> m_target;
   BuiltinSizes m_builtin_sizes;
+  BuiltinAlignments m_builtin_alignments;
   FloatSemantics m_semantics;
 };
 
