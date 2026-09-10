@@ -328,6 +328,7 @@ def _decorateTest(
     archs=None,
     triple=None,
     debug_info=None,
+    typesystem_clike=None,
     swig_version=None,
     py_version=None,
     macos_version=None,
@@ -352,6 +353,9 @@ def _decorateTest(
         )
         skip_for_debug_info = _match_decorator_property(
             debug_info, actual_variants.get("debug_info")
+        )
+        skip_for_typesystem_clike = _match_decorator_property(
+            typesystem_clike, actual_variants.get("typesystem_clike")
         )
         skip_for_triple = _match_decorator_property(
             triple, lldb.selected_platform.GetTriple()
@@ -405,6 +409,7 @@ def _decorateTest(
             (compiler, skip_for_compiler, "compiler or version"),
             (archs, skip_for_arch, "architecture"),
             (debug_info, skip_for_debug_info, "debug info format"),
+            (typesystem_clike, skip_for_typesystem_clike, "TypeSystemClike mode"),
             (triple, skip_for_triple, "target triple"),
             (swig_version, skip_for_swig_version, "swig version"),
             (py_version, skip_for_py_version, "python version"),
@@ -440,10 +445,14 @@ def _decorateTest(
     if mode == DecorateMode.Skip:
         if debug_info:
             return _skipForVariant("debug_info", fn, bugnumber)
+        if typesystem_clike:
+            return _skipForVariant("typesystem_clike", fn, bugnumber)
         return skipTestIfFn(fn, bugnumber)
     elif mode == DecorateMode.Xfail:
         if debug_info:
             return _xfailForVariant("debug_info", fn, bugnumber)
+        if typesystem_clike:
+            return _xfailForVariant("typesystem_clike", fn, bugnumber)
         return expectedFailureIf(fn(), bugnumber)
     else:
         return None
@@ -466,6 +475,7 @@ def expectedFailureAll(
     archs=None,
     triple=None,
     debug_info=None,
+    typesystem_clike=None,
     swig_version=None,
     py_version=None,
     macos_version=None,
@@ -485,6 +495,7 @@ def expectedFailureAll(
         archs=archs,
         triple=triple,
         debug_info=debug_info,
+        typesystem_clike=typesystem_clike,
         swig_version=swig_version,
         py_version=py_version,
         macos_version=macos_version,
@@ -511,6 +522,7 @@ def skipIf(
     archs=None,
     triple=None,
     debug_info=None,
+    typesystem_clike=None,
     swig_version=None,
     py_version=None,
     macos_version=None,
@@ -530,6 +542,7 @@ def skipIf(
         archs=archs,
         triple=triple,
         debug_info=debug_info,
+        typesystem_clike=typesystem_clike,
         swig_version=swig_version,
         py_version=py_version,
         macos_version=macos_version,
