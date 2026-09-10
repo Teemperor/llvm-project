@@ -19,15 +19,28 @@
 #include "Namespace.h"
 #include "Type.h"
 #include "TypeC.h"
+#include "TypeCpp.h"
 #include "TypeObjC.h"
 
 #include "llvm/Support/Casting.h"
 
 #include <map>
 #include <tuple>
+#include <variant>
 
 namespace lldb_private {
 namespace clike {
+
+/// A declaration that TypeSystemClike hands out as an opaque CompilerDecl. It
+/// wraps a pointer to one of the modeled declaration kinds; the variant's
+/// active alternative replaces a manual (Kind, void*) tag so a query method
+/// can only ever look at the payload as the type it actually is (there is no
+/// clang::Decl here).
+struct Decl {
+  using Payload = std::variant<const StaticDataMember *, const MemberFunction *>;
+  Payload payload;
+};
+
 
 /// Owns all the Type nodes for a TypeSystemClike and hands out stable pointers to
 /// them. Types live as long as the Context (and therefore the TypeSystemClike).
@@ -72,12 +85,14 @@ public:
     return builtin_types.MatchByName(name);
   }
 
-  /// Create a record type. \p is_class_keyword records whether the source
+  /// Create a record type. When \p is_cpp_class is true the record can carry
+  /// C++-only information (base classes) and a ClassType is created; otherwise
+  /// a plain StructType is used. \p is_class_keyword records whether the source
   /// used the `class` keyword (only used to name an unnamed record). \p scope
   /// is where the record is declared (see DeclScope).
   RecordType *CreateRecordType(llvm::StringRef name,
                                std::optional<uint64_t> byte_size,
-                               bool is_union = false,
+                               bool is_cpp_class, bool is_union = false,
                                bool is_class_keyword = false,
                                DeclScope scope = {});
 
@@ -103,6 +118,17 @@ public:
   /// Create an Apple "blocks" pointer (`int (^)(int)`), whose pointee is a
   /// FunctionType. Its byte size is the target's pointer size.
   BlockPointerType *CreateBlockPointerType(TypeRef pointee_type);
+
+  /// Create an lvalue (`T &`) or rvalue (`T &&`) reference to \p pointee_type.
+  /// Its byte size is the target's pointer size.
+  ReferenceType *CreateReferenceType(TypeRef pointee_type, bool is_rvalue);
+
+  /// Create a pointer-to-member of \p containing_type, pointing at a data
+  /// member/member function of type \p pointee_type. Its byte size follows
+  /// the Itanium ABI: one pointer for a data member, two for a member
+  /// function (the function pointer plus the `this` adjustment).
+  MemberPointerType *CreateMemberPointerType(TypeRef pointee_type,
+                                             TypeRef containing_type);
 
   /// Create a typedef named \p name aliasing \p underlying_type, declared in
   /// \p scope.
@@ -160,6 +186,9 @@ public:
   void SetExplicitAlignmentInBits(RecordType &record, uint64_t align) {
     record.SetExplicitAlignmentInBits(align);
   }
+  void SetTemplateInstantiation(ClassType &record) {
+    record.SetIsTemplateInstantiation(true);
+  }
   void SetMemberFunctionsParsed(RecordType &record) {
     record.SetMemberFunctionsParsed();
   }
@@ -182,6 +211,13 @@ public:
     record.AddField(name, type, byte_offset, bitfield_bit_size,
                     bitfield_bit_offset);
   }
+  void AddBaseClass(ClassType &record, TypeRef type, uint64_t byte_offset,
+                    bool is_virtual = false,
+                    std::optional<uint64_t> vbase_offset_offset = std::nullopt) {
+    AssertOwnsType(record);
+    record.AddBaseClass(type, byte_offset, is_virtual, vbase_offset_offset);
+  }
+  void SetPolymorphic(ClassType &record) { record.SetPolymorphic(); }
   void SetObjCSuperClass(ObjCInterfaceType &record, TypeRef superclass) {
     AssertOwnsType(record);
     record.SetSuperClass(superclass);
@@ -190,9 +226,21 @@ public:
     AssertOwnsType(record);
     record.AddObjCMethod(std::move(method));
   }
+  void AddTemplateArgument(ClassType &record, TemplateArgument arg) {
+    AssertOwnsType(record);
+    record.AddTemplateArgument(arg);
+  }
   void AddNestedType(RecordType &record, Identifier name, TypeRef type) {
     AssertOwnsType(record);
     record.AddNestedType(name, type);
+  }
+  void AddMemberFunction(ClassType &record, MemberFunction method) {
+    AssertOwnsType(record);
+    record.AddMemberFunction(method);
+  }
+  void AddStaticDataMember(ClassType &record, StaticDataMember member) {
+    AssertOwnsType(record);
+    record.AddStaticDataMember(member);
   }
   /// @}
 
@@ -201,6 +249,13 @@ public:
   /// this Context. \p parent is null for a top-level namespace.
   const Namespace *GetNamespace(Identifier name, const Namespace *parent,
                                 bool is_inline);
+
+  /// Intern a declaration reference (a static data member or member function),
+  /// returning a stable pointer for use as a CompilerDecl's opaque pointer.
+  /// Deduplicated by payload (which alternative is active is part of the
+  /// variant's own identity) so the same member always maps to the same Decl
+  /// (needed for CompilerDecl equality/ordering).
+  const Decl *GetOrCreateDecl(Decl::Payload payload);
 
   /// Intern a name into this Context's IdentifierMap. All Identifiers used by
   /// types owned by this Context must be created here so that their backing
@@ -255,6 +310,10 @@ private:
   /// equality) and a plain `T *` stays distinct from a block `T (^)`. See
   /// CreatePointerType / CreateBlockPointerType.
   std::map<std::pair<Type *, bool>, PointerType *> m_pointer_map;
+  /// Interned CompilerDecls (static data members / member functions), owned for
+  /// the Context's lifetime and deduplicated by payload.
+  std::vector<std::unique_ptr<Decl>> m_decls;
+  std::map<Decl::Payload, const Decl *> m_decl_map;
   /// Target/language configuration (triple, builtin sizes, float semantics).
   LanguageOpts m_opts;
   IdentifierMap identifiers;
