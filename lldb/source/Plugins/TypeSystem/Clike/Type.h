@@ -514,6 +514,21 @@ public:
   static bool HasFields(Type *t,
                         llvm::function_ref<void(Type *)> complete);
 
+  /// If this record is a Homogeneous Floating-point/Vector Aggregate, the
+  /// element type every one of its fields has; null otherwise. \p num_fields
+  /// receives the field count on success (0 otherwise).
+  ///
+  /// A record qualifies when it has no base classes, is not polymorphic, and
+  /// its *direct* fields are all either the same scalar floating-point type
+  /// (HFA) or all the same vector type with matching bit width (HVA) -- never a
+  /// mix of the two, and never any other kind of field. In particular there is
+  /// no recursion into nested aggregate fields: a struct-typed field always
+  /// disqualifies the record, matching clang's
+  /// isFloatingType()/isVectorType() checks. Port of
+  /// TypeSystemClang::IsHomogeneousAggregate; callers must complete the record
+  /// first.
+  Type *GetHomogeneousAggregateBase(uint32_t &num_fields) const;
+
 private:
   // Structural mutation happens after creation (during lazy completion), so it
   // is gated: only Context can perform it, and Context is only reachable
