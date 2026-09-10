@@ -8,6 +8,8 @@
 
 #include "TypeCpp.h"
 
+#include "TypeC.h"
+
 using namespace lldb_private::clike;
 
 // Storage for the LLVM RTTI discriminators. The addresses (not the values) are
@@ -15,3 +17,7 @@ using namespace lldb_private::clike;
 char ClassType::ID = 0;
 char ReferenceType::ID = 0;
 char MemberPointerType::ID = 0;
+
+bool MemberPointerType::IsMemberFunctionPointer() const {
+  return llvm::isa<FunctionType>(GetPointeeType()->Desugar());
+}
