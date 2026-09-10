@@ -10,6 +10,7 @@
 #include "Plugins/TypeSystem/Clike/Context.h"
 #include "Plugins/TypeSystem/Clike/LanguageOpts.h"
 #include "Plugins/TypeSystem/Clike/Type.h"
+#include "Plugins/TypeSystem/Clike/TypeCpp.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
@@ -30,7 +31,8 @@ struct TypeCTest : public testing::Test {
   /// A complete record, since several queries below (pointer transparency)
   /// deliberately only apply to complete aggregates.
   RecordType *CompleteRecord(llvm::StringRef name) {
-    RecordType *record = context.CreateRecordType(name, /*byte_size=*/8);
+    RecordType *record =
+        context.CreateRecordType(name, /*byte_size=*/8, /*is_cpp_class=*/false);
     context.SetComplete(*record);
     return record;
   }
@@ -42,6 +44,7 @@ TEST_F(TypeCTest, StructTypeClass) {
   RecordType *record = CompleteRecord("MyStruct");
   EXPECT_EQ(record->GetTypeClass(), lldb::eTypeClassStruct);
   EXPECT_TRUE(llvm::isa<StructType>(static_cast<Type *>(record)));
+  EXPECT_FALSE(llvm::isa<ClassType>(static_cast<Type *>(record)));
 }
 
 // An array's size is its element size times its count, computed on demand so a
@@ -156,8 +159,8 @@ TEST_F(TypeCTest, PointerTransparency) {
   EXPECT_EQ(to_complete->GetTransparentChildPointee(), complete);
   EXPECT_EQ(to_complete->GetNamedMemberPointee(), complete);
 
-  RecordType *incomplete =
-      context.CreateRecordType("Incomplete", /*byte_size=*/std::nullopt);
+  RecordType *incomplete = context.CreateRecordType(
+      "Incomplete", /*byte_size=*/std::nullopt, /*is_cpp_class=*/false);
   PointerType *to_incomplete = context.CreatePointerType(TypeRef(*incomplete));
   EXPECT_EQ(to_incomplete->GetTransparentChildPointee(), nullptr);
   // The by-name path is more permissive: resolving a name may complete it.
@@ -410,13 +413,42 @@ TEST_F(TypeCTest, DerivedAlignment) {
   EXPECT_FALSE(fn->GetAlignmentInBits().has_value());
 }
 
+// A pointer-to-member-function is told apart from a pointer-to-data-member by
+// what it points at (testing it needs a FunctionType, hence lands here).
+TEST_F(TypeCTest, MemberPointerFunctionVsData) {
+  RecordType *containing = CompleteRecord("C");
+  FunctionType *fn =
+      context.CreateFunctionType(TypeRef(*Int()), {}, /*is_variadic=*/false);
+
+  MemberPointerType *to_fn =
+      context.CreateMemberPointerType(TypeRef(*fn), TypeRef(*containing));
+  EXPECT_TRUE(to_fn->IsMemberFunctionPointer());
+  EXPECT_FALSE(to_fn->IsMemberDataPointer());
+  // Itanium: two pointers wide, but only pointer-aligned.
+  EXPECT_EQ(to_fn->GetByteSize(), std::optional<uint64_t>(16));
+  EXPECT_EQ(to_fn->GetAlignmentInBits(), std::optional<uint64_t>(64));
+
+  MemberPointerType *to_data =
+      context.CreateMemberPointerType(TypeRef(*Int()), TypeRef(*containing));
+  EXPECT_FALSE(to_data->IsMemberFunctionPointer());
+  EXPECT_TRUE(to_data->IsMemberDataPointer());
+  EXPECT_EQ(to_data->GetByteSize(), std::optional<uint64_t>(8));
+  EXPECT_EQ(to_data->GetAlignmentInBits(), std::optional<uint64_t>(64));
+
+  // Seen through sugar on the pointee, too.
+  TypedefType *alias = context.CreateTypedefType("fn_t", TypeRef(*fn));
+  MemberPointerType *to_alias =
+      context.CreateMemberPointerType(TypeRef(*alias), TypeRef(*containing));
+  EXPECT_TRUE(to_alias->IsMemberFunctionPointer());
+}
+
 // An HFA is a record whose direct fields are all the same floating-point type;
 // an HVA the same for vectors. A mix, or any other field kind, disqualifies it.
 TEST_F(TypeCTest, HomogeneousAggregateBase) {
   Type *flt = context.GetBuiltinType(BuiltinKind::Float);
   uint32_t num_fields = 0;
 
-  RecordType *hfa = context.CreateRecordType("HFA", 8);
+  RecordType *hfa = context.CreateRecordType("HFA", 8, /*is_cpp_class=*/false);
   context.AddField(*hfa, context.GetIdentifier("a"), TypeRef(*flt), 0);
   context.AddField(*hfa, context.GetIdentifier("b"), TypeRef(*flt), 4);
   context.SetComplete(*hfa);
@@ -424,7 +456,8 @@ TEST_F(TypeCTest, HomogeneousAggregateBase) {
   EXPECT_EQ(num_fields, 2u);
 
   // A mix of a float and an int is not homogeneous.
-  RecordType *mixed = context.CreateRecordType("Mixed", 8);
+  RecordType *mixed = context.CreateRecordType("Mixed", 8,
+                                               /*is_cpp_class=*/false);
   context.AddField(*mixed, context.GetIdentifier("a"), TypeRef(*flt), 0);
   context.AddField(*mixed, context.GetIdentifier("b"), TypeRef(*Int()), 4);
   context.SetComplete(*mixed);
@@ -445,7 +478,8 @@ TEST_F(TypeCTest, HomogeneousVectorAggregate) {
       context.CreateArrayType(TypeRef(*flt), 4, /*is_vector=*/true);
   uint32_t num_fields = 0;
 
-  RecordType *hva = context.CreateRecordType("HVA", 32);
+  RecordType *hva = context.CreateRecordType("HVA", 32,
+                                             /*is_cpp_class=*/false);
   context.AddField(*hva, context.GetIdentifier("a"), TypeRef(*vec4), 0);
   context.AddField(*hva, context.GetIdentifier("b"), TypeRef(*vec4), 16);
   context.SetComplete(*hva);
@@ -454,7 +488,8 @@ TEST_F(TypeCTest, HomogeneousVectorAggregate) {
 
   ArrayType *vec2 =
       context.CreateArrayType(TypeRef(*flt), 2, /*is_vector=*/true);
-  RecordType *ragged = context.CreateRecordType("Ragged", 24);
+  RecordType *ragged = context.CreateRecordType("Ragged", 24,
+                                                /*is_cpp_class=*/false);
   context.AddField(*ragged, context.GetIdentifier("a"), TypeRef(*vec4), 0);
   context.AddField(*ragged, context.GetIdentifier("b"), TypeRef(*vec2), 16);
   context.SetComplete(*ragged);
