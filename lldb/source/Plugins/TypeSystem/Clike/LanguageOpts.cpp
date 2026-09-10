@@ -38,9 +38,11 @@ CreateTargetInfo(clang::TargetOptions target_opts) {
 
 LanguageOpts::LanguageOpts(llvm::Triple triple,
                            std::unique_ptr<clang::TargetInfo> target,
-                           BuiltinSizes sizes, FloatSemantics semantics)
+                           BuiltinSizes sizes, BuiltinAlignments alignments,
+                           FloatSemantics semantics)
     : m_triple(std::move(triple)), m_target(std::move(target)),
-      m_builtin_sizes(sizes), m_semantics(semantics) {}
+      m_builtin_sizes(sizes), m_builtin_alignments(alignments),
+      m_semantics(semantics) {}
 
 llvm::Expected<LanguageOpts> LanguageOpts::Create(llvm::Triple triple) {
   clang::TargetOptions target_opts;
@@ -65,6 +67,23 @@ llvm::Expected<LanguageOpts> LanguageOpts::Create(llvm::Triple triple) {
   sizes.long_double_size = bytes(target->getLongDoubleWidth());
   sizes.pointer_size = bytes(target->getPointerWidth(clang::LangAS::Default));
 
+  BuiltinAlignments alignments;
+  alignments.bool_align = target->getBoolAlign();
+  alignments.short_align = target->getShortAlign();
+  alignments.int_align = target->getIntAlign();
+  alignments.long_align = target->getLongAlign();
+  alignments.long_long_align = target->getLongLongAlign();
+  alignments.int128_align = target->getInt128Align();
+  alignments.wchar_align = target->getWCharAlign();
+  alignments.char16_align = target->getChar16Align();
+  alignments.char32_align = target->getChar32Align();
+  alignments.half_align = target->getHalfAlign();
+  alignments.float_align = target->getFloatAlign();
+  alignments.double_align = target->getDoubleAlign();
+  alignments.long_double_align = target->getLongDoubleAlign();
+  alignments.float128_align = target->getFloat128Align();
+  alignments.pointer_align = target->getPointerAlign(clang::LangAS::Default);
+
   FloatSemantics semantics;
   semantics.half = &target->getHalfFormat();
   semantics.single = &target->getFloatFormat();
@@ -72,7 +91,8 @@ llvm::Expected<LanguageOpts> LanguageOpts::Create(llvm::Triple triple) {
   semantics.long_double = &target->getLongDoubleFormat();
   semantics.float128 = &target->getFloat128Format();
 
-  return LanguageOpts(std::move(triple), std::move(target), sizes, semantics);
+  return LanguageOpts(std::move(triple), std::move(target), sizes, alignments,
+                      semantics);
 }
 
 const llvm::fltSemantics &
@@ -106,4 +126,8 @@ std::optional<uint64_t> LanguageOpts::GetBitIntByteSize(unsigned bits) const {
   unsigned align_bits = m_target->getBitIntAlign(bits);
   uint64_t size_bits = llvm::alignTo(bits, align_bits);
   return size_bits / 8;
+}
+
+uint64_t LanguageOpts::GetBitIntAlignInBits(unsigned bits) const {
+  return m_target->getBitIntAlign(bits);
 }
