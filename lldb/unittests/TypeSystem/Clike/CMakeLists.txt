@@ -10,6 +10,7 @@ add_lldb_unittest(TypeSystemClikeUnitTests
   TestNamedType.cpp
   TypeCTest.cpp
   TypeCppTest.cpp
+  TypeNameTest.cpp
   TypeObjCTest.cpp
   TypeTest.cpp
 
