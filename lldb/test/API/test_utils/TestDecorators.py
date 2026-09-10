@@ -148,3 +148,52 @@ class TestDecoratorsClikeTypeSystem(TestBase):
     @expectedFailureAll(clike_typesystem=False)
     def test_xfail_if_disabled(self):
         self.assertTrue(self.is_clike_typesystem_enabled())
+
+
+class TestDecoratorsTypeSystemClikeVariant(TestBase):
+    NO_DEBUG_INFO_TESTCASE = True
+
+    def is_clike_typesystem_enabled(self):
+        return self.dbg.GetSetting(
+            "symbols.experimental.enable-typesystem-clike"
+        ).GetBooleanValue()
+
+    @add_test_categories(["typesystem-clike"])
+    def test_add_test_categories(self):
+        """Only @add_test_categories(["typesystem-clike"])-tagged methods get
+        expanded along the typesystem_clike axis; getTypeSystemClike() then
+        reports which copy is currently running."""
+        self.assertIn(self.getTypeSystemClike(), ("clike", "legacy"))
+        self.assertEqual(
+            self.is_clike_typesystem_enabled(),
+            self.getTypeSystemClike() == "clike",
+        )
+
+    def test_not_tagged_is_not_expanded(self):
+        """A method with no typesystem-clike category isn't expanded at all."""
+        self.assertIsNone(self.getTypeSystemClike())
+
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(clike_typesystem=True)
+    def test_skip_if_enabled(self):
+        """skipIf(clike_typesystem=...) skips only the matching copy."""
+        self.assertEqual(self.getTypeSystemClike(), "legacy")
+        self.assertFalse(self.is_clike_typesystem_enabled())
+
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(clike_typesystem=False)
+    def test_skip_if_disabled(self):
+        self.assertEqual(self.getTypeSystemClike(), "clike")
+        self.assertTrue(self.is_clike_typesystem_enabled())
+
+    @add_test_categories(["typesystem-clike"])
+    @expectedFailureAll(clike_typesystem=True)
+    def test_xfail_if_enabled(self):
+        """expectedFailureAll(clike_typesystem=...) xfails only the matching
+        copy."""
+        self.assertFalse(self.is_clike_typesystem_enabled())
+
+    @add_test_categories(["typesystem-clike"])
+    @expectedFailureAll(clike_typesystem=False)
+    def test_xfail_if_disabled(self):
+        self.assertTrue(self.is_clike_typesystem_enabled())

@@ -357,7 +357,7 @@ def _decorateTest(
 ):
     # Read the setting now: by the time the test runs, the test (or a previous
     # one) may have changed it.
-    clike_typesystem_enabled = (
+    clike_typesystem_enabled_by_default = (
         _is_clike_typesystem_enabled() if clike_typesystem is not None else None
     )
 
@@ -377,6 +377,13 @@ def _decorateTest(
         skip_for_debug_info = _match_decorator_property(
             debug_info, actual_variants.get("debug_info")
         )
+        # Copies of a test expanded along the typesystem_clike variant run with
+        # the setting of their variant instead of the default.
+        typesystem_clike_variant = actual_variants.get("typesystem_clike")
+        if typesystem_clike_variant is not None:
+            clike_typesystem_enabled = typesystem_clike_variant == "clike"
+        else:
+            clike_typesystem_enabled = clike_typesystem_enabled_by_default
         skip_for_clike_typesystem = _match_decorator_property(
             clike_typesystem, clike_typesystem_enabled
         )
@@ -468,10 +475,14 @@ def _decorateTest(
     if mode == DecorateMode.Skip:
         if debug_info:
             return _skipForVariant("debug_info", fn, bugnumber)
+        if clike_typesystem is not None:
+            return _skipForVariant("typesystem_clike", fn, bugnumber)
         return skipTestIfFn(fn, bugnumber)
     elif mode == DecorateMode.Xfail:
         if debug_info:
             return _xfailForVariant("debug_info", fn, bugnumber)
+        if clike_typesystem is not None:
+            return _xfailForVariant("typesystem_clike", fn, bugnumber)
         return expectedFailureIf(fn(), bugnumber)
     else:
         return None
