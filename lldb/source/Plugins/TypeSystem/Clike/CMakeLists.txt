@@ -10,6 +10,7 @@ add_lldb_library(lldbPluginTypeSystemClike PLUGIN
   SugarType.cpp
   Type.cpp
   TypeC.cpp
+  TypeObjC.cpp
   TypeSystemClike.cpp
 
   LINK_COMPONENTS
