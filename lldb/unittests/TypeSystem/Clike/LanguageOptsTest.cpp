@@ -40,6 +40,26 @@ TEST(LanguageOptsTest, I386Sizes) {
   EXPECT_EQ(sizes.pointer_size, 4u);
 }
 
+TEST(LanguageOptsTest, X86_64Alignments) {
+  LanguageOpts opts = OptsFor("x86_64-pc-linux-gnu");
+  const LanguageOpts::BuiltinAlignments &aligns = opts.GetBuiltinAlignments();
+  EXPECT_EQ(aligns.int_align, 32u);
+  EXPECT_EQ(aligns.long_align, 64u);
+  EXPECT_EQ(aligns.double_align, 64u);
+  EXPECT_EQ(aligns.long_double_align, 128u);
+  EXPECT_EQ(aligns.int128_align, 128u);
+  EXPECT_EQ(aligns.pointer_align, 64u);
+}
+
+TEST(LanguageOptsTest, I386Alignments) {
+  LanguageOpts opts = OptsFor("i386-pc-linux-gnu");
+  const LanguageOpts::BuiltinAlignments &aligns = opts.GetBuiltinAlignments();
+  EXPECT_EQ(aligns.double_align, 32u);
+  EXPECT_EQ(aligns.long_long_align, 32u);
+  EXPECT_EQ(aligns.long_double_align, 32u);
+  EXPECT_EQ(aligns.pointer_align, 32u);
+}
+
 TEST(LanguageOptsTest, CreateFailsForUnknownTriple) {
   llvm::Expected<LanguageOpts> opts =
       LanguageOpts::Create(llvm::Triple("totally-bogus-triple-value"));
