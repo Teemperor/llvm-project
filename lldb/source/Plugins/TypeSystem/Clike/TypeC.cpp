@@ -9,6 +9,7 @@
 #include "TypeC.h"
 
 #include "Context.h"
+#include "TypeObjC.h"
 
 #include "llvm/Support/MathExtras.h"
 
@@ -52,8 +53,14 @@ std::optional<uint64_t> PointerType::GetByteSize() const {
 
 Type *PointerType::GetTransparentChildPointee() {
   Type *pointee = GetPointeeType();
+  // A pointer to an ObjC interface is always transparent: an ObjC object is
+  // only ever reached through a pointer, so its children are the interface's
+  // ivars/superclass. (The interface is completed by the caller, which has the
+  // SymbolFile.)
+  if (pointee->Desugar()->IsObjCInterface())
+    return pointee;
   // `void *` falls out here rather than needing its own check: `void` is
-  // not an aggregate.
+  // neither an aggregate nor an ObjC interface.
   if (pointee->IsAggregate() && pointee->IsComplete())
     return pointee;
   return nullptr;
@@ -65,11 +72,27 @@ Type *PointerType::GetNamedMemberPointee() {
 }
 
 uint32_t PointerType::GetTypeInfo() const {
-  return lldb::eTypeHasChildren | lldb::eTypeIsPointer | lldb::eTypeHasValue;
+  uint32_t info =
+      lldb::eTypeHasChildren | lldb::eTypeIsPointer | lldb::eTypeHasValue;
+  // A pointer to an Objective-C object (`Foo *` / `id` / `Class`) is itself an
+  // Objective-C construct: report eTypeIsObjC so that the value printer's
+  // ObjC pointer-expansion (dwim-print's SetExpandPointerTypeFlags) and the
+  // ObjC language runtime treat it as an object pointer, and so e.g.
+  // ObjCLanguage::IsNilReference prints a null `id` as "nil" instead of "0x0".
+  // (Sugar between the pointer and the interface is peeled by the caller via
+  // Desugar; the pointee stored here is normally the interface directly.)
+  if (IsObjCObjectType(GetPointeeType()))
+    info |= lldb::eTypeIsObjC;
+  return info;
 }
 
 lldb::LanguageType PointerType::GetMinimumLanguage() const {
   const Type *pointee = GetPointeeType()->Desugar();
+  // An ObjC object pointer (`NSObject *`, or the `id`/`Class` idiom -- a
+  // pointer to the opaque `objc_object`/`objc_class` record) is routed to the
+  // ObjC runtime for dynamic-type resolution.
+  if (IsObjCObjectType(pointee))
+    return lldb::eLanguageTypeObjC;
   return pointee->IsRecord() ? lldb::eLanguageTypeC_plus_plus
                              : lldb::eLanguageTypeC;
 }
@@ -78,6 +101,14 @@ Type *PointerType::GetDynamicTypeCandidate(
     bool check_cplusplus, bool check_objc,
     llvm::function_ref<void(Type *)> complete) {
   Type *pointee = GetPointeeType()->Desugar();
+  // An Objective-C object is always accessed through a pointer (`Foo *` /
+  // `id`), so a pointer to an ObjC interface is a possible dynamic type when
+  // checking ObjC -- and never a C++ one.
+  if (pointee->IsObjCInterface())
+    return check_objc ? pointee : nullptr;
+  // `id` is modeled as a pointer to the opaque `objc_object` record.
+  if (check_objc && IsOpaqueObjCObjectRecord(pointee))
+    return pointee;
   // `void *` is accepted as a possible (watered-down) dynamic pointer,
   // matching TypeSystemClang. This is accepted regardless of the
   // check_cplusplus / check_objc flags (clang's Builtin::Void / UnknownAny

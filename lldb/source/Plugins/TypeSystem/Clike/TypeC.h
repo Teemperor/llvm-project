@@ -168,15 +168,18 @@ public:
   lldb::TypeClass GetTypeClass() const override {
     return lldb::eTypeClassPointer;
   }
+  // Out-of-line because recognizing a pointer to an Objective-C object needs
+  // ObjCInterfaceType, which this (C-only) header must not depend on. See
+  // TypeC.cpp.
   uint32_t GetTypeInfo() const override;
   Type *GetTransparentChildPointee() override;
   Type *GetNamedMemberPointee() override;
 
-  // A pointer to a record is a C++ construct (so class data formatters still
-  // fire), and a pointer to anything else (e.g. `int *`, `enum E *`) a C
-  // construct. The latter matters for a null pointer:
-  // CPlusPlusLanguage::IsNilReference would print a null C++ pointer as "NULL"
-  // instead of its address.
+  // A pointer to an Objective-C object is an Objective-C construct, a pointer
+  // to a record a C++ one (so class data formatters still fire), and a pointer
+  // to anything else (e.g. `int *`, `enum E *`) a C construct. The latter
+  // matters for a null pointer: CPlusPlusLanguage::IsNilReference would print
+  // a null C++ pointer as "NULL" instead of its address.
   lldb::LanguageType GetMinimumLanguage() const override;
 
   Type *
