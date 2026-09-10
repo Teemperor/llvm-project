@@ -880,8 +880,7 @@ class Base(unittest.TestCase):
         """Return ports available for connection to a lldb server on the remote platform."""
         return configuration.lldb_platform_available_ports
 
-    @classmethod
-    def setUpCommands(cls):
+    def setUpCommands(self):
         commands = [
             # First of all, clear all settings to have clean state of global properties.
             "settings clear --all",
@@ -916,18 +915,31 @@ class Base(unittest.TestCase):
             "settings set target.check-vo-ownership true",
         ]
 
+        # Apply variant-specific settings. Needed here (in addition to the
+        # runCmd-based application in Base.setUp) so that tests that launch a
+        # separate process controlled via these commands (e.g. lldb-dap tests,
+        # which spawn a standalone lldb-dap subprocess configured via
+        # pre_init_commands) still get e.g. the typesystem_clike axis applied
+        # to that process, not just to self.dbg.
+        for variant in _test_variants:
+            variant_value = self.getVariant(variant.name)
+            if variant_value is not None:
+                command = variant.get_settings_command(variant_value)
+                if command:
+                    commands.append(command)
+
         # Set any user-overridden settings.
         for setting, value in configuration.settings:
             commands.append("setting set -- %s %s" % (setting, value))
 
         # Make sure that a sanitizer LLDB's environment doesn't get passed on.
         if (
-            cls.platformContext
-            and cls.platformContext.shlib_environment_var in os.environ
+            self.platformContext
+            and self.platformContext.shlib_environment_var in os.environ
         ):
             commands.append(
                 "settings set target.env-vars {}=".format(
-                    cls.platformContext.shlib_environment_var
+                    self.platformContext.shlib_environment_var
                 )
             )
 
@@ -1047,6 +1059,15 @@ class Base(unittest.TestCase):
 
         # And the result object.
         self.res = lldb.SBCommandReturnObject()
+
+        # Apply variant-specific settings. Done here (not only in
+        # TestBase.setUp) so that NO_DEBUG_INFO_TESTCASE bases that don't
+        # derive from TestBase (e.g. DAPTestCaseBase, which derives from Base
+        # directly) still get e.g. the typesystem_clike axis applied.
+        for variant in _test_variants:
+            variant_value = self.getVariant(variant.name)
+            if variant_value is not None:
+                variant.apply_settings(self, variant_value)
 
         self.setPlatformWorkingDir()
         self.enableLogChannelsForCurrentTest()
@@ -1636,11 +1657,14 @@ class Base(unittest.TestCase):
         return False
 
     def getVariant(self, variant_name):
-        method = getattr(self, self.testMethodName)
+        method = getattr(self, self._testMethodName)
         return getattr(method, variant_name, None)
 
     def getDebugInfo(self):
         return self.getVariant("debug_info")
+
+    def getTypeSystemClike(self):
+        return self.getVariant("typesystem_clike")
 
     def build(
         self,
@@ -2022,7 +2046,13 @@ class TestVariant:
     """
 
     def __init__(
-        self, name, values, predicate=None, setup_fn=None, attrs_to_preserve=()
+        self,
+        name,
+        values,
+        predicate=None,
+        setup_fn=None,
+        settings_command_fn=None,
+        attrs_to_preserve=(),
     ):
         """Create a new test variant dimension.
 
@@ -2039,8 +2069,13 @@ class TestVariant:
                 given, only methods for which the predicate returns `True`
                 are expanded.  `None` means *every* test method is expanded.
             setup_fn: Optional callable `(test_instance, variant_value)`
-                invoked from `TestBase.setUp` to apply run-time
-                configuration for the given variant value.
+                invoked from `Base.setUp` to apply run-time configuration
+                for the given variant value to `test_instance.dbg`.
+            settings_command_fn: Optional callable `(variant_value) -> str |
+                None` returning a `settings set` command (or `None`) to apply
+                the same configuration to a *separate* lldb/lldb-dap process
+                launched via `TestBase.setUpCommands()` (e.g. an lldb-dap
+                subprocess), which isn't reachable through `test_instance.dbg`.
             attrs_to_preserve: Tuple of attribute names that should be copied
                 from the source method to each expanded copy (e.g.
                 `("debug_info",)` so that a second-pass variant preserves
@@ -2050,6 +2085,7 @@ class TestVariant:
         self.values = values
         self.predicate = predicate
         self.setup_fn = setup_fn
+        self.settings_command_fn = settings_command_fn
         self.attrs_to_preserve = attrs_to_preserve
 
     def should_expand(self, test_method):
@@ -2066,6 +2102,13 @@ class TestVariant:
         """Configure *test_instance* for *variant_value* via the setup_fn."""
         if self.setup_fn:
             self.setup_fn(test_instance, variant_value)
+
+    def get_settings_command(self, variant_value):
+        """Return a `settings set` command applying *variant_value*, for a
+        separately-launched process configured via `setUpCommands()`."""
+        if self.settings_command_fn:
+            return self.settings_command_fn(variant_value)
+        return None
 
 
 def _expand_test_variants(attrname, methods, variant, xfail_fns, skip_fns):
@@ -2137,6 +2180,67 @@ def _expand_test_variants(attrname, methods, variant, xfail_fns, skip_fns):
 _test_variants = []
 
 
+def _has_variant_decorator(test_method, variant):
+    return variant.name in getattr(
+        test_method, "__variant_xfail__", {}
+    ) or variant.name in getattr(test_method, "__variant_skip__", {})
+
+
+def _apply_unexpanded_variant_decorators(methods, variant, xfail_fns, skip_fns):
+    """Apply the *variant*-specific xfail/skip decorators to the test methods in
+    *methods* that are not expanded along *variant*.
+
+    The decorator predicates are called without a value for *variant*, so they
+    decide based on the configuration the test runs with by default.
+    """
+    xfail_fn = xfail_fns.get(variant.name)
+    skip_fn = skip_fns.get(variant.name)
+    if not xfail_fn and not skip_fn:
+        return methods
+    result = {}
+    for method_name, method in methods.items():
+        if xfail_fn and xfail_fn():
+            method = unittest.expectedFailure(method)
+        if skip_fn:
+            skip_reason = skip_fn()
+            if skip_reason:
+                method = unittest.skip(skip_reason)(method)
+        result[method_name] = method
+    return result
+
+
+def _is_typesystem_clike_test(test_method):
+    """Only expand methods explicitly opted in via
+    @add_test_categories(["typesystem-clike"]) -- this variant is for tests
+    that specifically exercise type-system-sensitive behavior, not the whole
+    suite."""
+    return "typesystem-clike" in getattr(test_method, "categories", [])
+
+
+def _apply_typesystem_clike_setting(test_instance, value):
+    test_instance.runCmd(
+        "settings set symbols.experimental.enable-typesystem-clike %s"
+        % ("true" if value == "clike" else "false")
+    )
+
+
+def _typesystem_clike_settings_command(value):
+    return "settings set symbols.experimental.enable-typesystem-clike %s" % (
+        "true" if value == "clike" else "false"
+    )
+
+
+_test_variants.append(
+    TestVariant(
+        name="typesystem_clike",
+        values={"clike": True, "legacy": True},
+        predicate=_is_typesystem_clike_test,
+        setup_fn=_apply_typesystem_clike_setting,
+        settings_command_fn=_typesystem_clike_settings_command,
+    )
+)
+
+
 # Variant value combinations that should never be generated. Each entry maps
 # `variant_name -> value`; a method copy is dropped when its already-set
 # variant attributes plus the new value being added match every key in the
@@ -2167,10 +2271,14 @@ class LLDBTestCaseFactory(type):
             cls, name, bases, attrs
         )
 
-        # Check if any test methods need variant expansion
+        # Check if any test methods need variant expansion or have a
+        # variant-specific decorator.
         has_variant_tests = any(
             attrname.startswith("test")
-            and any(v.should_expand(attrvalue) for v in _test_variants)
+            and any(
+                v.should_expand(attrvalue) or _has_variant_decorator(attrvalue, v)
+                for v in _test_variants
+            )
             for attrname, attrvalue in attrs.items()
         )
 
@@ -2184,16 +2292,21 @@ class LLDBTestCaseFactory(type):
 
         newattrs = {}
         for attrname, attrvalue in attrs.items():
-            if attrname.startswith("test") and not getattr(
-                attrvalue, "__no_debug_info_test__", False
-            ):
+            if attrname.startswith("test"):
                 # Track only the entries created by THIS attrname so that
                 # variant expansion doesn't accidentally double-expand entries
                 # from a sibling test method whose name happens to be a strict
                 # prefix of attrname (e.g. test_foo vs test_foo_bar).
                 this_attr_entries = {}
-                # Create debug info variants unless NO_DEBUG_INFO_TESTCASE
-                if not original_testcase.NO_DEBUG_INFO_TESTCASE:
+                # Create debug info variants unless NO_DEBUG_INFO_TESTCASE or
+                # @no_debug_info_test. Note this only suppresses the
+                # debug-info-specific first pass below -- a method excluded
+                # from *that* still goes through the generic _test_variants
+                # pass afterwards, so e.g. @no_debug_info_test doesn't also
+                # opt a method out of an unrelated axis like typesystem_clike.
+                if not original_testcase.NO_DEBUG_INFO_TESTCASE and not getattr(
+                    attrvalue, "__no_debug_info_test__", False
+                ):
                     # If any debug info categories were explicitly tagged, assume that list to be
                     # authoritative.  If none were specified, try with all debug info formats.
                     test_method_categories = set(getattr(attrvalue, "categories", []))
@@ -2246,11 +2359,18 @@ class LLDBTestCaseFactory(type):
                 # would double-expand sibling methods whose names share a
                 # prefix).
                 for variant in _test_variants:
+                    xfail_fns = getattr(attrvalue, "__variant_xfail__", {})
+                    skip_fns = getattr(attrvalue, "__variant_skip__", {})
                     if variant.should_expand(attrvalue):
-                        xfail_fns = getattr(attrvalue, "__variant_xfail__", {})
-                        skip_fns = getattr(attrvalue, "__variant_skip__", {})
                         this_attr_entries = _expand_test_variants(
                             attrname,
+                            this_attr_entries,
+                            variant,
+                            xfail_fns=xfail_fns,
+                            skip_fns=skip_fns,
+                        )
+                    else:
+                        this_attr_entries = _apply_unexpanded_variant_decorators(
                             this_attr_entries,
                             variant,
                             xfail_fns=xfail_fns,
@@ -2263,6 +2383,9 @@ class LLDBTestCaseFactory(type):
 
             else:
                 newattrs[attrname] = attrvalue
+
+        if getattr(original_testcase, "TEST_WITH_PDB_DEBUG_INFO", False):
+            newattrs["SHARED_BUILD_TESTCASE"] = False
 
         return super(LLDBTestCaseFactory, cls).__new__(cls, name, bases, newattrs)
 
