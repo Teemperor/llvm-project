@@ -96,6 +96,23 @@ def _get_macos_sdk_version() -> str | None:
         return None
 
 
+CLIKE_TYPESYSTEM_SETTING = "symbols.experimental.enable-typesystem-clike"
+
+
+@lru_cache(maxsize=None)
+def _is_clike_typesystem_enabled() -> bool:
+    """Returns whether tests run with TypeSystemClike enabled: either the
+    setting's default, or the value passed to dotest via --setting. Must be
+    called before any test changes the (global) setting."""
+    for setting, value in configuration.settings:
+        if setting == CLIKE_TYPESYSTEM_SETTING:
+            return value.strip().lower() in ("true", "yes", "on", "1")
+    dbg = lldb.SBDebugger.Create(False)
+    enabled = dbg.GetSetting(CLIKE_TYPESYSTEM_SETTING).GetBooleanValue()
+    lldb.SBDebugger.Destroy(dbg)
+    return enabled
+
+
 def _match_decorator_property(expected, actual):
     if expected is None:
         return True
@@ -328,6 +345,7 @@ def _decorateTest(
     archs=None,
     triple=None,
     debug_info=None,
+    clike_typesystem=None,
     swig_version=None,
     py_version=None,
     macos_version=None,
@@ -337,6 +355,12 @@ def _decorateTest(
     setting=None,
     asan=None,
 ):
+    # Read the setting now: by the time the test runs, the test (or a previous
+    # one) may have changed it.
+    clike_typesystem_enabled = (
+        _is_clike_typesystem_enabled() if clike_typesystem is not None else None
+    )
+
     def fn(**actual_variants):
         skip_for_os = _match_decorator_property(
             lldbplatform.translate(oslist), lldbplatformutil.getPlatform()
@@ -352,6 +376,9 @@ def _decorateTest(
         )
         skip_for_debug_info = _match_decorator_property(
             debug_info, actual_variants.get("debug_info")
+        )
+        skip_for_clike_typesystem = _match_decorator_property(
+            clike_typesystem, clike_typesystem_enabled
         )
         skip_for_triple = _match_decorator_property(
             triple, lldb.selected_platform.GetTriple()
@@ -405,6 +432,7 @@ def _decorateTest(
             (compiler, skip_for_compiler, "compiler or version"),
             (archs, skip_for_arch, "architecture"),
             (debug_info, skip_for_debug_info, "debug info format"),
+            (clike_typesystem, skip_for_clike_typesystem, "TypeSystemClike"),
             (triple, skip_for_triple, "target triple"),
             (swig_version, skip_for_swig_version, "swig version"),
             (py_version, skip_for_py_version, "python version"),
@@ -466,6 +494,7 @@ def expectedFailureAll(
     archs=None,
     triple=None,
     debug_info=None,
+    clike_typesystem=None,
     swig_version=None,
     py_version=None,
     macos_version=None,
@@ -485,6 +514,7 @@ def expectedFailureAll(
         archs=archs,
         triple=triple,
         debug_info=debug_info,
+        clike_typesystem=clike_typesystem,
         swig_version=swig_version,
         py_version=py_version,
         macos_version=macos_version,
@@ -511,6 +541,7 @@ def skipIf(
     archs=None,
     triple=None,
     debug_info=None,
+    clike_typesystem=None,
     swig_version=None,
     py_version=None,
     macos_version=None,
@@ -530,6 +561,7 @@ def skipIf(
         archs=archs,
         triple=triple,
         debug_info=debug_info,
+        clike_typesystem=clike_typesystem,
         swig_version=swig_version,
         py_version=py_version,
         macos_version=macos_version,
