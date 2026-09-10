@@ -22,6 +22,7 @@ debug_info_categories = {
 
 all_categories = {
     "basic_process": "Basic process execution sniff tests.",
+    "clike": "The typesystem_clike variant copy with symbols.enable-typesystem-clike on",
     "cmdline": "Tests related to the LLDB command-line interface",
     "dataformatters": "Tests related to the type command and the data formatters subsystem",
     "debugserver": "Debugserver tests",
@@ -34,6 +35,7 @@ all_categories = {
     "fork": "Tests requiring the process plugin fork/vfork event support",
     "gmodules": "Tests that can be run with -gmodules debug information",
     "instrumentation-runtime": "Tests for the instrumentation runtime plugins",
+    "legacy": "The typesystem_clike variant copy with symbols.enable-typesystem-clike off",
     "libc++": "Test for libc++ data formatters",
     "libstdcxx": "Test for libstdcxx data formatters",
     "lldb-server": "Tests related to lldb-server",
@@ -46,6 +48,7 @@ all_categories = {
     "pyapi": "Tests related to the Python API",
     "std-module": "Tests related to importing the std module",
     "stresstest": "Tests related to stressing lldb limits",
+    "typesystem-clike": "Tests that exercise the experimental TypeSystemClike mode",
     "watchpoint": "Watchpoint-related tests",
 }
 
