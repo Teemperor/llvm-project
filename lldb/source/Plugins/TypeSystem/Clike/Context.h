@@ -19,6 +19,7 @@
 #include "Namespace.h"
 #include "Type.h"
 #include "TypeC.h"
+#include "TypeObjC.h"
 
 #include "llvm/Support/Casting.h"
 
@@ -80,6 +81,12 @@ public:
                                bool is_union = false,
                                bool is_class_keyword = false,
                                DeclScope scope = {});
+
+  /// Create an Objective-C class type (`@interface`). Its ivars are added as
+  /// fields and its superclass via SetSuperClass during completion.
+  ObjCInterfaceType *CreateObjCInterfaceType(llvm::StringRef name,
+                                             std::optional<uint64_t> byte_size,
+                                             DeclScope scope = {});
 
   /// Create an array type of \p num_elements elements of \p element_type.
   /// \p num_elements is std::nullopt for an array of unknown bound. See
@@ -173,6 +180,14 @@ public:
     AssertOwnsType(record);
     record.AddField(name, type, byte_offset, bitfield_bit_size,
                     bitfield_bit_offset);
+  }
+  void SetObjCSuperClass(ObjCInterfaceType &record, TypeRef superclass) {
+    AssertOwnsType(record);
+    record.SetSuperClass(superclass);
+  }
+  void AddObjCMethod(ObjCInterfaceType &record, ObjCMethod method) {
+    AssertOwnsType(record);
+    record.AddObjCMethod(std::move(method));
   }
   void AddNestedType(RecordType &record, Identifier name, TypeRef type) {
     AssertOwnsType(record);
