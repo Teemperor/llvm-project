@@ -10,6 +10,7 @@
 #include "Plugins/TypeSystem/Clike/LanguageOpts.h"
 #include "Plugins/TypeSystem/Clike/Type.h"
 #include "Plugins/TypeSystem/Clike/TypeC.h"
+#include "Plugins/TypeSystem/Clike/TypeCpp.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
@@ -26,21 +27,33 @@ struct ContextTest : public testing::Test {
 };
 } // namespace
 
-// A record is created as a StructType and starts out incomplete.
+// A plain (non-C++) record is created as a StructType, not a ClassType, and
+// starts out incomplete.
 TEST_F(ContextTest, CreateStructRecord) {
-  RecordType *r = context.CreateRecordType("Foo", /*byte_size=*/4);
+  RecordType *r = context.CreateRecordType("Foo", /*byte_size=*/4,
+                                           /*is_cpp_class=*/false);
   ASSERT_NE(r, nullptr);
   EXPECT_TRUE(llvm::isa<StructType>(r));
+  EXPECT_FALSE(llvm::isa<ClassType>(r));
   EXPECT_EQ(r->GetName().GetName(), "Foo");
   EXPECT_EQ(r->GetByteSize(), 4u);
   EXPECT_FALSE(r->IsComplete());
   EXPECT_FALSE(r->IsUnion());
 }
 
+// A C++ record is created as a ClassType (which can carry base classes), even
+// though it is also still a RecordType.
+TEST_F(ContextTest, CreateClassRecord) {
+  RecordType *r = context.CreateRecordType("Foo", /*byte_size=*/8,
+                                           /*is_cpp_class=*/true);
+  EXPECT_TRUE(llvm::isa<ClassType>(r));
+  EXPECT_TRUE(llvm::isa<RecordType>(r));
+}
+
 // The is_union flag is threaded through to the created record.
 TEST_F(ContextTest, CreateUnionRecord) {
   RecordType *r =
-      context.CreateRecordType("U", /*byte_size=*/4,
+      context.CreateRecordType("U", /*byte_size=*/4, /*is_cpp_class=*/false,
                                /*is_union=*/true);
   EXPECT_TRUE(r->IsUnion());
 }
@@ -50,7 +63,7 @@ TEST_F(ContextTest, CreateRecordWithDeclScope) {
   const Namespace *ns =
       context.GetNamespace(context.GetIdentifier("std"), nullptr, false);
   RecordType *r = context.CreateRecordType(
-      "std::string", /*byte_size=*/32,
+      "std::string", /*byte_size=*/32, /*is_cpp_class=*/true,
       /*is_union=*/false, /*is_class_keyword=*/true,
       DeclScope{ns, context.GetIdentifier("string")});
   EXPECT_EQ(r->GetName().GetName(), "std::string");
@@ -63,7 +76,8 @@ TEST_F(ContextTest, CreateRecordWithDeclScope) {
 // explicitly recorded alignment) when it is completed. Sugar over it forwards
 // the size dynamically, so it picks up the size learned later.
 TEST_F(ContextTest, RecordLearnsSizeOnCompletion) {
-  RecordType *r = context.CreateRecordType("Fwd", /*byte_size=*/std::nullopt);
+  RecordType *r = context.CreateRecordType("Fwd", /*byte_size=*/std::nullopt,
+                                           /*is_cpp_class=*/false);
   TypedefType *td = context.CreateTypedefType("FwdAlias", TypeRef(*r));
   EXPECT_FALSE(td->GetByteSize().has_value());
   context.SetByteSize(*r, 48);
@@ -74,7 +88,8 @@ TEST_F(ContextTest, RecordLearnsSizeOnCompletion) {
 // An explicitly-recorded alignment (DW_AT_alignment) wins over the
 // size-derived heuristic.
 TEST_F(ContextTest, ExplicitAlignmentWins) {
-  RecordType *r = context.CreateRecordType("Aligned", /*byte_size=*/8);
+  RecordType *r = context.CreateRecordType("Aligned", /*byte_size=*/8,
+                                           /*is_cpp_class=*/false);
   context.SetExplicitAlignmentInBits(*r, 1024);
   EXPECT_EQ(r->GetExplicitAlignmentInBits(), std::optional<uint64_t>(1024));
   EXPECT_EQ(r->GetAlignmentInBits(), std::optional<uint64_t>(1024));
@@ -83,7 +98,7 @@ TEST_F(ContextTest, ExplicitAlignmentWins) {
 // An explicitly-recorded zero alignment is ignored, not reported.
 TEST_F(ContextTest, ExplicitZeroAlignmentIgnored) {
   RecordType *r = context.CreateRecordType(
-      "Unaligned", /*byte_size=*/std::nullopt);
+      "Unaligned", /*byte_size=*/std::nullopt, /*is_cpp_class=*/false);
   context.SetExplicitAlignmentInBits(*r, 0);
   EXPECT_FALSE(r->GetAlignmentInBits().has_value());
 }
@@ -113,7 +128,7 @@ TEST_F(ContextTest, GetBuiltinTypeBespokeFallback) {
 // Pointer types are uniqued by (pointee, is_block): forming the same pointer
 // twice returns the identical instance.
 TEST_F(ContextTest, PointerTypesAreUniqued) {
-  Type *record = context.CreateRecordType("Foo", 4);
+  Type *record = context.CreateRecordType("Foo", 4, false);
   PointerType *p1 = context.CreatePointerType(TypeRef(*record));
   PointerType *p2 = context.CreatePointerType(TypeRef(*record));
   EXPECT_EQ(p1, p2);
@@ -124,7 +139,7 @@ TEST_F(ContextTest, PointerTypesAreUniqued) {
 // A block pointer and a plain pointer to the same pointee are distinct types
 // (the block pointer is a separate BlockPointerType kind).
 TEST_F(ContextTest, BlockPointerDistinctFromPlainPointer) {
-  Type *record = context.CreateRecordType("Foo", 4);
+  Type *record = context.CreateRecordType("Foo", 4, false);
   PointerType *plain = context.CreatePointerType(TypeRef(*record));
   BlockPointerType *block = context.CreateBlockPointerType(TypeRef(*record));
   EXPECT_NE(static_cast<Type *>(plain), static_cast<Type *>(block));
@@ -146,7 +161,7 @@ TEST_F(ContextTest, VoidPointer) {
 
 // A typedef inherits the byte size of the type it aliases.
 TEST_F(ContextTest, TypedefInheritsByteSize) {
-  Type *record = context.CreateRecordType("Foo", 16);
+  Type *record = context.CreateRecordType("Foo", 16, false);
   TypedefType *td = context.CreateTypedefType("FooAlias", TypeRef(*record));
   EXPECT_EQ(td->GetByteSize(), 16u);
   EXPECT_EQ(td->GetUnderlyingType(), record);
@@ -176,7 +191,7 @@ TEST_F(ContextTest, ComplexByteSizeIsDoubleElement) {
 // Every type records the Context that created it, including the canonical
 // builtins (which KnownBuiltinTypes, not Track, creates).
 TEST_F(ContextTest, TypesKnowTheirOwningContext) {
-  Type *record = context.CreateRecordType("Foo", 4);
+  Type *record = context.CreateRecordType("Foo", 4, /*is_cpp_class=*/false);
   EXPECT_EQ(&record->GetOwningContext(), &context);
   Type *pointer = context.CreatePointerType(TypeRef(*record));
   EXPECT_EQ(&pointer->GetOwningContext(), &context);
@@ -190,7 +205,8 @@ TEST_F(ContextTest, TypesKnowTheirOwningContext) {
 TEST_F(ContextTest, ReferenceToAnotherContextsTypeIsDirect) {
   Context other{
       llvm::cantFail(LanguageOpts::Create(llvm::Triple("x86_64-pc-linux-gnu")))};
-  Type *foreign_record = other.CreateRecordType("Foo", 4);
+  Type *foreign_record = other.CreateRecordType("Foo", 4,
+                                                /*is_cpp_class=*/false);
   EXPECT_EQ(&foreign_record->GetOwningContext(), &other);
 
   // A pointer created here points straight at it -- no wrapper node, and the
@@ -210,12 +226,35 @@ TEST_F(ContextTest, ReferenceToAnotherContextsTypeIsDirect) {
   EXPECT_EQ(context.CreatePointerType(TypeRef(*foreign_record)), ptr);
 }
 
+// GetOrCreateDecl deduplicates by payload: the same payload pointer always
+// maps to the same Decl, and a different payload -- whether a different
+// object of the same alternative (StaticDataMember/MemberFunction) or an
+// object of the other alternative -- maps to a distinct one.
+TEST_F(ContextTest, DeclInterning) {
+  BuiltinType *void_type = context.GetBuiltinType(BuiltinKind::Void);
+  FunctionType *fn = context.CreateFunctionType(TypeRef(*void_type), {},
+                                                /*is_variadic=*/false);
+  MemberFunction payload_a{TypeRef(*fn)};
+  MemberFunction payload_b{TypeRef(*fn)};
+  const Decl *d1 = context.GetOrCreateDecl(&payload_a);
+  const Decl *d2 = context.GetOrCreateDecl(&payload_a);
+  EXPECT_EQ(d1, d2);
+
+  const Decl *d3 = context.GetOrCreateDecl(&payload_b);
+  EXPECT_NE(d1, d3);
+
+  StaticDataMember payload_c{Identifier(), TypeRef(*void_type), Identifier(),
+                             std::nullopt};
+  const Decl *d4 = context.GetOrCreateDecl(&payload_c);
+  EXPECT_NE(d1, d4);
+}
+
 // ForEachRecordType visits every RecordType owned by the Context (in creation
 // order), but not non-record types.
 TEST_F(ContextTest, ForEachRecordTypeVisitsRecordsOnly) {
-  RecordType *r1 = context.CreateRecordType("First", 4);
+  RecordType *r1 = context.CreateRecordType("First", 4, false);
   context.GetBuiltinType("int", 4, lldb::eEncodingSint, lldb::eFormatDecimal);
-  RecordType *r2 = context.CreateRecordType("Second", 8);
+  RecordType *r2 = context.CreateRecordType("Second", 8, true);
 
   std::vector<RecordType *> seen;
   context.ForEachRecordType([&](RecordType *r) { seen.push_back(r); });
