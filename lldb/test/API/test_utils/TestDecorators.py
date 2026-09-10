@@ -123,3 +123,35 @@ class TestDecorators(TestBase):
         except unittest.SkipTest as skip:
             self.assertTrue(is_unsupported(self, str(skip)))
         self._skipped_as_unsupported = False  # this test passes, don't mark it
+
+
+class TestDecoratorsTypeSystemClike(TestBase):
+    NO_DEBUG_INFO_TESTCASE = True
+
+    @add_test_categories(["typesystem-clike"])
+    def test_add_test_categories(self):
+        """Only @add_test_categories(["typesystem-clike"])-tagged methods get
+        expanded along the typesystem_clike axis; getTypeSystemClike() then
+        reports which copy is currently running."""
+        self.assertIn(self.getTypeSystemClike(), ("clike", "legacy"))
+        self.assertEqual(
+            self.dbg.GetSetting("symbols.enable-typesystem-clike").GetBooleanValue(),
+            self.getTypeSystemClike() == "clike",
+        )
+
+    def test_not_tagged_is_not_expanded(self):
+        """A method with no typesystem-clike category isn't expanded at all."""
+        self.assertIsNone(self.getTypeSystemClike())
+
+    @add_test_categories(["typesystem-clike"])
+    @skipIf(typesystem_clike="clike")
+    def test_decorator_skip(self):
+        """skipIf(typesystem_clike=...) skips only the matching copy."""
+        self.assertNotEqual(self.getTypeSystemClike(), "clike")
+
+    @add_test_categories(["typesystem-clike"])
+    @expectedFailureAll(typesystem_clike="clike")
+    def test_decorator_xfail(self):
+        """expectedFailureAll(typesystem_clike=...) xfails only the matching copy."""
+        if self.getTypeSystemClike() == "clike":
+            self.fail()
