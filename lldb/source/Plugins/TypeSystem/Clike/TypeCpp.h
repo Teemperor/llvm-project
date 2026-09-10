@@ -306,6 +306,11 @@ public:
   /// The class this is a pointer-to-member of.
   Type *GetContainingType() const { return &m_containing_type.Get(); }
 
+  /// True for a pointer to a member *function* (`R (C::*)(Args...)`), false for
+  /// a pointer to a data member (`T C::*`). Out-of-line: telling them apart
+  /// needs FunctionType, which lives in TypeC.h.
+  bool IsMemberFunctionPointer() const;
+
   // ABI-defined width (one or two pointers); small, so stored compactly like
   // PointerType's size (see there).
   std::optional<uint64_t> GetByteSize() const override {
