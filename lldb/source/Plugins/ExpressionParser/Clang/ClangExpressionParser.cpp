@@ -63,6 +63,8 @@
 #include "ASTUtils.h"
 #include "ClangASTSource.h"
 #include "ClangExpressionDeclMap.h"
+#include "ClikeExpressionDeclMap.h"
+#include "ExpressionDeclMap.h"
 #include "ClangExpressionHelper.h"
 #include "ClangHost.h"
 #include "ClangModulesDeclVendor.h"
@@ -1334,7 +1336,7 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
     m_ast_context->setSema(&m_compiler->getSema());
   }
 
-  ClangExpressionDeclMap *decl_map = type_system_helper->DeclMap();
+  ExpressionDeclMap *decl_map = type_system_helper->DeclMap();
   if (decl_map) {
     decl_map->InstallCodeGenerator(&m_compiler->getASTConsumer());
     decl_map->InstallDiagnosticManager(diagnostic_manager);
@@ -1357,7 +1359,15 @@ ClangExpressionParser::ParseInternal(DiagnosticManager &diagnostic_manager,
       ast_context.setExternalSource(ast_source);
     }
     m_compiler->getSema().addExternalSource(ast_source_wrapper);
-    decl_map->InstallASTContext(*m_ast_context);
+    // Hand the parser's ASTContext to the decl map. The TypeSystemClike-backed
+    // map only wants the raw clang::ASTContext (it never touches
+    // TypeSystemClang); the legacy Clang map wants its TypeSystemClang.
+    if (decl_map->IsClikeDeclMap())
+      static_cast<ClikeExpressionDeclMap *>(decl_map)->InstallASTContext(
+          m_ast_context->getASTContext());
+    else
+      static_cast<ClangExpressionDeclMap *>(decl_map)->InstallASTContext(
+          *m_ast_context);
   }
 
   // Check that the ASTReader is properly attached to ASTContext and Sema.
@@ -1574,7 +1584,7 @@ lldb_private::Status ClangExpressionParser::DoPrepareForExecution(
 
   ClangExpressionHelper *type_system_helper =
       dyn_cast<ClangExpressionHelper>(m_expr.GetTypeSystemHelper());
-  ClangExpressionDeclMap *decl_map =
+  ExpressionDeclMap *decl_map =
       type_system_helper->DeclMap(); // result can be NULL
 
   if (decl_map) {
@@ -1631,8 +1641,12 @@ lldb_private::Status ClangExpressionParser::DoPrepareForExecution(
 
           DiagnosticManager install_diags;
           if (Error Err = dynamic_checkers->Install(install_diags, exe_ctx))
-            return Status::FromError(install_diags.GetAsError(
-                lldb::eExpressionSetupError, "couldn't install checkers:"));
+            // Install() reports the real reason through its returned Error (the
+            // DiagnosticManager is often left empty), so surface that Error
+            // directly. Building a Status from the empty diagnostics instead
+            // would drop -- and, worse, never consume -- Err, which then aborts
+            // the process via llvm::Error's unchecked-error handler.
+            return Status::FromError(std::move(Err));
 
           process->SetDynamicCheckers(dynamic_checkers);
 
