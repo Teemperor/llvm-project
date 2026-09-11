@@ -19,7 +19,9 @@
 
 #include "clang/AST/Decl.h"
 
+#include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 #include <optional>
 #include <memory>
 
@@ -74,6 +76,13 @@ void ClangPersistentVariables::RemovePersistentVariable(
 std::optional<CompilerType>
 ClangPersistentVariables::GetCompilerTypeFromPersistentDecl(
     ConstString type_name) {
+  // A TypeSystemClike-backed persistent type (registered by
+  // RegisterPersistentType) takes priority: it's a plain CompilerType lookup,
+  // no clang::NamedDecl/ASTContext involved.
+  auto type_it = m_persistent_types.find(type_name.GetCString());
+  if (type_it != m_persistent_types.end())
+    return type_it->second;
+
   PersistentDecl p = m_persistent_decls.lookup(type_name.GetCString());
 
   if (p.m_decl == nullptr)
@@ -87,6 +96,101 @@ ClangPersistentVariables::GetCompilerTypeFromPersistentDecl(
     return CompilerType(p.m_context, t);
   }
   return std::nullopt;
+}
+
+void ClangPersistentVariables::RegisterPersistentType(ConstString name,
+                                                      CompilerType type) {
+  m_persistent_types[name.GetCString()] = type;
+}
+
+/// Collect the set of C identifier tokens (letters/digits/underscore, and `$`
+/// so persistent names like `$foo` are recognized) appearing in \p text.
+static void CollectIdentifierTokens(llvm::StringRef text,
+                                    llvm::StringSet<> &tokens) {
+  auto is_ident_start = [](char c) {
+    return llvm::isAlpha(c) || c == '_' || c == '$';
+  };
+  auto is_ident_body = [](char c) {
+    return llvm::isAlnum(c) || c == '_' || c == '$';
+  };
+  for (size_t i = 0, n = text.size(); i < n;) {
+    if (!is_ident_start(text[i])) {
+      ++i;
+      continue;
+    }
+    size_t start = i;
+    while (i < n && is_ident_body(text[i]))
+      ++i;
+    tokens.insert(text.substr(start, i - start));
+  }
+}
+
+void ClangPersistentVariables::RegisterTopLevelSource(
+    std::vector<std::string> names, std::string source, std::string filename) {
+  if (names.empty() || source.empty())
+    return;
+  m_top_level_sources.push_back(
+      {std::move(names), std::move(source), std::move(filename)});
+}
+
+std::string ClangPersistentVariables::GetInjectedTopLevelSource(
+    llvm::StringRef expr_text, bool emit_line_markers) const {
+  if (m_top_level_sources.empty())
+    return {};
+
+  // The set of names the (growing) expression refers to. We seed it from the
+  // expression itself and then, each time we pull in a top-level source,
+  // fold in the identifiers *it* references so a chain of top-level functions
+  // calling each other is injected transitively.
+  llvm::StringSet<> wanted;
+  CollectIdentifierTokens(expr_text, wanted);
+
+  std::vector<bool> included(m_top_level_sources.size(), false);
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (size_t i = 0; i < m_top_level_sources.size(); ++i) {
+      if (included[i])
+        continue;
+      const TopLevelSource &tls = m_top_level_sources[i];
+      bool referenced = false;
+      for (const std::string &name : tls.names) {
+        if (wanted.contains(name)) {
+          referenced = true;
+          break;
+        }
+      }
+      if (!referenced)
+        continue;
+      included[i] = true;
+      changed = true;
+      CollectIdentifierTokens(tls.source, wanted);
+    }
+  }
+
+  // Emit in declaration order so an earlier top-level decl is visible to a
+  // later one that uses it (matters for C).
+  std::string result;
+  for (size_t i = 0; i < m_top_level_sources.size(); ++i) {
+    if (!included[i])
+      continue;
+    // Restore the original file name and line numbering of the injected source
+    // with a `#line 1 "<file>"` directive so a diagnostic that refers to it
+    // (e.g. a "previous definition is here" note when a later expression
+    // redefines a type this source declared) still points at the original
+    // expression's file/line rather than at wherever the source happens to
+    // land in the re-injected buffer. Only done for the top-level path; the
+    // non-top-level wrapper path relies on precise buffer offsets to locate the
+    // user's expression body and must not have its line numbers shifted.
+    if (emit_line_markers && !m_top_level_sources[i].filename.empty()) {
+      result += "#line 1 \"";
+      result += m_top_level_sources[i].filename;
+      result += "\"\n";
+    }
+    result += m_top_level_sources[i].source;
+    result += '\n';
+  }
+  return result;
 }
 
 void ClangPersistentVariables::RegisterPersistentDecl(
