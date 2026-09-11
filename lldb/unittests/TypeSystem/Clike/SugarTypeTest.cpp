@@ -56,6 +56,16 @@ TEST_F(SugarTypeTest, DesugarReachesCanonicalType) {
   EXPECT_EQ(three.GetUnderlyingType(), &two);
 }
 
+// The free Desugar() peels sugar like Type::Desugar().
+TEST_F(SugarTypeTest, FreeDesugar) {
+  RecordType record;
+  SugarType sugar{TypeRef(record)};
+  EXPECT_EQ(Desugar(&sugar), &record);
+
+  const SugarType &const_sugar = sugar;
+  EXPECT_EQ(Desugar(&const_sugar), &record);
+}
+
 // LLVM-style RTTI distinguishes the core kinds, including through a reference
 // held as the base Type.
 TEST_F(SugarTypeTest, RTTI) {

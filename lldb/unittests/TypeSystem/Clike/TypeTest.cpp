@@ -199,6 +199,14 @@ TEST_F(TypeTest, BaseClassVirtualOffset) {
   EXPECT_EQ(virt.GetVBaseOffsetOffset(), std::optional<uint64_t>(24));
 }
 
+// The free Desugar() tolerates the null a failed lookup hands it.
+TEST_F(TypeTest, FreeDesugarIsNullTolerant) {
+  Type type;
+  EXPECT_EQ(Desugar(static_cast<Type *>(nullptr)), nullptr);
+  EXPECT_EQ(Desugar(static_cast<const Type *>(nullptr)), nullptr);
+  EXPECT_EQ(Desugar(&type), &type);
+}
+
 // A non-record has no fields.
 TEST_F(TypeTest, HasFields) {
   Type plain;
