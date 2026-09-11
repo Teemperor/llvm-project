@@ -60,7 +60,7 @@ public:
     return &m_type_system_helper;
   }
 
-  ClangExpressionDeclMap *DeclMap() { return m_type_system_helper.DeclMap(); }
+  ExpressionDeclMap *DeclMap() { return m_type_system_helper.DeclMap(); }
 
   void ResetDeclMap() { m_type_system_helper.ResetDeclMap(); }
 
@@ -81,9 +81,7 @@ private:
 
     /// Return the object that the parser should use when resolving external
     /// values.  May be NULL if everything should be self-contained.
-    ClangExpressionDeclMap *DeclMap() override {
-      return m_expr_decl_map_up.get();
-    }
+    ExpressionDeclMap *DeclMap() override { return m_expr_decl_map_up.get(); }
 
     void ResetDeclMap() { m_expr_decl_map_up.reset(); }
 
@@ -101,7 +99,10 @@ private:
     }
 
   private:
-    std::unique_ptr<ClangExpressionDeclMap> m_expr_decl_map_up;
+    // Base type: this is a ClangExpressionDeclMap by default, but a
+    // ClikeExpressionDeclMap when TypeSystemClike is enabled (see
+    // ResetDeclMap).
+    std::unique_ptr<ExpressionDeclMap> m_expr_decl_map_up;
   };
 
   /// The map to use when parsing and materializing the expression.
