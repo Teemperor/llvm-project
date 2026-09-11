@@ -34,6 +34,7 @@ class GlobalVariablesTestCase(TestBase):
             "target variable *g_ptr", VARIABLES_DISPLAYED_CORRECTLY, substrs=["42"]
         )
 
+    @add_test_categories(["typesystem-clike"])
     @expectedFailureAll(oslist=["windows"], bugnumber="llvm.org/pr24764")
     def test_c_global_variables(self):
         """Test 'frame variable --scope --no-args' which omits args and shows scopes."""
