@@ -27,6 +27,7 @@ class HiddenIvarsTestCase(TestBase):
         debug_info=no_match("dsym"),
         bugnumber="This test requires a stripped binary and a dSYM",
     )
+    @add_test_categories(["typesystem-clike"])
     def test_expr_stripped(self):
         self.build()
         self.expr(strip=True)
@@ -39,6 +40,7 @@ class HiddenIvarsTestCase(TestBase):
         debug_info=no_match("dsym"),
         bugnumber="This test requires a stripped binary and a dSYM",
     )
+    @add_test_categories(["typesystem-clike"])
     def test_frame_variable_stripped(self):
         self.build()
         self.frame_var(strip=True)
