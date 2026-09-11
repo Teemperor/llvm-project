@@ -16,6 +16,7 @@ add_lldb_library(lldbPluginSymbolFileDWARF PLUGIN
   DIERef.cpp
   DWARFASTParser.cpp
   DWARFASTParserClang.cpp
+  DWARFASTParserClike.cpp
   DWARFAttribute.cpp
   DWARFBaseDIE.cpp
   DWARFCompileUnit.cpp
@@ -58,6 +59,7 @@ add_lldb_library(lldbPluginSymbolFileDWARF PLUGIN
     lldbPluginCPlusPlusLanguage
     lldbPluginExpressionParserClang
     lldbPluginTypeSystemClang
+    lldbPluginTypeSystemClike
   CLANG_LIBS
     clangAST
     clangBasic

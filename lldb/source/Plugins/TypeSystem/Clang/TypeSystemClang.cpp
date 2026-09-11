@@ -84,6 +84,9 @@
 #include "Plugins/SymbolFile/DWARF/DWARFASTParserClang.h"
 #include "Plugins/SymbolFile/NativePDB/PdbAstBuilderClang.h"
 #include "Plugins/SymbolFile/PDB/PDBASTParser.h"
+#include "Plugins/TypeSystem/Clike/ScratchTypeSystemClike.h"
+#include "Plugins/TypeSystem/Clike/TypeSystemClike.h"
+#include "lldb/Core/ModuleList.h"
 
 #include <cstdio>
 
@@ -545,12 +548,29 @@ lldb::TypeSystemSP TypeSystemClang::CreateInstance(lldb::LanguageType language,
     }
   }
 
+  // This plugin callback has to hand back a plain TypeSystemSP, so this is
+  // where a TypeSystemClike creation error stops bubbling up: log it and report
+  // "no type system". TypeSystemMap turns that null back into an Expected
+  // error for whoever asked for the type system.
+  auto take_clike = [](llvm::Expected<lldb::TypeSystemSP> ts_or_err) {
+    if (ts_or_err)
+      return *ts_or_err;
+    LLDB_LOG_ERROR(GetLog(LLDBLog::Types), ts_or_err.takeError(),
+                   "Cannot create TypeSystemClike: {0}");
+    return lldb::TypeSystemSP();
+  };
+
   if (module) {
     std::string ast_name =
         "ASTContext for '" + module->GetFileSpec().GetPath() + "'";
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike())
+      return take_clike(TypeSystemClike::Create(ast_name, triple));
     return std::make_shared<TypeSystemClang>(ast_name, triple);
-  } else if (target && target->IsValid())
+  } else if (target && target->IsValid()) {
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike())
+      return take_clike(ScratchTypeSystemClike::Create(*target, triple));
     return std::make_shared<ScratchTypeSystemClang>(*target, triple);
+  }
   return lldb::TypeSystemSP();
 }
 
@@ -9648,8 +9668,24 @@ ScratchTypeSystemClang::GetForTarget(Target &target,
   auto ts_sp = *type_system_or_err;
   ScratchTypeSystemClang *scratch_ast =
       llvm::dyn_cast_or_null<ScratchTypeSystemClang>(ts_sp.get());
-  if (!scratch_ast)
-    return nullptr;
+  if (!scratch_ast) {
+    // The target's eLanguageTypeC scratch slot isn't owned by a
+    // ScratchTypeSystemClang (e.g. TypeSystemClike owns it instead), so the
+    // dyn_cast above finds nothing. Generic (language-agnostic) formatters
+    // still need a persistent Clang scratch AST to fabricate small helper
+    // types (e.g. a `void *`, or an internal struct like NSDictionary's
+    // `__lldb_autogen_nspair`); serve them one via a target-scoped side
+    // channel. Sub-ASTs (CppModules) aren't needed on this path since
+    // TypeSystemClike's own expression evaluation doesn't go through them.
+    if (ast_kind != DefaultAST || !create_on_demand)
+      return nullptr;
+    lldb::TypeSystemSP aux_sp = target.GetOrCreateAuxiliaryClangScratchAST(
+        [&target]() -> lldb::TypeSystemSP {
+          return std::make_shared<ScratchTypeSystemClang>(
+              target, target.GetArchitecture().GetTriple());
+        });
+    return std::static_pointer_cast<TypeSystemClang>(aux_sp);
+  }
   // If no dedicated sub-AST was requested, just return the main AST.
   if (ast_kind == DefaultAST)
     return std::static_pointer_cast<TypeSystemClang>(ts_sp);

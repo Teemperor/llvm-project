@@ -27,6 +27,8 @@
 #include <mutex>
 #include <shared_mutex>
 
+class DWARFASTParserClike;
+
 namespace lldb_private {
 
 class ObjCLanguageRuntime;
@@ -45,6 +47,33 @@ public:
   /// derived for that target (see clike_typesystem::LanguageOpts::Create).
   static llvm::Expected<lldb::TypeSystemSP> Create(llvm::StringRef name,
                                                    llvm::Triple triple);
+
+  // DWARF parsing
+  plugin::dwarf::DWARFASTParser *GetDWARFParser() override;
+
+  /// The target namespaces of the `using namespace` directives lexically in
+  /// scope at \p block (innermost first). Used by the expression evaluator so
+  /// an unqualified name is resolved through an active using-directive. Empty
+  /// unless this type system was populated from DWARF.
+  std::vector<CompilerDeclContext>
+  GetUsingDirectiveNamespaces(Block &block);
+
+  /// The `using` declarations (e.g. `using Single::single;`) lexically in scope
+  /// at \p block (innermost first), each reported as the imported unqualified
+  /// name paired with the namespace it names the entity in. Used by the
+  /// expression evaluator so an unqualified name brought in by a using
+  /// declaration resolves to that namespace's entity. Empty unless this type
+  /// system was populated from DWARF.
+  std::vector<std::pair<ConstString, CompilerDeclContext>>
+  GetUsingDeclarations(Block &block);
+
+  /// If \p function_block is the block of a C++ member function (including a
+  /// static member function, which has no `this`), return the owning class'
+  /// CompilerType; otherwise an invalid CompilerType. Used by the expression
+  /// evaluator to establish the `$__lldb_class` context for unqualified member
+  /// lookups even when there is no `this` pointer. Empty unless this type
+  /// system was populated from DWARF.
+  CompilerType GetOwningClassForFunction(Block &function_block);
 
   /// Wrap one of our own Type nodes into a CompilerType owned by this system.
   CompilerType GetCompilerType(clike_typesystem::Type *type);
@@ -504,6 +533,7 @@ public:
 
 private:
   friend class clike_typesystem::Builder;
+  friend class ::DWARFASTParserClike;
 
   /// Acquire the locks (see GetLockOrder) without an associated Type* yet, for
   /// methods that allocate/complete a *new* node rather than starting from an
@@ -629,6 +659,7 @@ private:
   std::string m_display_name;
   llvm::Triple m_triple;
   clike_typesystem::Context m_context;
+  std::unique_ptr<DWARFASTParserClike> m_dwarf_ast_parser_up;
 
   /// ObjC interfaces whose ivars were built from the runtime, keyed by class
   /// name. Only populated on a scratch context (see CreateRuntimeObjCInterface),
