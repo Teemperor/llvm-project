@@ -17,6 +17,7 @@
 
 #include "ClangASTSource.h"
 #include "ClangExpressionVariable.h"
+#include "ExpressionDeclMap.h"
 
 #include "lldb/Core/Value.h"
 #include "lldb/Expression/Materializer.h"
@@ -54,7 +55,7 @@ class ClangPersistentVariables;
 ///
 /// Fourth and finally, it "dematerializes" the struct after the JITted code
 /// has executed, placing the new values back where it found the old ones.
-class ClangExpressionDeclMap : public ClangASTSource {
+class ClangExpressionDeclMap : public ClangASTSource, public ExpressionDeclMap {
 public:
   /// Constructor
   ///
@@ -94,6 +95,18 @@ public:
   /// Destructor
   ~ClangExpressionDeclMap() override;
 
+  // ExpressionDeclMap methods whose implementations live in the ClangASTSource
+  // base (which predates the interface); forward to them here.
+  llvm::IntrusiveRefCntPtr<clang::ExternalASTSource> CreateProxy() override {
+    return ClangASTSource::CreateProxy();
+  }
+  void SetLookupsEnabled(bool enabled) override {
+    ClangASTSource::SetLookupsEnabled(enabled);
+  }
+
+  /// [ExpressionDeclMap] Wrap a parser QualType in this map's TypeSystemClang.
+  CompilerType WrapType(clang::QualType qt) override;
+
   /// Enable the state needed for parsing and IR transformation.
   ///
   /// \param[in] exe_ctx
@@ -106,14 +119,14 @@ public:
   ///
   /// \return
   ///     True if parsing is possible; false if it is unsafe to continue.
-  bool WillParse(ExecutionContext &exe_ctx, Materializer *materializer);
+  bool WillParse(ExecutionContext &exe_ctx, Materializer *materializer) override;
 
-  void InstallCodeGenerator(clang::ASTConsumer *code_gen);
+  void InstallCodeGenerator(clang::ASTConsumer *code_gen) override;
 
-  void InstallDiagnosticManager(DiagnosticManager &diag_manager);
+  void InstallDiagnosticManager(DiagnosticManager &diag_manager) override;
 
   /// Disable the state needed for parsing and IR transformation.
-  void DidParse();
+  void DidParse() override;
 
   /// [Used by IRForTarget] Add a variable to the list of persistent
   ///     variables for the process.
@@ -130,9 +143,9 @@ public:
   ///
   /// \return
   ///     True on success; false otherwise.
-  bool AddPersistentVariable(const clang::NamedDecl *decl,
-                             ConstString name, TypeFromParser type,
-                             bool is_result, bool is_lvalue);
+  bool AddPersistentVariable(const clang::NamedDecl *decl, ConstString name,
+                             TypeFromParser type, bool is_result,
+                             bool is_lvalue) override;
 
   /// [Used by IRForTarget] Add a variable to the struct that needs to
   ///     be materialized each time the expression runs.
@@ -156,14 +169,14 @@ public:
   ///     True on success; false otherwise.
   bool AddValueToStruct(const clang::NamedDecl *decl, ConstString name,
                         llvm::Value *value, size_t size,
-                        lldb::offset_t alignment);
+                        lldb::offset_t alignment) override;
 
   /// [Used by IRForTarget] Finalize the struct, laying out the position of
   /// each object in it.
   ///
   /// \return
   ///     True on success; false otherwise.
-  bool DoStructLayout();
+  bool DoStructLayout() override;
 
   /// [Used by IRForTarget] Get general information about the laid-out struct
   /// after DoStructLayout() has been called.
@@ -180,7 +193,7 @@ public:
   /// \return
   ///     True if the information could be retrieved; false otherwise.
   bool GetStructInfo(uint32_t &num_elements, size_t &size,
-                     lldb::offset_t &alignment);
+                     lldb::offset_t &alignment) override;
 
   /// [Used by IRForTarget] Get specific information about one field of the
   /// laid-out struct after DoStructLayout() has been called.
@@ -213,7 +226,7 @@ public:
   ///     True if the information could be retrieved; false otherwise.
   bool GetStructElement(const clang::NamedDecl *&decl, llvm::Value *&value,
                         lldb::offset_t &offset, ConstString &name,
-                        uint32_t index);
+                        uint32_t index) override;
 
   /// [Used by IRForTarget] Get information about a function given its Decl.
   ///
@@ -254,7 +267,7 @@ public:
                                 Module *module = nullptr);
 
   lldb::addr_t GetSymbolAddress(ConstString name,
-                                lldb::SymbolType symbol_type);
+                                lldb::SymbolType symbol_type) override;
 
   struct TargetInfo {
     lldb::ByteOrder byte_order = lldb::eByteOrderInvalid;
@@ -299,6 +312,11 @@ protected:
   virtual clang::NamedDecl *GetPersistentDecl(ConstString name);
 
 private:
+  // NOTE: The section below was relocated from `private` to `protected` so the
+  // TypeSystemClike-backed subclass (ClikeExpressionDeclMap) can reuse the
+  // variable/struct/materialization machinery. Nothing here changes behavior
+  // for the existing Clang path.
+protected:
   ExpressionVariableList
       m_found_entities; ///< All entities that were looked up for the parser.
   ExpressionVariableList
@@ -434,8 +452,8 @@ private:
   ///
   /// \param[in] name_context
   ///     The NameSearchContext that can construct Decls for this name.
-  void LookupLocalVarNamespace(SymbolContext &sym_ctx,
-                               NameSearchContext &name_context);
+  virtual void LookupLocalVarNamespace(SymbolContext &sym_ctx,
+                                       NameSearchContext &name_context);
 
   /// Lookup entities in the ClangModulesDeclVendor.
   /// \param[in] context
@@ -461,9 +479,9 @@ private:
   ///
   /// \return
   ///    True iff a local variable was found.
-  bool LookupLocalVariable(NameSearchContext &context, ConstString name,
-                           SymbolContext &sym_ctx,
-                           const CompilerDeclContext &namespace_decl);
+  virtual bool LookupLocalVariable(NameSearchContext &context, ConstString name,
+                                   SymbolContext &sym_ctx,
+                                   const CompilerDeclContext &namespace_decl);
 
   /// Searches for functions in the given SymbolContextList.
   ///
@@ -543,10 +561,10 @@ private:
   ///
   /// \return
   ///     Return true if the value was successfully filled in.
-  bool GetVariableValue(lldb::VariableSP &var,
-                        lldb_private::Value &var_location,
-                        TypeFromUser *found_type = nullptr,
-                        TypeFromParser *parser_type = nullptr);
+  virtual bool GetVariableValue(lldb::VariableSP &var,
+                                lldb_private::Value &var_location,
+                                TypeFromUser *found_type = nullptr,
+                                TypeFromParser *parser_type = nullptr);
 
   /// Use the NameSearchContext to generate a Decl for the given LLDB
   /// ValueObject, and put it in the list of found entities.
