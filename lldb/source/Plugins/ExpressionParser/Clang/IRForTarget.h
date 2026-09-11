@@ -42,7 +42,7 @@ class NamedDecl;
 }
 
 namespace lldb_private {
-class ClangExpressionDeclMap;
+class ExpressionDeclMap;
 class IRExecutionUnit;
 class IRMemoryMap;
 }
@@ -82,7 +82,7 @@ public:
   ///
   /// \param[in] func_name
   ///     The name of the function to prepare for execution in the target.
-  IRForTarget(lldb_private::ClangExpressionDeclMap *decl_map, bool resolve_vars,
+  IRForTarget(lldb_private::ExpressionDeclMap *decl_map, bool resolve_vars,
               lldb_private::IRExecutionUnit &execution_unit,
               lldb_private::Stream &error_stream,
               lldb_private::ExecutionPolicy execution_policy,
@@ -336,7 +336,7 @@ private:
   /// module.
   const llvm::DataLayout *m_target_data = nullptr;
   /// The DeclMap containing the Decls
-  lldb_private::ClangExpressionDeclMap *m_decl_map;
+  lldb_private::ExpressionDeclMap *m_decl_map;
   /// The address of the function CFStringCreateWithBytes, cast to the
   /// appropriate function pointer type
   llvm::FunctionCallee m_CFStringCreateWithBytes;

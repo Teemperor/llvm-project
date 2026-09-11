@@ -22,11 +22,13 @@
 #include "ClangExpressionParser.h"
 #include "ClangModulesDeclVendor.h"
 #include "ClangPersistentVariables.h"
+#include "ClikeExpressionDeclMap.h"
 #include "CppModuleConfiguration.h"
 
 #include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 #include "lldb/Core/Debugger.h"
 #include "lldb/Core/Module.h"
+#include "lldb/Core/ModuleList.h"
 #include "lldb/Expression/DiagnosticManager.h"
 #include "lldb/Expression/ExpressionSourceCode.h"
 #include "lldb/Expression/IRExecutionUnit.h"
@@ -130,6 +132,144 @@ void ClangUserExpression::ScanContext(DiagnosticManager &diagnostic_manager,
 
   if (!decl_context) {
     LLDB_LOGF(log, "  [CUE::SC] Null decl context");
+    // TypeSystemClike does not model function decl contexts, so the CXXMethodDecl
+    // detection below can't fire. A context-object evaluation
+    // (SBValue::EvaluateExpression) supplies the enclosing object directly via
+    // `m_ctx_obj`; treat it like the corresponding member/method context so the
+    // wrapper is emitted as a member function with an implicit `this`/`self`
+    // (see the `m_ctx_obj` branch further below, which is unreachable here
+    // because this branch returns early). Otherwise detect a C++ instance
+    // method from the frame's `this` pointer.
+    if (m_ctx_obj) {
+      switch (m_ctx_obj->GetObjectRuntimeLanguage()) {
+      case lldb::eLanguageTypeC:
+      case lldb::eLanguageTypeC89:
+      case lldb::eLanguageTypeC99:
+      case lldb::eLanguageTypeC11:
+      case lldb::eLanguageTypeC_plus_plus:
+      case lldb::eLanguageTypeC_plus_plus_03:
+      case lldb::eLanguageTypeC_plus_plus_11:
+      case lldb::eLanguageTypeC_plus_plus_14:
+        m_in_cplusplus_method = true;
+        break;
+      case lldb::eLanguageTypeObjC:
+      case lldb::eLanguageTypeObjC_plus_plus:
+        m_in_objectivec_method = true;
+        break;
+      default:
+        break;
+      }
+      m_needs_object_ptr = true;
+      return;
+    }
+    if (m_allow_cxx && !m_ctx_obj) {
+      if (lldb::VariableListSP vars = function_block->GetBlockVariableList(true))
+        if (lldb::VariableSP this_var =
+                vars->FindVariable(ConstString("this"))) {
+          if (this_var->IsInScope(frame) &&
+              this_var->LocationIsValidForFrame(frame)) {
+            Type *this_type = this_var->GetType();
+            CompilerType pointee;
+            if (this_type &&
+                this_type->GetForwardCompilerType().IsPointerType(&pointee)) {
+              // The wrapper is only emitted as a member function when clang can
+              // actually host the injected `$__lldb_expr` method in the class,
+              // i.e. when the class has a definition. With limited debug info a
+              // member function can be emitted into a compile unit that only
+              // *declares* its class (DW_AT_declaration, e.g. a class whose key
+              // function lives in a translation unit built without debug info),
+              // with no definition in any other module either. There is nothing
+              // to add a method to then, and pretending otherwise would make
+              // every expression in such a frame fail with "incomplete type
+              // named in nested name specifier". Fall back to a plain function
+              // wrapper instead, which is exactly what the TypeSystemClang path
+              // does here: its CXXMethodDecl detection above cannot fire for a
+              // declaration-only class, whose member DIEs are never parsed.
+              if (pointee.IsAggregateType() && pointee.GetCompleteType()) {
+                m_in_cplusplus_method = true;
+                m_needs_object_ptr = true;
+              }
+            }
+          }
+        }
+    }
+    // Likewise for an Objective-C instance method: TypeSystemClike does not model
+    // the ObjCMethodDecl the detection below relies on, so recognize the method
+    // from the frame's implicit `self` and the mangled `-[Class sel]` function
+    // name. The class context and `self` object pointer are then wired up the
+    // same way as for the Clang path so unqualified ivar references resolve as
+    // an access on `self` (see LookUpLldbObjCClass).
+    //
+    // A class (`+`) method is handled the same way: even though it has no
+    // ivars to reach, an unqualified self-send (`[self someOtherClassMethod]`)
+    // still needs the synthesized wrapper to be a genuine `+` ObjCMethodDecl so
+    // that clang's Sema resolves it via the current method's class interface
+    // (SemaObjC::getCurMethodDecl()->getClassInterface(), taken when the
+    // receiver's static type is exactly `Class`). A plain C function wrapper's
+    // DeclContext isn't an ObjCMethodDecl, so that resolution path can't fire,
+    // and the receiver falls back to being treated as an untyped `Class` --
+    // hence `m_in_static_method` distinguishes the two wrapper shapes below.
+    if (m_allow_objc && !m_ctx_obj && !m_in_cplusplus_method) {
+      llvm::StringRef fname(sym_ctx.function->GetName().GetStringRef());
+      bool is_class_method = fname.starts_with("+[");
+      if (is_class_method || fname.starts_with("-[")) {
+        if (lldb::VariableListSP vars =
+                function_block->GetBlockVariableList(true)) {
+          lldb::VariableSP self_var = vars->FindVariable(ConstString("self"));
+          if (self_var && self_var->IsInScope(frame) &&
+              self_var->LocationIsValidForFrame(frame)) {
+            m_in_objectivec_method = true;
+            m_needs_object_ptr = true;
+            if (is_class_method)
+              m_in_static_method = true;
+          }
+        }
+      } else if (fname.contains("_block_invoke")) {
+        // A compiler-synthesized Apple block-invoke function (e.g.
+        // "__25-[IAmBlocky makeBlockPtr]_block_invoke"). Its DeclContext is a
+        // plain function, not an ObjCMethodDecl, but when the block captured
+        // the enclosing ObjC method's `self`, the compiler emits a synthetic
+        // local variable literally named "self" whose *declared* type is
+        // already the real captured pointer (an interface pointer for an
+        // instance method's block, or `Class` for a class method's block) --
+        // see DW_AT_object_pointer on the block-invoke DIE, which points at
+        // this synthetic variable. Its location expression reads the field
+        // out of the block literal struct (the captured closure), so reading
+        // its value at runtime (see GetObjectPointer) yields the real object
+        // pointer, not the block literal's own address.
+        //
+        // Only handle the instance-method case here: unlike the mangled-name
+        // branch above, LookUpLldbObjCClass's class-method branch requires
+        // the *function* name to parse strictly as "+[Class sel]" to recover
+        // the class, which a block-invoke name doesn't -- so treating this as
+        // a static method would leave `$__lldb_objc_class` unresolved. The
+        // class-method-block case has no ivars to reach anyway; expressions
+        // that don't need `self` (the common case) already work today via the
+        // plain C-function wrapper path.
+        if (lldb::VariableListSP vars =
+                function_block->GetBlockVariableList(true)) {
+          lldb::VariableSP self_var = vars->FindVariable(ConstString("self"));
+          if (self_var && self_var->IsInScope(frame) &&
+              self_var->LocationIsValidForFrame(frame)) {
+            Type *self_type = self_var->GetType();
+            if (self_type) {
+              CompilerType self_clike_type = self_type->GetForwardCompilerType();
+              CompilerType pointee;
+              // A class method's block captures `self` typed exactly `Class`
+              // (a metaclass pointer, not a pointer to the interface) -- see
+              // the comment above. That case is intentionally excluded here
+              // (compare the pointer type's own name, not its pointee's,
+              // since `Class` desugars to a pointer to `objc_class`).
+              if (self_clike_type.IsPointerType(&pointee) && pointee &&
+                  self_clike_type.GetTypeName() != ConstString("Class")) {
+                m_in_objectivec_method = true;
+                m_needs_object_ptr = true;
+              }
+            }
+          }
+        }
+      }
+    }
     return;
   }
 
@@ -421,8 +561,46 @@ void ClangUserExpression::CreateSourceCode(
   std::string prefix = m_expr_prefix;
 
   if (m_options.GetExecutionPolicy() == eExecutionPolicyTopLevel) {
-    m_transformed_text = m_expr_text;
+    // Under TypeSystemClike, prepend the sources of any previously declared
+    // top-level decls this top-level expression refers to, so that e.g. an
+    // out-of-line member definition (`int MyClass::f() {...}`) or a derived
+    // class (`class D : Base {...}`) can see the earlier top-level decls it
+    // depends on. Without this, each top-level parse would only see the debug
+    // info, not the decls introduced by earlier top-level expressions.
+    std::string injected;
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike() &&
+        m_clang_state)
+      injected = m_clang_state->GetInjectedTopLevelSource(
+          m_expr_text, /*emit_line_markers=*/true);
+    if (injected.empty())
+      m_transformed_text = m_expr_text;
+    else
+      // Each injected source carries its own `#line 1 "<orig file>"` marker (so
+      // a diagnostic that refers to it points at the original expression).
+      // Reset the file/line back to *this* expression's file before its own
+      // text, so its diagnostics read as line 1 of this expression's file.
+      m_transformed_text = injected + "#line 1 \"" + m_filename + "\"\n" +
+                           m_expr_text;
+    // Remember this top-level source so a later expression can re-inject any
+    // decl it declares (see RegisterTopLevelSource /
+    // ClangPersistentVariables::GetInjectedTopLevelSource). Only meaningful
+    // under TypeSystemClike, which persists top-level decls by re-injecting their
+    // original source rather than round-tripping them through the ASTImporter.
+    // Note we stash the *original* m_expr_text (not m_transformed_text with the
+    // injected prefix) so a decl's source is stored exactly once.
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike())
+      m_type_system_helper.SetPendingTopLevelSource(m_expr_text, m_filename);
   } else {
+    // Under TypeSystemClike, prepend the sources of any previously declared
+    // top-level function/variable this expression refers to, so they are
+    // compiled (and JITed) together with it.
+    if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike() &&
+        m_clang_state) {
+      std::string injected =
+          m_clang_state->GetInjectedTopLevelSource(m_expr_text);
+      if (!injected.empty())
+        prefix = prefix + "\n" + injected;
+    }
     m_source_code.reset(ClangExpressionSourceCode::CreateWrapped(
         m_filename, prefix, m_expr_text, GetWrapKind()));
 
@@ -1037,6 +1215,16 @@ void ClangUserExpression::ClangUserExpressionHelper::ResetDeclMap(
     auto *persistent_vars = llvm::cast<ClangPersistentVariables>(state);
     ast_importer = persistent_vars->GetClangASTImporter();
   }
+  // When TypeSystemClike is enabled, module-level debug-info types are
+  // clike_typesystem::Type nodes rather than clang::Decls, so the ASTImporter-
+  // based decl map can't copy them. Use the TypeSystemClike-aware decl map, which
+  // synthesizes the parser's clang AST from the clike_typesystem description.
+  if (ModuleList::GetGlobalModuleListProperties().GetEnableTypeSystemClike()) {
+    m_expr_decl_map_up = std::make_unique<ClikeExpressionDeclMap>(
+        keep_result_in_memory, &delegate, exe_ctx.GetTargetSP(), ctx_obj,
+        ignore_context_qualifiers);
+    return;
+  }
   m_expr_decl_map_up = std::make_unique<ClangExpressionDeclMap>(
       keep_result_in_memory, &delegate, exe_ctx.GetTargetSP(), ast_importer,
       ctx_obj, ignore_context_qualifiers);
@@ -1052,8 +1240,119 @@ ClangUserExpression::ClangUserExpressionHelper::ASTTransformer(
 }
 
 void ClangUserExpression::ClangUserExpressionHelper::CommitPersistentDecls() {
-  if (m_result_synthesizer_up) {
+  if (!m_result_synthesizer_up)
+    return;
+
+  ExpressionDeclMap *decl_map = m_expr_decl_map_up.get();
+  bool is_clike_decl_map = decl_map && decl_map->IsClikeDeclMap();
+
+  // Legacy path: deport each persistent clang::NamedDecl into the target's
+  // scratch TypeSystemClang and register it by name. This is the ASTImporter-
+  // based persistence used when TypeSystemClike is off.
+  //
+  // We deliberately SKIP it when the ClikeExpressionDeclMap is in use: that
+  // lookup never consults the deported decls (the TypeSystemClike-specific commit
+  // below is what actually makes a persistent decl usable from a later
+  // TypeSystemClike expression), so the deport is pure overhead -- and worse, it
+  // can crash. A `--top-level` parse now textually re-injects the source of
+  // earlier top-level decls it references (see CreateSourceCode /
+  // GetInjectedTopLevelSource), so this AST can contain e.g. a full class
+  // definition AND an out-of-line member definition referring to it; deporting
+  // those through ClangASTImporter::DeportDecl trips a structural-equivalence
+  // assertion/crash. The reinjection + RegisterPersistentType paths below fully
+  // cover persistence under TypeSystemClike, so nothing is lost by skipping it.
+  if (!is_clike_decl_map)
     m_result_synthesizer_up->CommitPersistentDecls();
+
+  // TypeSystemClike path: additionally commit any `$`-prefixed persistent
+  // TypeDecl (`struct $foo {...}`, `typedef int $bar`) as a
+  // clike_typesystem-backed CompilerType, keyed by name, in the persistent-type
+  // table ClikeExpressionDeclMap's lookup actually consults
+  // (ClangPersistentVariables::RegisterPersistentType /
+  // GetCompilerTypeFromPersistentDecl). This is necessary because each
+  // TypeSystemClike expression gets a brand new clang::ASTContext -- so the only
+  // way to make the type available again is to remember it as a clike_typesystem
+  // type, which is context-independent, and regenerate a fresh clang type for
+  // it on demand (done by ClikeExpressionDeclMap when the name is looked up
+  // again).
+  if (!is_clike_decl_map)
+    return;
+
+  auto *state =
+      m_target.GetPersistentExpressionStateForLanguage(lldb::eLanguageTypeC);
+  if (!state)
+    return;
+  auto *persistent_vars = llvm::cast<ClangPersistentVariables>(state);
+
+  // A `--top-level` parse and a plain (non-top-level) `$foo` parse take two
+  // very different persistence strategies here:
+  //
+  //  * Top-level (`expr --top-level -- ...`): the ENTIRE original source of
+  //    this parse is stashed (keyed by every name it declares -- types,
+  //    functions, and variables alike) and textually re-injected into a later
+  //    expression that references any of those names (see
+  //    RegisterTopLevelSource / GetInjectedTopLevelSource). We deliberately do
+  //    NOT also round-trip a top-level *type* through a persistent
+  //    CompilerType: doing both would double-define the type (the injected
+  //    source declares it, and LookupPersistentType would surface a second,
+  //    generator-built decl of the same name during the same parse). Reinjecting
+  //    the original source is also strictly more faithful than a CompilerType
+  //    round-trip -- it preserves user constructors, out-of-line member
+  //    definitions, and base-class relationships that a layout-only round-trip
+  //    loses (e.g. `Derived : Base` needs `Base`'s constructors to still be
+  //    callable). A top-level function/variable could never be a self-contained
+  //    CompilerType anyway (its body would have to be re-emitted into the new
+  //    expression's IR), so source reinjection is the only mechanism that works
+  //    uniformly for all top-level decl kinds.
+  //
+  //  * Non-top-level `$foo` (`expr struct $foo {...};`): m_pending_top_level_
+  //    source is empty (CreateSourceCode only sets it for top-level parses), and
+  //    MaybeRecordPersistentType only records `$`-prefixed TypeDecls. These are
+  //    round-tripped into a persistent CompilerType and surfaced later via
+  //    LookupPersistentType, matching TypeSystemClang's `$foo` behavior.
+  if (m_top_level) {
+    std::vector<std::string> top_level_names;
+    for (clang::NamedDecl *decl :
+         m_result_synthesizer_up->GetPersistentDecls()) {
+      if (!decl->getIdentifier())
+        continue;
+      llvm::StringRef name = decl->getName();
+      if (name.empty())
+        continue;
+      top_level_names.push_back(name.str());
+    }
+    // Stash the raw top-level source keyed by every name it declares, so a
+    // later expression referencing one of them can re-inject and recompile it.
+    if (!top_level_names.empty() && !m_pending_top_level_source.empty())
+      persistent_vars->RegisterTopLevelSource(std::move(top_level_names),
+                                              m_pending_top_level_source,
+                                              m_pending_top_level_filename);
+    return;
+  }
+
+  for (clang::NamedDecl *decl : m_result_synthesizer_up->GetPersistentDecls()) {
+    if (!decl->getIdentifier())
+      continue;
+    llvm::StringRef name = decl->getName();
+    if (name.empty())
+      continue;
+    auto *type_decl = llvm::dyn_cast<clang::TypeDecl>(decl);
+    if (!type_decl)
+      continue;
+    // A bare forward declaration (e.g. `struct $foo;` with no definition) has
+    // nothing usable to convert; only a defined tag or a typedef can round
+    // -trip through ClangTypeConverter.
+    if (const auto *tag_decl = llvm::dyn_cast<clang::TagDecl>(type_decl);
+        tag_decl && !tag_decl->getDefinition())
+      continue;
+    clang::QualType qt =
+        m_result_synthesizer_up->GetASTContext().getTypeDeclType(type_decl);
+    if (qt.isNull())
+      continue;
+    CompilerType clike_type = decl_map->WrapType(qt);
+    if (!clike_type)
+      continue;
+    persistent_vars->RegisterPersistentType(ConstString(name), clike_type);
   }
 }
 

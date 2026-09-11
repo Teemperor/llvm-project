@@ -48,12 +48,14 @@ class BasicExprCommandsTestCase(TestBase):
     # llvm.org/pr17135 <rdar://problem/14874559>
     # APFloat::toString does not identify the correct (i.e. least) precision.
     @unittest.expectedFailure
+    @add_test_categories(["typesystem-clike"])
     def test_floating_point_expr_commands(self):
         self.build_and_run()
 
         self.expect("expression 2.234f", patterns=[r"\(float\) \$.* = 2\.234"])
         # (float) $2 = 2.234
 
+    @add_test_categories(["typesystem-clike"])
     def test_many_expr_commands(self):
         self.build_and_run()
 
