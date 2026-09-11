@@ -49,7 +49,6 @@
 #include "Plugins/ExpressionParser/Clang/ClangUtil.h"
 #include "Plugins/SymbolFile/DWARF/DWARFDebugInfoEntry.h"
 #include "Plugins/SymbolFile/DWARF/SymbolFileWasm.h"
-#include "Plugins/TypeSystem/Clang/TypeSystemClang.h"
 #include "lldb/Symbol/Block.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/CompilerDecl.h"
@@ -1559,23 +1558,19 @@ bool SymbolFileDWARF::HasForwardDeclForCompilerType(
           compiler_type_no_qualifiers.GetOpaqueQualType())) {
     return true;
   }
-  auto clang_type_system = compiler_type.GetTypeSystem<TypeSystemClang>();
-  if (!clang_type_system)
+  auto type_system = compiler_type.GetTypeSystem();
+  if (!type_system)
     return false;
-  auto *ast_parser =
-      llvm::cast<DWARFASTParserClang>(clang_type_system->GetDWARFParser());
-  return ast_parser->GetClangASTImporter().CanImport(compiler_type);
+  auto *ast_parser = type_system->GetDWARFParser();
+  return ast_parser && ast_parser->CanCompleteTypeFromImporter(compiler_type);
 }
 
 bool SymbolFileDWARF::CompleteType(CompilerType &compiler_type) {
   std::lock_guard<std::recursive_mutex> guard(GetModuleMutex());
-  auto clang_type_system = compiler_type.GetTypeSystem<TypeSystemClang>();
-  if (clang_type_system) {
-    auto *ast_parser =
-        llvm::cast<DWARFASTParserClang>(clang_type_system->GetDWARFParser());
-    if (ast_parser &&
-        ast_parser->GetClangASTImporter().CanImport(compiler_type))
-      return ast_parser->GetClangASTImporter().CompleteType(compiler_type);
+  if (auto type_system = compiler_type.GetTypeSystem()) {
+    auto *ast_parser = type_system->GetDWARFParser();
+    if (ast_parser && ast_parser->CanCompleteTypeFromImporter(compiler_type))
+      return ast_parser->CompleteTypeFromImporter(compiler_type);
   }
 
   // We have a struct/union/class/enum that needs to be fully resolved.
@@ -1616,8 +1611,7 @@ bool SymbolFileDWARF::CompleteType(CompilerType &compiler_type) {
 
   if (decl_die != def_die) {
     GetDIEToType()[def_die.GetDIE()] = type;
-    auto *ast_parser = llvm::cast<DWARFASTParserClang>(dwarf_ast);
-    ast_parser->MapDeclDIEToDefDIE(decl_die, def_die);
+    dwarf_ast->MapDeclDIEToDefDIE(decl_die, def_die);
   }
 
   Log *log = GetLog(DWARFLog::DebugInfo | DWARFLog::TypeCompletion);
@@ -4383,10 +4377,11 @@ void SymbolFileDWARF::DumpClangAST(Stream &s, llvm::StringRef filter,
   if (!ts_or_err)
     return;
   auto ts = *ts_or_err;
-  TypeSystemClang *clang = llvm::dyn_cast_or_null<TypeSystemClang>(ts.get());
-  if (!clang)
+  if (!ts)
     return;
-  clang->Dump(s.AsRawOstream(), filter, show_color);
+  // Dispatches virtually: TypeSystemClang dumps its own clang AST;
+  // TypeSystemClike synthesizes one from its (clang-AST-free) type model.
+  ts->Dump(s.AsRawOstream(), filter, show_color);
 }
 
 lldb_private::ModuleSpecList SymbolFileDWARF::GetSeparateDebugInfoFiles() {

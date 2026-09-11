@@ -3593,6 +3593,25 @@ void DWARFASTParserClang::LinkDeclContextToDIE(clang::DeclContext *decl_ctx,
   m_decl_ctx_to_die.insert(std::make_pair(decl_ctx, die));
 }
 
+bool DWARFASTParserClang::CanCompleteTypeFromImporter(
+    const CompilerType &compiler_type) {
+  return GetClangASTImporter().CanImport(compiler_type);
+}
+
+bool DWARFASTParserClang::CompleteTypeFromImporter(
+    const CompilerType &compiler_type) {
+  return GetClangASTImporter().CompleteType(compiler_type);
+}
+
+void *DWARFASTParserClang::GetCachedDeclContext(const DWARFDIE &die) {
+  return m_die_to_decl_ctx.lookup(die.GetDIE());
+}
+
+void DWARFASTParserClang::LinkCachedDeclContextToDIE(void *decl_ctx,
+                                                     const DWARFDIE &die) {
+  LinkDeclContextToDIE(static_cast<clang::DeclContext *>(decl_ctx), die);
+}
+
 bool DWARFASTParserClang::CopyUniqueClassMethodTypes(
     const DWARFDIE &src_class_die, const DWARFDIE &dst_class_die,
     lldb_private::Type *class_type, std::vector<DWARFDIE> &failures) {
@@ -3668,16 +3687,14 @@ bool DWARFASTParserClang::CopyUniqueClassMethodTypes(
     }
   }
 
-  auto *src_dwarf_ast_parser = llvm::cast<DWARFASTParserClang>(
-      SymbolFileDWARF::GetDWARFParser(*src_class_die.GetCU()));
-  auto *dst_dwarf_ast_parser = llvm::cast<DWARFASTParserClang>(
-      SymbolFileDWARF::GetDWARFParser(*dst_class_die.GetCU()));
+  auto *src_dwarf_ast_parser =
+      SymbolFileDWARF::GetDWARFParser(*src_class_die.GetCU());
+  auto *dst_dwarf_ast_parser =
+      SymbolFileDWARF::GetDWARFParser(*dst_class_die.GetCU());
   auto link = [&](DWARFDIE src, DWARFDIE dst) {
     auto &die_to_type = dst_class_die.GetDWARF()->GetDIEToType();
-    clang::DeclContext *dst_decl_ctx =
-        dst_dwarf_ast_parser->m_die_to_decl_ctx[dst.GetDIE()];
-    if (dst_decl_ctx)
-      src_dwarf_ast_parser->LinkDeclContextToDIE(dst_decl_ctx, src);
+    if (void *dst_decl_ctx = dst_dwarf_ast_parser->GetCachedDeclContext(dst))
+      src_dwarf_ast_parser->LinkCachedDeclContextToDIE(dst_decl_ctx, src);
 
     if (Type *src_child_type = die_to_type.lookup(src.GetDIE()))
       die_to_type[dst.GetDIE()] = src_child_type;
