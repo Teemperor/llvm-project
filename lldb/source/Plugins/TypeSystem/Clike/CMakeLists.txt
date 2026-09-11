@@ -1,4 +1,5 @@
 add_lldb_library(lldbPluginTypeSystemClike PLUGIN
+  Builder.cpp
   BuiltinTypes.cpp
   ByteSizedType.cpp
   Context.cpp
@@ -6,6 +7,7 @@ add_lldb_library(lldbPluginTypeSystemClike PLUGIN
   LanguageOpts.cpp
   NamedType.cpp
   Namespace.cpp
+  ObjCMethodSignature.cpp
   RecordType.cpp
   SugarType.cpp
   Type.cpp
@@ -20,7 +22,9 @@ add_lldb_library(lldbPluginTypeSystemClike PLUGIN
   LINK_LIBS
     lldbCore
     lldbSymbol
+    lldbTarget
     lldbUtility
+    lldbPluginObjCRuntime
   CLANG_LIBS
     clangBasic
 )
