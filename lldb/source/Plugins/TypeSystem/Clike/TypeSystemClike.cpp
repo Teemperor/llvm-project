@@ -21,6 +21,7 @@
 #include "Plugins/SymbolFile/DWARF/DWARFDIE.h"
 #include "Plugins/SymbolFile/DWARF/SymbolFileDWARF.h"
 
+#include "Plugins/ExpressionParser/Clang/ClangASTGenerator.h"
 
 #include "Plugins/Language/ObjC/ObjCLanguage.h"
 #include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
@@ -69,11 +70,19 @@ ReadVirtualBaseOffset(TypeSystemClike &ts, clike_typesystem::RecordType *derived
   if (!process)
     return std::nullopt;
 
-  // The vbase-offset-offset is recovered from the DWARF location expression on
-  // the inheritance DIE. Darwin's dsymutil strips that expression from the
-  // .dSYM; recomputing it from a synthesized Clang vtable layout arrives with
-  // ClangASTGenerator.
+  // The vbase-offset-offset is normally recovered from the DWARF location
+  // expression on the inheritance DIE (base.vbase_offset_offset). Darwin's
+  // dsymutil strips that expression from the .dSYM, so when it's missing
+  // recompute it the way TypeSystemClang does -- from a synthesized Clang
+  // vtable layout of the derived record (see
+  // ClangASTGenerator::ComputeVBaseOffsetOffset). This lives in the
+  // Clang-permitted expression-parser plugin and returns a plain byte value, so
+  // TypeSystemClike never touches a clang::Decl.
   std::optional<uint64_t> vbase_offset_offset = base.vbase_offset_offset;
+  if (!vbase_offset_offset && derived)
+    vbase_offset_offset = ClangASTGenerator::ComputeVBaseOffsetOffset(
+        ts, ts.GetTriple(), ts.GetCompilerType(derived),
+        ts.GetCompilerType(&base.type.Get()));
   if (!vbase_offset_offset)
     return std::nullopt;
 
@@ -2937,9 +2946,17 @@ void TypeSystemClike::Dump(llvm::raw_ostream &output, llvm::StringRef filter,
   // Clang-AST synthesizer (which lives in the expression-parser plugin, since
   // TypeSystem/Clike must not depend on the clang AST) to build and print a
   // throwaway clang AST. Backs `target modules dump ast`.
-  // The synthesizer that turns those records into a printable clang AST lives
-  // in the expression-parser plugin and arrives with ClangASTGenerator; until
-  // then there is nothing to print.
+  std::vector<CompilerType> records;
+  {
+    // Scoped so the read lock is released before DumpRecords, which calls
+    // back into this instance's own (locking) public API per record.
+    auto read_lock = LockForRead();
+    m_context.ForEachRecordType([&](clike_typesystem::RecordType *record) {
+      records.push_back(GetCompilerType(record));
+    });
+  }
+  ClangASTGenerator::DumpRecords(*this, m_triple, records, output, filter,
+                                 show_color);
 }
 
 bool TypeSystemClike::IsRuntimeGeneratedType(opaque_compiler_type_t type) {
