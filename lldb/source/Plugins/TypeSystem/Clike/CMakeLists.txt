@@ -7,6 +7,7 @@ add_lldb_library(lldbPluginTypeSystemClike PLUGIN
   Namespace.cpp
   ObjCMethodSignature.cpp
   RecordType.cpp
+  ScratchTypeSystemClike.cpp
   SugarType.cpp
   Type.cpp
   TypeC.cpp
@@ -22,6 +23,8 @@ add_lldb_library(lldbPluginTypeSystemClike PLUGIN
     lldbSymbol
     lldbTarget
     lldbUtility
+    lldbPluginExpressionParserClang
+    lldbPluginSymbolFileDWARF
     lldbPluginObjCRuntime
   CLANG_LIBS
     clangBasic

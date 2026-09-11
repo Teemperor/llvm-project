@@ -17,6 +17,9 @@
 #include "ObjCMethodSignature.h"
 #include "TypeName.h"
 
+#include "Plugins/SymbolFile/DWARF/DWARFASTParserClike.h"
+#include "Plugins/SymbolFile/DWARF/DWARFDIE.h"
+
 #include "Plugins/Language/ObjC/ObjCLanguage.h"
 #include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
 
@@ -353,6 +356,12 @@ llvm::SmallVector<TypeSystemClike *, 4> TypeSystemClike::GetLockOrder() const {
          "an instance must always lock itself");
   m_lock_order_valid = true;
   return m_lock_order;
+}
+
+plugin::dwarf::DWARFASTParser *TypeSystemClike::GetDWARFParser() {
+  if (!m_dwarf_ast_parser_up)
+    m_dwarf_ast_parser_up = std::make_unique<DWARFASTParserClike>(*this);
+  return m_dwarf_ast_parser_up.get();
 }
 
 CompilerType TypeSystemClike::GetCompilerType(clike::Type *type) {
@@ -839,10 +848,49 @@ void TypeSystemClike::CompleteMemberFunctionsAssumingWriteLocked(
     return;
   // Member functions live on the completed record, and the DWARF parser learns
   // the record's defining DIE while completing it, so complete it first.
-  // Parsing them out of the DWARF arrives with DWARFASTParserClike; until then
-  // a record simply reports no member functions, which only the expression
-  // evaluator (also not yet present) would ask about.
   CompleteTypeAssumingWriteLocked(record);
+  if (auto *parser =
+          llvm::dyn_cast_or_null<DWARFASTParserClike>(GetDWARFParser()))
+    parser->CompleteMemberFunctionsFromDWARF(*record);
+}
+
+std::vector<CompilerDeclContext>
+TypeSystemClike::GetUsingDirectiveNamespaces(Block &block) {
+  std::vector<CompilerDeclContext> namespaces;
+  auto *parser = llvm::dyn_cast_or_null<DWARFASTParserClike>(GetDWARFParser());
+  if (!parser)
+    return namespaces;
+  plugin::dwarf::DWARFDIE block_die =
+      DWARFASTParserClike::GetDIEForBlock(block);
+  if (!block_die)
+    return namespaces;
+  parser->CollectUsingDirectiveNamespaces(block_die, namespaces);
+  return namespaces;
+}
+
+std::vector<std::pair<ConstString, CompilerDeclContext>>
+TypeSystemClike::GetUsingDeclarations(Block &block) {
+  std::vector<std::pair<ConstString, CompilerDeclContext>> decls;
+  auto *parser = llvm::dyn_cast_or_null<DWARFASTParserClike>(GetDWARFParser());
+  if (!parser)
+    return decls;
+  plugin::dwarf::DWARFDIE block_die =
+      DWARFASTParserClike::GetDIEForBlock(block);
+  if (!block_die)
+    return decls;
+  parser->CollectUsingDeclarations(block_die, decls);
+  return decls;
+}
+
+CompilerType TypeSystemClike::GetOwningClassForFunction(Block &function_block) {
+  auto *parser = llvm::dyn_cast_or_null<DWARFASTParserClike>(GetDWARFParser());
+  if (!parser)
+    return CompilerType();
+  plugin::dwarf::DWARFDIE block_die =
+      DWARFASTParserClike::GetDIEForBlock(function_block);
+  if (!block_die)
+    return CompilerType();
+  return parser->GetOwningClassForFunctionFromDWARF(block_die);
 }
 
 uint32_t TypeSystemClike::GetPointerByteSize() {
