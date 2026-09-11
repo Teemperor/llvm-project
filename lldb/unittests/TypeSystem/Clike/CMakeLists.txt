@@ -1,15 +1,31 @@
 add_lldb_unittest(TypeSystemClikeUnitTests
+  BuilderTest.cpp
   BuiltinTypesTest.cpp
   ContextTest.cpp
   IdentifierTest.cpp
   LanguageOptsTest.cpp
   NamespaceTest.cpp
+  ObjCMethodSignatureTest.cpp
   TypeCTest.cpp
   TypeCppTest.cpp
   TypeNameTest.cpp
   TypeObjCTest.cpp
+  TypeSystemClikeBasicQueriesTest.cpp
+  TypeSystemClikeChildrenTest.cpp
+  TypeSystemClikeNameTest.cpp
+  TypeSystemClikeRecordQueriesTest.cpp
+  TypeSystemClikeThreadSafetyTest.cpp
   TypeTest.cpp
 
   LINK_LIBS
+    lldbCore
+    lldbHost
+    lldbSymbol
+    lldbTarget
+    lldbUtility
+    lldbUtilityHelpers
     lldbPluginTypeSystemClike
+    lldbPluginObjCLanguage
+    lldbPluginObjCRuntime
+    LLVMTestingSupport
   )
