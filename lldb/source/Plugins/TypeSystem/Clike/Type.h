@@ -500,6 +500,16 @@ private:
   Context *m_context = nullptr;
 };
 
+/// Returns the desugared \p t, or null if \p t is null.
+inline Type *Desugar(Type *t) { return t ? t->Desugar() : nullptr; }
+inline const Type *Desugar(const Type *t) { return t ? t->Desugar() : nullptr; }
+
+/// True if \p t is non-null and `void` after desugaring.
+inline bool IsVoid(const Type *t) {
+  const Type *desugared = Desugar(t);
+  return desugared && desugared->IsVoid();
+}
+
 /// Mixin that adds a name and declaration context to a type.
 template <typename Base> class NamedType : public Base {
 public:
