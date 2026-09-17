@@ -12,6 +12,7 @@
 #include <optional>
 
 #include "llvm/ADT/ScopeExit.h"
+#include "llvm/Support/Process.h"
 #include "llvm/Support/ScopedPrinter.h"
 #include "llvm/Support/Threading.h"
 
@@ -578,6 +579,10 @@ Process::~Process() {
   Log *log = GetLog(LLDBLog::Object);
   LLDB_LOGF(log, "%p Process::~Process()", static_cast<void *>(this));
   StopPrivateStateThread();
+
+  // Normally this happened in StopSTDIOMonitoring() already, but DestroyImpl()
+  // skips that when it fails to tear the process down.
+  CloseSTDIOSecondaryFileDescriptor();
 
   // ThreadList::Clear() will try to acquire this process's mutex, so
   // explicitly clear the thread list here to ensure that the mutex is not
@@ -3901,9 +3906,9 @@ Status Process::DestroyImpl(bool force_kill) {
       DidDestroy();
       StopPrivateStateThread();
     }
-    m_stdio_communication.StopReadThread();
-    m_stdio_communication.Disconnect();
-    m_stdin_forward = false;
+    // Not draining: we are tearing the process down, so we don't care about its
+    // remaining output.
+    StopSTDIOMonitoring(/*drain=*/false);
 
     {
       std::lock_guard<std::mutex> guard(m_process_input_reader_mutex);
@@ -3972,10 +3977,9 @@ bool Process::ShouldBroadcastEvent(Event *event_ptr) {
   case eStateDetached:
   case eStateExited:
   case eStateUnloaded:
-    m_stdio_communication.SynchronizeWithReadThread();
-    m_stdio_communication.StopReadThread();
-    m_stdio_communication.Disconnect();
-    m_stdin_forward = false;
+    // The inferior is gone, so this is our last chance to pick up whatever it
+    // wrote before it went away.
+    StopSTDIOMonitoring(/*drain=*/true);
 
     [[fallthrough]];
   case eStateConnected:
@@ -5007,7 +5011,10 @@ void Process::STDIOReadThreadBytesReceived(void *baton, const void *src,
   process->AppendSTDOUT(static_cast<const char *>(src), src_len);
 }
 
-void Process::SetSTDIOFileDescriptor(int fd) {
+void Process::SetSTDIOFileDescriptor(int fd, int secondary_fd) {
+  assert(m_stdio_secondary_fd == -1 && "process stdio is already set up");
+  m_stdio_secondary_fd = secondary_fd;
+
   // First set up the Read Thread for reading/handling process I/O
   m_stdio_communication.SetConnection(
       std::make_unique<ConnectionFileDescriptor>(fd, true));
@@ -5023,7 +5030,45 @@ void Process::SetSTDIOFileDescriptor(int fd) {
         m_process_input_reader =
             std::make_shared<IOHandlerProcessSTDIO>(this, fd);
     }
+  } else {
+    // Nobody is going to read the primary side, so there is no point in keeping
+    // the terminal alive.
+    CloseSTDIOSecondaryFileDescriptor();
   }
+}
+
+#if !defined(_WIN32)
+void Process::SetSTDIOPseudoTerminal(PseudoTerminal &pty) {
+  // Take a descriptor for the secondary side too. Everyone else only ever
+  // learned the secondary's *name*, so without this the inferior owns the only
+  // descriptor for it and its output dies with it before we get to read it.
+  if (llvm::Error err = pty.OpenSecondary(O_RDWR | O_NOCTTY | O_CLOEXEC))
+    LLDB_LOG_ERROR(GetLog(LLDBLog::Process), std::move(err),
+                   "failed to open the secondary side of the inferior's "
+                   "terminal, its final output may be lost: {0}");
+
+  SetSTDIOFileDescriptor(pty.ReleasePrimaryFileDescriptor(),
+                         pty.ReleaseSecondaryFileDescriptor());
+}
+#endif
+
+void Process::StopSTDIOMonitoring(bool drain) {
+  if (drain) {
+    // Collect everything the inferior has written.
+    m_stdio_communication.SynchronizeWithReadThread();
+  }
+
+  // Nothing is left to read, so let go of the terminal.
+  CloseSTDIOSecondaryFileDescriptor();
+
+  m_stdio_communication.StopReadThread();
+  m_stdio_communication.Disconnect();
+  m_stdin_forward = false;
+}
+
+void Process::CloseSTDIOSecondaryFileDescriptor() {
+  if (int fd = m_stdio_secondary_fd.exchange(-1); fd != -1)
+    llvm::sys::Process::SafelyCloseFileDescriptor(fd);
 }
 
 bool Process::ProcessIOHandlerIsActive() {
