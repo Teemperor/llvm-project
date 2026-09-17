@@ -27,6 +27,7 @@
 #include <cstring>
 #include <memory>
 #include <shared_mutex>
+#include <thread>
 
 #include <cerrno>
 #include <cinttypes>
@@ -34,6 +35,22 @@
 
 using namespace lldb;
 using namespace lldb_private;
+
+// FIXME: Temporary instrumentation, not for upstreaming.
+//
+// TestTargetAPI.py's test_launch_simple flakes on slow, overloaded macOS bots
+// with `AssertionError: 'arg: foo' not found in ''`, i.e. the inferior's entire
+// stdout goes missing. The inferior writes to the secondary side of a pseudo
+// terminal and we drain the primary side from the read thread below. On Darwin,
+// closing the last secondary descriptor flushes the terminal's queues, so any
+// output the inferior wrote but that we have not read yet is destroyed the
+// moment the inferior exits. Draining is therefore only correct as long as the
+// read thread wins the race against the inferior's exit, which it loses if it
+// is descheduled at the wrong moment.
+//
+// Sleeping here before every read makes the read thread lose that race
+// deterministically.
+static constexpr std::chrono::milliseconds g_stdio_read_delay(800);
 
 llvm::StringRef ThreadedCommunication::GetStaticBroadcasterClass() {
   static constexpr llvm::StringLiteral class_name("lldb.communication");
@@ -277,6 +294,9 @@ lldb::thread_result_t ThreadedCommunication::ReadThread() {
   bool done = false;
   bool disconnect = false;
   while (!done && m_read_thread_enabled) {
+    // FIXME: Temporary instrumentation, see g_stdio_read_delay.
+    if (GetBroadcasterName() == "process.stdio")
+      std::this_thread::sleep_for(g_stdio_read_delay);
     size_t bytes_read = ReadFromConnection(
         buf, sizeof(buf), std::chrono::seconds(5), status, &error);
     if (bytes_read > 0 || status == eConnectionStatusEndOfFile)
