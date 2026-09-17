@@ -945,7 +945,7 @@ Status ProcessGDBRemote::DoLaunch(lldb_private::Module *exe_module,
 
       if (!disable_stdio) {
         if (pty.GetPrimaryFileDescriptor() != PseudoTerminal::invalid_fd) {
-          SetSTDIOFileDescriptor(pty.ReleasePrimaryFileDescriptor());
+          SetSTDIOPseudoTerminal(pty);
         }
 #ifdef _WIN32
         else if (m_stdin_forward) {

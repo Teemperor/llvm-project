@@ -2663,10 +2663,39 @@ void PruneThreadPlans();
   ///     assumed to be valid and will be managed by the newly created
   ///     connection.
   ///
+  /// \param[in] secondary_fd
+  ///     If \a fd is the primary side of a pseudo terminal, the caller may pass
+  ///     a descriptor for the secondary side of that same terminal here. The
+  ///     process takes ownership of it and keeps it open until it stops
+  ///     monitoring \a fd.
+  ///
+  ///     lldb never reads from or writes to this descriptor. Its only purpose is
+  ///     to make the terminal outlive the inferior: on Darwin, closing the last
+  ///     secondary descriptor flushes the terminal's queues, which would discard
+  ///     any output the inferior wrote but that the read thread has not consumed
+  ///     yet. Without this, an inferior that exits right after writing loses its
+  ///     output whenever the read thread happens to be descheduled.
+  ///
+  ///     Pass -1 if \a fd is not a pseudo terminal or no such descriptor is
+  ///     available.
+  ///
   /// \see lldb_private::Process::STDIOReadThreadBytesReceived()
   /// \see lldb_private::IOHandlerProcessSTDIO
   /// \see lldb_private::ConnectionFileDescriptor
-  void SetSTDIOFileDescriptor(int file_descriptor);
+  void SetSTDIOFileDescriptor(int file_descriptor, int secondary_fd = -1);
+
+#if !defined(_WIN32)
+  /// Associates the primary side of \a pty with the process' STDIO handling, as
+  /// SetSTDIOFileDescriptor() does, and additionally opens the secondary side so
+  /// that the terminal outlives the inferior.
+  ///
+  /// This is the form callers should prefer whenever they have the terminal
+  /// itself rather than a bare descriptor. The process takes ownership of both
+  /// of \a pty's descriptors.
+  ///
+  /// \see SetSTDIOFileDescriptor()
+  void SetSTDIOPseudoTerminal(PseudoTerminal &pty);
+#endif
 
   // Add a permanent region of memory that should never be read or written to.
   // This can be used to ensure that memory reads or writes to certain areas of
@@ -3520,6 +3549,10 @@ protected:
   mutable std::mutex m_process_input_reader_mutex;
   ThreadedCommunication m_stdio_communication;
   std::recursive_mutex m_stdio_communication_mutex;
+  /// The secondary side of the pseudo terminal the inferior uses for its stdio,
+  /// or -1. Only held open so that the terminal outlives the inferior, see
+  /// SetSTDIOFileDescriptor().
+  std::atomic<int> m_stdio_secondary_fd{-1};
   bool m_stdin_forward; /// Remember if stdin must be forwarded to remote debug
                         /// server
   std::string m_stdout_data;
@@ -3679,6 +3712,20 @@ protected:
 
   static void STDIOReadThreadBytesReceived(void *baton, const void *src,
                                            size_t src_len);
+
+  /// Stop monitoring the process' stdio and release the descriptors set up by
+  /// SetSTDIOFileDescriptor().
+  ///
+  /// \param[in] drain
+  ///     Whether to first wait for the read thread to hand us everything the
+  ///     inferior has written so far. This has to happen before we let go of the
+  ///     terminal, so callers that care about not losing the inferior's last
+  ///     output must pass true.
+  void StopSTDIOMonitoring(bool drain);
+
+  /// Close m_stdio_secondary_fd if it is still open. Safe to call more than
+  /// once.
+  void CloseSTDIOSecondaryFileDescriptor();
 
   bool PushProcessIOHandler();
 
