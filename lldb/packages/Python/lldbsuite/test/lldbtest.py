@@ -58,6 +58,7 @@ from . import configuration
 from . import cpu_feature
 from . import decorators
 from . import lldbplatformutil
+from . import lldbsanitycheck
 from . import lldbtest_config
 from . import lldbutil
 from . import test_categories
@@ -1047,6 +1048,10 @@ class Base(unittest.TestCase):
                 self.framework_dir = os.path.dirname(framework)
                 self.lib_lldb = lib
                 self.darwinWithFramework = self.platformIsDarwin()
+
+        # Verify that this machine can still build and debug a trivial program
+        # before running the actual test.
+        lldbsanitycheck.run(self)
 
         # As the last operation, mark the setup completed for dumpSessionInfo.
         self.__setup_done__ = True
