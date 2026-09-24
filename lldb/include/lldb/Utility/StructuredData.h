@@ -393,31 +393,37 @@ public:
 
       Dictionary *dict = obj_sp->GetAsDictionary();
       m_dict = dict->m_dict;
+      m_items = dict->m_items;
     }
 
     ~Dictionary() override = default;
 
-    size_t GetSize() const { return m_dict.size(); }
+    size_t GetSize() const { return m_items.size(); }
 
+    /// Iterates over all entries in the order they were first inserted.
     void ForEach(std::function<bool(llvm::StringRef key, Object *object)> const
                      &callback) const {
-      for (const auto &pair : m_dict) {
-        if (!callback(pair.first(), pair.second.get()))
+      for (const auto &pair : m_items) {
+        if (!callback(pair.first, pair.second.get()))
           break;
       }
     }
 
+    /// Returns all keys in the order they were first inserted.
     ArraySP GetKeys() const {
       auto array_sp = std::make_shared<Array>();
-      for (auto iter = m_dict.begin(); iter != m_dict.end(); ++iter) {
-        auto key_object_sp = std::make_shared<String>(iter->first());
+      for (const auto &pair : m_items) {
+        auto key_object_sp = std::make_shared<String>(pair.first);
         array_sp->Push(key_object_sp);
       }
       return array_sp;
     }
 
     ObjectSP GetValueForKey(llvm::StringRef key) const {
-      return m_dict.lookup(key);
+      auto iter = m_dict.find(key);
+      if (iter == m_dict.end())
+        return ObjectSP();
+      return m_items[iter->second].second;
     }
 
     bool GetValueForKeyAsBoolean(llvm::StringRef key, bool &result) const {
@@ -508,8 +514,15 @@ public:
 
     bool HasKey(llvm::StringRef key) const { return m_dict.contains(key); }
 
+    /// Adds a new entry or replaces the value of an existing entry. Replacing
+    /// a value doesn't change the position of the entry in the iteration
+    /// order.
     void AddItem(llvm::StringRef key, ObjectSP value_sp) {
-      m_dict.insert_or_assign(key, std::move(value_sp));
+      auto [iter, inserted] = m_dict.try_emplace(key, m_items.size());
+      if (inserted)
+        m_items.emplace_back(key.str(), std::move(value_sp));
+      else
+        m_items[iter->second].second = std::move(value_sp);
     }
 
     template <typename T> void AddIntegerItem(llvm::StringRef key, T value) {
@@ -539,7 +552,10 @@ public:
     void GetDescription(lldb_private::Stream &s) const override;
 
   protected:
-    llvm::StringMap<ObjectSP> m_dict;
+    /// Maps each key to the index of its entry in m_items.
+    llvm::StringMap<size_t> m_dict;
+    /// All entries in insertion order.
+    std::vector<std::pair<std::string, ObjectSP>> m_items;
   };
 
   class Null : public Object {

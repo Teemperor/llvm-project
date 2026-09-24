@@ -112,3 +112,43 @@ TEST(StructuredDataTest, ParseJSONFromFile) {
   object_sp->Dump(S, false);
   EXPECT_EQ("[1,2,3]", S.GetString());
 }
+
+TEST(StructuredDataTest, DictionaryInsertionOrder) {
+  StructuredData::Dictionary dict;
+  dict.AddIntegerItem("c", 1u);
+  dict.AddIntegerItem("a", 2u);
+  dict.AddIntegerItem("b", 3u);
+  // Replacing an existing value shouldn't change the iteration order.
+  dict.AddIntegerItem("a", 4u);
+
+  EXPECT_EQ(3u, dict.GetSize());
+  EXPECT_EQ(4u, dict.GetValueForKey("a")->GetUnsignedIntegerValue());
+  EXPECT_EQ(nullptr, dict.GetValueForKey("d"));
+
+  std::vector<std::string> keys;
+  std::vector<uint64_t> values;
+  dict.ForEach([&](llvm::StringRef key, StructuredData::Object *object) {
+    keys.push_back(key.str());
+    values.push_back(object->GetUnsignedIntegerValue());
+    return true;
+  });
+  EXPECT_EQ((std::vector<std::string>{"c", "a", "b"}), keys);
+  EXPECT_EQ((std::vector<uint64_t>{1, 4, 3}), values);
+
+  StructuredData::ArraySP keys_sp = dict.GetKeys();
+  ASSERT_EQ(3u, keys_sp->GetSize());
+  EXPECT_EQ("c", keys_sp->GetItemAtIndexAsString(0));
+  EXPECT_EQ("a", keys_sp->GetItemAtIndexAsString(1));
+  EXPECT_EQ("b", keys_sp->GetItemAtIndexAsString(2));
+
+  // Copies should preserve the order too.
+  auto dict_sp = std::make_shared<StructuredData::Dictionary>(dict);
+  StructuredData::Dictionary copy(dict_sp);
+  keys.clear();
+  copy.ForEach([&](llvm::StringRef key, StructuredData::Object *) {
+    keys.push_back(key.str());
+    return true;
+  });
+  EXPECT_EQ((std::vector<std::string>{"c", "a", "b"}), keys);
+  EXPECT_EQ(4u, copy.GetValueForKey("a")->GetUnsignedIntegerValue());
+}

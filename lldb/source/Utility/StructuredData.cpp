@@ -167,8 +167,8 @@ void StructuredData::Dictionary::Serialize(json::OStream &s) const {
   // first.
   using Entry = std::pair<llvm::StringRef, ObjectSP>;
   std::vector<Entry> sorted_entries;
-  for (const auto &pair : m_dict)
-    sorted_entries.push_back({pair.first(), pair.second});
+  for (const auto &pair : m_items)
+    sorted_entries.push_back({pair.first, pair.second});
 
   llvm::sort(sorted_entries);
 
@@ -243,8 +243,8 @@ void StructuredData::Dictionary::GetDescription(lldb_private::Stream &s) const {
   // first.
   using Entry = std::pair<llvm::StringRef, ObjectSP>;
   std::vector<Entry> sorted_entries;
-  for (const auto &pair : m_dict)
-    sorted_entries.push_back({pair.first(), pair.second});
+  for (const auto &pair : m_items)
+    sorted_entries.push_back({pair.first, pair.second});
 
   llvm::sort(sorted_entries);
 
