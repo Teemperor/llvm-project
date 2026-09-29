@@ -76,7 +76,7 @@ int main() {
   // CHECK:      (lldb) frame var vlaNM
   // CHECK-NEXT: (int[][]) vlaNM = {
   // CHECK-NEXT:   [0] = ([0] = 0, [1] = 1, [2] = 1)
-  // CHECK-NEXT:   [1] = ([0] = 1, [1] = 1, [2] = 2)
+  // CHECK-NEXT:   [1] = ([0] = 2, [1] = 2, [2] = 3)
   // CHECK-NEXT: }
 
   __builtin_debugtrap();

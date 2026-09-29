@@ -4757,6 +4757,18 @@ TypeSystemClang::GetObjCBitSize(QualType qual_type,
          getASTContext().getTypeSize(getASTContext().ObjCBuiltinClassTy);
 }
 
+static std::optional<SymbolFile::ArrayInfo>
+GetDynamicArrayInfo(TypeSystemClang &ast, SymbolFile *sym_file,
+                    clang::QualType qual_type,
+                    const ExecutionContext *exe_ctx) {
+  if (sym_file && qual_type->isIncompleteArrayType())
+    if (std::optional<ClangASTMetadata> metadata =
+            ast.GetMetadata(qual_type.getTypePtr()))
+      return sym_file->GetDynamicArrayInfoForUID(metadata->GetUserID(),
+                                                 exe_ctx);
+  return std::nullopt;
+}
+
 llvm::Expected<uint64_t>
 TypeSystemClang::GetBitSize(lldb::opaque_compiler_type_t type,
                             ExecutionContextScope *exe_scope) {
@@ -4777,13 +4789,33 @@ TypeSystemClang::GetBitSize(lldb::opaque_compiler_type_t type,
   case clang::Type::ObjCObject:
     return GetObjCBitSize(qual_type, exe_scope);
   case clang::Type::IncompleteArray: {
-    const uint64_t bit_size = getASTContext().getTypeSize(qual_type);
-    if (bit_size == 0)
-      return getASTContext().getTypeSize(
-          qual_type->getArrayElementTypeNoTypeQual()
-              ->getCanonicalTypeUnqualified());
+    // The size of an incomplete array (e.g., a VLA) can only be determined
+    // at runtime from the debug info. If that's not possible (e.g., for
+    // flexible array members), the array has no known size, so return 0
+    // like Clang does.
+    ExecutionContext exe_ctx(exe_scope);
+    auto array_info =
+        GetDynamicArrayInfo(*this, GetSymbolFile(), qual_type, &exe_ctx);
+    if (!array_info)
+      return 0;
 
-    return bit_size;
+    // Multiply the element counts of all dimensions with unknown bounds.
+    uint64_t num_elements = 1;
+    clang::QualType element_type = qual_type;
+    for (const std::optional<uint64_t> &count : array_info->element_orders) {
+      const clang::IncompleteArrayType *array_type =
+          getASTContext().getAsIncompleteArrayType(element_type);
+      if (!array_type)
+        break;
+      if (!count)
+        return 0;
+      num_elements *= *count;
+      element_type = array_type->getElementType();
+    }
+
+    if (element_type->isIncompleteType())
+      return 0;
+    return num_elements * getASTContext().getTypeSize(element_type);
   }
   default:
     if (const uint64_t bit_size = getASTContext().getTypeSize(qual_type))
@@ -5294,18 +5326,6 @@ static bool ObjCDeclHasIVars(clang::ObjCInterfaceDecl *class_interface_decl) {
     class_interface_decl = class_interface_decl->getSuperClass();
   }
   return false;
-}
-
-static std::optional<SymbolFile::ArrayInfo>
-GetDynamicArrayInfo(TypeSystemClang &ast, SymbolFile *sym_file,
-                    clang::QualType qual_type,
-                    const ExecutionContext *exe_ctx) {
-  if (qual_type->isIncompleteArrayType())
-    if (std::optional<ClangASTMetadata> metadata =
-            ast.GetMetadata(qual_type.getTypePtr()))
-      return sym_file->GetDynamicArrayInfoForUID(metadata->GetUserID(),
-                                                 exe_ctx);
-  return std::nullopt;
 }
 
 llvm::Expected<uint32_t>
