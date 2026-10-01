@@ -2450,18 +2450,14 @@ bool Sema::LookupQualifiedName(LookupResult &R, DeclContext *LookupCtx,
   struct QualifiedLookupInScope {
     ExternalSemaSource *Source;
     const DeclContext *Context;
-    bool oldVal;
     QualifiedLookupInScope(ExternalSemaSource *Source, const DeclContext *Ctx)
-        : Source(Source), Context(Ctx),
-          oldVal(Ctx->shouldUseQualifiedLookup()) {
-      Context->setUseQualifiedLookup();
+        : Source(Source), Context(Ctx) {
       if (Source)
         Source->StartedQualifiedLookup(Context);
     }
     ~QualifiedLookupInScope() {
       if (Source)
         Source->FinishedQualifiedLookup(Context);
-      Context->setUseQualifiedLookup(oldVal);
     }
   } QL(ExternalSource.get(), LookupCtx);
 
