@@ -392,6 +392,12 @@ public:
   bool MaybeDiagnoseMissingCompleteType(SourceLocation Loc,
                                         QualType T) override;
 
+  /// \copydoc ExternalSemaSource::StartedQualifiedLookup
+  void StartedQualifiedLookup(const DeclContext *DC) override;
+
+  /// \copydoc ExternalSemaSource::FinishedQualifiedLookup
+  void FinishedQualifiedLookup(const DeclContext *DC) override;
+
   /// LLVM-style RTTI.
   /// \{
   bool isA(const void *ClassID) const override {

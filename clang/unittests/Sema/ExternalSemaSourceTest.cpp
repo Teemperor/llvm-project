@@ -176,6 +176,35 @@ public:
   int CallCount;
 };
 
+// Records the DeclContexts passed to StartedQualifiedLookup and
+// FinishedQualifiedLookup.
+class QualifiedLookupRecorder : public clang::ExternalSemaSource {
+public:
+  static std::string getName(const DeclContext *DC) {
+    if (const auto *ND = dyn_cast<NamedDecl>(DC))
+      return ND->getNameAsString();
+    return "<TU>";
+  }
+
+  void StartedQualifiedLookup(const DeclContext *DC) override {
+    Events.push_back("start " + getName(DC));
+    ActiveLookups.push_back(DC);
+  }
+
+  void FinishedQualifiedLookup(const DeclContext *DC) override {
+    Events.push_back("finish " + getName(DC));
+    // Every finish must match the innermost started lookup.
+    if (ActiveLookups.empty() || ActiveLookups.back() != DC)
+      Unbalanced = true;
+    else
+      ActiveLookups.pop_back();
+  }
+
+  std::vector<std::string> Events;
+  std::vector<const DeclContext *> ActiveLookups;
+  bool Unbalanced = false;
+};
+
 // \brief Chains together a vector of DiagnosticWatchers and
 // adds a vector of ExternalSemaSources to the CompilerInstance before
 // performing semantic analysis.
@@ -301,6 +330,40 @@ TEST(ExternalSemaSource, FirstDiagnoserTaken) {
   ASSERT_EQ(1, First->CallCount);
   ASSERT_EQ(1, Second->CallCount);
   ASSERT_EQ(0, Third->CallCount);
+}
+
+// Qualified lookups should be reported to all external sources and be
+// balanced.
+TEST(ExternalSemaSource, QualifiedLookupNotifications) {
+  auto Installer = std::make_unique<ExternalSemaSourceInstaller>();
+  auto First = makeIntrusiveRefCnt<QualifiedLookupRecorder>();
+  auto Second = makeIntrusiveRefCnt<QualifiedLookupRecorder>();
+  Installer->PushSource(First);
+  Installer->PushSource(Second);
+  std::vector<std::string> Args(1, "-std=c++11");
+  ASSERT_TRUE(clang::tooling::runToolOnCodeWithArgs(
+      std::move(Installer),
+      "namespace A { int x; } int y = A::x; int z = ::A::x;", Args));
+  for (QualifiedLookupRecorder *R : {First.get(), Second.get()}) {
+    EXPECT_FALSE(R->Unbalanced);
+    EXPECT_TRUE(R->ActiveLookups.empty());
+    // 'A::x' looks up 'x' in A, '::A::x' additionally looks up 'A' in the TU.
+    // Sema may repeat the same lookup, so only check for a lower bound.
+    EXPECT_LE(2, llvm::count(R->Events, "start A"));
+    EXPECT_LE(1, llvm::count(R->Events, "start <TU>"));
+  }
+  EXPECT_EQ(First->Events, Second->Events);
+}
+
+// Unqualified lookups should not be reported as qualified lookups.
+TEST(ExternalSemaSource, NoQualifiedLookupNotificationsForUnqualifiedNames) {
+  auto Installer = std::make_unique<ExternalSemaSourceInstaller>();
+  auto Recorder = makeIntrusiveRefCnt<QualifiedLookupRecorder>();
+  Installer->PushSource(Recorder);
+  std::vector<std::string> Args(1, "-std=c++11");
+  ASSERT_TRUE(clang::tooling::runToolOnCodeWithArgs(
+      std::move(Installer), "int x; int z = x; void f() { int w = x; }", Args));
+  EXPECT_TRUE(Recorder->Events.empty());
 }
 
 } // anonymous namespace
