@@ -15,6 +15,7 @@
 
 #include "lldb/Utility/ConstString.h"
 #include "lldb/Utility/RangeMap.h"
+#include "lldb/lldb-enumerations.h"
 #include "llvm/Support/FormatProviders.h"
 
 namespace lldb_private {
@@ -88,6 +89,73 @@ public:
     return *this;
   }
 
+  LazyBool GetMaxReadable() const { return m_max_read; }
+
+  LazyBool GetMaxWritable() const { return m_max_write; }
+
+  LazyBool GetMaxExecutable() const { return m_max_execute; }
+
+  void SetMaxReadable(LazyBool val) { m_max_read = val; }
+
+  void SetMaxWritable(LazyBool val) { m_max_write = val; }
+
+  void SetMaxExecutable(LazyBool val) { m_max_execute = val; }
+
+  // Get max protection permissions as a uint32_t bitmask, the same way
+  // GetLLDBPermissions() does for the current permissions.
+  uint32_t GetMaxLLDBPermissions() const {
+    uint32_t permissions = 0;
+    if (m_max_read == eLazyBoolYes)
+      permissions |= lldb::ePermissionsReadable;
+    if (m_max_write == eLazyBoolYes)
+      permissions |= lldb::ePermissionsWritable;
+    if (m_max_execute == eLazyBoolYes)
+      permissions |= lldb::ePermissionsExecutable;
+    return permissions;
+  }
+
+  std::optional<lldb::ShareMode> GetShareMode() const { return m_share_mode; }
+
+  void SetShareMode(std::optional<lldb::ShareMode> share_mode) {
+    m_share_mode = share_mode;
+  }
+
+  /// Get the raw region "tag" identifying the kind of allocator that owns
+  /// this region (e.g. the platform's VM_MEMORY_* user_tag on macOS).
+  std::optional<uint32_t> GetRegionTypeTag() const { return m_region_type; }
+
+  void SetRegionTypeTag(std::optional<uint32_t> region_type) {
+    m_region_type = region_type;
+  }
+
+  LazyBool IsSubmap() const { return m_is_submap; }
+
+  void SetIsSubmap(LazyBool val) { m_is_submap = val; }
+
+  std::optional<uint32_t> GetNumResidentPages() const {
+    return m_pages_resident;
+  }
+
+  void SetNumResidentPages(std::optional<uint32_t> count) {
+    m_pages_resident = count;
+  }
+
+  std::optional<uint32_t> GetNumDirtiedPages() const {
+    return m_pages_dirtied;
+  }
+
+  void SetNumDirtiedPages(std::optional<uint32_t> count) {
+    m_pages_dirtied = count;
+  }
+
+  std::optional<uint32_t> GetNumSwappedOutPages() const {
+    return m_pages_swapped_out;
+  }
+
+  void SetNumSwappedOutPages(std::optional<uint32_t> count) {
+    m_pages_swapped_out = count;
+  }
+
   // Get permissions as a uint32_t that is a mask of one or more bits from the
   // lldb::Permissions
   uint32_t GetLLDBPermissions() const {
@@ -122,7 +190,15 @@ public:
            m_pagesize == rhs.m_pagesize &&
            m_is_stack_memory == rhs.m_is_stack_memory &&
            m_is_shadow_stack == rhs.m_is_shadow_stack &&
-           m_protection_key == rhs.m_protection_key;
+           m_protection_key == rhs.m_protection_key &&
+           m_max_read == rhs.m_max_read && m_max_write == rhs.m_max_write &&
+           m_max_execute == rhs.m_max_execute &&
+           m_share_mode == rhs.m_share_mode &&
+           m_region_type == rhs.m_region_type &&
+           m_is_submap == rhs.m_is_submap &&
+           m_pages_resident == rhs.m_pages_resident &&
+           m_pages_dirtied == rhs.m_pages_dirtied &&
+           m_pages_swapped_out == rhs.m_pages_swapped_out;
   }
 
   bool operator!=(const MemoryRegionInfo &rhs) const { return !(*this == rhs); }
@@ -168,6 +244,15 @@ protected:
   std::optional<unsigned> m_protection_key = std::nullopt;
   int m_pagesize = 0;
   std::optional<std::vector<lldb::addr_t>> m_dirty_pages;
+  LazyBool m_max_read = eLazyBoolDontKnow;
+  LazyBool m_max_write = eLazyBoolDontKnow;
+  LazyBool m_max_execute = eLazyBoolDontKnow;
+  std::optional<lldb::ShareMode> m_share_mode = std::nullopt;
+  std::optional<uint32_t> m_region_type = std::nullopt;
+  LazyBool m_is_submap = eLazyBoolDontKnow;
+  std::optional<uint32_t> m_pages_resident = std::nullopt;
+  std::optional<uint32_t> m_pages_dirtied = std::nullopt;
+  std::optional<uint32_t> m_pages_swapped_out = std::nullopt;
 };
 
 inline bool operator<(const MemoryRegionInfo &lhs,

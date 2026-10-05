@@ -461,6 +461,21 @@ FLAGS_ENUM(Permissions){ePermissionsWritable = (1u << 0),
                         ePermissionsExecutable = (1u << 2)};
 LLDB_MARK_AS_BITMASK_ENUM(Permissions)
 
+/// Describes how a memory region's pages are shared, mirroring the SM_*
+/// values reported by the platform's virtual memory subsystem (e.g. macOS's
+/// SM_COW, SM_PRIVATE, ... from <mach/vm_region.h>).
+enum ShareMode {
+  eShareModeDontKnow = 0,
+  eShareModeCopyOnWrite,
+  eShareModePrivate,
+  eShareModeEmpty,
+  eShareModeShared,
+  eShareModeTrueShared,
+  eShareModePrivateAliased,
+  eShareModeSharedAliased,
+  eShareModeLargePage,
+};
+
 enum InputReaderAction {
   /// reader is newly pushed onto the reader stack
   eInputReaderActivate,

@@ -138,6 +138,47 @@ class MemoryCommandRegion(TestBase):
                 previous_base = region_base
                 previous_end = region_end
 
+    @skipUnlessDarwin
+    def test_vmmap_fields(self):
+        """Test the vmmap-parity fields (max protection, share mode, region
+        type tag, submap, resident/dirtied/swapped-out page counts) that
+        debugserver reports on Darwin."""
+        self.setup_program()
+
+        regions = self.process().GetMemoryRegions()
+        num_regions = regions.GetSize()
+        self.assertGreater(num_regions, 0)
+
+        region = lldb.SBMemoryRegionInfo()
+        found_max_permissions = False
+        found_share_mode = False
+        found_region_type = False
+        found_resident_pages = False
+        for idx in range(num_regions):
+            regions.GetMemoryRegionAtIndex(idx, region)
+            if region.IsMaxReadable() or region.IsMaxWritable() or region.IsMaxExecutable():
+                found_max_permissions = True
+            if region.HasShareMode():
+                found_share_mode = True
+            if region.HasRegionTypeTag():
+                found_region_type = True
+            if region.HasNumResidentPages():
+                found_resident_pages = True
+
+        self.assertTrue(
+            found_max_permissions, "Expected at least one region with max permissions"
+        )
+        self.assertTrue(
+            found_share_mode, "Expected at least one region with a share mode"
+        )
+        self.assertTrue(
+            found_region_type, "Expected at least one region with a region type tag"
+        )
+        self.assertTrue(
+            found_resident_pages,
+            "Expected at least one region with a resident page count",
+        )
+
 
 class MemoryCommandRegionAll(GDBRemoteTestBase):
     NO_DEBUG_INFO_TESTCASE = True

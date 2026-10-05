@@ -1572,6 +1572,26 @@ tuples to return are:
   that this stub cannot determine dirty pages.
 * `protection-key:<key>` - where `<key>` is an unsigned integer memory
   protection key.
+* `max-permissions:<permissions>;` - `<permissions>` is a string that
+  contains one or more of the characters from `rwx`, describing the maximum
+  protection this region can be changed to (e.g. via `mprotect()`).
+* `share-mode:<mode>;` - `<mode>` is a big endian hex integer identifying how
+  this region's pages are shared, matching the `lldb::ShareMode` enum
+  (`eShareModeCopyOnWrite`, `eShareModePrivate`, ...). This mirrors the
+  `SM_*` values from macOS's `<mach/vm_region.h>`.
+* `region-type:<tag>;` - `<tag>` is a big endian hex integer that is a
+  platform-specific value identifying the kind of allocator that owns this
+  region, e.g. the `user_tag`/`VM_MEMORY_*` values on macOS. This is
+  distinct from, and more granular than, the `type:` key above.
+* `is-submap:<0-or-1>;` - whether this region is a submap rather than a
+  top-level mapping.
+* `pages-resident:<count>;` - `<count>` is a big endian hex count of pages
+  in this region that are currently resident in physical memory.
+* `pages-dirtied:<count>;` - `<count>` is a big endian hex count of pages in
+  this region that have been modified. Unlike `dirty-pages:`, this is just
+  a count and does not require enumerating individual page addresses.
+* `pages-swapped-out:<count>;` - `<count>` is a big endian hex count of
+  pages in this region that have been swapped out.
 
 If the address requested is not in a mapped region (e.g. we've jumped through
 a NULL pointer and are at 0x0) currently lldb expects to get back the size

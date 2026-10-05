@@ -219,6 +219,21 @@ uint32_t MachVMRegion::GetDNBPermissions() const {
   return dnb_permissions;
 }
 
+uint32_t MachVMRegion::GetMaxDNBPermissions() const {
+  if (m_addr == INVALID_NUB_ADDRESS || m_start == INVALID_NUB_ADDRESS ||
+      m_size == 0)
+    return 0;
+  uint32_t dnb_permissions = 0;
+
+  if ((m_data.max_protection & VM_PROT_READ) == VM_PROT_READ)
+    dnb_permissions |= eMemoryPermissionsReadable;
+  if ((m_data.max_protection & VM_PROT_WRITE) == VM_PROT_WRITE)
+    dnb_permissions |= eMemoryPermissionsWritable;
+  if ((m_data.max_protection & VM_PROT_EXECUTE) == VM_PROT_EXECUTE)
+    dnb_permissions |= eMemoryPermissionsExecutable;
+  return dnb_permissions;
+}
+
 #ifndef VM_REGION_FLAG_MTE_ENABLED
 #define VM_REGION_FLAG_MTE_ENABLED 0x4
 #endif
@@ -275,3 +290,8 @@ std::vector<std::string> MachVMRegion::GetMemoryTypes() const {
   }
   return types;
 }
+
+// Note: we deliberately do not report vmmap's "PURGE" (purgeable state)
+// column. Unlike the fields above, it isn't part of vm_region_submap_info
+// and would require a separate mach_vm_purgable_control() call per region,
+// adding a syscall for every region returned by qMemoryRegionInfo.

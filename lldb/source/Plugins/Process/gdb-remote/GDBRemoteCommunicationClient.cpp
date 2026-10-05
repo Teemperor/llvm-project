@@ -1773,6 +1773,35 @@ Status GDBRemoteCommunicationClient::GetMemoryRegionInfo(
           unsigned protection_key = 0;
           if (!value.getAsInteger(10, protection_key))
             region_info.SetProtectionKey(protection_key);
+        } else if (name == "max-permissions") {
+          region_info.SetMaxReadable(value.contains('r') ? eLazyBoolYes
+                                                          : eLazyBoolNo);
+          region_info.SetMaxWritable(value.contains('w') ? eLazyBoolYes
+                                                          : eLazyBoolNo);
+          region_info.SetMaxExecutable(value.contains('x') ? eLazyBoolYes
+                                                            : eLazyBoolNo);
+        } else if (name == "share-mode") {
+          unsigned share_mode = 0;
+          if (!value.getAsInteger(16, share_mode))
+            region_info.SetShareMode(static_cast<lldb::ShareMode>(share_mode));
+        } else if (name == "region-type") {
+          uint32_t region_type = 0;
+          if (!value.getAsInteger(16, region_type))
+            region_info.SetRegionTypeTag(region_type);
+        } else if (name == "is-submap") {
+          region_info.SetIsSubmap(value == "1" ? eLazyBoolYes : eLazyBoolNo);
+        } else if (name == "pages-resident") {
+          uint32_t count = 0;
+          if (!value.getAsInteger(16, count))
+            region_info.SetNumResidentPages(count);
+        } else if (name == "pages-dirtied") {
+          uint32_t count = 0;
+          if (!value.getAsInteger(16, count))
+            region_info.SetNumDirtiedPages(count);
+        } else if (name == "pages-swapped-out") {
+          uint32_t count = 0;
+          if (!value.getAsInteger(16, count))
+            region_info.SetNumSwappedOutPages(count);
         }
       }
 

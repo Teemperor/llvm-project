@@ -1715,6 +1715,31 @@ protected:
       strm.PutChar('\n');
     }
 
+    if (range_info.GetMaxReadable() != eLazyBoolDontKnow ||
+        range_info.GetMaxWritable() != eLazyBoolDontKnow ||
+        range_info.GetMaxExecutable() != eLazyBoolDontKnow) {
+      result.AppendMessageWithFormatv(
+          "max protection: {0:r}{1:w}{2:x}", range_info.GetMaxReadable(),
+          range_info.GetMaxWritable(), range_info.GetMaxExecutable());
+    }
+    if (std::optional<lldb::ShareMode> share_mode = range_info.GetShareMode())
+      result.AppendMessageWithFormatv("share mode: {0}",
+                                      static_cast<int>(*share_mode));
+    if (std::optional<uint32_t> region_type = range_info.GetRegionTypeTag())
+      result.AppendMessageWithFormatv("region type tag: {0}", *region_type);
+    if (range_info.IsSubmap() == eLazyBoolYes)
+      result.AppendMessage("submap: yes");
+    if (std::optional<uint32_t> pages_resident =
+            range_info.GetNumResidentPages())
+      result.AppendMessageWithFormatv("resident pages: {0}", *pages_resident);
+    if (std::optional<uint32_t> pages_dirtied =
+            range_info.GetNumDirtiedPages())
+      result.AppendMessageWithFormatv("dirtied pages: {0}", *pages_dirtied);
+    if (std::optional<uint32_t> pages_swapped_out =
+            range_info.GetNumSwappedOutPages())
+      result.AppendMessageWithFormatv("swapped-out pages: {0}",
+                                      *pages_swapped_out);
+
     const std::optional<std::vector<addr_t>> &dirty_page_list =
         range_info.GetDirtyPageList();
     if (dirty_page_list) {

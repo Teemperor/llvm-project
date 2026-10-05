@@ -449,6 +449,47 @@ TEST_F(GDBRemoteCommunicationClientTest, GetMemoryRegionInfo) {
                "start:a000;size:2000;protection-key:not_a_number;");
   EXPECT_TRUE(result.get().Success());
   ASSERT_THAT(region_info.GetProtectionKey(), std::nullopt);
+
+  result = std::async(std::launch::async, [&] {
+    return client.GetMemoryRegionInfo(addr, region_info);
+  });
+
+  HandlePacket(server, "qMemoryRegionInfo:a000",
+               "start:a000;size:2000;permissions:rw;max-permissions:rwx;"
+               "share-mode:2;region-type:1e;is-submap:0;pages-resident:2;"
+               "pages-dirtied:1;pages-swapped-out:0;");
+  EXPECT_TRUE(result.get().Success());
+  EXPECT_EQ(lldb_private::eLazyBoolYes, region_info.GetMaxReadable());
+  EXPECT_EQ(lldb_private::eLazyBoolYes, region_info.GetMaxWritable());
+  EXPECT_EQ(lldb_private::eLazyBoolYes, region_info.GetMaxExecutable());
+  ASSERT_THAT(region_info.GetShareMode(),
+              ::testing::Optional(::testing::Eq(lldb::eShareModePrivate)));
+  ASSERT_THAT(region_info.GetRegionTypeTag(),
+              ::testing::Optional(::testing::Eq(0x1eu)));
+  EXPECT_EQ(lldb_private::eLazyBoolNo, region_info.IsSubmap());
+  ASSERT_THAT(region_info.GetNumResidentPages(),
+              ::testing::Optional(::testing::Eq(2u)));
+  ASSERT_THAT(region_info.GetNumDirtiedPages(),
+              ::testing::Optional(::testing::Eq(1u)));
+  ASSERT_THAT(region_info.GetNumSwappedOutPages(),
+              ::testing::Optional(::testing::Eq(0u)));
+
+  result = std::async(std::launch::async, [&] {
+    return client.GetMemoryRegionInfo(addr, region_info);
+  });
+
+  HandlePacket(server, "qMemoryRegionInfo:a000",
+               "start:a000;size:2000;permissions:rw;");
+  EXPECT_TRUE(result.get().Success());
+  EXPECT_EQ(lldb_private::eLazyBoolDontKnow, region_info.GetMaxReadable());
+  EXPECT_EQ(lldb_private::eLazyBoolDontKnow, region_info.GetMaxWritable());
+  EXPECT_EQ(lldb_private::eLazyBoolDontKnow, region_info.GetMaxExecutable());
+  ASSERT_THAT(region_info.GetShareMode(), std::nullopt);
+  ASSERT_THAT(region_info.GetRegionTypeTag(), std::nullopt);
+  EXPECT_EQ(lldb_private::eLazyBoolDontKnow, region_info.IsSubmap());
+  ASSERT_THAT(region_info.GetNumResidentPages(), std::nullopt);
+  ASSERT_THAT(region_info.GetNumDirtiedPages(), std::nullopt);
+  ASSERT_THAT(region_info.GetNumSwappedOutPages(), std::nullopt);
 }
 
 TEST_F(GDBRemoteCommunicationClientTest, GetMemoryRegionInfoInvalidResponse) {

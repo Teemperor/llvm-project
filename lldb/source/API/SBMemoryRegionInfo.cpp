@@ -158,6 +158,90 @@ int SBMemoryRegionInfo::GetPageSize() {
   return m_opaque_up->GetPageSize();
 }
 
+bool SBMemoryRegionInfo::IsMaxReadable() {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up->GetMaxReadable() == eLazyBoolYes;
+}
+
+bool SBMemoryRegionInfo::IsMaxWritable() {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up->GetMaxWritable() == eLazyBoolYes;
+}
+
+bool SBMemoryRegionInfo::IsMaxExecutable() {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up->GetMaxExecutable() == eLazyBoolYes;
+}
+
+bool SBMemoryRegionInfo::HasShareMode() {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up->GetShareMode().has_value();
+}
+
+lldb::ShareMode SBMemoryRegionInfo::GetShareMode() {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up->GetShareMode().value_or(eShareModeDontKnow);
+}
+
+bool SBMemoryRegionInfo::HasRegionTypeTag() {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up->GetRegionTypeTag().has_value();
+}
+
+uint32_t SBMemoryRegionInfo::GetRegionTypeTag() {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up->GetRegionTypeTag().value_or(0);
+}
+
+bool SBMemoryRegionInfo::IsSubmap() {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up->IsSubmap() == eLazyBoolYes;
+}
+
+bool SBMemoryRegionInfo::HasNumResidentPages() {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up->GetNumResidentPages().has_value();
+}
+
+uint32_t SBMemoryRegionInfo::GetNumResidentPages() {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up->GetNumResidentPages().value_or(0);
+}
+
+bool SBMemoryRegionInfo::HasNumDirtiedPages() {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up->GetNumDirtiedPages().has_value();
+}
+
+uint32_t SBMemoryRegionInfo::GetNumDirtiedPages() {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up->GetNumDirtiedPages().value_or(0);
+}
+
+bool SBMemoryRegionInfo::HasNumSwappedOutPages() {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up->GetNumSwappedOutPages().has_value();
+}
+
+uint32_t SBMemoryRegionInfo::GetNumSwappedOutPages() {
+  LLDB_INSTRUMENT_VA(this);
+
+  return m_opaque_up->GetNumSwappedOutPages().value_or(0);
+}
+
 bool SBMemoryRegionInfo::GetDescription(SBStream &description) {
   LLDB_INSTRUMENT_VA(this, description);
 
@@ -170,6 +254,16 @@ bool SBMemoryRegionInfo::GetDescription(SBStream &description) {
   strm.Printf(m_opaque_up->GetWritable() ? "W" : "-");
   strm.Printf(m_opaque_up->GetExecutable() ? "X" : "-");
   strm.Printf("]");
+
+  if (m_opaque_up->GetMaxReadable() != eLazyBoolDontKnow ||
+      m_opaque_up->GetMaxWritable() != eLazyBoolDontKnow ||
+      m_opaque_up->GetMaxExecutable() != eLazyBoolDontKnow) {
+    strm.Printf(" (max=");
+    strm.Printf(m_opaque_up->GetMaxReadable() == eLazyBoolYes ? "R" : "-");
+    strm.Printf(m_opaque_up->GetMaxWritable() == eLazyBoolYes ? "W" : "-");
+    strm.Printf(m_opaque_up->GetMaxExecutable() == eLazyBoolYes ? "X" : "-");
+    strm.Printf(")");
+  }
 
   return true;
 }

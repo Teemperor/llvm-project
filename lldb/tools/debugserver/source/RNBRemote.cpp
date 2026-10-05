@@ -4572,6 +4572,31 @@ rnb_err_t RNBRemote::HandlePacket_MemoryRegionInfo(const char *p) {
       }
       ostrm << ";";
     }
+
+    if (region_info.max_permissions) {
+      ostrm << "max-permissions:";
+      if (region_info.max_permissions & eMemoryPermissionsReadable)
+        ostrm << 'r';
+      if (region_info.max_permissions & eMemoryPermissionsWritable)
+        ostrm << 'w';
+      if (region_info.max_permissions & eMemoryPermissionsExecutable)
+        ostrm << 'x';
+      ostrm << ';';
+    }
+
+    ostrm << "share-mode:" << std::hex << region_info.share_mode << ';';
+    ostrm << "region-type:" << std::hex << region_info.region_type << ';';
+    ostrm << "is-submap:" << (region_info.is_submap ? '1' : '0') << ';';
+
+    if (region_info.has_pages_resident)
+      ostrm << "pages-resident:" << std::hex << region_info.pages_resident
+            << ';';
+    if (region_info.has_pages_dirtied)
+      ostrm << "pages-dirtied:" << std::hex << region_info.pages_dirtied
+            << ';';
+    if (region_info.has_pages_swapped_out)
+      ostrm << "pages-swapped-out:" << std::hex
+            << region_info.pages_swapped_out << ';';
   }
   return SendPacket(ostrm.str());
 }

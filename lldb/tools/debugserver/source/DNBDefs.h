@@ -358,13 +358,31 @@ struct DNBExecutableImageInfo {
 struct DNBRegionInfo {
 public:
   DNBRegionInfo()
-      : addr(0), size(0), permissions(0), flags(), dirty_pages(), vm_types() {}
+      : addr(0), size(0), permissions(0), flags(), dirty_pages(), vm_types(),
+        max_permissions(0), share_mode(0), region_type(0), is_submap(false),
+        has_pages_resident(false), pages_resident(0),
+        has_pages_dirtied(false), pages_dirtied(0),
+        has_pages_swapped_out(false), pages_swapped_out(0) {}
   nub_addr_t addr;
   nub_addr_t size;
   uint32_t permissions;
   std::vector<std::string> flags;
   std::vector<nub_addr_t> dirty_pages;
   std::vector<std::string> vm_types;
+  // Maximum protection this region can be set to via mprotect()-style calls.
+  uint32_t max_permissions;
+  // See the SM_* values in <mach/vm_region.h> (SM_COW, SM_PRIVATE, ...).
+  uint32_t share_mode;
+  // The raw "user_tag" identifying the kind of allocator that owns this
+  // region (e.g. VM_MEMORY_MALLOC_LARGE, VM_MEMORY_STACK).
+  uint32_t region_type;
+  bool is_submap;
+  bool has_pages_resident;
+  uint32_t pages_resident;
+  bool has_pages_dirtied;
+  uint32_t pages_dirtied;
+  bool has_pages_swapped_out;
+  uint32_t pages_swapped_out;
 };
 
 enum DNBProfileDataScanType {

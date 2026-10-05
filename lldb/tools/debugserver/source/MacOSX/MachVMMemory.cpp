@@ -128,6 +128,16 @@ nub_bool_t MachVMMemory::GetMemoryRegionInfo(task_t task, nub_addr_t address,
     region_info->dirty_pages =
         get_dirty_pages(task, vmRegion.StartAddress(), vmRegion.GetByteSize());
     region_info->vm_types = vmRegion.GetMemoryTypes();
+    region_info->max_permissions = vmRegion.GetMaxDNBPermissions();
+    region_info->share_mode = vmRegion.GetShareMode();
+    region_info->region_type = vmRegion.GetRegionType();
+    region_info->is_submap = vmRegion.IsSubmap();
+    region_info->has_pages_resident = true;
+    region_info->pages_resident = vmRegion.GetPagesResident();
+    region_info->has_pages_dirtied = true;
+    region_info->pages_dirtied = vmRegion.GetPagesDirtied();
+    region_info->has_pages_swapped_out = true;
+    region_info->pages_swapped_out = vmRegion.GetPagesSwappedOut();
   } else {
     region_info->addr = address;
     region_info->size = 0;

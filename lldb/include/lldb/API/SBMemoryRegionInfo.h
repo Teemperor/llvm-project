@@ -111,6 +111,104 @@ public:
   ///     or 0 if this information is unavailable.
   int GetPageSize();
 
+  /// Check if this memory address is marked readable through the
+  /// maximum protection this region can be set to (e.g. via mprotect).
+  ///
+  /// \return
+  ///     true if this memory address's maximum protection is readable
+  bool IsMaxReadable();
+
+  /// Check if this memory address is marked writable through the
+  /// maximum protection this region can be set to (e.g. via mprotect).
+  ///
+  /// \return
+  ///     true if this memory address's maximum protection is writable
+  bool IsMaxWritable();
+
+  /// Check if this memory address is marked executable through the
+  /// maximum protection this region can be set to (e.g. via mprotect).
+  ///
+  /// \return
+  ///     true if this memory address's maximum protection is executable
+  bool IsMaxExecutable();
+
+  /// Returns whether this memory region's share mode is known.
+  ///
+  /// \return
+  ///     True if the share mode is available.
+  bool HasShareMode();
+
+  /// Returns the share mode of this memory region.
+  ///
+  /// \return
+  ///     The lldb::ShareMode for this region. Only valid if
+  ///     HasShareMode() returns true.
+  lldb::ShareMode GetShareMode();
+
+  /// Returns whether this memory region has a known region type tag.
+  ///
+  /// \return
+  ///     True if the region type tag is available.
+  bool HasRegionTypeTag();
+
+  /// Returns the raw region type tag for this memory region -- a
+  /// platform-specific value identifying the kind of allocator that
+  /// owns this region (e.g. the VM_MEMORY_* user tag on macOS).
+  ///
+  /// \return
+  ///     The raw region type tag. Only valid if HasRegionTypeTag()
+  ///     returns true.
+  uint32_t GetRegionTypeTag();
+
+  /// Check whether this memory region is a submap.
+  ///
+  /// \return
+  ///     true if this memory region is a submap.
+  bool IsSubmap();
+
+  /// Returns whether this memory region has a known count of resident
+  /// pages.
+  ///
+  /// \return
+  ///     True if the resident page count is available.
+  bool HasNumResidentPages();
+
+  /// Returns the number of resident pages in this memory region.
+  ///
+  /// \return
+  ///     The number of resident pages. Only valid if
+  ///     HasNumResidentPages() returns true.
+  uint32_t GetNumResidentPages();
+
+  /// Returns whether this memory region has a known count of dirtied
+  /// pages.
+  ///
+  /// \return
+  ///     True if the dirtied page count is available.
+  bool HasNumDirtiedPages();
+
+  /// Returns the number of dirtied (modified) pages in this memory
+  /// region.
+  ///
+  /// \return
+  ///     The number of dirtied pages. Only valid if
+  ///     HasNumDirtiedPages() returns true.
+  uint32_t GetNumDirtiedPages();
+
+  /// Returns whether this memory region has a known count of pages
+  /// swapped out.
+  ///
+  /// \return
+  ///     True if the swapped-out page count is available.
+  bool HasNumSwappedOutPages();
+
+  /// Returns the number of pages swapped out for this memory region.
+  ///
+  /// \return
+  ///     The number of swapped-out pages. Only valid if
+  ///     HasNumSwappedOutPages() returns true.
+  uint32_t GetNumSwappedOutPages();
+
   bool operator==(const lldb::SBMemoryRegionInfo &rhs) const;
 
   bool operator!=(const lldb::SBMemoryRegionInfo &rhs) const;

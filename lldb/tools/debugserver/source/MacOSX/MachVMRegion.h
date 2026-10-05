@@ -42,19 +42,25 @@ public:
   bool GetRegionForAddress(nub_addr_t addr);
 
   uint32_t GetDNBPermissions() const;
+  uint32_t GetMaxDNBPermissions() const;
   std::vector<std::string> GetFlags() const;
   std::vector<std::string> GetMemoryTypes() const;
+  uint32_t GetShareMode() const { return m_data.share_mode; }
+  uint32_t GetRegionType() const { return m_data.user_tag; }
+  bool IsSubmap() const { return m_data.is_submap; }
+  uint32_t GetPagesResident() const { return m_data.pages_resident; }
+  uint32_t GetPagesDirtied() const { return m_data.pages_dirtied; }
+  uint32_t GetPagesSwappedOut() const { return m_data.pages_swapped_out; }
 
   const DNBError &GetError() { return m_err; }
 
 protected:
-#if defined(VM_REGION_SUBMAP_SHORT_INFO_COUNT_64)
-  typedef vm_region_submap_short_info_data_64_t RegionInfo;
-  enum { kRegionInfoSize = VM_REGION_SUBMAP_SHORT_INFO_COUNT_64 };
-#else
+  // We always use the full submap-info struct (rather than the "short"
+  // variant) because it gives us pages_resident/pages_dirtied/
+  // pages_swapped_out directly from the same mach_vm_region_recurse() call
+  // that we already make, at no extra cost.
   typedef vm_region_submap_info_data_64_t RegionInfo;
   enum { kRegionInfoSize = VM_REGION_SUBMAP_INFO_COUNT_64 };
-#endif
 
   task_t m_task;
   mach_vm_address_t m_addr;
