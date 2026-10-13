@@ -138,8 +138,8 @@ public:
   /// lives at `obj + *(int*)(*(void**)obj - vbase_offset_offset)`. Extracted
   /// from the base's DWARF DW_AT_data_member_location expression (the standard
   /// `DW_OP_dup DW_OP_deref DW_OP_constu N DW_OP_minus DW_OP_deref DW_OP_plus`
-  /// form). std::nullopt when not a virtual base or the expression didn't match,
-  /// in which case consumers fall back to GetByteOffset().
+  /// form). std::nullopt when not a virtual base or the expression didn't
+  /// match, in which case consumers fall back to GetByteOffset().
   std::optional<uint64_t> GetVBaseOffsetOffset() const {
     return m_vbase_offset_offset;
   }
