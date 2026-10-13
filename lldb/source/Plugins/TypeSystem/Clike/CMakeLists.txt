@@ -23,6 +23,7 @@ add_lldb_library(lldbPluginTypeSystemClike PLUGIN
     lldbSymbol
     lldbTarget
     lldbUtility
+    lldbPluginExpressionParserClang
     lldbPluginSymbolFileDWARF
     lldbPluginObjCRuntime
   CLANG_LIBS
