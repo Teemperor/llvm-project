@@ -2,6 +2,10 @@ add_lldb_unittest(TypeSystemClikeUnitTests
   BuilderTest.cpp
   BuiltinTypesTest.cpp
   ByteSizedTypeTest.cpp
+  ClangASTGeneratorOverlapTest.cpp
+  ClangASTGeneratorTest.cpp
+  ClangASTGeneratorVBaseTest.cpp
+  ClangTypeConverterTest.cpp
   ContextTest.cpp
   IdentifierTest.cpp
   LanguageOptsTest.cpp
@@ -28,7 +32,9 @@ add_lldb_unittest(TypeSystemClikeUnitTests
     lldbTarget
     lldbUtility
     lldbUtilityHelpers
+    lldbPluginExpressionParserClang
     lldbPluginTypeSystemClike
+    lldbPluginTypeSystemClang
     lldbPluginObjCLanguage
     lldbPluginObjCRuntime
     LLVMTestingSupport
