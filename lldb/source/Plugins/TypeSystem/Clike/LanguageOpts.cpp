@@ -131,3 +131,7 @@ std::optional<uint64_t> LanguageOpts::GetBitIntByteSize(unsigned bits) const {
 uint64_t LanguageOpts::GetBitIntAlignInBits(unsigned bits) const {
   return m_target->getBitIntAlign(bits);
 }
+
+uint64_t LanguageOpts::GetMaxVectorAlignInBits() const {
+  return m_target->getMaxVectorAlign();
+}
