@@ -1,10 +1,15 @@
 add_lldb_library(lldbPluginTypeSystemClike PLUGIN
   BuiltinTypes.cpp
   ByteSizedType.cpp
+  Context.cpp
   Identifier.cpp
   LanguageOpts.cpp
   NamedType.cpp
+  Namespace.cpp
+  RecordType.cpp
+  SugarType.cpp
   Type.cpp
+  TypeC.cpp
   TypeSystemClike.cpp
 
   LINK_COMPONENTS
