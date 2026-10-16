@@ -1,6 +1,7 @@
 add_lldb_library(lldbPluginTypeSystemClike PLUGIN
   Identifier.cpp
   LanguageOpts.cpp
+  NamedType.cpp
   Type.cpp
   TypeSystemClike.cpp
 
