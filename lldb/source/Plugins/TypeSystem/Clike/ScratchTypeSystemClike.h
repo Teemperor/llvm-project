@@ -82,9 +82,12 @@ protected:
   /// formatters build, and those are routinely assembled *around* types the
   /// module that parsed them still owns -- a reconstructed `T *` whose pointee
   /// belongs to a module, an elaborated spelling over a module's typedef (see
-  /// ClangTypeConverter). So rather than try to enumerate which modules those
-  /// are, take the lot: every module in the target, plus whatever the base
-  /// contributes.
+  /// ClangTypeConverter). It also reaches into module instances by control flow
+  /// alone, with no reference behind it at all: a module answering a child
+  /// query about an Objective-C interface calls in here to have it rebuilt from
+  /// the runtime (see TypeSystemClike::GetRuntimeCompletedObjCType). So rather
+  /// than try to enumerate which modules those are, take the lot: every module
+  /// in the target, plus whatever the base contributes.
   void
   AppendLockOrder(llvm::SmallVectorImpl<TypeSystemClike *> &out) const override;
 
