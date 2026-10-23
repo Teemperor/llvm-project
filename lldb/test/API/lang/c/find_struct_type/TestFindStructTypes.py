@@ -5,6 +5,7 @@ Make sure FindTypes finds struct types with the struct prefix.
 
 import lldb
 import lldbsuite.test.lldbutil as lldbutil
+from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 
 
@@ -14,6 +15,7 @@ class TestFindTypesOnStructType(TestBase):
     # each debug info format.
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
     def test_find_types_struct_type(self):
         """Make sure FindTypes actually finds 'struct typename' not just 'typename'."""
         self.build()

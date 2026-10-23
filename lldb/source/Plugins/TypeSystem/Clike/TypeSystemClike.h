@@ -27,6 +27,8 @@
 #include <mutex>
 #include <shared_mutex>
 
+class DWARFASTParserClike;
+
 namespace lldb_private {
 
 /// A TypeSystem for C-like languages such as C, C++ and Objective-C.
@@ -44,6 +46,9 @@ public:
   /// derived for that target (see clike::LanguageOpts::Create).
   static llvm::Expected<lldb::TypeSystemSP> Create(llvm::StringRef name,
                                                    llvm::Triple triple);
+
+  // DWARF parsing
+  plugin::dwarf::DWARFASTParser *GetDWARFParser() override;
 
   /// Wrap one of our own Type nodes into a CompilerType owned by this system.
   CompilerType GetCompilerType(clike::Type *type);
@@ -111,7 +116,9 @@ public:
   /// to another one in the set. That extends to calling *another*
   /// TypeSystemClike: an entry point there would try to re-take a lock this
   /// thread already holds, so those calls go to the non-locking entry points
-  /// too.
+  /// too. DWARFASTParserClike is a friend for the same reason: its
+  /// CompleteTypeFromDWARF only ever runs nested inside GetCompleteType, which
+  /// already holds the locks.
   ///
   /// @{
 
@@ -443,6 +450,7 @@ public:
 
 private:
   friend class clike::Builder;
+  friend class ::DWARFASTParserClike;
 
   /// Acquire the locks (see GetLockOrder) without an associated Type* yet, for
   /// methods that allocate/complete a *new* node rather than starting from an
@@ -527,6 +535,7 @@ private:
   std::string m_display_name;
   llvm::Triple m_triple;
   clike::Context m_context;
+  std::unique_ptr<DWARFASTParserClike> m_dwarf_ast_parser_up;
 
   /// Protects m_context (and thus every Type it owns). See the locking note
   /// above GetTypeForWrite/GetTypeForRead.
