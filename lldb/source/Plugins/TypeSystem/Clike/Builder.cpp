@@ -53,6 +53,13 @@ CompilerType Builder::CreateRecordType(llvm::StringRef name,
       name, byte_size, is_union, is_class_keyword, scope));
 }
 
+CompilerType Builder::CreateObjCInterfaceType(llvm::StringRef name,
+                                              std::optional<uint64_t> byte_size,
+                                              DeclScope scope) {
+  return m_ts.GetCompilerType(
+      m_ts.m_context.CreateObjCInterfaceType(name, byte_size, scope));
+}
+
 CompilerType Builder::CreateArrayType(CompilerType element_type,
                                       std::optional<uint64_t> num_elements,
                                       bool is_vector, uint64_t die_uid) {
@@ -198,6 +205,10 @@ void Builder::SetRecordArgPassingKind(clike::RecordType &record,
   m_ts.m_context.SetArgPassingKind(record, kind);
 }
 
+void Builder::SetRecordMemberFunctionsParsed(clike::RecordType &record) {
+  m_ts.m_context.SetMemberFunctionsParsed(record);
+}
+
 void Builder::AddField(clike::RecordType &record, clike::Identifier name,
                        clike::Type *type, uint64_t byte_offset,
                        uint32_t bitfield_bit_size,
@@ -205,6 +216,32 @@ void Builder::AddField(clike::RecordType &record, clike::Identifier name,
   if (std::optional<TypeRef> field_type = ToTypeRef(type))
     m_ts.m_context.AddField(record, name, *field_type, byte_offset,
                             bitfield_bit_size, bitfield_bit_offset);
+}
+
+void Builder::SetObjCSuperClass(clike::ObjCInterfaceType &record,
+                                clike::Type *superclass) {
+  if (std::optional<TypeRef> super = ToTypeRef(superclass))
+    m_ts.m_context.SetObjCSuperClass(record, *super);
+}
+
+void Builder::AddObjCMethod(clike::ObjCInterfaceType &record,
+                            llvm::StringRef name, CompilerType function_type,
+                            llvm::StringRef asm_label, bool is_class_method,
+                            bool is_variadic, bool is_direct,
+                            bool returns_instancetype) {
+  // A method with no modeled signature can't be sent, so drop it instead of
+  // recording an untyped one.
+  std::optional<TypeRef> type = ToTypeRef(function_type);
+  if (!type)
+    return;
+  clike::ObjCMethod method(*type);
+  method.name = GetIdentifier(name);
+  method.asm_label = GetIdentifier(asm_label);
+  method.is_class_method = is_class_method;
+  method.is_variadic = is_variadic;
+  method.is_direct = is_direct;
+  method.returns_instancetype = returns_instancetype;
+  m_ts.m_context.AddObjCMethod(record, std::move(method));
 }
 
 const clike::Namespace *Builder::GetNamespace(llvm::StringRef name,
