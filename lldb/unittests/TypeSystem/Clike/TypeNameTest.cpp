@@ -11,6 +11,7 @@
 #include "Plugins/TypeSystem/Clike/LanguageOpts.h"
 #include "Plugins/TypeSystem/Clike/Type.h"
 #include "Plugins/TypeSystem/Clike/TypeC.h"
+#include "Plugins/TypeSystem/Clike/TypeCpp.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
@@ -29,10 +30,11 @@ struct TypeNameTest : public testing::Test {
   Type *Char() { return context.GetBuiltinType(BuiltinKind::Char); }
   Type *Void() { return context.GetBuiltinType(BuiltinKind::Void); }
 
-  RecordType *Record(llvm::StringRef name, DeclScope scope = {}) {
-    RecordType *record =
-        context.CreateRecordType(name, /*byte_size=*/8, /*is_union=*/false,
-                                 /*is_class_keyword=*/false, scope);
+  RecordType *Record(llvm::StringRef name, bool is_cpp_class = false,
+                     DeclScope scope = {}) {
+    RecordType *record = context.CreateRecordType(
+        name, /*byte_size=*/8, is_cpp_class, /*is_union=*/false,
+        /*is_class_keyword=*/false, scope);
     context.SetComplete(*record);
     return record;
   }
@@ -54,7 +56,7 @@ TEST_F(TypeNameTest, Builtin) {
 // A record renders with the name the debug info recorded.
 TEST_F(TypeNameTest, Record) {
   EXPECT_EQ(Canonical(Record("MyStruct")), "MyStruct");
-  EXPECT_EQ(Display(Record("MyStruct")), "MyStruct");
+  EXPECT_EQ(Display(Record("MyClass", /*is_cpp_class=*/true)), "MyClass");
 }
 
 // A pointer is spelled in C declarator form, and pointer-to-pointer nests
@@ -67,6 +69,16 @@ TEST_F(TypeNameTest, Pointer) {
   EXPECT_EQ(Canonical(int_ptr_ptr), "int **");
 
   EXPECT_EQ(Canonical(context.CreatePointerType(TypeRef(*Void()))), "void *");
+}
+
+// An lvalue reference renders with one `&`, an rvalue one with two.
+TEST_F(TypeNameTest, Reference) {
+  EXPECT_EQ(Canonical(context.CreateReferenceType(TypeRef(*Int()),
+                                                  /*is_rvalue=*/false)),
+            "int &");
+  EXPECT_EQ(Canonical(context.CreateReferenceType(TypeRef(*Int()),
+                                                  /*is_rvalue=*/true)),
+            "int &&");
 }
 
 // A qualifier is spelled before the type it applies to, and `const char *`
@@ -115,8 +127,8 @@ TEST_F(TypeNameTest, Enum) {
 TEST_F(TypeNameTest, NamespaceQualified) {
   const Namespace *ns = context.GetNamespace(context.GetIdentifier("ns"),
                                              nullptr, /*is_inline=*/false);
-  RecordType *record =
-      Record("ns::Foo", DeclScope{ns, context.GetIdentifier("Foo")});
+  RecordType *record = Record("ns::Foo", /*is_cpp_class=*/true,
+                              DeclScope{ns, context.GetIdentifier("Foo")});
 
   EXPECT_EQ(BuildCanonicalName(record, /*base_only=*/false), "ns::Foo");
   EXPECT_EQ(BuildCanonicalName(record, /*base_only=*/true), "Foo");
@@ -131,12 +143,13 @@ TEST_F(TypeNameTest, InlineNamespaceHiddenInDisplayName) {
       context.GetIdentifier("__1"), std_ns, /*is_inline=*/true);
 
   RecordType *record =
-      Record("std::__1::string",
+      Record("std::__1::string", /*is_cpp_class=*/true,
              DeclScope{inline_ns, context.GetIdentifier("string")});
 
   EXPECT_EQ(Display(record), "std::string");
   // Keeping inline namespaces spells the full scope.
-  EXPECT_EQ(BuildDisplayName(record, /*keep_inline_namespaces=*/true),
+  EXPECT_EQ(BuildDisplayName(record, /*hide_default_args=*/true,
+                             /*keep_inline_namespaces=*/true),
             "std::__1::string");
 }
 
@@ -153,7 +166,7 @@ TEST_F(TypeNameTest, FunctionDeclarator) {
 
   EXPECT_EQ(BuildFunctionName(fn, ""), "int (const char *)");
   EXPECT_EQ(BuildFunctionName(fn, "(*)"), "int (*)(const char *)");
-  EXPECT_EQ(BuildFunctionName(fn, "(^)"), "int (^)(const char *)");
+  EXPECT_EQ(BuildFunctionName(fn, "(&)"), "int (&)(const char *)");
 }
 
 // A variadic function's parameter list ends in `...`; an empty one renders as
@@ -180,4 +193,50 @@ TEST_F(TypeNameTest, FunctionPointerName) {
       TypeRef(*Int()), {TypeRef(*Int())}, /*is_variadic=*/false);
   PointerType *fn_ptr = context.CreatePointerType(TypeRef(*fn));
   EXPECT_EQ(Canonical(fn_ptr), "int (*)(int)");
+}
+
+// A defaulted template argument is kept in the canonical name and dropped from
+// the display name.
+TEST_F(TypeNameTest, DefaultedTemplateArgumentHiddenInDisplayName) {
+  ClassType *record = llvm::cast<ClassType>(context.CreateRecordType(
+      "Vec<int, Alloc<int> >", /*byte_size=*/8, /*is_cpp_class=*/true,
+      /*is_union=*/false, /*is_class_keyword=*/false,
+      DeclScope{nullptr, context.GetIdentifier("Vec")}));
+  context.SetComplete(*record);
+  context.SetTemplateInstantiation(*record);
+
+  TemplateArgument arg;
+  arg.kind = lldb::eTemplateArgumentKindType;
+  arg.type = TypeRef(*Int());
+  context.AddTemplateArgument(*record, arg);
+
+  TemplateArgument defaulted;
+  defaulted.kind = lldb::eTemplateArgumentKindType;
+  defaulted.type = TypeRef(*Record("Alloc<int>", /*is_cpp_class=*/true));
+  defaulted.is_default = true;
+  context.AddTemplateArgument(*record, defaulted);
+
+  // The canonical name is the raw DWARF spelling, defaults and all.
+  EXPECT_EQ(Canonical(record), "Vec<int, Alloc<int> >");
+  // The display name re-renders from the modeled arguments, dropping defaults.
+  EXPECT_EQ(Display(record), "Vec<int>");
+  // ...and keeps them when asked to.
+  EXPECT_EQ(BuildDisplayName(record, /*hide_default_args=*/false),
+            "Vec<int, Alloc<int> >");
+}
+
+// A variadic template specialized over an empty pack still prints an empty
+// argument list, which is why "is a template instantiation" is tracked
+// separately from "has arguments".
+TEST_F(TypeNameTest, EmptyTemplateArgumentList) {
+  ClassType *record = llvm::cast<ClassType>(context.CreateRecordType(
+      "Pack<>", /*byte_size=*/8, /*is_cpp_class=*/true, /*is_union=*/false,
+      /*is_class_keyword=*/false,
+      DeclScope{nullptr, context.GetIdentifier("Pack")}));
+  context.SetComplete(*record);
+  context.SetTemplateInstantiation(*record);
+
+  EXPECT_EQ(record->GetNumTemplateArguments(), 0u);
+  EXPECT_TRUE(record->IsTemplateInstantiation());
+  EXPECT_EQ(Display(record), "Pack<>");
 }

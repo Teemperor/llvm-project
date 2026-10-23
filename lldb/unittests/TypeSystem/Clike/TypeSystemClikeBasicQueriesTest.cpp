@@ -36,7 +36,7 @@ struct TypeSystemClikeBasicQueriesTest : public testing::Test {
 
 // A record is an aggregate type, a builtin is not.
 TEST_F(TypeSystemClikeBasicQueriesTest, IsAggregateType) {
-  CompilerType record = builder.CreateRecordType("Foo", 4);
+  CompilerType record = builder.CreateRecordType("Foo", 4, false);
   EXPECT_TRUE(record.IsAggregateType());
   EXPECT_FALSE(GetInt().IsAggregateType());
 }
@@ -76,13 +76,14 @@ TEST_F(TypeSystemClikeBasicQueriesTest, IsFunctionType) {
   EXPECT_FALSE(GetInt().IsFunctionType());
 }
 
-// Only a *pointer* to a function is a function-pointer type, not the function
-// type itself (mirrors clang's isFunctionPointerType()).
+// Only a *pointer* to a function is a function-pointer type; a reference to
+// one is not (mirrors clang's isFunctionPointerType()).
 TEST_F(TypeSystemClikeBasicQueriesTest, IsFunctionPointerType) {
   CompilerType fn = builder.CreateFunctionType(GetVoid(), {}, false);
   CompilerType fn_ptr = builder.CreatePointerType(fn);
+  CompilerType fn_ref = builder.CreateReferenceType(fn, /*is_rvalue=*/false);
   EXPECT_TRUE(fn_ptr.IsFunctionPointerType());
-  EXPECT_FALSE(fn.IsFunctionPointerType());
+  EXPECT_FALSE(fn_ref.IsFunctionPointerType());
   EXPECT_FALSE(GetInt().IsFunctionPointerType());
 }
 
@@ -147,7 +148,7 @@ TEST_F(TypeSystemClikeBasicQueriesTest, IsPointerType) {
 // A builtin int is a scalar type; a record is not.
 TEST_F(TypeSystemClikeBasicQueriesTest, IsScalarType) {
   EXPECT_TRUE(GetInt().IsScalarType());
-  CompilerType record = builder.CreateRecordType("Foo", 4);
+  CompilerType record = builder.CreateRecordType("Foo", 4, false);
   EXPECT_FALSE(record.IsScalarType());
 }
 
@@ -158,4 +159,29 @@ TEST_F(TypeSystemClikeBasicQueriesTest, IsVoidType) {
   CompilerType alias = builder.CreateTypedefType("MyVoid", GetVoid());
   EXPECT_TRUE(alias.IsVoidType());
   EXPECT_FALSE(GetInt().IsVoidType());
+}
+
+// A pointer to a polymorphic class is a possible dynamic type when checking
+// C++; a pointer to a non-polymorphic class is not.
+TEST_F(TypeSystemClikeBasicQueriesTest, IsPossibleDynamicTypePolymorphic) {
+  CompilerType poly = builder.CreateRecordType("Poly", 8, true);
+  auto *poly_class = llvm::cast<ClassType>(
+      static_cast<clike::Type *>(poly.GetOpaqueQualType()));
+  builder.SetRecordComplete(*poly_class);
+  builder.SetRecordPolymorphic(*poly_class);
+  CompilerType poly_ptr = builder.CreatePointerType(poly);
+
+  CompilerType target;
+  EXPECT_TRUE(ts->IsPossibleDynamicType(poly_ptr.GetOpaqueQualType(), &target,
+                                        /*check_cplusplus=*/true,
+                                        /*check_objc=*/false));
+  EXPECT_EQ(target.GetOpaqueQualType(), poly.GetOpaqueQualType());
+
+  CompilerType plain = builder.CreateRecordType("Plain", 4, true);
+  builder.SetRecordComplete(*llvm::cast<ClassType>(
+      static_cast<clike::Type *>(plain.GetOpaqueQualType())));
+  CompilerType plain_ptr = builder.CreatePointerType(plain);
+  EXPECT_FALSE(ts->IsPossibleDynamicType(plain_ptr.GetOpaqueQualType(), nullptr,
+                                         /*check_cplusplus=*/true,
+                                         /*check_objc=*/false));
 }

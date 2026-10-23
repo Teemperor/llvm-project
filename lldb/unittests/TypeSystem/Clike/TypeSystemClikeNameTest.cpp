@@ -36,15 +36,21 @@ TEST_F(TypeSystemClikeNameTest, BuiltinName) {
   EXPECT_EQ(GetInt().GetTypeName().GetStringRef(), "int");
 }
 
-// A pointer has no name of its own; it's built from the pointee's name plus
-// the sigil, mirroring C declarator syntax.
-TEST_F(TypeSystemClikeNameTest, PointerNames) {
+// A pointer/reference has no name of its own; it's built from the pointee's
+// name plus the sigil, mirroring C declarator syntax.
+TEST_F(TypeSystemClikeNameTest, PointerAndReferenceNames) {
   CompilerType ptr = builder.CreatePointerType(GetInt());
   EXPECT_EQ(ptr.GetTypeName().GetStringRef(), "int *");
 
   CompilerType ptr_ptr = builder.CreatePointerType(ptr);
   // No space between two pointer sigils.
   EXPECT_EQ(ptr_ptr.GetTypeName().GetStringRef(), "int **");
+
+  CompilerType lref = builder.CreateReferenceType(GetInt(), false);
+  EXPECT_EQ(lref.GetTypeName().GetStringRef(), "int &");
+
+  CompilerType rref = builder.CreateReferenceType(GetInt(), true);
+  EXPECT_EQ(rref.GetTypeName().GetStringRef(), "int &&");
 }
 
 // An array's name is "<element>[<count>]"; an array of unknown bound omits
@@ -70,7 +76,7 @@ TEST_F(TypeSystemClikeNameTest, CVQualifiedNames) {
       builder.CreateCVQualifiedType(GetInt(), false, true);
   EXPECT_EQ(volatile_int.GetTypeName().GetStringRef(), "volatile int");
 
-  CompilerType record = builder.CreateRecordType("Foo", 4);
+  CompilerType record = builder.CreateRecordType("Foo", 4, false);
   CompilerType const_record =
       builder.CreateCVQualifiedType(record, true, false);
   EXPECT_EQ(const_record.GetTypeName().GetStringRef(), "Foo");
@@ -78,7 +84,7 @@ TEST_F(TypeSystemClikeNameTest, CVQualifiedNames) {
 
 // A named leaf type (record, typedef) reports its stored spelling verbatim.
 TEST_F(TypeSystemClikeNameTest, NamedLeafTypes) {
-  CompilerType record = builder.CreateRecordType("MyStruct", 4);
+  CompilerType record = builder.CreateRecordType("MyStruct", 4, false);
   EXPECT_EQ(record.GetTypeName().GetStringRef(), "MyStruct");
 
   CompilerType alias = builder.CreateTypedefType("MyAlias", GetInt());
@@ -88,10 +94,12 @@ TEST_F(TypeSystemClikeNameTest, NamedLeafTypes) {
 // An unnamed struct/class/union prints as "(unnamed struct)" etc, matching
 // clang's anonymous-tag spelling.
 TEST_F(TypeSystemClikeNameTest, UnnamedRecordName) {
-  CompilerType anon_struct = builder.CreateRecordType("", 4);
+  CompilerType anon_struct =
+      builder.CreateRecordType("", 4, /*is_cpp_class=*/false);
   EXPECT_EQ(anon_struct.GetTypeName().GetStringRef(), "(unnamed struct)");
 
-  CompilerType anon_union = builder.CreateRecordType("", 4, /*is_union=*/true);
+  CompilerType anon_union = builder.CreateRecordType(
+      "", 4, /*is_cpp_class=*/false, /*is_union=*/true);
   EXPECT_EQ(anon_union.GetTypeName().GetStringRef(), "(unnamed union)");
 }
 
@@ -105,10 +113,38 @@ TEST_F(TypeSystemClikeNameTest, DisplayNameSkipsInlineNamespace) {
       builder.GetNamespace("__1", std_ns, /*is_inline=*/true);
 
   CompilerType record = builder.CreateRecordType(
-      "std::__1::basic_string", 32, /*is_union=*/false,
+      "std::__1::basic_string", 32, true, /*is_union=*/false,
       /*is_class_keyword=*/false,
       DeclScope{inline_ns, builder.GetIdentifier("basic_string")});
 
   EXPECT_EQ(ts->GetDisplayTypeName(record.GetOpaqueQualType()).GetStringRef(),
             "std::basic_string");
+}
+
+// A class-template instantiation's display name hides defaulted template
+// arguments (e.g. `vector<int>` instead of `vector<int, allocator<int>>`),
+// while GetTypeName (the fully-qualified/DWARF-matching name) keeps them.
+TEST_F(TypeSystemClikeNameTest, TemplateDisplayNameHidesDefaultArgs) {
+  CompilerType record = builder.CreateRecordType(
+      "vector<int, allocator<int> >", 24, true, /*is_union=*/false,
+      /*is_class_keyword=*/false,
+      DeclScope{nullptr,
+                builder.GetIdentifier("vector<int, allocator<int> >")});
+  auto *r = llvm::cast<ClassType>(
+      static_cast<clike::Type *>(record.GetOpaqueQualType()));
+  builder.SetRecordTemplateInstantiation(*r);
+
+  CompilerType allocator = builder.CreateRecordType("allocator<int>", 1, true);
+
+  builder.AddTemplateArgument(
+      *r, lldb::eTemplateArgumentKindType,
+      static_cast<clike::Type *>(GetInt().GetOpaqueQualType()), 0,
+      /*is_default=*/false);
+  builder.AddTemplateArgument(
+      *r, lldb::eTemplateArgumentKindType,
+      static_cast<clike::Type *>(allocator.GetOpaqueQualType()), 0,
+      /*is_default=*/true);
+
+  EXPECT_EQ(ts->GetDisplayTypeName(record.GetOpaqueQualType()).GetStringRef(),
+            "vector<int>");
 }
