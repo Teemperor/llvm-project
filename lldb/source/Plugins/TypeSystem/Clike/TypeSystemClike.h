@@ -31,6 +31,8 @@ class DWARFASTParserClike;
 
 namespace lldb_private {
 
+class ObjCLanguageRuntime;
+
 /// A TypeSystem for C-like languages such as C, C++ and Objective-C.
 class TypeSystemClike : public TypeSystem {
   // LLVM RTTI support
@@ -117,8 +119,9 @@ public:
   /// TypeSystemClike: an entry point there would try to re-take a lock this
   /// thread already holds, so those calls go to the non-locking entry points
   /// too. DWARFASTParserClike is a friend for the same reason: its
-  /// CompleteTypeFromDWARF only ever runs nested inside GetCompleteType, which
-  /// already holds the locks.
+  /// CompleteTypeFromDWARF/CompleteMemberFunctionsFromDWARF only ever run
+  /// nested inside GetCompleteType/CompleteMemberFunctions, which already hold
+  /// the locks.
   ///
   /// @{
 
@@ -301,6 +304,13 @@ public:
   bool GetCompleteType(lldb::opaque_compiler_type_t type) override;
   bool IsForcefullyCompleted(lldb::opaque_compiler_type_t type) override;
 
+  /// Parse \p type's Objective-C methods from debug info if they haven't been
+  /// already. Methods are only needed by the expression evaluator (to send
+  /// messages), so -- unlike fields and the superclass -- they are not parsed
+  /// as part of GetCompleteType. This is the deferred step that fills them in
+  /// on demand.
+  void CompleteMemberFunctions(clike::Type *type);
+
   // AST related queries
   uint32_t GetPointerByteSize() override;
   CompilerType GetPointerDiffType(bool is_signed) override;
@@ -467,11 +477,13 @@ private:
   /// the locking note above GetTypeForWrite/GetTypeForRead). The public
   /// GetCompleteType is a thin locking wrapper around this; so are the other
   /// TypeSystemClike.cpp methods that lazily complete a type before reading
-  /// its fields.
+  /// its fields. DWARFASTParserClike also calls this directly for
+  /// base-class completion, which always happens nested inside an outer
+  /// GetCompleteType/CompleteMemberFunctions call on the same thread.
   clike::Type *CompleteTypeAssumingWriteLocked(clike::Type *type);
 
-  /// Completes \p type and every record it contains by value (as a field or
-  /// array element), as the alignment of a record depends on the
+  /// Completes \p type and every record it contains by value (as a base class,
+  /// field or array element), as the alignment of a record depends on the
   /// alignment of these members. Assumes the write lock is held.
   void CompleteForAlignmentAssumingWriteLocked(clike::Type *type);
 
@@ -480,6 +492,12 @@ private:
   /// GetPromotedIntegerType).
   CompilerType
   GetBasicTypeFromASTAssumingWriteLocked(lldb::BasicType basic_type);
+
+  /// CompleteMemberFunctions, assuming the write lock is already held (see
+  /// CompleteTypeAssumingWriteLocked). Called by the public
+  /// CompleteMemberFunctions and by every query method that lazily parses
+  /// member functions before reading them.
+  void CompleteMemberFunctionsAssumingWriteLocked(clike::Type *type);
 
   /// GetTypeName, assuming the write lock is already held. Used by
   /// DumpTypeDescription, which needs a type's name for several of its own
@@ -519,13 +537,24 @@ private:
   GetIndexOfChildWithNameImpl(clike::Type *type, llvm::StringRef name,
                               bool omit_empty_base_classes);
 
-  // Recursive worker for GetIndexOfChildMemberWithName. An unnamed (anonymous
-  // union/struct) field is transparently searched, as it injects its members
-  // into its immediately enclosing record.
-  size_t
-  GetIndexOfChildMemberWithNameImpl(clike::Type *type, llvm::StringRef name,
-                                    bool omit_empty_base_classes,
-                                    std::vector<uint32_t> &child_indexes);
+  // Recursive worker for GetIndexOfChildMemberWithName. `descend_anon_fields`
+  // controls whether an unnamed (anonymous union/struct) field is transparently
+  // searched: it is true only for the record the lookup starts from, and false
+  // when recursing into a base class. This mirrors C++ name lookup (and
+  // TypeSystemClang): an anonymous field injects its members into its
+  // immediately enclosing record, so they are reachable directly, but that
+  // injection does not propagate through a further base class -- i.e.
+  // `derived.member` does not find a member that lives in an anonymous field of
+  // one of `derived`'s bases.
+  size_t GetIndexOfChildMemberWithNameImpl(
+      clike::Type *type, llvm::StringRef name, bool omit_empty_base_classes,
+      bool descend_anon_fields, std::vector<uint32_t> &child_indexes);
+
+  /// If \p type is a pointer to an Objective-C interface, return the
+  /// (completed) interface type; otherwise the desugared \p type. ObjC objects
+  /// are always referenced by pointer, so base-class queries on `Foo *` are
+  /// answered by the interface `Foo`.
+  clike::Type *GetObjCBaseClassBearingType(clike::Type *type);
 
   /// Recursive worker for GetFullyUnqualifiedType: strip top-level
   /// cv-qualifiers and recurse through pointer/array pointees so the whole
