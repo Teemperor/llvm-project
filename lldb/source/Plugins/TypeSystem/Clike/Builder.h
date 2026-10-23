@@ -57,6 +57,11 @@ public:
                                 bool is_union = false,
                                 bool is_class_keyword = false,
                                 DeclScope scope = {});
+  /// Create an Objective-C class type (`@interface`). Ivars are added as fields
+  /// (via AddField) and the superclass via SetObjCSuperClass during completion.
+  CompilerType CreateObjCInterfaceType(llvm::StringRef name,
+                                       std::optional<uint64_t> byte_size,
+                                       DeclScope scope = {});
   /// Create an array of \p num_elements elements of \p element_type (or an
   /// array of unknown bound when \p num_elements is std::nullopt).
   /// \p is_vector marks a GCC/Clang vector type; \p die_uid is the UID of the
@@ -145,9 +150,23 @@ public:
   /// DW_AT_calling_convention); see RecordType::ArgPassingKind.
   void SetRecordArgPassingKind(RecordType &record,
                                RecordType::ArgPassingKind kind);
+  /// Mark \p record's member functions as parsed (they are filled in lazily,
+  /// after completion; see
+  /// DWARFASTParserClike::CompleteMemberFunctionsFromDWARF).
+  void SetRecordMemberFunctionsParsed(RecordType &record);
   void AddField(RecordType &record, Identifier name, Type *type,
                 uint64_t byte_offset, uint32_t bitfield_bit_size = 0,
                 uint32_t bitfield_bit_offset = 0);
+  /// Set \p record's Objective-C superclass (its single base class).
+  void SetObjCSuperClass(ObjCInterfaceType &record, Type *superclass);
+  /// Add an Objective-C method to \p record. \p name is the full method name
+  /// (`+[Class sel:]` / `-[Class sel:]`); \p function_type's parameters exclude
+  /// the implicit self/_cmd; \p asm_label is the FunctionCallLabel the call
+  /// resolves through.
+  void AddObjCMethod(ObjCInterfaceType &record, llvm::StringRef name,
+                     CompilerType function_type, llvm::StringRef asm_label,
+                     bool is_class_method, bool is_variadic,
+                     bool is_direct = false, bool returns_instancetype = false);
   void AddNestedType(RecordType &record, Identifier name, Type *type);
 
 private:
