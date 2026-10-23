@@ -118,10 +118,10 @@ public:
   /// to another one in the set. That extends to calling *another*
   /// TypeSystemClike: an entry point there would try to re-take a lock this
   /// thread already holds, so those calls go to the non-locking entry points
-  /// too. DWARFASTParserClike is a friend for the same reason: its
-  /// CompleteTypeFromDWARF/CompleteMemberFunctionsFromDWARF only ever run
-  /// nested inside GetCompleteType/CompleteMemberFunctions, which already hold
-  /// the locks.
+  /// too (see GetRuntimeCompletedObjCType). DWARFASTParserClike is a friend
+  /// for the same reason: its CompleteTypeFromDWARF/
+  /// CompleteMemberFunctionsFromDWARF only ever run nested inside
+  /// GetCompleteType/CompleteMemberFunctions, which already hold the locks.
   ///
   /// @{
 
@@ -458,6 +458,18 @@ public:
   CompilerType GetDirectNestedTypeWithName(lldb::opaque_compiler_type_t type,
                                            llvm::StringRef name) override;
 
+  /// Get-or-create (in this scratch context) an ObjCInterfaceType for
+  /// \p class_name whose ivars are populated from the ObjC runtime. Exposed
+  /// publicly (beyond the frame-variable/DIL path, which reaches this via the
+  /// private GetRuntimeCompletedObjCType) for
+  /// ClikeExpressionDeclMap::LookupType, which needs to resolve a bare
+  /// Objective-C class name that has NO debug info at all (e.g. an
+  /// @implementation compiled with -g0): there is no clike::Type to redirect
+  /// from in that case, only a name.
+  CompilerType CreateRuntimeObjCInterface(ConstString class_name,
+                                          Process &process,
+                                          ObjCLanguageRuntime &runtime);
+
 private:
   friend class clike::Builder;
   friend class ::DWARFASTParserClike;
@@ -487,9 +499,12 @@ private:
   /// alignment of these members. Assumes the write lock is held.
   void CompleteForAlignmentAssumingWriteLocked(clike::Type *type);
 
-  /// GetBasicTypeFromAST, assuming the write lock is already held. Used by
-  /// query methods that already hold the lock themselves (e.g.
-  /// GetPromotedIntegerType).
+  /// GetBasicTypeFromAST, assuming the write lock is already held. Its
+  /// id/Class/SEL branch unconditionally allocates via Builder, so it can't
+  /// be called reentrantly through the public, locking GetBasicTypeFromAST.
+  /// DWARFASTParserClike::ParseTypedef calls this instead of the public entry
+  /// when it is itself running nested inside a completion (tracked by its own
+  /// m_completion_depth counter).
   CompilerType
   GetBasicTypeFromASTAssumingWriteLocked(lldb::BasicType basic_type);
 
@@ -561,13 +576,39 @@ private:
   /// type is cv-unqualified (see the definition for details).
   clike::Type *GetFullyUnqualifiedTypeImpl(clike::Type *type);
 
+  /// For an Objective-C interface whose ivars are NOT in the debug info (e.g.
+  /// ivars declared in an @implementation compiled with -g0), build the ivar
+  /// list from the ObjC runtime. To keep process-specific runtime data out of
+  /// the shared per-module types, the completed type is created in the target's
+  /// **scratch** TypeSystemClike; \p t (a module type with no fields) is left
+  /// untouched. Returns the scratch CompilerType, or an empty one when no
+  /// redirection applies (no process/runtime, not an ObjC interface, the type
+  /// already has fields, or this already is the scratch context).
+  CompilerType GetRuntimeCompletedObjCType(clike::Type *t,
+                                           const ExecutionContext *exe_ctx);
   std::string m_display_name;
   llvm::Triple m_triple;
   clike::Context m_context;
   std::unique_ptr<DWARFASTParserClike> m_dwarf_ast_parser_up;
 
-  /// Protects m_context (and thus every Type it owns). See the locking note
-  /// above GetTypeForWrite/GetTypeForRead.
+  /// ObjC interfaces whose ivars were built from the runtime, keyed by class
+  /// name. Only populated on a scratch context (see
+  /// CreateRuntimeObjCInterface), so process-specific runtime layout never
+  /// leaks into a shared module type.
+  llvm::StringMap<clike::Type *> m_runtime_objc_types;
+
+  /// The most recent live process seen through an ExecutionContext (e.g. in
+  /// GetChildCompilerTypeAtIndex/GetNumChildren). Used as a fallback source of
+  /// the ObjC runtime when an exe_ctx-less query needs to complete an ObjC
+  /// interface from the runtime -- notably GetIndexOfChildMemberWithName, which
+  /// the SBFrame::GetValueForVariablePath path calls without any exe_ctx, yet
+  /// must still resolve a hidden ivar reconstructed from the runtime (see the
+  /// hidden-ivars test). Only a fallback: an explicit exe_ctx always wins.
+  lldb::ProcessWP m_last_seen_process_wp;
+
+  /// Protects m_context (and thus every Type it owns) plus m_runtime_objc_types
+  /// and m_last_seen_process_wp above. See the locking note above
+  /// GetTypeForWrite/GetTypeForRead.
   mutable llvm::sys::RWMutex m_mutex;
 
 protected:
