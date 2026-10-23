@@ -19,6 +19,9 @@
 #include "Plugins/SymbolFile/DWARF/DWARFASTParserClike.h"
 #include "Plugins/SymbolFile/DWARF/DWARFDIE.h"
 
+#include "Plugins/Language/ObjC/ObjCLanguage.h"
+#include "Plugins/LanguageRuntime/ObjC/ObjCLanguageRuntime.h"
+
 #include "lldb/Core/DumpDataExtractor.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Expression/UtilityFunction.h"
@@ -725,6 +728,31 @@ bool TypeSystemClike::IsForcefullyCompleted(opaque_compiler_type_t type) {
   return !(completed && completed->IsComplete());
 }
 
+void TypeSystemClike::CompleteMemberFunctions(clike::Type *type) {
+  if (!type)
+    return;
+  auto write_lock = LockForWrite();
+  CompleteMemberFunctionsAssumingWriteLocked(type);
+}
+
+void TypeSystemClike::CompleteMemberFunctionsAssumingWriteLocked(
+    clike::Type *type) {
+  if (!type)
+    return;
+  // See through typedefs/qualifiers to the underlying record, mirroring
+  // GetCompleteType. Anything that isn't a record has no member functions, so
+  // reports them as parsed already.
+  clike::Type *record = Desugar(type);
+  if (record->AreMemberFunctionsParsed())
+    return;
+  // Member functions live on the completed record, and the DWARF parser learns
+  // the record's defining DIE while completing it, so complete it first.
+  CompleteTypeAssumingWriteLocked(record);
+  if (auto *parser =
+          llvm::dyn_cast_or_null<DWARFASTParserClike>(GetDWARFParser()))
+    parser->CompleteMemberFunctionsFromDWARF(*record);
+}
+
 uint32_t TypeSystemClike::GetPointerByteSize() {
   return m_context.GetLanguageOpts().GetBuiltinSizes().pointer_size;
 }
@@ -947,13 +975,40 @@ TypeSystemClike::GetFunctionReturnType(opaque_compiler_type_t type) {
 }
 
 size_t TypeSystemClike::GetNumMemberFunctions(opaque_compiler_type_t type) {
-  // C records have no member functions.
-  return 0;
+  // Lazily parses member functions from DWARF, so this needs the write lock.
+  LockedType tt = GetTypeForWrite(type);
+  if (!tt)
+    return 0;
+  // ObjC methods of an interface (reached through a pointer, as always for
+  // ObjC). They are parsed lazily.
+  clike::Type *bearer = GetObjCBaseClassBearingType(tt.get());
+  CompleteMemberFunctionsAssumingWriteLocked(bearer);
+  return bearer->GetNumObjCMethods();
 }
 
 TypeMemberFunctionImpl
 TypeSystemClike::GetMemberFunctionAtIndex(opaque_compiler_type_t type,
                                           size_t idx) {
+  LockedType tt = GetTypeForWrite(type);
+  if (!tt)
+    return TypeMemberFunctionImpl();
+  // Objective-C methods of an interface (possibly reached via a pointer).
+  clike::Type *bearer = GetObjCBaseClassBearingType(tt.get());
+  CompleteMemberFunctionsAssumingWriteLocked(bearer);
+  if (const clike::ObjCMethod *method = bearer->GetObjCMethodAtIndex(idx)) {
+    // Clang names the member function by the method's selector (e.g. `foo:` /
+    // `init`). The stored name is the full `-[Class sel:]`; recover the
+    // selector from it.
+    std::string name = method->name.GetName().str();
+    if (std::optional<const ObjCLanguage::ObjCMethodName> parsed =
+            ObjCLanguage::ObjCMethodName::Create(name, /*strict=*/false))
+      name = parsed->GetSelector().str();
+    MemberFunctionKind kind = method->is_class_method
+                                  ? lldb::eMemberFunctionKindStaticMethod
+                                  : lldb::eMemberFunctionKindInstanceMethod;
+    return TypeMemberFunctionImpl(GetCompilerType(&method->type.Get()),
+                                  CompilerDecl(), name, kind);
+  }
   return TypeMemberFunctionImpl();
 }
 
@@ -1019,6 +1074,39 @@ TypeSystemClike::GetFloatTypeSemantics(size_t byte_size, Format format) {
   return m_context.GetLanguageOpts().GetFloatTypeSemantics(byte_size, format);
 }
 
+// An Objective-C class's DWARF-recorded byte size is a compile-time constant
+// baked into whichever module's debug info produced it (and may be entirely
+// absent, e.g. for a class -- like a tagged-pointer class such as NSIndexSet
+// -- whose implementation lives in another image and was never given a
+// DW_AT_byte_size in this module). It can also be smaller than the class's
+// true instance size when ivars are added downstream of that module -- e.g. a
+// class extension in a different image adds a hidden ivar to a superclass
+// (see the hidden-ivars test): the subclass's own DW_AT_byte_size, emitted by
+// a compile that only saw the superclass's public ivars, doesn't leave room
+// for the hidden one. So the ObjC runtime's authoritative instance size is
+// queried first, mirroring the ivar-offset override in
+// GetChildCompilerTypeAtIndex -- getting this wrong silently undersizes the
+// buffer used to materialize a whole-object expression result (e.g. `*k`),
+// truncating trailing ivars, or (for a runtime-only-sized class with no
+// DW_AT_byte_size at all) makes the class look incomplete.
+static std::optional<uint64_t>
+GetObjCRuntimeInstanceByteSize(const clike::Type *t, Process *process) {
+  if (!process)
+    return std::nullopt;
+  ObjCLanguageRuntime *objc_runtime = ObjCLanguageRuntime::Get(*process);
+  if (!objc_runtime)
+    return std::nullopt;
+  ConstString class_name(t->GetName().GetName());
+  ObjCLanguageRuntime::ClassDescriptorSP descriptor =
+      objc_runtime->GetClassDescriptorFromClassName(class_name);
+  if (!descriptor)
+    return std::nullopt;
+  uint64_t instance_size = descriptor->GetInstanceSize();
+  if (instance_size == 0)
+    return std::nullopt;
+  return instance_size;
+}
+
 llvm::Expected<uint64_t>
 TypeSystemClike::GetBitSize(opaque_compiler_type_t type,
                             ExecutionContextScope *exe_scope) {
@@ -1026,6 +1114,13 @@ TypeSystemClike::GetBitSize(opaque_compiler_type_t type,
   if (!tt)
     return llvm::createStringError("invalid type");
   const clike::Type *t = Desugar(tt.get());
+  if (t->IsObjCInterface() && exe_scope) {
+    if (lldb::ProcessSP process_sp = exe_scope->CalculateProcess()) {
+      if (std::optional<uint64_t> instance_size =
+              GetObjCRuntimeInstanceByteSize(t, process_sp.get()))
+        return *instance_size * 8;
+    }
+  }
   if (std::optional<uint64_t> byte_size = t->GetByteSize())
     return *byte_size * 8;
   // Function types have no storage of their own. Matching TypeSystemClang
@@ -1108,8 +1203,23 @@ TypeSystemClike::GetNumChildrenImpl(clike::Type *type,
   // meant for.
   if (!t->IsComplete())
     return 0;
-  // The children of a record are its fields.
-  return t->GetNumFields();
+  // Children of a record are its direct base classes followed by its fields.
+  // Empty base classes (no data members, recursively) are omitted when
+  // requested, matching TypeSystemClang.
+  uint32_t num_bases = t->GetNumBaseClasses();
+  if (omit_empty_base_classes) {
+    auto complete = [this](clike::Type *bt) {
+      CompleteTypeAssumingWriteLocked(bt);
+    };
+    uint32_t non_empty_bases = 0;
+    for (uint32_t i = 0; i < num_bases; ++i) {
+      const clike::BaseClass *base = t->GetBaseClassAtIndex(i);
+      if (base && base->GetType().Get().HasFields(complete))
+        ++non_empty_bases;
+    }
+    num_bases = non_empty_bases;
+  }
+  return num_bases + t->GetNumFields();
 }
 
 BasicType
@@ -1193,7 +1303,9 @@ uint32_t TypeSystemClike::GetNumFields(opaque_compiler_type_t type) {
   if (!t)
     return 0;
   CompleteTypeAssumingWriteLocked(t.get());
-  return Desugar(t.get())->GetNumFields();
+  // A pointer to an ObjC interface answers field queries as the interface
+  // itself would (an ObjC object is only ever accessed through a pointer).
+  return GetObjCBaseClassBearingType(t.get())->GetNumFields();
 }
 
 CompilerType TypeSystemClike::GetFieldAtIndex(opaque_compiler_type_t type,
@@ -1205,7 +1317,8 @@ CompilerType TypeSystemClike::GetFieldAtIndex(opaque_compiler_type_t type,
   if (!t)
     return CompilerType();
   CompleteTypeAssumingWriteLocked(t.get());
-  const Field *field = Desugar(t.get())->GetFieldAtIndex(idx);
+  const Field *field =
+      GetObjCBaseClassBearingType(t.get())->GetFieldAtIndex(idx);
   if (!field)
     return CompilerType();
   name = field->GetName().GetName().str();
@@ -1222,9 +1335,27 @@ CompilerType TypeSystemClike::GetFieldAtIndex(opaque_compiler_type_t type,
   return GetCompilerType(&field->GetType().Get());
 }
 
+clike::Type *TypeSystemClike::GetObjCBaseClassBearingType(clike::Type *type) {
+  clike::Type *t = Desugar(type);
+  // An Objective-C object is always handled through a pointer (`Foo *`), so a
+  // pointer to an ObjC interface answers base-class queries as the interface
+  // `Foo` itself would. This does not apply to ordinary C++ pointers.
+  if (t->IsPointer()) {
+    clike::Type *pointee = t->GetPointeeType();
+    if (pointee->Desugar()->IsObjCInterface()) {
+      CompleteTypeAssumingWriteLocked(pointee);
+      return pointee->Desugar();
+    }
+  }
+  return t;
+}
+
 uint32_t TypeSystemClike::GetNumDirectBaseClasses(opaque_compiler_type_t type) {
-  // C records have no base classes.
-  return 0;
+  LockedType t = GetTypeForWrite(type);
+  if (!t)
+    return 0;
+  CompleteTypeAssumingWriteLocked(t.get());
+  return GetObjCBaseClassBearingType(t.get())->GetNumBaseClasses();
 }
 
 uint32_t
@@ -1244,7 +1375,17 @@ bool TypeSystemClike::IsAnonymousType(opaque_compiler_type_t type) {
 
 CompilerType TypeSystemClike::GetDirectBaseClassAtIndex(
     opaque_compiler_type_t type, size_t idx, uint32_t *bit_offset_ptr) {
-  return CompilerType();
+  LockedType t = GetTypeForWrite(type);
+  if (!t)
+    return CompilerType();
+  CompleteTypeAssumingWriteLocked(t.get());
+  const clike::BaseClass *base =
+      GetObjCBaseClassBearingType(t.get())->GetBaseClassAtIndex(idx);
+  if (!base)
+    return CompilerType();
+  if (bit_offset_ptr)
+    *bit_offset_ptr = base->GetByteOffset() * 8;
+  return GetCompilerType(&base->GetType().Get());
 }
 
 CompilerType TypeSystemClike::GetVirtualBaseClassAtIndex(
@@ -1347,6 +1488,19 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
     if (clike::IsVoid(pointee))
       return CompilerType(); // Can't dereference `void *`.
 
+    // A pointer to an ObjC interface, like any other aggregate pointee, is
+    // only expanded transparently when explicitly asked (transparent_pointers)
+    // -- e.g. `--ptr-depth`/child enumeration -- matching TypeSystemClang's
+    // ObjCObjectPointer case. A non-transparent access (idx 0, as used by
+    // `*ptr`/GetDereferencedType) must fall through to the "child 0 is the
+    // dereferenced value" path below so `*ptr` yields the whole pointee
+    // object rather than its first base/ivar.
+    //
+    // An ObjC interface is transparent even while incomplete (see
+    // PointerType::GetTransparentChildPointee), so complete it first --
+    // otherwise its ivars aren't there to splice in.
+    if (pointee->Desugar()->IsObjCInterface())
+      CompleteTypeAssumingWriteLocked(pointee);
     if (transparent_pointers && t->GetTransparentChildPointee()) {
       bool tmp_child_is_deref_of_parent = false;
       return GetChildCompilerTypeAtIndexImpl(
@@ -1369,7 +1523,19 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
     // (this is the explicit access that is allowed to force completion of an
     // otherwise-lazy pointee).
     CompleteTypeAssumingWriteLocked(pointee);
-    std::optional<uint64_t> byte_size = pointee->GetByteSize();
+    clike::Type *desugared_pointee = Desugar(pointee);
+    // As in GetBitSize, an ObjC class's size may only be known to the
+    // runtime (e.g. a tagged-pointer class like NSIndexSet has no
+    // DW_AT_byte_size at all), so try that before falling back to the
+    // DWARF-recorded size -- otherwise dereferencing such a pointer (e.g. via
+    // a synthetic child provider that wants a dereferenced backend object)
+    // spuriously reports the pointee as incomplete.
+    std::optional<uint64_t> byte_size;
+    if (desugared_pointee->IsObjCInterface() && exe_ctx)
+      byte_size = GetObjCRuntimeInstanceByteSize(desugared_pointee,
+                                                 exe_ctx->GetProcessPtr());
+    if (!byte_size)
+      byte_size = pointee->GetByteSize();
     if (!byte_size)
       return llvm::createStringError(
           "incomplete type \"" +
@@ -1379,13 +1545,64 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
     return GetCompilerType(pointee);
   }
 
-  // The children of a record are its fields.
-  const Field *field = t->GetFieldAtIndex(idx);
+  // Children are laid out as the direct base classes followed by the fields.
+  // When omit_empty_base_classes is set, empty base classes (no data members,
+  // recursively) are skipped and do not consume a child index, matching
+  // TypeSystemClang.
+  auto complete = [this](clike::Type *bt) {
+    CompleteTypeAssumingWriteLocked(bt);
+  };
+  uint32_t total_bases = t->GetNumBaseClasses();
+  uint32_t visible_base_idx = 0;
+  for (uint32_t i = 0; i < total_bases; ++i) {
+    const clike::BaseClass *base = t->GetBaseClassAtIndex(i);
+    if (!base)
+      continue;
+    if (omit_empty_base_classes && !base->GetType().Get().HasFields(complete))
+      continue;
+    if (visible_base_idx == idx) {
+      // Name the base-class child by its (possibly sugar-wrapped) type name
+      // rather than the raw record name: a base recovered for an expression
+      // result can be an elaborated/spelling-sugar wrapper whose own m_name is
+      // empty (the real name sits on the underlying type), so fall back to the
+      // display type name in that case.
+      child_name = base->GetType().Get().GetName().GetName().str();
+      if (child_name.empty())
+        child_name = GetTypeNameAssumingWriteLocked(&base->GetType().Get(),
+                                                    /*BaseOnly=*/false)
+                         .GetString();
+      child_byte_offset = base->GetByteOffset();
+      if (std::optional<uint64_t> byte_size =
+              base->GetType().Get().GetByteSize())
+        child_byte_size = *byte_size;
+      child_is_base_class = true;
+      return GetCompilerType(&base->GetType().Get());
+    }
+    ++visible_base_idx;
+  }
+
+  const Field *field = t->GetFieldAtIndex(idx - visible_base_idx);
   if (!field)
     return CompilerType();
 
   child_name = field->GetName().GetName().str();
   child_byte_offset = field->GetByteOffset();
+  // An Objective-C ivar's byte offset is not reliably encoded in DWARF (the
+  // compiler emits 0 for every ivar); the authoritative offset lives in the
+  // ObjC runtime's `OBJC_IVAR_$_Class.ivar` symbols. Resolve it against the
+  // live process when possible, falling back to the DWARF offset otherwise.
+  if (t->IsObjCInterface() && exe_ctx) {
+    if (Process *process = exe_ctx->GetProcessPtr()) {
+      if (ObjCLanguageRuntime *objc_runtime =
+              ObjCLanguageRuntime::Get(*process)) {
+        CompilerType parent_type = GetCompilerType(t);
+        size_t ivar_offset = objc_runtime->GetByteOffsetForIvar(
+            parent_type, field->GetName().GetName().str().c_str());
+        if (ivar_offset != static_cast<size_t>(LLDB_INVALID_IVAR_OFFSET))
+          child_byte_offset = ivar_offset;
+      }
+    }
+  }
   if (std::optional<uint64_t> byte_size = field->GetType().Get().GetByteSize())
     child_byte_size = *byte_size;
   if (field->IsBitfield()) {
@@ -1420,10 +1637,34 @@ llvm::Expected<uint32_t> TypeSystemClike::GetIndexOfChildWithNameImpl(
     return llvm::createStringError(
         "TypeSystemClike::GetIndexOfChildWithName: no such child");
   }
-  // The children of a record are its fields.
+  // Base classes are the first children (empty ones omitted when requested,
+  // matching GetChildCompilerTypeAtIndex); match them by their type name.
+  auto complete = [this](clike::Type *bt) {
+    CompleteTypeAssumingWriteLocked(bt);
+  };
+  uint32_t total_bases = t->GetNumBaseClasses();
+  uint32_t visible_base_idx = 0;
+  for (uint32_t i = 0; i < total_bases; ++i) {
+    const clike::BaseClass *base = t->GetBaseClassAtIndex(i);
+    if (!base)
+      continue;
+    if (omit_empty_base_classes && !base->GetType().Get().HasFields(complete))
+      continue;
+    if (base->GetType().Get().GetName().GetName() == name)
+      return visible_base_idx;
+    // A sugar-wrapped base (see GetChildCompilerTypeAtIndex) has an empty raw
+    // name; match it by its display type name instead.
+    if (base->GetType().Get().GetName().GetName().empty() &&
+        GetTypeNameAssumingWriteLocked(&base->GetType().Get(),
+                                       /*BaseOnly=*/false)
+                .GetStringRef() == name)
+      return visible_base_idx;
+    ++visible_base_idx;
+  }
+  // Fields follow the base classes.
   for (uint32_t i = 0, e = t->GetNumFields(); i < e; ++i) {
     if (t->GetFieldAtIndex(i)->GetName().GetName() == name)
-      return i;
+      return visible_base_idx + i;
   }
   return llvm::createStringError(
       "TypeSystemClike::GetIndexOfChildWithName: no such child");
@@ -1432,15 +1673,19 @@ llvm::Expected<uint32_t> TypeSystemClike::GetIndexOfChildWithNameImpl(
 size_t TypeSystemClike::GetIndexOfChildMemberWithName(
     opaque_compiler_type_t type, llvm::StringRef name,
     bool omit_empty_base_classes, std::vector<uint32_t> &child_indexes) {
-  // Lazily completes the type, so this needs the write lock.
+  // Lazily completes the type, so this needs the write lock. The record the
+  // lookup starts from is allowed to transparently search its anonymous
+  // (unnamed union/struct) fields; recursion into base classes is not (see
+  // GetIndexOfChildMemberWithNameImpl).
   LockedType t = GetTypeForWrite(type);
   return GetIndexOfChildMemberWithNameImpl(
-      t.get(), name, omit_empty_base_classes, child_indexes);
+      t.get(), name, omit_empty_base_classes,
+      /*descend_anon_fields=*/true, child_indexes);
 }
 
 size_t TypeSystemClike::GetIndexOfChildMemberWithNameImpl(
     clike::Type *type, llvm::StringRef name, bool omit_empty_base_classes,
-    std::vector<uint32_t> &child_indexes) {
+    bool descend_anon_fields, std::vector<uint32_t> &child_indexes) {
   if (!type)
     return 0;
   CompleteTypeAssumingWriteLocked(type);
@@ -1456,28 +1701,69 @@ size_t TypeSystemClike::GetIndexOfChildMemberWithNameImpl(
     if (!pointee)
       return 0;
     return GetIndexOfChildMemberWithNameImpl(
-        pointee, name, omit_empty_base_classes, child_indexes);
+        pointee, name, omit_empty_base_classes, /*descend_anon_fields=*/true,
+        child_indexes);
   }
+  // Compute the number of visible base classes (empty ones omitted when
+  // requested), since fields are laid out after them and their child indices
+  // must match GetChildCompilerTypeAtIndex.
+  auto complete = [this](clike::Type *bt) {
+    CompleteTypeAssumingWriteLocked(bt);
+  };
+  uint32_t total_bases = t->GetNumBaseClasses();
+  auto base_is_visible = [&](const clike::BaseClass *base) {
+    return base && (!omit_empty_base_classes ||
+                    base->GetType().Get().HasFields(complete));
+  };
+  uint32_t num_visible_bases = 0;
+  for (uint32_t i = 0; i < total_bases; ++i)
+    if (base_is_visible(t->GetBaseClassAtIndex(i)))
+      ++num_visible_bases;
 
-  // A matching field is a direct child. An unnamed field is an anonymous
-  // union/struct whose members are reached as if they belonged to this record,
-  // so recurse into it.
+  // A matching field is a direct child, laid out after the base classes. An
+  // unnamed field is an anonymous union/struct whose members are reached as if
+  // they belonged to this record, so recurse into it -- but only when
+  // `descend_anon_fields` is set (i.e. this is the record the lookup started
+  // from, not a base class we recursed into).
   for (uint32_t i = 0, e = t->GetNumFields(); i < e; ++i) {
     const Field *field = t->GetFieldAtIndex(i);
     llvm::StringRef field_name = field->GetName().GetName();
     if (field_name == name) {
-      child_indexes.push_back(i);
+      child_indexes.push_back(num_visible_bases + i);
       return child_indexes.size();
     }
-    if (field_name.empty()) {
+    if (descend_anon_fields && field_name.empty()) {
       std::vector<uint32_t> save_indices = child_indexes;
-      child_indexes.push_back(i);
-      if (GetIndexOfChildMemberWithNameImpl(&field->GetType().Get(), name,
-                                            omit_empty_base_classes,
-                                            child_indexes))
+      child_indexes.push_back(num_visible_bases + i);
+      // An anonymous field of the starting record still injects the members of
+      // *its* anonymous fields, so keep descending transparently through it.
+      if (GetIndexOfChildMemberWithNameImpl(
+              &field->GetType().Get(), name, omit_empty_base_classes,
+              /*descend_anon_fields=*/true, child_indexes))
         return child_indexes.size();
       child_indexes = std::move(save_indices);
     }
+  }
+
+  // Otherwise the member may be inherited from a base class. Base classes are
+  // the first children, so their child index is their visible position. When
+  // recursing into a base we must NOT descend into that base's anonymous
+  // fields: C++ name lookup does not find a member that is injected by an
+  // anonymous field of a base class (only direct members and further base
+  // classes are reachable), matching TypeSystemClang.
+  uint32_t visible_base_idx = 0;
+  for (uint32_t i = 0; i < total_bases; ++i) {
+    const clike::BaseClass *base = t->GetBaseClassAtIndex(i);
+    if (!base_is_visible(base))
+      continue;
+    std::vector<uint32_t> save_indices = child_indexes;
+    child_indexes.push_back(visible_base_idx);
+    if (GetIndexOfChildMemberWithNameImpl(
+            &base->GetType().Get(), name, omit_empty_base_classes,
+            /*descend_anon_fields=*/false, child_indexes))
+      return child_indexes.size();
+    child_indexes = std::move(save_indices);
+    ++visible_base_idx;
   }
   return 0;
 }
@@ -1689,8 +1975,8 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type,
   LockedType tt = GetTypeForWrite(type);
   if (!tt)
     return;
-  // A typedef is checked before desugaring (unlike the record/enum branches
-  // below, which want the canonical type): clang's equivalent dump
+  // A typedef is checked before desugaring (unlike the record/enum/ObjC
+  // branches below, which want the canonical type): clang's equivalent dump
   // only special-cases a type that IS itself a TypedefType, printing
   // "typedef <name>" and leaving the underlying type alone, matching
   // TypeSystemClang::DumpTypeDescription's `case clang::Type::Typedef`.
@@ -1719,6 +2005,37 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type,
                value.c_str());
     }
     s.PutCString("}");
+    return;
+  }
+
+  if (t->IsObjCInterface()) {
+    CompleteTypeAssumingWriteLocked(t);
+    // An ObjC interface is a RecordType (ivars modeled as fields, superclass
+    // as its one base class), but its source-level spelling is `@interface`,
+    // not `struct`/`class` -- dump it separately from the generic RecordType
+    // branch below (which it would otherwise also match).
+    s.Printf("@interface %s",
+             GetTypeNameAssumingWriteLocked(t, /*BaseOnly=*/true).GetCString());
+    if (const clike::BaseClass *super = t->GetBaseClassAtIndex(0))
+      s.Printf(" : %s", GetTypeNameAssumingWriteLocked(&super->GetType().Get(),
+                                                       /*BaseOnly=*/true)
+                            .GetCString());
+    s.PutCString(" {\n");
+    for (uint32_t i = 0, e = t->GetNumFields(); i != e; ++i) {
+      const clike::Field *field = t->GetFieldAtIndex(i);
+      if (!field)
+        continue;
+      s.PutCString("    ");
+      AppendMemberDeclAssumingWriteLocked(s, &field->GetType().Get(),
+                                          field->GetName().GetName());
+      s.PutCString(";\n");
+    }
+    s.PutCString("}\n");
+    CompleteMemberFunctionsAssumingWriteLocked(t);
+    for (uint32_t i = 0, e = t->GetNumObjCMethods(); i != e; ++i) {
+      if (const clike::ObjCMethod *m = t->GetObjCMethodAtIndex(i))
+        s.Printf("%s;\n", m->name.GetName().str().c_str());
+    }
     return;
   }
 
@@ -1764,7 +2081,10 @@ void TypeSystemClike::Dump(llvm::raw_ostream &output, llvm::StringRef filter,
 }
 
 bool TypeSystemClike::IsRuntimeGeneratedType(opaque_compiler_type_t type) {
-  return false;
+  // An Objective-C class's layout (ivar offsets) is provided by the ObjC
+  // runtime rather than being fixed by the debug info.
+  SharedLockedType t = GetTypeForRead(type);
+  return t && Desugar(t.get())->IsObjCInterface();
 }
 
 bool TypeSystemClike::IsPointerOrReferenceType(opaque_compiler_type_t type,
@@ -1800,6 +2120,9 @@ void TypeSystemClike::CompleteForAlignmentAssumingWriteLocked(
   if (!t || !t->IsRecord())
     return;
   CompleteTypeAssumingWriteLocked(t);
+  for (uint32_t i = 0, e = t->GetNumBaseClasses(); i != e; ++i)
+    CompleteForAlignmentAssumingWriteLocked(
+        &t->GetBaseClassAtIndex(i)->GetType().Get());
   for (uint32_t i = 0, e = t->GetNumFields(); i != e; ++i)
     CompleteForAlignmentAssumingWriteLocked(
         &t->GetFieldAtIndex(i)->GetType().Get());
