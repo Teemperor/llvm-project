@@ -14,12 +14,16 @@
 #include "DWARFDefines.h"
 #include "DWARFUnit.h"
 #include "SymbolFileDWARF.h"
+#include "SymbolFileDWARFDebugMap.h"
 
 #include "Plugins/TypeSystem/Clike/Builder.h"
 #include "Plugins/TypeSystem/Clike/Namespace.h"
 #include "Plugins/TypeSystem/Clike/Type.h"
 #include "Plugins/TypeSystem/Clike/TypeC.h"
+#include "Plugins/TypeSystem/Clike/TypeObjC.h"
 #include "Plugins/TypeSystem/Clike/TypeSystemClike.h"
+
+#include "Plugins/Language/ObjC/ObjCLanguage.h"
 
 #include "lldb/Core/Declaration.h"
 #include "lldb/Core/Mangled.h"
@@ -562,6 +566,41 @@ DWARFASTParserClike::GetDeclContextContainingUIDFromDWARF(const DWARFDIE &die) {
   return CompilerDeclContext(&m_ts, const_cast<clike::Namespace *>(ns));
 }
 
+/// The asm label (a FunctionCallLabel) for the function described by \p die, so
+/// the JIT can resolve the call to the right symbol in the inferior. Mirrors
+/// DWARFASTParserClang's MakeLLDBFuncAsmLabel.
+static std::string MakeFuncAsmLabel(const DWARFDIE &die) {
+  const char *name = die.GetMangledName(/*substitute_name_allowed=*/false);
+  if (!name)
+    return {};
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+  if (!dwarf)
+    return {};
+
+  auto get_module_id = [&](SymbolFile *sym) -> lldb::user_id_t {
+    if (!sym)
+      return LLDB_INVALID_UID;
+    ObjectFile *obj = sym->GetMainObjectFile();
+    if (!obj)
+      return LLDB_INVALID_UID;
+    lldb::ModuleSP module_sp = obj->GetModule();
+    return module_sp ? module_sp->GetID() : LLDB_INVALID_UID;
+  };
+
+  lldb::user_id_t module_id = get_module_id(dwarf->GetDebugMapSymfile());
+  if (module_id == LLDB_INVALID_UID)
+    module_id = get_module_id(dwarf);
+  if (module_id == LLDB_INVALID_UID)
+    return {};
+
+  const lldb::user_id_t die_id = die.GetID();
+  if (die_id == LLDB_INVALID_UID)
+    return {};
+
+  return FunctionCallLabel{/*discriminator=*/{}, module_id, die_id, name}
+      .toString();
+}
+
 /// Return the DW_TAG_module DIE enclosing \p die (the top-most one), or an
 /// invalid DIE if \p die is not scoped inside a Clang module. Mirrors
 /// DWARFASTParserClang's GetContainingClangModuleDIE.
@@ -651,6 +690,48 @@ TypeSP DWARFASTParserClike::ParseStructureType(const DWARFDIE &die) {
   ConstString name(GetDIEQualifiedName(die));
   std::optional<uint64_t> byte_size =
       die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size);
+
+  // An Objective-C class (`@interface`) carries DW_AT_APPLE_runtime_class. It
+  // is modeled by a dedicated ObjCInterfaceType (ivars are added as fields, the
+  // superclass as its one base class) rather than a C/C++ record.
+  const bool is_objc_class =
+      die.GetAttributeValueAsOptionalUnsigned(DW_AT_APPLE_runtime_class)
+          .has_value();
+  if (is_objc_class) {
+    // A CU that merely *uses* an ObjC class emits an incomplete stub for it
+    // (no ivars, and no DW_AT_APPLE_objc_complete_type); the real definition
+    // with ivars lives in the CU that implements the class. When this DIE is
+    // such a stub, find and return the complete definition instead (mirroring
+    // DWARFASTParserClang).
+    const bool is_complete_objc_class =
+        die.GetAttributeValueAsUnsigned(DW_AT_APPLE_objc_complete_type, 0) != 0;
+    if (!is_complete_objc_class && name) {
+      TypeSP complete =
+          dwarf->FindCompleteObjCDefinitionTypeForDIE(die, name, true);
+      if (!complete)
+        if (SymbolFileDWARFDebugMap *debug_map = dwarf->GetDebugMapSymfile())
+          complete =
+              debug_map->FindCompleteObjCDefinitionTypeForDIE(die, name, true);
+      if (complete)
+        return complete;
+    }
+
+    CompilerType compiler_type;
+    {
+      clike::Builder builder(m_ts);
+      compiler_type = builder.CreateObjCInterfaceType(
+          name.GetStringRef(), byte_size, GetTypeDeclScope(die, builder));
+    }
+
+    Declaration decl = GetDIEDeclaration(die);
+    TypeSP type_sp = dwarf->MakeType(
+        die.GetID(), name, byte_size, /*context=*/nullptr, LLDB_INVALID_UID,
+        Type::eEncodingIsUID, decl, compiler_type, Type::ResolveState::Forward);
+    if (std::optional<DIERef> die_ref = die.GetDIERef())
+      dwarf->GetForwardDeclCompilerTypeToDIE().insert_or_assign(
+          compiler_type.GetOpaqueQualType(), *die_ref);
+    return type_sp;
+  }
 
   bool is_union = die.Tag() == DW_TAG_union_type;
   // Both `struct` and `class` are modeled by the same record type, so remember
@@ -1233,6 +1314,12 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
   if (die.GetAttributeValueAsUnsigned(DW_AT_declaration, 0))
     return false;
 
+  // Remember the DIE that defines this record so that its member functions can
+  // be parsed on demand later. Unlike fields and base classes, member functions
+  // are not parsed here (they are only needed to call methods from an
+  // expression); see CompleteMemberFunctionsFromDWARF.
+  m_record_defining_die.insert_or_assign(record, die);
+
   // Mark complete up front so that a member whose type (indirectly) refers back
   // to this record doesn't recurse forever, and so that a re-entrant completion
   // of the same record bails out here.
@@ -1277,11 +1364,14 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
     }
   }
 
-  // Collect the members in declaration order, along with the DWARF reference
-  // to each one's type. Only the (heavier) type resolution below is structured
-  // to be spread out; this DWARF traversal is not.
+  // An Objective-C class stores its (single) superclass separately.
+  auto *objc_interface = llvm::dyn_cast<clike::ObjCInterfaceType>(record);
+
+  // Collect the superclass and members in declaration order, along with the
+  // DWARF reference to each one's type. Only the (heavier) type resolution
+  // below is structured to be spread out; this DWARF traversal is not.
   struct MemberInfo {
-    enum class Kind { Field, NestedType } kind;
+    enum class Kind { Field, Base, NestedType } kind;
     llvm::StringRef name; // Field/nested-type name; else empty.
     uint64_t byte_offset = 0;
     DWARFDIE referencing_die;
@@ -1294,7 +1384,16 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
 
   for (DWARFDIE child : die.children()) {
     const dw_tag_t tag = child.Tag();
-    if (tag == DW_TAG_member) {
+    if (tag == DW_TAG_inheritance) {
+      // An ObjC interface records its single superclass as a
+      // DW_TAG_inheritance (integrated via SetObjCSuperClass).
+      if (!objc_interface)
+        continue;
+      members.push_back(
+          {MemberInfo::Kind::Base, /*name=*/{},
+           child.GetAttributeValueAsUnsigned(DW_AT_data_member_location, 0),
+           child, child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+    } else if (tag == DW_TAG_member) {
       std::optional<uint64_t> data_member_location =
           child.GetAttributeValueAsOptionalUnsigned(DW_AT_data_member_location);
       std::optional<uint64_t> data_bit_offset =
@@ -1337,7 +1436,8 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
   for (size_t i = 0; i < members.size(); ++i)
     member_types[i] = resolved[i].get();
 
-  // Integrate the resolved members into the record, in declaration order.
+  // Integrate the resolved superclass and members into the record, in
+  // declaration order.
   clike::Builder ts(m_ts);
 
   // Compilers omit unnamed bitfields (padding) from DWARF, but LLDB
@@ -1345,6 +1445,45 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
   // inspecting a value. We track where the previous field ended (in bits) and,
   // whenever a bitfield starts past that point, synthesize a padding member for
   // the hole. This mirrors DWARFASTParserClang's unnamed-bitfield handling.
+  bool have_base = false;
+  for (const MemberInfo &member : members)
+    if (member.kind == MemberInfo::Kind::Base) {
+      have_base = true;
+      break;
+    }
+
+  // The known-occupied leading prefix of the record: every base's own
+  // fully-known real extent, [byte_offset, byte_offset + byte_size). Bails
+  // (leaves the extent unknown) if a base's size can't be determined (an
+  // incomplete/lazily-unresolved record): such a base could in principle
+  // occupy more than is currently visible, and trusting a too-small extent
+  // risks synthesizing padding that overlaps the base's storage.
+  uint64_t bases_extent_bits = 0;
+  bool bases_extent_known = true;
+  for (size_t i = 0; i < members.size(); ++i) {
+    const MemberInfo &member = members[i];
+    if (member.kind != MemberInfo::Kind::Base)
+      continue;
+    clike::Type *base = member_types[i];
+    if (base)
+      m_ts.CompleteTypeAssumingWriteLocked(base);
+    std::optional<uint64_t> base_byte_size =
+        base ? base->GetByteSize() : std::nullopt;
+    if (!base_byte_size) {
+      bases_extent_known = false;
+      break;
+    }
+    bases_extent_bits = std::max(bases_extent_bits,
+                                 member.byte_offset * 8 + *base_byte_size * 8);
+  }
+
+  // Whether it is safe to synthesize padding to fill the gap immediately
+  // before this record's first own field: true when there is no base, or once
+  // every base's real storage is confirmed to lie entirely within the extent
+  // computed above. Otherwise a base's own data could sit anywhere in the
+  // apparent "gap" before the first field.
+  const bool bases_fit_before_first_field = !have_base || bases_extent_known;
+
   // The synthetic padding member is an `int` (matching TypeSystemClang, which
   // uses a signed word-width builtin). Fetch it once.
   constexpr uint64_t word_width = 32;
@@ -1353,7 +1492,11 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
                         lldb::eFormatDecimal)
           .GetOpaqueQualType());
   // State of the previous field, in absolute bits from the start of the record.
-  uint64_t last_field_end = 0;
+  // The bases (if their extent is known) act as the previous (non-bitfield)
+  // field so the space they occupy is not mistaken for a gap that needs a
+  // synthetic unnamed bitfield.
+  uint64_t last_field_end =
+      have_base && bases_extent_known ? bases_extent_bits : 0;
   bool seen_field = false;
   // Whether `last_field_end` is trustworthy. A member whose type has no known
   // size yet (a lazily forward-declared record whose definition lives in
@@ -1368,6 +1511,10 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
     clike::Type *member_type = member_types[i];
     const MemberInfo &member = members[i];
     switch (member.kind) {
+    case MemberInfo::Kind::Base:
+      if (member_type && objc_interface)
+        ts.SetObjCSuperClass(*objc_interface, member_type);
+      break;
     case MemberInfo::Kind::Field:
       if (member_type) {
         // For a bitfield, translate the DWARF bit position into the storage
@@ -1430,7 +1577,16 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
           // `accumulateBitFields`'s "Not at start of char" assert.
           uint64_t gap_start = last_field_end;
 
-          if (abs_bit_offset > gap_start) {
+          const bool this_is_first_field = !seen_field;
+          // Suppress synthesizing padding for the very first field when the
+          // record has a base whose real storage might not be fully accounted
+          // for (see bases_fit_before_first_field above). Once every base's
+          // storage is confirmed to lie entirely within the known extent, the
+          // gap past it is a genuine, computable hole and is filled like any
+          // other.
+          if (abs_bit_offset > gap_start &&
+              !(have_base && this_is_first_field &&
+                !bases_fit_before_first_field)) {
             // Emit the padding one storage unit at a time. A gap can be wider
             // than the padding type (several consecutive unnamed bitfields in
             // the source collapse into a single hole here), and a bitfield
@@ -1492,4 +1648,175 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
   }
 
   return true;
+}
+
+void DWARFASTParserClike::CompleteMemberFunctionsFromDWARF(clike::Type &type) {
+  // Only a record has member functions.
+  auto *record_ptr = llvm::dyn_cast<clike::RecordType>(&type);
+  if (!record_ptr)
+    return;
+  clike::RecordType &record = *record_ptr;
+
+  // Serialize under the type-system lock, matching CompleteTypeFromDWARF. Parse
+  // the member functions at most once (parsing again would append duplicates),
+  // so mark them parsed up front.
+  clike::Builder ts(m_ts);
+  if (record.AreMemberFunctionsParsed())
+    return;
+  ts.SetRecordMemberFunctionsParsed(record);
+
+  // The defining DIE was recorded when the record was completed. If the record
+  // wasn't completed from DWARF (e.g. an expression-synthesized record) there
+  // is nothing to parse.
+  auto die_it = m_record_defining_die.find(&record);
+  if (die_it == m_record_defining_die.end())
+    return;
+  DWARFDIE die = die_it->second;
+
+  // An Objective-C interface's "member functions" are its methods, which are
+  // messaged (not called directly). They live in DWARF both as child
+  // DW_TAG_subprogram declarations of the class DIE and as standalone
+  // definitions (named `+[Class sel:]` / `-[Class sel:]`) reachable through the
+  // ObjC-method index. Parse both so the expression parser can type-check and
+  // lower a message send. A plain C struct has none.
+  if (auto *objc_iface = llvm::dyn_cast<clike::ObjCInterfaceType>(&record))
+    CompleteObjCMethodsFromDWARF(*objc_iface, die, ts);
+}
+
+void DWARFASTParserClike::CompleteObjCMethodsFromDWARF(
+    clike::ObjCInterfaceType &iface, const DWARFDIE &class_die,
+    clike::Builder &ts) {
+  llvm::StringRef class_name = iface.GetName().GetName();
+
+  // Track which method DIEs we've already added so a method that appears both
+  // as a child declaration of the class DIE and as a standalone definition
+  // (reachable via the index) is only added once.
+  llvm::DenseSet<dw_offset_t> seen;
+  // Full ObjC method names (`-[Class sel]`) already added, so a property
+  // accessor synthesized below isn't duplicated by an explicit method (or vice
+  // versa).
+  llvm::StringSet<> seen_names;
+
+  auto add_method = [&](const DWARFDIE &method_die) {
+    const char *name = method_die.GetName();
+    if (!name || !name[0])
+      return;
+    std::optional<const ObjCLanguage::ObjCMethodName> objc_name =
+        ObjCLanguage::ObjCMethodName::Create(name, /*strict=*/true);
+    if (!objc_name)
+      return;
+    // Only methods of this interface.
+    if (objc_name->GetClassName() != class_name)
+      return;
+    if (!seen.insert(method_die.GetOffset()).second)
+      return;
+
+    // The FunctionType parsed from the DIE already strips the artificial
+    // self/_cmd parameters (see ParseFunctionType), matching what a
+    // clang::ObjCMethodDecl expects (one parameter per selector argument).
+    Type *func_type = class_die.ResolveTypeUID(method_die);
+    if (!func_type)
+      return;
+
+    bool is_variadic = false;
+    for (DWARFDIE param : method_die.children())
+      if (param.Tag() == DW_TAG_unspecified_parameters)
+        is_variadic = true;
+
+    const bool is_direct =
+        method_die.GetAttributeValueAsUnsigned(DW_AT_APPLE_objc_direct, 0) != 0;
+
+    const std::string asm_label = MakeFuncAsmLabel(method_die);
+
+    seen_names.insert(name);
+    ts.AddObjCMethod(iface, name, func_type->GetForwardCompilerType(),
+                     asm_label, objc_name->IsClassMethod(), is_variadic,
+                     is_direct);
+  };
+
+  // An Objective-C `@property` is recorded as DW_TAG_APPLE_property, not a
+  // DW_TAG_subprogram, but the compiler stores the property's *typed* accessor
+  // signature here -- e.g. `NSString`'s `length` property is
+  // `DW_AT_type -> NSUInteger`. The ObjC runtime's method type-encodings can't
+  // preserve such typedef names (`length` encodes as the underlying integer),
+  // so synthesize the getter (and, unless read-only, the setter) as methods
+  // from the DWARF property to keep the `NSUInteger` sugar for `[obj length]`.
+  auto selector_basename = [](const char *n) -> std::string {
+    // A getter/setter attribute is usually a bare selector, but may be spelled
+    // as a full `-[Class sel]` name; reduce it to the selector.
+    if (n && n[0] == '-')
+      if (std::optional<const ObjCLanguage::ObjCMethodName> m =
+              ObjCLanguage::ObjCMethodName::Create(n, /*strict=*/true))
+        return std::string(m->GetSelector());
+    return n ? std::string(n) : std::string();
+  };
+  auto add_accessor = [&](const std::string &selector,
+                          CompilerType function_type) {
+    if (selector.empty())
+      return;
+    std::string full = ("-[" + class_name + " " + selector + "]").str();
+    if (!seen_names.insert(full).second)
+      return;
+    ts.AddObjCMethod(iface, full, function_type, /*asm_label=*/"",
+                     /*is_class_method=*/false, /*is_variadic=*/false,
+                     /*is_direct=*/false);
+  };
+  auto add_property = [&](const DWARFDIE &prop_die) {
+    const char *prop_name =
+        prop_die.GetAttributeValueAsString(DW_AT_APPLE_property_name, nullptr);
+    if (!prop_name || !prop_name[0])
+      return;
+    DWARFDIE type_die = prop_die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+    Type *prop_type = type_die ? class_die.ResolveTypeUID(type_die) : nullptr;
+    if (!prop_type)
+      return;
+    CompilerType prop_ct = prop_type->GetForwardCompilerType();
+    if (!prop_ct)
+      return;
+    const uint32_t attrs =
+        prop_die.GetAttributeValueAsUnsigned(DW_AT_APPLE_property_attribute, 0);
+
+    // Getter: an explicit DW_AT_APPLE_property_getter selector, else the
+    // property name.
+    std::string getter = selector_basename(prop_die.GetAttributeValueAsString(
+        DW_AT_APPLE_property_getter, nullptr));
+    if (getter.empty())
+      getter = prop_name;
+    add_accessor(getter,
+                 ts.CreateFunctionType(prop_ct, {}, /*is_variadic=*/false));
+
+    // Setter (unless read-only): an explicit DW_AT_APPLE_property_setter
+    // selector, else `set<Name>:`.
+    if (!(attrs & DW_APPLE_PROPERTY_readonly)) {
+      std::string setter = selector_basename(prop_die.GetAttributeValueAsString(
+          DW_AT_APPLE_property_setter, nullptr));
+      if (setter.empty())
+        setter = (llvm::Twine("set") +
+                  llvm::Twine(char(std::toupper(prop_name[0]))) +
+                  (prop_name + 1) + ":")
+                     .str();
+      if (CompilerType setter_ft = ts.CreateFunctionType(
+              ts.GetVoidType(), {prop_ct}, /*is_variadic=*/false))
+        add_accessor(setter, setter_ft);
+    }
+  };
+
+  // Method declarations that are children of the class DIE.
+  for (DWARFDIE child : class_die.children())
+    if (child.Tag() == DW_TAG_subprogram)
+      add_method(child);
+
+  // Standalone method definitions (and declarations in other CUs) reachable
+  // through the ObjC-method index (mirrors DWARFASTParserClang, which calls
+  // dwarf->GetObjCMethods to find every `+[Class sel]` / `-[Class sel]` DIE).
+  if (SymbolFileDWARF *dwarf = class_die.GetDWARF())
+    dwarf->GetObjCMethods(ConstString(class_name), [&](DWARFDIE method_die) {
+      add_method(method_die);
+      return IterationAction::Continue;
+    });
+
+  // Property accessors (DW_TAG_APPLE_property children of the class DIE).
+  for (DWARFDIE child : class_die.children())
+    if (child.Tag() == DW_TAG_APPLE_property)
+      add_property(child);
 }
