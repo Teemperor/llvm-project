@@ -14,6 +14,8 @@
 
 #include "lldb/Utility/ConstString.h"
 
+#include "llvm/ADT/DenseMap.h"
+
 #include <mutex>
 
 namespace lldb_private {
@@ -21,6 +23,7 @@ class TypeSystemClike;
 namespace clike {
 class Type;
 class RecordType;
+class ObjCInterfaceType;
 class Builder;
 } // namespace clike
 } // namespace lldb_private
@@ -60,6 +63,24 @@ public:
       const lldb_private::plugin::dwarf::DWARFDIE &die,
       lldb_private::Type *type,
       const lldb_private::CompilerType &compiler_type) override;
+
+  /// Parse the member functions of \p type, which must have been completed
+  /// earlier via CompleteTypeFromDWARF. Member functions are parsed lazily
+  /// (only when the expression evaluator needs them to call a method) rather
+  /// than as part of record completion, so this is a separate on-demand step
+  /// reached through TypeSystemClike::CompleteMemberFunctions. Does nothing
+  /// for a type that isn't a record.
+  void CompleteMemberFunctionsFromDWARF(lldb_private::clike::Type &type);
+
+  /// Parse the Objective-C methods of \p iface (from its child method
+  /// declarations and the standalone `+[Class sel]` / `-[Class sel]`
+  /// definitions reachable via the ObjC-method index) and add them as
+  /// ObjCMethods so the expression parser can message-send them. Called from
+  /// CompleteMemberFunctionsFromDWARF for an ObjCInterfaceType.
+  void CompleteObjCMethodsFromDWARF(
+      lldb_private::clike::ObjCInterfaceType &iface,
+      const lldb_private::plugin::dwarf::DWARFDIE &class_die,
+      lldb_private::clike::Builder &ts);
 
   lldb_private::CompilerDecl GetDeclForUIDFromDWARF(
       const lldb_private::plugin::dwarf::DWARFDIE &die) override {
@@ -166,6 +187,15 @@ private:
       const lldb_private::plugin::dwarf::DWARFDIE &type_die);
 
   lldb_private::TypeSystemClike &m_ts;
+
+  /// Maps each record that was completed via CompleteTypeFromDWARF to its
+  /// defining DIE, so that CompleteMemberFunctionsFromDWARF can re-find the DIE
+  /// to parse the record's member functions on demand (the forward-declaration
+  /// map in SymbolFileDWARF is erased once completion starts, so it can't be
+  /// reused for this). Populated during completion.
+  llvm::DenseMap<lldb_private::clike::Type *,
+                 lldb_private::plugin::dwarf::DWARFDIE>
+      m_record_defining_die;
 };
 
 #endif // LLDB_SOURCE_PLUGINS_SYMBOLFILE_DWARF_DWARFASTPARSERCLIKE_H
