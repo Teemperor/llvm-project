@@ -710,6 +710,10 @@ void Process::SyncIOHandler(uint32_t iohandler_id,
   // IO
   if (!ProcessIOHandlerExists())
     return;
+  // The IOHandler isn't pushed while the debugger forwards events (see
+  // SetPublicState), so there is nothing to wait for.
+  if (GetTarget().GetDebugger().IsForwardingEvents())
+    return;
 
   auto Result = m_iohandler_sync.WaitForValueNotEqualTo(iohandler_id, timeout);
 

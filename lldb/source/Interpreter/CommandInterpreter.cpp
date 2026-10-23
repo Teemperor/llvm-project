@@ -42,6 +42,7 @@
 #include "Commands/CommandObjectTarget.h"
 #include "Commands/CommandObjectThread.h"
 #include "Commands/CommandObjectTrace.h"
+#include "Commands/CommandObjectTUI.h"
 #include "Commands/CommandObjectType.h"
 #include "Commands/CommandObjectVersion.h"
 #include "Commands/CommandObjectWatchpoint.h"
@@ -601,6 +602,7 @@ void CommandInterpreter::LoadCommandDictionary() {
   REGISTER_COMMAND_OBJECT("target", CommandObjectMultiwordTarget);
   REGISTER_COMMAND_OBJECT("thread", CommandObjectMultiwordThread);
   REGISTER_COMMAND_OBJECT("trace", CommandObjectTrace);
+  REGISTER_COMMAND_OBJECT("tui", CommandObjectTUI);
   REGISTER_COMMAND_OBJECT("type", CommandObjectType);
   REGISTER_COMMAND_OBJECT("version", CommandObjectVersion);
   REGISTER_COMMAND_OBJECT("watchpoint", CommandObjectMultiwordWatchpoint);

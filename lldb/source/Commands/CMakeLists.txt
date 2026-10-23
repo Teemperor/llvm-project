@@ -36,6 +36,7 @@ add_lldb_library(lldbCommands NO_PLUGIN_DEPENDENCIES
   CommandObjectThread.cpp
   CommandObjectThreadUtil.cpp
   CommandObjectTrace.cpp
+  CommandObjectTUI.cpp
   CommandObjectType.cpp
   CommandObjectVersion.cpp
   CommandObjectWatchpoint.cpp

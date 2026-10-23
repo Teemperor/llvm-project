@@ -125,6 +125,20 @@ function(finish_swig_python swig_target lldb_python_bindings_dir lldb_python_tar
     "${LLDB_SOURCE_DIR}/examples/python/templates/scripted_synthetic_children.py"
     )
 
+  # The text user interface that is started by the 'tui' command.
+  create_python_package(
+    ${swig_target}
+    ${lldb_python_target_dir}
+    "tui"
+    FILES
+    "${LLDB_SOURCE_DIR}/examples/python/tui/app.py"
+    "${LLDB_SOURCE_DIR}/examples/python/tui/config.py"
+    "${LLDB_SOURCE_DIR}/examples/python/tui/dialogs.py"
+    "${LLDB_SOURCE_DIR}/examples/python/tui/highlight.py"
+    "${LLDB_SOURCE_DIR}/examples/python/tui/panes.py"
+    "${LLDB_SOURCE_DIR}/examples/python/tui/widgets.py"
+    )
+
   if(APPLE)
     create_python_package(
       ${swig_target}
