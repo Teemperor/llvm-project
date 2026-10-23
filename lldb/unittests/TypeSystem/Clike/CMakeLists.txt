@@ -9,6 +9,7 @@ add_lldb_unittest(TypeSystemClikeUnitTests
   RecordTypeTest.cpp
   SugarTypeTest.cpp
   TypeCTest.cpp
+  TypeNameTest.cpp
   TypeTest.cpp
 
   LINK_LIBS
