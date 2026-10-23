@@ -54,7 +54,7 @@ public:
   /// completion.
   CompilerType CreateRecordType(llvm::StringRef name,
                                 std::optional<uint64_t> byte_size,
-                                bool is_union = false,
+                                bool is_cpp_class, bool is_union = false,
                                 bool is_class_keyword = false,
                                 DeclScope scope = {});
   /// Create an Objective-C class type (`@interface`). Ivars are added as fields
@@ -77,6 +77,12 @@ public:
   /// Create an Apple "blocks" pointer (`int (^)(int)`) over \p pointee_type
   /// (a FunctionType).
   CompilerType CreateBlockPointerType(CompilerType pointee_type);
+  /// Create an lvalue or rvalue reference to \p pointee_type.
+  CompilerType CreateReferenceType(CompilerType pointee_type, bool is_rvalue);
+  /// Create a pointer-to-member of \p containing_type, pointing at a data
+  /// member/member function of type \p pointee_type.
+  CompilerType CreateMemberPointerType(CompilerType pointee_type,
+                                       CompilerType containing_type);
   /// Create a typedef named \p name aliasing \p underlying_type, declared in
   /// \p scope.
   CompilerType CreateTypedefType(llvm::StringRef name,
@@ -120,6 +126,21 @@ public:
                      llvm::ArrayRef<llvm::StringRef> param_names = {});
   /// Create a `_Complex` type over \p element_type.
   CompilerType CreateComplexType(CompilerType element_type);
+  /// Add a member function to \p record. Member functions are C++-only, so this
+  /// takes a ClassType.
+  void AddMemberFunction(ClassType &record, llvm::StringRef name,
+                         CompilerType function_type, llvm::StringRef asm_label,
+                         llvm::StringRef mangled_name, bool is_static,
+                         bool is_const, bool is_volatile, bool is_virtual,
+                         RefQualifier ref_qualifier,
+                         MemberFunctionKind kind = MemberFunctionKind::Method);
+  /// Add a static data member to \p record. \p mangled_name is the linkage name
+  /// used to resolve the member's runtime storage (empty for a constant-only
+  /// member); \p const_value is its compile-time constant, if any. Static data
+  /// members are C++-only, so this takes a ClassType.
+  void AddStaticDataMember(ClassType &record, llvm::StringRef name, Type *type,
+                           llvm::StringRef mangled_name,
+                           std::optional<uint64_t> const_value);
   /// Intern a name into the Context so it can be used for a type or record
   /// member. All Identifiers must be created this way.
   Identifier GetIdentifier(llvm::StringRef name);
@@ -136,6 +157,12 @@ public:
   /// Record an alignment for \p record that the debug info specified
   /// explicitly (see RecordType::GetExplicitAlignmentInBits).
   void SetRecordExplicitAlignmentInBits(RecordType &record, uint64_t align);
+  /// Mark \p record as a class-template instantiation (see
+  /// RecordType::IsTemplateInstantiation). Set even for a specialization over
+  /// an empty parameter pack, which has no arguments but still prints `<>`.
+  /// Only a C++ class can be a template instantiation, so this takes a
+  /// ClassType.
+  void SetRecordTemplateInstantiation(ClassType &record);
   /// Mark \p record as an anonymous struct/union (an unnamed record embedded as
   /// an unnamed member of its parent; see
   /// RecordType::IsAnonymousStructOrUnion).
@@ -157,6 +184,14 @@ public:
   void AddField(RecordType &record, Identifier name, Type *type,
                 uint64_t byte_offset, uint32_t bitfield_bit_size = 0,
                 uint32_t bitfield_bit_offset = 0);
+  void AddBaseClass(ClassType &record, Type *type, uint64_t byte_offset,
+                    bool is_virtual = false,
+                    std::optional<uint64_t> vbase_offset_offset = std::nullopt);
+  /// Mark \p record as a polymorphic C++ class (it -- or a base -- has a
+  /// vtable). Recorded eagerly during completion so C++ dynamic-type detection
+  /// need not force lazy member-function parsing (see
+  /// ClassType::IsPolymorphic).
+  void SetRecordPolymorphic(ClassType &record);
   /// Set \p record's Objective-C superclass (its single base class).
   void SetObjCSuperClass(ObjCInterfaceType &record, Type *superclass);
   /// Add an Objective-C method to \p record. \p name is the full method name
@@ -167,6 +202,14 @@ public:
                      CompilerType function_type, llvm::StringRef asm_label,
                      bool is_class_method, bool is_variadic,
                      bool is_direct = false, bool returns_instancetype = false);
+  void AddTemplateArgument(ClassType &record, lldb::TemplateArgumentKind kind,
+                           Type *type, uint64_t integral_value,
+                           bool is_default);
+  /// Add a template-template argument (a template-template parameter such as
+  /// the `T1` in `C<float, T1>`), which is not a modeled type and so is kept by
+  /// name only.
+  void AddTemplateTemplateArgument(ClassType &record, llvm::StringRef name,
+                                   bool is_default);
   void AddNestedType(RecordType &record, Identifier name, Type *type);
 
 private:

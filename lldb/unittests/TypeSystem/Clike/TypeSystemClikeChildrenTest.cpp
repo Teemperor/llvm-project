@@ -32,7 +32,7 @@ struct TypeSystemClikeChildrenTest : public testing::Test {
   /// A complete record with two `int` fields, "a" at offset 0 and "b" at
   /// offset 4.
   CompilerType MakeSimpleRecord() {
-    CompilerType record = builder.CreateRecordType("Pair", 8);
+    CompilerType record = builder.CreateRecordType("Pair", 8, false);
     auto *r = llvm::cast<RecordType>(
         static_cast<clike::Type *>(record.GetOpaqueQualType()));
     builder.AddField(*r, builder.GetIdentifier("a"),
@@ -220,4 +220,33 @@ TEST_F(TypeSystemClikeChildrenTest, GetIndexOfChildWithNameNotFound) {
   auto idx = ts->GetIndexOfChildWithName(record.GetOpaqueQualType(),
                                          "nonexistent", true);
   EXPECT_THAT_EXPECTED(idx, llvm::Failed());
+}
+
+// An empty base class is skipped (and does not consume a child index) when
+// omit_empty_base_classes is set; the derived class's own field then becomes
+// child 0.
+TEST_F(TypeSystemClikeChildrenTest, EmptyBaseClassOmitted) {
+  CompilerType empty_base = builder.CreateRecordType("EmptyBase", 1, true);
+  builder.SetRecordComplete(*llvm::cast<ClassType>(
+      static_cast<clike::Type *>(empty_base.GetOpaqueQualType())));
+
+  CompilerType derived = builder.CreateRecordType("Derived", 4, true);
+  auto *derived_class = llvm::cast<ClassType>(
+      static_cast<clike::Type *>(derived.GetOpaqueQualType()));
+  builder.AddBaseClass(
+      *derived_class,
+      static_cast<clike::Type *>(empty_base.GetOpaqueQualType()), 0);
+  builder.AddField(*derived_class, builder.GetIdentifier("x"),
+                   static_cast<clike::Type *>(GetInt().GetOpaqueQualType()), 0);
+  builder.SetRecordComplete(*derived_class);
+
+  auto num_children_omit =
+      ts->GetNumChildren(derived.GetOpaqueQualType(), true, nullptr);
+  ASSERT_THAT_EXPECTED(num_children_omit, llvm::Succeeded());
+  EXPECT_EQ(*num_children_omit, 1u);
+
+  auto num_children_keep =
+      ts->GetNumChildren(derived.GetOpaqueQualType(), false, nullptr);
+  ASSERT_THAT_EXPECTED(num_children_keep, llvm::Succeeded());
+  EXPECT_EQ(*num_children_keep, 2u);
 }

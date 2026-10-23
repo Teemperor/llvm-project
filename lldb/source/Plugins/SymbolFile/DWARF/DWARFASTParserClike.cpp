@@ -20,6 +20,7 @@
 #include "Plugins/TypeSystem/Clike/Namespace.h"
 #include "Plugins/TypeSystem/Clike/Type.h"
 #include "Plugins/TypeSystem/Clike/TypeC.h"
+#include "Plugins/TypeSystem/Clike/TypeCpp.h"
 #include "Plugins/TypeSystem/Clike/TypeObjC.h"
 #include "Plugins/TypeSystem/Clike/TypeSystemClike.h"
 
@@ -308,8 +309,23 @@ TypeSP DWARFASTParserClike::ParseUnspecifiedType(const DWARFDIE &die) {
 }
 
 std::string DWARFASTParserClike::GetDIEClassTemplateParams(DWARFDIE die) {
-  // Class templates aren't modeled yet.
-  return {};
+  if (DWARFDIE signature_die = die.GetReferencedDIE(DW_AT_signature))
+    die = signature_die;
+
+  // If the name already carries the template arguments (e.g. "Wrapper<int>"),
+  // don't reconstruct and duplicate them.
+  const char *name = die.GetName();
+  if (name && llvm::StringRef(name).contains('<'))
+    return {};
+
+  // Reconstruct the "<...>" suffix from the DW_TAG_template_{type,value}_-
+  // parameter children. This covers both type parameters (e.g. "int") and
+  // non-type/value parameters (e.g. "3").
+  std::string params;
+  llvm::raw_string_ostream os(params);
+  llvm::DWARFTypePrinter<DWARFDIE>(os).appendAndTerminateTemplateParameters(
+      die);
+  return params;
 }
 
 /// Emit the "Scope::" prefix for the DIE \p die by walking its ancestors,
@@ -567,6 +583,101 @@ DWARFASTParserClike::GetDeclContextContainingUIDFromDWARF(const DWARFDIE &die) {
   return CompilerDeclContext(&m_ts, const_cast<clike::Namespace *>(ns));
 }
 
+DWARFDIE DWARFASTParserClike::GetDIEForBlock(Block &block) {
+  SymbolFile *sym_file = block.GetSymbolFile();
+  // With a debug map the module's SymbolFile is the SymbolFileDWARFDebugMap;
+  // the DIE lives in the SymbolFileDWARF of the object file encoded in the
+  // block's UID.
+  if (auto *debug_map =
+          llvm::dyn_cast_or_null<SymbolFileDWARFDebugMap>(sym_file))
+    sym_file = debug_map->GetSymbolFileByOSOIndex(
+        SymbolFileDWARFDebugMap::GetOSOIndexFromUserID(block.GetID()));
+  auto *dwarf = llvm::dyn_cast_or_null<SymbolFileDWARF>(sym_file);
+  if (!dwarf)
+    return DWARFDIE();
+  return dwarf->GetDIE(block.GetID());
+}
+
+void DWARFASTParserClike::CollectUsingDirectiveNamespaces(
+    const DWARFDIE &block_die, std::vector<CompilerDeclContext> &namespaces) {
+  clike::Builder builder(m_ts);
+  // Walk the block and its enclosing lexical blocks / function, innermost
+  // first, collecting each `using namespace N;` (DW_TAG_imported_module).
+  for (DWARFDIE scope = block_die; scope; scope = scope.GetParent()) {
+    for (DWARFDIE child : scope.children()) {
+      if (child.Tag() != DW_TAG_imported_module)
+        continue;
+      DWARFDIE imported = child.GetAttributeValueAsReferenceDIE(DW_AT_import);
+      const clike::Namespace *ns = BuildNamespaceForDIE(imported, builder);
+      if (ns)
+        namespaces.emplace_back(&m_ts, const_cast<clike::Namespace *>(ns));
+    }
+    // Stop once we've processed the function scope; file-scope using-directives
+    // are handled by the ordinary global search.
+    if (scope.Tag() == DW_TAG_subprogram)
+      break;
+  }
+}
+
+void DWARFASTParserClike::CollectUsingDeclarations(
+    const DWARFDIE &block_die,
+    std::vector<std::pair<ConstString, CompilerDeclContext>> &decls) {
+  clike::Builder builder(m_ts);
+  // Walk the block and its enclosing lexical blocks / function, innermost
+  // first, collecting each `using ns::name;` (DW_TAG_imported_declaration).
+  for (DWARFDIE scope = block_die; scope; scope = scope.GetParent()) {
+    for (DWARFDIE child : scope.children()) {
+      if (child.Tag() != DW_TAG_imported_declaration)
+        continue;
+      DWARFDIE imported = child.GetAttributeValueAsReferenceDIE(DW_AT_import);
+      if (!imported)
+        continue;
+      const char *name = imported.GetName();
+      if (!name || !name[0])
+        continue;
+      // The namespace the imported entity lives in is the innermost enclosing
+      // namespace of the imported DIE (e.g. `Single` for `Single::single`).
+      const clike::Namespace *ns = BuildDeclNamespace(imported, builder);
+      if (!ns)
+        continue;
+      decls.emplace_back(
+          ConstString(name),
+          CompilerDeclContext(&m_ts, const_cast<clike::Namespace *>(ns)));
+    }
+    // Stop once we've processed the function scope; file-scope
+    // using-declarations are handled by the ordinary global search.
+    if (scope.Tag() == DW_TAG_subprogram)
+      break;
+  }
+}
+
+CompilerType DWARFASTParserClike::GetOwningClassForFunctionFromDWARF(
+    const DWARFDIE &function_die) {
+  if (!function_die)
+    return CompilerType();
+
+  // The semantic parent of a member-function DIE (following
+  // DW_AT_specification / DW_AT_abstract_origin for out-of-line definitions) is
+  // the class/struct/union it belongs to. This holds for static member
+  // functions too, which have no `this` pointer to derive the class from.
+  DWARFDIE parent = function_die.GetParentDeclContextDIE();
+  if (!parent)
+    return CompilerType();
+  switch (parent.Tag()) {
+  case DW_TAG_structure_type:
+  case DW_TAG_class_type:
+  case DW_TAG_union_type:
+    break;
+  default:
+    return CompilerType();
+  }
+
+  Type *class_type = function_die.ResolveTypeUID(parent);
+  if (!class_type)
+    return CompilerType();
+  return class_type->GetForwardCompilerType();
+}
+
 /// The asm label (a FunctionCallLabel) for the function described by \p die, so
 /// the JIT can resolve the call to the right symbol in the inferior. Mirrors
 /// DWARFASTParserClang's MakeLLDBFuncAsmLabel.
@@ -734,6 +845,11 @@ TypeSP DWARFASTParserClike::ParseStructureType(const DWARFDIE &die) {
     return type_sp;
   }
 
+  // In a C++ translation unit even a `struct` may have base classes, so back
+  // records with a ClassType (which reserves storage for that C++-only
+  // information). Plain C records use the lighter StructType.
+  lldb::LanguageType language = SymbolFileDWARF::GetLanguage(*die.GetCU());
+  bool is_cpp_class = Language::LanguageIsCPlusPlus(language);
   bool is_union = die.Tag() == DW_TAG_union_type;
   // Both `struct` and `class` are modeled by the same record type, so remember
   // the source keyword to reproduce it in display names (e.g. for an unnamed
@@ -743,9 +859,9 @@ TypeSP DWARFASTParserClike::ParseStructureType(const DWARFDIE &die) {
   CompilerType compiler_type;
   {
     clike::Builder builder(m_ts);
-    compiler_type = builder.CreateRecordType(name.GetStringRef(), byte_size,
-                                             is_union, is_class_keyword,
-                                             GetTypeDeclScope(die, builder));
+    compiler_type = builder.CreateRecordType(
+        name.GetStringRef(), byte_size, is_cpp_class, is_union,
+        is_class_keyword, GetTypeDeclScope(die, builder));
   }
 
   Declaration decl = GetDIEDeclaration(die);
@@ -879,6 +995,70 @@ TypeSP DWARFASTParserClike::ParsePointerType(const DWARFDIE &die) {
   return dwarf->MakeType(die.GetID(), empty_name, byte_size,
                          /*context=*/nullptr, pointee_die.GetID(),
                          Type::eEncodingIsUID, decl, pointer_type,
+                         Type::ResolveState::Full);
+}
+
+TypeSP DWARFASTParserClike::ParseReferenceType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  std::optional<uint64_t> byte_size =
+      die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size);
+
+  // Resolve the referenced type. A reference may refer to an incomplete type,
+  // so use the forward-declared CompilerType and don't force completion here. A
+  // reference must refer to something (there is no `void &`), so a missing or
+  // unresolvable referent means we can't build this type.
+  DWARFDIE pointee_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  if (!pointee_die)
+    return nullptr;
+  Type *pointee = die.ResolveTypeUID(pointee_die);
+  if (!pointee)
+    return nullptr;
+  CompilerType pointee_type = pointee->GetForwardCompilerType();
+
+  bool is_rvalue = die.Tag() == DW_TAG_rvalue_reference_type;
+  CompilerType reference_type =
+      clike::Builder(m_ts).CreateReferenceType(pointee_type, is_rvalue);
+
+  Declaration decl = GetDIEDeclaration(die);
+  ConstString empty_name;
+  return dwarf->MakeType(die.GetID(), empty_name, byte_size,
+                         /*context=*/nullptr, pointee_die.GetID(),
+                         Type::eEncodingIsUID, decl, reference_type,
+                         Type::ResolveState::Full);
+}
+
+TypeSP DWARFASTParserClike::ParsePointerToMemberType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  // A pointer-to-member always points at a member (data member or member
+  // function) of a class, and both must be resolvable to build this type;
+  // clang does not reliably emit DW_AT_byte_size for this DIE (it is
+  // ABI-defined -- see Context::CreateMemberPointerType), so it is not read
+  // here.
+  DWARFDIE pointee_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  DWARFDIE containing_die =
+      die.GetAttributeValueAsReferenceDIE(DW_AT_containing_type);
+  if (!pointee_die || !containing_die)
+    return nullptr;
+  Type *pointee = die.ResolveTypeUID(pointee_die);
+  Type *containing = die.ResolveTypeUID(containing_die);
+  if (!pointee || !containing)
+    return nullptr;
+
+  CompilerType member_pointer_type =
+      clike::Builder(m_ts).CreateMemberPointerType(
+          pointee->GetForwardCompilerType(),
+          containing->GetForwardCompilerType());
+
+  std::optional<uint64_t> byte_size =
+      llvm::expectedToOptional(member_pointer_type.GetByteSize(nullptr));
+
+  Declaration decl = GetDIEDeclaration(die);
+  ConstString empty_name;
+  return dwarf->MakeType(die.GetID(), empty_name, byte_size,
+                         /*context=*/nullptr, pointee_die.GetID(),
+                         Type::eEncodingIsUID, decl, member_pointer_type,
                          Type::ResolveState::Full);
 }
 
@@ -1273,6 +1453,13 @@ TypeSP DWARFASTParserClike::ParseTypeFromDWARF(const SymbolContext &sc,
   case DW_TAG_pointer_type:
     type_sp = ParsePointerType(die);
     break;
+  case DW_TAG_reference_type:
+  case DW_TAG_rvalue_reference_type:
+    type_sp = ParseReferenceType(die);
+    break;
+  case DW_TAG_ptr_to_member_type:
+    type_sp = ParsePointerToMemberType(die);
+    break;
   case DW_TAG_typedef:
   case DW_TAG_template_alias:
     type_sp = ParseTypedef(die);
@@ -1323,6 +1510,46 @@ DWARFASTParserClike::ResolveReferencedType(const DWARFDIE &referencing_die,
     return nullptr;
   CompilerType forward = resolved->GetForwardCompilerType();
   return TypeSystemClike::GetClikeType(forward.GetOpaqueQualType());
+}
+
+/// A virtual base's DW_AT_data_member_location under the Itanium ABI is a
+/// location expression of the form
+///   DW_OP_dup DW_OP_deref DW_OP_constu N DW_OP_minus DW_OP_deref DW_OP_plus
+/// which computes `obj + *(int*)(*(void**)obj - N)`: read the object's vtable
+/// pointer, step back N bytes to the slot holding this base's offset, and add
+/// that offset to the object address. Recognize exactly that shape and return
+/// N, so a live object can be walked to the virtual base at value-inspection
+/// time (see TypeSystemClike::GetChildCompilerTypeAtIndex). Returns nullopt for
+/// any other expression (e.g. a plain constant, or a non-Itanium form), in
+/// which case the caller falls back to the constant byte offset.
+static std::optional<uint64_t>
+ExtractVBaseOffsetOffset(const DWARFDIE &die,
+                         const DWARFFormValue &form_value) {
+  const uint8_t *block = form_value.BlockData();
+  if (!block)
+    return std::nullopt;
+  const uint64_t block_length = form_value.Unsigned();
+  const DWARFDataExtractor &debug_info_data = die.GetData();
+  lldb::offset_t block_offset = block - debug_info_data.GetDataStart();
+  lldb::offset_t end = block_offset + block_length;
+
+  auto next_op = [&](uint8_t expected) {
+    return block_offset < end &&
+           debug_info_data.GetU8(&block_offset) == expected;
+  };
+
+  if (!next_op(DW_OP_dup) || !next_op(DW_OP_deref))
+    return std::nullopt;
+  if (block_offset >= end ||
+      debug_info_data.GetU8(&block_offset) != DW_OP_constu)
+    return std::nullopt;
+  uint64_t n = debug_info_data.GetULEB128(&block_offset);
+  if (!next_op(DW_OP_minus) || !next_op(DW_OP_deref) || !next_op(DW_OP_plus))
+    return std::nullopt;
+  // The expression must end here (no trailing opcodes) to match exactly.
+  if (block_offset != end)
+    return std::nullopt;
+  return n;
 }
 
 bool DWARFASTParserClike::CompleteTypeFromDWARF(
@@ -1409,57 +1636,226 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
     }
   }
 
+  // C++-only information (base classes) is only stored on ClassType.
+  auto *clike_class = llvm::dyn_cast<clike::ClassType>(record);
   // An Objective-C class stores its (single) superclass separately.
   auto *objc_interface = llvm::dyn_cast<clike::ObjCInterfaceType>(record);
 
-  // Collect the superclass and members in declaration order, along with the
-  // DWARF reference to each one's type. Only the (heavier) type resolution
-  // below is structured to be spread out; this DWARF traversal is not.
+  // Collect the base classes, members and template arguments in declaration
+  // order, along with the DWARF reference to each one's type. Only the
+  // (heavier) type resolution below is structured to be spread out; this DWARF
+  // traversal is not.
   struct MemberInfo {
-    enum class Kind { Field, Base, NestedType } kind;
-    llvm::StringRef name; // Field/nested-type name; else empty.
+    enum class Kind {
+      Field,
+      Base,
+      TemplateType,
+      TemplateValue,
+      TemplateTemplate,
+      NestedType,
+      StaticDataMember
+    } kind;
+    llvm::StringRef name; // Field/nested-type/static-member name; else empty.
     uint64_t byte_offset = 0;
+    uint64_t value = 0; // Value of a non-type template argument.
     DWARFDIE referencing_die;
     DWARFDIE type_die;
     uint32_t bit_size = 0; // DW_AT_bit_size of a bitfield member (0 if none).
     // DW_AT_data_bit_offset of a bitfield member, or UINT64_MAX if absent.
     uint64_t data_bit_offset = UINT64_MAX;
+    // For a template argument: true if it was defaulted (DW_AT_default_value).
+    bool is_default = false;
+    // For a base class: true if it is a virtual base (DW_AT_virtuality).
+    bool is_virtual = false;
+    // For a virtual base: the vtable-pointer-relative byte offset extracted
+    // from its DW_AT_data_member_location expression (see BaseClass), if
+    // recognized.
+    std::optional<uint64_t> vbase_offset_offset = std::nullopt;
+    // For a static data member: its DW_AT_const_value, if present.
+    std::optional<uint64_t> const_value = std::nullopt;
   };
   std::vector<MemberInfo> members;
+
+  // If the record starts with an artificial vtable pointer (which we skip as a
+  // field below, since Clang re-creates it), this holds the bit offset just
+  // past it. The unnamed-bitfield gap detection uses it to avoid synthesizing a
+  // spurious padding field between the vtable pointer and the first bitfield
+  // (mirroring DWARFASTParserClang, where the vptr advances last_field_end).
+  uint64_t vtable_ptr_end_bits = 0;
+
+  // True if this record is a polymorphic C++ class: it has an artificial
+  // `_vptr$` member (a direct vtable pointer) or a virtual base class. Recorded
+  // eagerly here (during completion) so C++ dynamic-type detection does not
+  // have to force lazy member-function parsing (see ClassType::IsPolymorphic).
+  bool has_vtable = false;
+
+  // True once we see any template-parameter DIE (type/value parameter or a
+  // GNU parameter pack), i.e. this record is a class-template instantiation.
+  // An instantiation over an *empty* pack (e.g. `TypePack<>`) emits an empty
+  // DW_TAG_GNU_template_parameter_pack and no argument DIEs, so it has zero
+  // modeled arguments yet must still be recognised as a template so it prints
+  // an (empty) `<>` argument list.
+  bool is_template = false;
+
+  // Add the template argument described by a DW_TAG_template_{type,value}_-
+  // parameter DIE. Shared so it can also be applied to the parameters nested
+  // inside a DW_TAG_GNU_template_parameter_pack (a variadic `Ss...`), which the
+  // compiler emits as a wrapper DIE around one child per expanded argument.
+  auto add_template_param = [&members](DWARFDIE param) {
+    if (param.Tag() == DW_TAG_template_type_parameter) {
+      members.push_back({MemberInfo::Kind::TemplateType, param.GetName(),
+                         /*byte_offset=*/0,
+                         /*value=*/0, param,
+                         param.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+    } else if (param.Tag() == DW_TAG_GNU_template_template_param) {
+      // A template-template argument (e.g. the `T1` in `C<float, T1>`). It is
+      // not a modeled type; only its spelling (DW_AT_GNU_template_name) is kept
+      // so the instantiation's name can be reconstructed.
+      const char *template_name =
+          param.GetAttributeValueAsString(DW_AT_GNU_template_name, nullptr);
+      members.push_back({MemberInfo::Kind::TemplateTemplate,
+                         llvm::StringRef(template_name ? template_name : ""),
+                         /*byte_offset=*/0, /*value=*/0, param, DWARFDIE()});
+    } else {
+      members.push_back(
+          {MemberInfo::Kind::TemplateValue, param.GetName(), /*byte_offset=*/0,
+           param.GetAttributeValueAsUnsigned(DW_AT_const_value, 0), param,
+           param.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+    }
+    members.back().is_default =
+        param.GetAttributeValueAsUnsigned(DW_AT_default_value, 0) != 0;
+  };
 
   for (DWARFDIE child : die.children()) {
     const dw_tag_t tag = child.Tag();
     if (tag == DW_TAG_inheritance) {
-      // An ObjC interface records its single superclass as a
-      // DW_TAG_inheritance (integrated via SetObjCSuperClass).
-      if (!objc_interface)
+      // Base classes exist on C++ class types; an ObjC interface records its
+      // single superclass the same way (integrated via SetObjCSuperClass).
+      if (!clike_class && !objc_interface)
         continue;
+      // A virtual base's DW_AT_data_member_location is a location expression
+      // (evaluated against a live object), not a constant, so the byte offset
+      // read below is meaningless for it; mark it virtual and let the record
+      // layout supply the real offset (mirroring DWARFASTParserClang, which
+      // likewise omits a constant offset for virtual bases).
+      const bool base_is_virtual =
+          child.GetAttributeValueAsUnsigned(DW_AT_virtuality, 0) != 0;
+      // For a virtual base, recover the vtable-pointer-relative offset from its
+      // location expression so a live object can be walked to it later.
+      std::optional<uint64_t> vbase_offset_offset;
+      if (base_is_virtual) {
+        if (std::optional<DWARFFormValue> loc =
+                child.find(DW_AT_data_member_location))
+          vbase_offset_offset = ExtractVBaseOffsetOffset(child, *loc);
+      }
       members.push_back(
           {MemberInfo::Kind::Base, /*name=*/{},
            child.GetAttributeValueAsUnsigned(DW_AT_data_member_location, 0),
-           child, child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+           /*value=*/0, child,
+           child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+      members.back().is_virtual = base_is_virtual;
+      members.back().vbase_offset_offset = vbase_offset_offset;
+      // A virtual base is reached through the vtable (its offset lives in the
+      // vtable), so the class is polymorphic.
+      if (base_is_virtual)
+        has_vtable = true;
     } else if (tag == DW_TAG_member) {
+      // Skip the artificial vtable pointer (`_vptr$Class`): Clang re-creates it
+      // itself for a polymorphic class, so adding it as a field here would
+      // duplicate it and overlap at offset 0 in the record layout.
+      if (child.GetAttributeValueAsUnsigned(DW_AT_artificial, 0)) {
+        const char *member_name = child.GetName();
+        llvm::StringRef member_name_ref(member_name ? member_name : "");
+        if (member_name_ref.starts_with("_vptr$") ||
+            member_name_ref.starts_with("_vptr.")) {
+          // Record where the vtable pointer ends so gap detection below does
+          // not treat the space it occupies as an unnamed bitfield.
+          uint64_t vptr_offset =
+              child.GetAttributeValueAsUnsigned(DW_AT_data_member_location, 0);
+          vtable_ptr_end_bits =
+              vptr_offset * 8 + child.GetCU()->GetAddressByteSize() * 8;
+          has_vtable = true;
+          continue;
+        }
+      }
       std::optional<uint64_t> data_member_location =
           child.GetAttributeValueAsOptionalUnsigned(DW_AT_data_member_location);
       std::optional<uint64_t> data_bit_offset =
           child.GetAttributeValueAsOptionalUnsigned(DW_AT_data_bit_offset);
+      // A static data member occupies no storage in the object, so it has
+      // neither a DW_AT_data_member_location nor a DW_AT_data_bit_offset and
+      // (pre-DWARFv5) is marked DW_AT_declaration. Model it as a static data
+      // member rather than a field (a field would get a bogus offset of 0 and
+      // overlap the real members). DWARFv5 emits static data members as
+      // DW_TAG_variable, handled below.
+      if (!data_member_location && !data_bit_offset &&
+          child.GetAttributeValueAsUnsigned(DW_AT_declaration, 0)) {
+        const char *member_name = child.GetName();
+        if (member_name && member_name[0]) {
+          MemberInfo info{MemberInfo::Kind::StaticDataMember,
+                          member_name,
+                          /*byte_offset=*/0,
+                          /*value=*/0,
+                          child,
+                          child.GetAttributeValueAsReferenceDIE(DW_AT_type)};
+          info.const_value =
+              child.GetAttributeValueAsOptionalUnsigned(DW_AT_const_value);
+          members.push_back(info);
+        }
+        continue;
+      }
       members.push_back(
           {MemberInfo::Kind::Field, child.GetName(),
-           data_member_location.value_or(0), child,
+           data_member_location.value_or(0),
+           /*value=*/0, child,
            child.GetAttributeValueAsReferenceDIE(DW_AT_type),
            /*bit_size=*/
            static_cast<uint32_t>(
                child.GetAttributeValueAsUnsigned(DW_AT_bit_size, 0)),
            data_bit_offset.value_or(UINT64_MAX)});
-    } else if (tag == DW_TAG_typedef || tag == DW_TAG_structure_type ||
+    } else if (tag == DW_TAG_template_type_parameter ||
+               tag == DW_TAG_template_value_parameter ||
+               tag == DW_TAG_GNU_template_template_param) {
+      is_template = true;
+      add_template_param(child);
+    } else if (tag == DW_TAG_GNU_template_parameter_pack) {
+      // A variadic template parameter pack (`Ss...`): each expanded argument is
+      // a child DW_TAG_template_{type,value}_parameter (or a template-template
+      // parameter). Add them individually so they appear in the reconstructed
+      // name (e.g. "FooPack<char, int>" or "C<float, T1>"). The pack itself
+      // (even when empty) marks this as a template instantiation.
+      is_template = true;
+      for (DWARFDIE pack_param : child.children())
+        if (pack_param.Tag() == DW_TAG_template_type_parameter ||
+            pack_param.Tag() == DW_TAG_template_value_parameter ||
+            pack_param.Tag() == DW_TAG_GNU_template_template_param)
+          add_template_param(pack_param);
+    } else if (tag == DW_TAG_typedef || tag == DW_TAG_template_alias ||
+               tag == DW_TAG_structure_type || tag == DW_TAG_class_type ||
                tag == DW_TAG_union_type || tag == DW_TAG_enumeration_type) {
       // A type declared inside this record. Resolving the child DIE itself
-      // yields the nested type; data formatters look these up by name. Skip
-      // anonymous ones.
+      // yields the nested type; data formatters look these up by name (e.g. a
+      // container's "__node_pointer"). Skip anonymous ones.
       const char *nested_name = child.GetName();
       if (nested_name && nested_name[0])
         members.push_back({MemberInfo::Kind::NestedType, nested_name,
-                           /*byte_offset=*/0, die, child});
+                           /*byte_offset=*/0, /*value=*/0, die, child});
+    } else if (tag == DW_TAG_variable) {
+      // A DW_TAG_variable child of a record is a static data member (DWARFv5;
+      // pre-DWARFv5 they appear as declaration-only DW_TAG_member, handled
+      // above). It occupies no storage in the object.
+      const char *member_name = child.GetName();
+      if (member_name && member_name[0]) {
+        MemberInfo info{MemberInfo::Kind::StaticDataMember,
+                        member_name,
+                        /*byte_offset=*/0,
+                        /*value=*/0,
+                        child,
+                        child.GetAttributeValueAsReferenceDIE(DW_AT_type)};
+        info.const_value =
+            child.GetAttributeValueAsOptionalUnsigned(DW_AT_const_value);
+        members.push_back(info);
+      }
     }
   }
 
@@ -1481,9 +1877,14 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
   for (size_t i = 0; i < members.size(); ++i)
     member_types[i] = resolved[i].get();
 
-  // Integrate the resolved superclass and members into the record, in
-  // declaration order.
+  // Integrate the resolved base classes, members and template arguments into
+  // the record, in declaration order.
   clike::Builder ts(m_ts);
+
+  // Record whether this is a class-template instantiation (see `is_template`).
+  // Only a C++ class can be one, so this is routed through the ClassType.
+  if (is_template && clike_class)
+    ts.SetRecordTemplateInstantiation(*clike_class);
 
   // Compilers omit unnamed bitfields (padding) from DWARF, but LLDB
   // reconstructs them so the gaps between named bitfields are visible when
@@ -1497,17 +1898,116 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
       break;
     }
 
-  // The known-occupied leading prefix of the record: every base's own
-  // fully-known real extent, [byte_offset, byte_offset + byte_size). Bails
-  // (leaves the extent unknown) if a base's size can't be determined (an
-  // incomplete/lazily-unresolved record): such a base could in principle
-  // occupy more than is currently visible, and trusting a too-small extent
-  // risks synthesizing padding that overlaps the base's storage.
+  // A forward-declared/incomplete base doesn't have SetRecordPolymorphic
+  // applied yet -- IsPolymorphic() would read the not-yet-populated default of
+  // false -- so force completion first (mirroring
+  // TypeSystemClike::IsPolymorphicClass, which has the identical
+  // requirement). This recurses into CompleteTypeFromDWARF for the base on
+  // this same thread (not a worker thread), so it re-enters the Module's
+  // recursive_mutex rather than deadlocking on it -- see the launch-policy
+  // comment above this function.
+  auto complete_and_check_polymorphic = [&](clike::Type *base) {
+    if (!base)
+      return false;
+    m_ts.CompleteTypeAssumingWriteLocked(base);
+    return base->IsPolymorphic();
+  };
+
+  // True if any direct base class is itself a polymorphic C++ class -- i.e.
+  // this class is dynamic (dynamic_cast-able etc.) because it inherits
+  // virtual functions, regardless of whether that base's vtable pointer ends
+  // up shared with this record (see below). Needed to mark this record
+  // polymorphic further below.
+  auto inherits_polymorphic_base = [&] {
+    for (size_t i = 0; i < members.size(); ++i)
+      if (members[i].kind == MemberInfo::Kind::Base &&
+          complete_and_check_polymorphic(member_types[i]))
+        return true;
+    return false;
+  };
+
+  // Recognize an *implicit* vtable pointer: per the Itanium C++ ABI, when
+  // this record has no local explicit vtable pointer (no `_vptr$Class` DWARF
+  // member was found above), it may still implicitly share one with a
+  // "nearly empty" direct base (one whose entire footprint IS its vtable
+  // pointer, with no data of its own): such a base is selected as the
+  // "primary base" and the compiler places its vtable pointer at this
+  // record's own offset 0, so clang's debug-info emitter omits this record's
+  // own `_vptr$Derived` DWARF member entirely (see
+  // CGDebugInfo::CollectVTableInfo). Without accounting for that, LLDB's
+  // unnamed-bitfield-gap reconstruction below has nothing in its model to
+  // explain the leading pointer-width bits, and handing Clang's
+  // expression-evaluator codegen a bitfield starting at a non-byte-aligned
+  // offset with nothing preceding it trips one of the sibling asserts in
+  // CGRecordLayoutBuilder.cpp.
+  //
+  // Deliberately gated on the base being nearly empty (byte size no larger
+  // than a pointer): a base with real data of its own (e.g. its own extra
+  // fields) can still be selected as primary the same way, but then more
+  // than just a vtable pointer's worth of storage at the front of this
+  // record is spoken for -- how much exactly depends on where any *other*
+  // bases' real data ends, which base-class tail-padding reuse can place
+  // earlier than that other base's own full (padded) byte size. Getting that
+  // wrong risks synthesizing a bogus padding field that overlaps a real
+  // base's storage (a different, worse failure than the one this is fixing).
+  // That fuller case is not handled here; nearly-emptiness is exactly the
+  // condition under which "the first pointer-width bits, and nothing more or
+  // less, are spoken for" is unconditionally true regardless of which base
+  // ends up primary or whether it is inherited virtually or non-virtually.
+  if (vtable_ptr_end_bits == 0 && clike_class) {
+    const uint64_t ptr_bits = die.GetCU()->GetAddressByteSize() * 8;
+    for (size_t i = 0; i < members.size(); ++i) {
+      const MemberInfo &member = members[i];
+      if (member.kind != MemberInfo::Kind::Base)
+        continue;
+      clike::Type *base = member_types[i];
+      if (!complete_and_check_polymorphic(base))
+        continue;
+      uint64_t base_bits = base->GetByteSize().value_or(0) * 8;
+      if (base_bits == 0 || base_bits > ptr_bits)
+        continue;
+      vtable_ptr_end_bits = ptr_bits;
+      has_vtable = true;
+      break;
+    }
+  }
+
+  // Extend the known-occupied leading prefix using every direct NON-VIRTUAL
+  // base's own fully-known real extent: [byte_offset, byte_offset +
+  // byte_size). A non-virtual base's DW_AT_data_member_location is always a
+  // real constant offset (unlike a virtual base's, which is a location
+  // expression evaluated against a live object -- excluded below for that
+  // reason), and its own byte_size is that base's complete, standalone size
+  // -- the most it could ever occupy as a subobject. Itanium tail-padding
+  // reuse can let a *later* member start earlier than this (inside what
+  // would otherwise be the base's own trailing alignment padding), but it
+  // can never make the base spill past its own declared size -- so
+  // `byte_offset + byte_size` is always a safe (never-underestimating)
+  // upper bound on that base's real storage, regardless of whether the base
+  // is polymorphic, nearly-empty, or has substantial data of its own. This is
+  // what a class with two ordinary (ABI "primary" and non-primary),
+  // non-nearly-empty polymorphic bases needs -- e.g.
+  // `kmodel::Process : public KObject, public Schedulable` (a torture-fuzzer
+  // finding, see torture/findings/crash-seed377059235-prog016): neither base
+  // is nearly-empty, so the implicit-vtable-pointer seed above never fires,
+  // but both have their own explicit `_vptr$` DWARF member and a fully known
+  // size, so their real extents alone -- no vtable-pointer reasoning
+  // whatsoever -- safely explain the leading part of Process's own layout
+  // and let the gap before its first bitfield (`ring_`) be filled like any
+  // other.
+  //
+  // Bails (does not extend the anchor) if any non-virtual base's size can't
+  // be determined (an incomplete/lazily-unresolved record): such a base
+  // could in principle occupy more than is currently visible, and trusting
+  // a too-small anchor risks the exact overlap this whole mechanism exists
+  // to avoid. The pre-existing, narrower vtable_ptr_end_bits-only check
+  // below remains as a fallback for that case.
   uint64_t bases_extent_bits = 0;
+  bool have_nonvirtual_base = false;
   bool bases_extent_known = true;
   for (size_t i = 0; i < members.size(); ++i) {
     const MemberInfo &member = members[i];
-    if (member.kind != MemberInfo::Kind::Base)
+    if (member.kind != MemberInfo::Kind::Base || member.is_virtual)
       continue;
     clike::Type *base = member_types[i];
     if (base)
@@ -1518,16 +2018,69 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
       bases_extent_known = false;
       break;
     }
+    have_nonvirtual_base = true;
     bases_extent_bits = std::max(bases_extent_bits,
                                  member.byte_offset * 8 + *base_byte_size * 8);
   }
 
   // Whether it is safe to synthesize padding to fill the gap immediately
-  // before this record's first own field: true when there is no base, or once
-  // every base's real storage is confirmed to lie entirely within the extent
-  // computed above. Otherwise a base's own data could sit anywhere in the
-  // apparent "gap" before the first field.
-  const bool bases_fit_before_first_field = !have_base || bases_extent_known;
+  // before this record's first own field, when this record has one or more
+  // bases: true once every non-virtual base's real storage is confirmed to
+  // lie entirely within a known extent -- either the general, base-extent
+  // -derived one just computed above (which folds in, and can only enlarge,
+  // whatever vtable_ptr_end_bits already holds from an explicit local
+  // `_vptr$` member or the implicit-sharing seed above), or, if that
+  // couldn't be fully determined for every non-virtual base, the narrower
+  // pre-existing check that every non-virtual base's [byte_offset,
+  // byte_offset + byte_size) fits inside whatever vtable_ptr_end_bits was
+  // set to by those narrower mechanisms alone. Otherwise a base's own real
+  // data could sit anywhere in the apparent "gap" before the first field,
+  // and blindly filling that gap with a synthetic padding field would
+  // fabricate a field that overlaps that base's storage -- a *worse*
+  // failure than the one being avoided here. This is a real,
+  // previously-passing case: `DerivedWithVTable` in TestCppBitfields.py has
+  // an explicit local vptr immediately followed by a non-empty,
+  // non-polymorphic base (`Base`) that has nothing to do with any
+  // vtable-pointer sharing at all -- but `Base`'s own real extent (now
+  // computed above) covers it exactly, so this still works out safely
+  // rather than needing to stay suppressed.
+  //
+  // A virtual base is excluded from both checks: it has no fixed
+  // compile-time offset in the leading part of the object -- its real
+  // storage is not laid out contiguously with fields the way a non-virtual
+  // base's is (see the architecture note on ClangASTGenerator::LayoutRecord
+  // omitting virtual bases from base_offsets) -- so it cannot itself
+  // explain, or conflict with, a gap in the leading, non-virtual part of the
+  // record's layout. (A nearly-empty virtual base used as the Itanium
+  // "primary base" is the one exception, already covered by the
+  // implicit-sharing seed above, which does not distinguish virtual from
+  // non-virtual.)
+  //
+  // When neither mechanism can establish an extent (no non-virtual base's
+  // size is known here, and vtable_ptr_end_bits is 0), this conservatively
+  // matches the original, unconditional suppression: any base at all means
+  // "not safe", exactly as before this whole implicit-vtable-pointer
+  // handling existed.
+  bool bases_fit_before_vtable_end = !have_base;
+  if (have_base && bases_extent_known && have_nonvirtual_base) {
+    vtable_ptr_end_bits = std::max(vtable_ptr_end_bits, bases_extent_bits);
+    bases_fit_before_vtable_end = true;
+  } else if (have_base && vtable_ptr_end_bits != 0) {
+    bases_fit_before_vtable_end = true;
+    for (size_t i = 0; i < members.size(); ++i) {
+      const MemberInfo &member = members[i];
+      if (member.kind != MemberInfo::Kind::Base || member.is_virtual)
+        continue;
+      clike::Type *base = member_types[i];
+      if (base)
+        m_ts.CompleteTypeAssumingWriteLocked(base);
+      uint64_t base_bits = base ? base->GetByteSize().value_or(0) * 8 : 0;
+      if (member.byte_offset * 8 + base_bits > vtable_ptr_end_bits) {
+        bases_fit_before_vtable_end = false;
+        break;
+      }
+    }
+  }
 
   // The synthetic padding member is an `int` (matching TypeSystemClang, which
   // uses a signed word-width builtin). Fetch it once.
@@ -1537,11 +2090,10 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
                         lldb::eFormatDecimal)
           .GetOpaqueQualType());
   // State of the previous field, in absolute bits from the start of the record.
-  // The bases (if their extent is known) act as the previous (non-bitfield)
-  // field so the space they occupy is not mistaken for a gap that needs a
-  // synthetic unnamed bitfield.
-  uint64_t last_field_end =
-      have_base && bases_extent_known ? bases_extent_bits : 0;
+  // If a vtable pointer was skipped above, treat it as the previous (non-
+  // bitfield) field so the space it occupies is not mistaken for a gap that
+  // needs a synthetic unnamed bitfield.
+  uint64_t last_field_end = vtable_ptr_end_bits;
   bool seen_field = false;
   // Whether `last_field_end` is trustworthy. A member whose type has no known
   // size yet (a lazily forward-declared record whose definition lives in
@@ -1557,8 +2109,13 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
     const MemberInfo &member = members[i];
     switch (member.kind) {
     case MemberInfo::Kind::Base:
-      if (member_type && objc_interface)
-        ts.SetObjCSuperClass(*objc_interface, member_type);
+      if (member_type) {
+        if (objc_interface)
+          ts.SetObjCSuperClass(*objc_interface, member_type);
+        else if (clike_class)
+          ts.AddBaseClass(*clike_class, member_type, member.byte_offset,
+                          member.is_virtual, member.vbase_offset_offset);
+      }
       break;
     case MemberInfo::Kind::Field:
       if (member_type) {
@@ -1624,14 +2181,17 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
 
           const bool this_is_first_field = !seen_field;
           // Suppress synthesizing padding for the very first field when the
-          // record has a base whose real storage might not be fully accounted
-          // for (see bases_fit_before_first_field above). Once every base's
-          // storage is confirmed to lie entirely within the known extent, the
-          // gap past it is a genuine, computable hole and is filled like any
-          // other.
+          // record has a base and any base's real storage might not be fully
+          // accounted for by vtable_ptr_end_bits (see
+          // bases_fit_before_vtable_end above): a base's own tail might
+          // legitimately be reused there and we have no way to know how much
+          // of it is free. This does NOT apply once every base's storage is
+          // confirmed to lie entirely within the seeded vtable-pointer
+          // extent -- in which case the gap past it is a genuine, computable
+          // hole and should be filled like any other.
           if (abs_bit_offset > gap_start &&
               !(have_base && this_is_first_field &&
-                !bases_fit_before_first_field)) {
+                !bases_fit_before_vtable_end)) {
             // Emit the padding one storage unit at a time. A gap can be wider
             // than the padding type (several consecutive unnamed bitfields in
             // the source collapse into a single hole here), and a bitfield
@@ -1685,11 +2245,73 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
         seen_field = true;
       }
       break;
+    case MemberInfo::Kind::TemplateType:
+      // Template arguments, template-template arguments and static data
+      // members are C++-only; they only ever appear on a ClassType.
+      if (clike_class)
+        ts.AddTemplateArgument(*clike_class, lldb::eTemplateArgumentKindType,
+                               member_type, /*integral_value=*/0,
+                               member.is_default);
+      break;
+    case MemberInfo::Kind::TemplateValue:
+      if (clike_class)
+        ts.AddTemplateArgument(*clike_class,
+                               lldb::eTemplateArgumentKindIntegral, member_type,
+                               member.value, member.is_default);
+      break;
+    case MemberInfo::Kind::TemplateTemplate:
+      if (clike_class)
+        ts.AddTemplateTemplateArgument(*clike_class, member.name,
+                                       member.is_default);
+      break;
     case MemberInfo::Kind::NestedType:
       if (member_type)
         ts.AddNestedType(*record, ts.GetIdentifier(member.name), member_type);
       break;
+    case MemberInfo::Kind::StaticDataMember:
+      if (member_type && clike_class) {
+        // The linkage name used to resolve the member's runtime address. The
+        // declaration DIE usually carries none (the definition, a separate
+        // CU-scope DW_TAG_variable, does), in which case clang's mangler
+        // reconstructs it from the record's qualified name when building the
+        // VarDecl. Pass through any DW_AT_linkage_name the declaration does
+        // have.
+        const char *mangled = member.referencing_die.GetMangledName(
+            /*substitute_name_allowed=*/false);
+        // A constant is only folded when it actually fits what the model can
+        // hold (see StaticDataMember::const_value, a uint64_t). A wider one --
+        // an `__int128` member's DW_AT_const_value, emitted as a 16-byte block
+        // -- would otherwise be read as a meaningless 64-bit number and
+        // reported as the member's value. Dropping it instead leaves the member
+        // with no constant, so it resolves through its runtime address like any
+        // other and reports an honest error when there isn't one. Matches
+        // TypeSystemClang, which also declines to fold these.
+        std::optional<uint64_t> const_value = member.const_value;
+        if (const_value) {
+          std::optional<uint64_t> byte_size =
+              member_type->Desugar()->GetByteSize();
+          if (!byte_size || *byte_size > sizeof(uint64_t))
+            const_value = std::nullopt;
+        }
+        ts.AddStaticDataMember(*clike_class, member.name, member_type,
+                               mangled ? mangled : "", const_value);
+      }
+      break;
     }
+  }
+
+  // Mark the class polymorphic if it has its own vtable pointer / a virtual
+  // base, or if it inherits a vtable from a (direct) polymorphic base --
+  // regardless of whether that base's vtable pointer ends up implicitly
+  // shared with this record (the narrower condition seeding
+  // vtable_ptr_end_bits above). Recorded eagerly so C++ dynamic-type
+  // detection (IsPossibleDynamicType) works without forcing lazy
+  // member-function parsing (see ClassType::IsPolymorphic).
+  if (clike_class) {
+    if (!has_vtable)
+      has_vtable = inherits_polymorphic_base();
+    if (has_vtable)
+      ts.SetRecordPolymorphic(*clike_class);
   }
 
   return true;
@@ -1729,9 +2351,112 @@ void DWARFASTParserClike::CompleteMemberFunctionsFromDWARF(clike::Type &type) {
   // DW_TAG_subprogram declarations of the class DIE and as standalone
   // definitions (named `+[Class sel:]` / `-[Class sel:]`) reachable through the
   // ObjC-method index. Parse both so the expression parser can type-check and
-  // lower a message send. A plain C struct has none.
-  if (auto *objc_iface = llvm::dyn_cast<clike::ObjCInterfaceType>(&record))
+  // lower a message send.
+  if (auto *objc_iface = llvm::dyn_cast<clike::ObjCInterfaceType>(&record)) {
     CompleteObjCMethodsFromDWARF(*objc_iface, die, ts);
+    return;
+  }
+
+  // Any remaining record with (C++) member functions is a ClassType; a plain C
+  // struct has none. Member-function storage lives on ClassType.
+  auto *clike_class = llvm::dyn_cast<clike::ClassType>(&record);
+  if (!clike_class)
+    return;
+
+  // The record's unqualified base name (no template arguments), used to detect
+  // constructors: a member subprogram whose unqualified name equals the class
+  // name (and which has no return type) is a constructor. A destructor's name
+  // begins with `~`. This mirrors how DWARFASTParserClang / TypeSystemClang
+  // decide is_constructor / is_destructor.
+  llvm::StringRef record_base_name = record.GetUnqualifiedName().GetName();
+  if (record_base_name.empty())
+    record_base_name = record.GetName().GetName();
+  record_base_name =
+      record_base_name.take_until([](char c) { return c == '<'; });
+
+  // Member functions: parse the class's DW_TAG_subprogram children so calls
+  // like `obj.method()` / `this->method()` can be resolved and JIT-called.
+  for (DWARFDIE child : die.children()) {
+    if (child.Tag() != DW_TAG_subprogram)
+      continue;
+    const char *method_name = child.GetName();
+    if (!method_name || !method_name[0])
+      continue;
+    // Skip compiler-generated special members (implicit ctors/etc.), except
+    // an implicit destructor. Unlike other implicit special members, every
+    // class in a hierarchy that needs a destructor gets its own (distinctly
+    // mangled D0/D1/D2) destructor even when it's not user-declared, and
+    // when it's virtual it must be modeled as its own CXXMethodDecl so
+    // AddOverridesForMethod (ClangASTGenerator.cpp) can link it into the
+    // override chain below the base's virtual destructor. Skipping it here
+    // (as if it didn't exist) left the chain rooted at the base's destructor
+    // in every subobject, which made clang's VTableBuilder treat a diamond's
+    // shared virtual-base destructor slot as an unused duplicate in one of
+    // the two paths reaching it and assert (MakeUnusedFunction refuses to
+    // represent an "unused" destructor) -- see
+    // other-bugs/lldb-diamond-vtable-unused-destructor.
+    llvm::StringRef name_ref(method_name);
+    if (child.GetAttributeValueAsUnsigned(DW_AT_artificial, 0) &&
+        !name_ref.starts_with("~"))
+      continue;
+
+    Type *func_type = die.ResolveTypeUID(child);
+    if (!func_type)
+      continue;
+
+    bool is_virtual =
+        child.GetAttributeValueAsUnsigned(DW_AT_virtuality, 0) != 0;
+    // Ref-qualifier (`&`/`&&`): DWARF encodes the lvalue one via
+    // DW_AT_reference and the rvalue one via DW_AT_rvalue_reference. A class
+    // can overload on it, so it must be carried through to the synthesized
+    // CXXMethodDecl.
+    clike::RefQualifier ref_qualifier = clike::RefQualifier::None;
+    if (child.GetAttributeValueAsUnsigned(DW_AT_rvalue_reference, 0))
+      ref_qualifier = clike::RefQualifier::RValue;
+    else if (child.GetAttributeValueAsUnsigned(DW_AT_reference, 0))
+      ref_qualifier = clike::RefQualifier::LValue;
+    // A non-static method has an artificial `this` parameter; a `const` /
+    // `volatile` method has a `this` whose pointee is cv-qualified.
+    bool is_static = true;
+    bool is_const = false;
+    bool is_volatile = false;
+    for (DWARFDIE param : child.children()) {
+      if (param.Tag() != DW_TAG_formal_parameter ||
+          !param.GetAttributeValueAsUnsigned(DW_AT_artificial, 0))
+        continue;
+      is_static = false;
+      if (DWARFDIE this_die = param.GetAttributeValueAsReferenceDIE(DW_AT_type))
+        if (Type *this_type = die.ResolveTypeUID(this_die)) {
+          CompilerType pointee =
+              this_type->GetForwardCompilerType().GetPointeeType();
+          // clang CVR bit layout: Const = 0x1, Volatile = 0x4.
+          unsigned quals = pointee.GetTypeQualifiers();
+          is_const = (quals & 0x1) != 0;
+          is_volatile = (quals & 0x4) != 0;
+        }
+      break;
+    }
+
+    const std::string asm_label = MakeFuncAsmLabel(child);
+    const char *mangled_name = child.GetMangledName(
+        /*substitute_name_allowed=*/false);
+
+    // Classify constructors/destructors so the expression evaluator can build
+    // the proper C++ declaration name (`Foo(2)` must resolve to a constructor).
+    // A destructor's name begins with `~`; a constructor's unqualified name
+    // equals the class's base name (matching how DWARFASTParserClang /
+    // TypeSystemClang compare the method name against the record decl name).
+    clike::MemberFunctionKind kind = clike::MemberFunctionKind::Method;
+    if (name_ref.starts_with("~"))
+      kind = clike::MemberFunctionKind::Destructor;
+    else if (!record_base_name.empty() && name_ref == record_base_name)
+      kind = clike::MemberFunctionKind::Constructor;
+
+    ts.AddMemberFunction(*clike_class, method_name,
+                         func_type->GetForwardCompilerType(), asm_label,
+                         mangled_name ? mangled_name : "", is_static, is_const,
+                         is_volatile, is_virtual, ref_qualifier, kind);
+  }
 }
 
 void DWARFASTParserClike::CompleteObjCMethodsFromDWARF(
