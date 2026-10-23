@@ -1,4 +1,5 @@
 add_lldb_library(lldbPluginTypeSystemClike PLUGIN
+  Builder.cpp
   BuiltinTypes.cpp
   Context.cpp
   Identifier.cpp
@@ -16,6 +17,7 @@ add_lldb_library(lldbPluginTypeSystemClike PLUGIN
   LINK_LIBS
     lldbCore
     lldbSymbol
+    lldbTarget
     lldbUtility
   CLANG_LIBS
     clangBasic
