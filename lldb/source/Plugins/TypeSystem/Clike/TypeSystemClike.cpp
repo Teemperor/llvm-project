@@ -57,6 +57,63 @@ using clike::Field;
 
 using clike::Desugar;
 
+static std::optional<int64_t>
+ReadVirtualBaseOffset(TypeSystemClike &ts, clike::Type *derived,
+                      const clike::BaseClass &base, ValueObject *valobj) {
+  if (!valobj)
+    return std::nullopt;
+  ExecutionContext exe_ctx(valobj->GetExecutionContextRef());
+  Process *process = exe_ctx.GetProcessPtr();
+  if (!process)
+    return std::nullopt;
+
+  // The vbase-offset-offset is recovered from the DWARF location expression on
+  // the inheritance DIE. Darwin's dsymutil strips that expression from the
+  // .dSYM; recomputing it from a synthesized Clang vtable layout arrives with
+  // ClangASTGenerator.
+  std::optional<uint64_t> vbase_offset_offset = base.GetVBaseOffsetOffset();
+  if (!vbase_offset_offset)
+    return std::nullopt;
+
+  // The vtable pointer sits at the start of the (derived) object. When the
+  // vbase is reached transparently through a pointer (see the transparent
+  // pointer forwarding in GetChildCompilerTypeAtIndex), `valobj` is the pointer
+  // itself: the derived object is what it points to, so use the pointee (load)
+  // address rather than where the pointer is stored.
+  lldb::addr_t obj_addr = LLDB_INVALID_ADDRESS;
+  if (valobj->IsPointerType()) {
+    ValueObject::AddrAndType ptr = valobj->GetPointerValue();
+    if (ptr.type != eAddressTypeLoad)
+      return std::nullopt;
+    obj_addr = ptr.address;
+  } else {
+    ValueObject::AddrAndType addr = valobj->GetAddressOf();
+    if (addr.type != eAddressTypeLoad)
+      return std::nullopt;
+    obj_addr = addr.address;
+  }
+  if (obj_addr == LLDB_INVALID_ADDRESS || obj_addr == 0)
+    return std::nullopt;
+
+  llvm::Expected<lldb::addr_t> vtable_ptr_or_err =
+      process->ReadPointerFromMemory(obj_addr);
+  if (!vtable_ptr_or_err) {
+    llvm::consumeError(vtable_ptr_or_err.takeError());
+    return std::nullopt;
+  }
+  const lldb::addr_t vtable_ptr = *vtable_ptr_or_err;
+  if (vtable_ptr == LLDB_INVALID_ADDRESS)
+    return std::nullopt;
+
+  Status err;
+  const uint32_t addr_size = process->GetAddressByteSize();
+  int64_t offset = process->ReadSignedIntegerFromMemory(
+      vtable_ptr - *vbase_offset_offset, addr_size, INT64_MAX, err);
+  if (err.Fail() || offset == INT64_MAX)
+    return std::nullopt;
+  return offset;
+}
+
 LLDB_PLUGIN_DEFINE(TypeSystemClike)
 
 char TypeSystemClike::ID;
@@ -345,12 +402,55 @@ void TypeSystemClike::Terminate() {
 }
 
 ConstString TypeSystemClike::DeclGetName(void *opaque_decl) {
-  // TypeSystemClike doesn't hand out any CompilerDecls yet.
-  return ConstString();
+  // TypeSystemClike's CompilerDecls wrap a clike::Decl reference.
+  SharedLockedDecl decl = GetDeclForRead(opaque_decl);
+  if (!decl)
+    return ConstString();
+  return std::visit(
+      [](const auto *member) { return ConstString(member->name.GetName()); },
+      decl->payload);
+}
+
+ConstString TypeSystemClike::DeclGetMangledName(void *opaque_decl) {
+  SharedLockedDecl decl = GetDeclForRead(opaque_decl);
+  if (!decl)
+    return ConstString();
+  return std::visit(
+      [](const auto *member) {
+        return ConstString(member->mangled_name.GetName());
+      },
+      decl->payload);
 }
 
 CompilerType TypeSystemClike::GetTypeForDecl(void *opaque_decl) {
-  return CompilerType();
+  SharedLockedDecl decl = GetDeclForRead(opaque_decl);
+  if (!decl)
+    return CompilerType();
+  return std::visit(
+      [this](const auto *member) {
+        return GetCompilerType(&member->type.Get());
+      },
+      decl->payload);
+}
+
+Scalar TypeSystemClike::DeclGetConstantValue(void *opaque_decl) {
+  SharedLockedDecl decl = GetDeclForRead(opaque_decl);
+  if (!decl)
+    return Scalar();
+  const auto *const *member =
+      std::get_if<const clike::StaticDataMember *>(&decl->payload);
+  if (!member || !(*member)->HasConstValue())
+    return Scalar();
+  clike::Type *desugared = (*member)->type.Get().Desugar();
+  std::optional<uint64_t> byte_size = desugared->GetByteSize();
+  if (!byte_size)
+    return Scalar();
+  // Interpret the raw constant bits using the member type's signedness so a
+  // signed integral member (e.g. `static constexpr long = 47`) reads back
+  // correctly.
+  bool is_signed = desugared->GetEncoding() == lldb::eEncodingSint;
+  llvm::APInt value(*byte_size * 8, *(*member)->const_value, is_signed);
+  return Scalar(llvm::APSInt(value, !is_signed));
 }
 
 ConstString TypeSystemClike::DeclContextGetName(void *opaque_decl_ctx) {
@@ -754,6 +854,45 @@ void TypeSystemClike::CompleteMemberFunctionsAssumingWriteLocked(
     parser->CompleteMemberFunctionsFromDWARF(*record);
 }
 
+std::vector<CompilerDeclContext>
+TypeSystemClike::GetUsingDirectiveNamespaces(Block &block) {
+  std::vector<CompilerDeclContext> namespaces;
+  auto *parser = llvm::dyn_cast_or_null<DWARFASTParserClike>(GetDWARFParser());
+  if (!parser)
+    return namespaces;
+  plugin::dwarf::DWARFDIE block_die =
+      DWARFASTParserClike::GetDIEForBlock(block);
+  if (!block_die)
+    return namespaces;
+  parser->CollectUsingDirectiveNamespaces(block_die, namespaces);
+  return namespaces;
+}
+
+std::vector<std::pair<ConstString, CompilerDeclContext>>
+TypeSystemClike::GetUsingDeclarations(Block &block) {
+  std::vector<std::pair<ConstString, CompilerDeclContext>> decls;
+  auto *parser = llvm::dyn_cast_or_null<DWARFASTParserClike>(GetDWARFParser());
+  if (!parser)
+    return decls;
+  plugin::dwarf::DWARFDIE block_die =
+      DWARFASTParserClike::GetDIEForBlock(block);
+  if (!block_die)
+    return decls;
+  parser->CollectUsingDeclarations(block_die, decls);
+  return decls;
+}
+
+CompilerType TypeSystemClike::GetOwningClassForFunction(Block &function_block) {
+  auto *parser = llvm::dyn_cast_or_null<DWARFASTParserClike>(GetDWARFParser());
+  if (!parser)
+    return CompilerType();
+  plugin::dwarf::DWARFDIE block_die =
+      DWARFASTParserClike::GetDIEForBlock(function_block);
+  if (!block_die)
+    return CompilerType();
+  return parser->GetOwningClassForFunctionFromDWARF(block_die);
+}
+
 uint32_t TypeSystemClike::GetPointerByteSize() {
   return m_context.GetLanguageOpts().GetBuiltinSizes().pointer_size;
 }
@@ -813,8 +952,41 @@ bool TypeSystemClike::HasPointerAuthQualifier(opaque_compiler_type_t type) {
   return t && t->GetPtrAuthQualifier().has_value();
 }
 
+// If `t` is an incomplete record whose spelling carries template arguments
+// (contains `<`), complete it so its modeled template arguments are available.
+// Building the reconstructed display name needs those arguments; without them
+// the raw DWARF spelling is used verbatim, which renders enum-typed non-type
+// arguments as `(EnumType)0` rather than the enumerator name. Recurses into
+// type-kind template arguments (`Foo<Bar<1L>>`): reconstructing `Foo`'s name
+// needs `Bar`'s own arguments too, since `Bar<1L>`'s spelling is embedded in
+// `Foo`'s DWARF name.
+void TypeSystemClike::CompleteTemplateInstantiationForName(clike::Type *t) {
+  auto write_lock = LockForWrite();
+  CompleteTemplateInstantiationForNameAssumingWriteLocked(t);
+}
+
+void TypeSystemClike::CompleteTemplateInstantiationForNameAssumingWriteLocked(
+    clike::Type *t) {
+  if (!t || !t->IsRecord() || !t->GetName().GetName().contains('<'))
+    return;
+  if (!t->IsComplete())
+    CompleteTypeAssumingWriteLocked(t);
+  for (uint32_t i = 0, e = t->GetNumTemplateArguments(); i != e; ++i) {
+    const clike::TemplateArgument *arg = t->GetTemplateArgumentAtIndex(i);
+    if (arg->kind == lldb::eTemplateArgumentKindType)
+      CompleteTemplateInstantiationForNameAssumingWriteLocked(
+          &arg->type->Get());
+  }
+}
+
 ConstString TypeSystemClike::GetTypeName(opaque_compiler_type_t type,
                                          bool BaseOnly) {
+  // A class-template instantiation's name is reconstructed from its modeled
+  // template arguments (so an enum-typed non-type argument prints as
+  // `EnumType::Member` rather than the DWARF producer's `(EnumType)0`). Those
+  // arguments only exist once the record is completed, so complete it now --
+  // the only part of naming a type that needs the TypeSystem. This may
+  // mutate, so it needs the write lock.
   LockedType t = GetTypeForWrite(type);
   return GetTypeNameAssumingWriteLocked(t.get(), BaseOnly);
 }
@@ -823,6 +995,7 @@ ConstString TypeSystemClike::GetTypeNameAssumingWriteLocked(clike::Type *t,
                                                             bool BaseOnly) {
   if (!t)
     return ConstString();
+  CompleteTemplateInstantiationForNameAssumingWriteLocked(t);
   return ConstString(clike::BuildCanonicalName(t, BaseOnly));
 }
 
@@ -835,6 +1008,7 @@ ConstString
 TypeSystemClike::GetDisplayTypeNameAssumingWriteLocked(clike::Type *t) {
   if (!t)
     return ConstString();
+  CompleteTemplateInstantiationForNameAssumingWriteLocked(t);
   return ConstString(clike::BuildDisplayName(t));
 }
 
@@ -980,11 +1154,12 @@ size_t TypeSystemClike::GetNumMemberFunctions(opaque_compiler_type_t type) {
   LockedType tt = GetTypeForWrite(type);
   if (!tt)
     return 0;
-  // ObjC methods of an interface (reached through a pointer, as always for
-  // ObjC). They are parsed lazily.
+  // Member functions of a record; ObjC methods of an interface (reached through
+  // a pointer, as always for ObjC). They are parsed lazily. A record has one or
+  // the other, never both, so at most one of the counts is nonzero.
   clike::Type *bearer = GetObjCBaseClassBearingType(tt.get());
   CompleteMemberFunctionsAssumingWriteLocked(bearer);
-  return bearer->GetNumObjCMethods();
+  return bearer->GetNumObjCMethods() + bearer->GetNumMemberFunctions();
 }
 
 TypeMemberFunctionImpl
@@ -993,7 +1168,8 @@ TypeSystemClike::GetMemberFunctionAtIndex(opaque_compiler_type_t type,
   LockedType tt = GetTypeForWrite(type);
   if (!tt)
     return TypeMemberFunctionImpl();
-  // Objective-C methods of an interface (possibly reached via a pointer).
+  // Objective-C methods of an interface (possibly reached via a pointer), or
+  // member functions of a record (see GetNumMemberFunctions).
   clike::Type *bearer = GetObjCBaseClassBearingType(tt.get());
   CompleteMemberFunctionsAssumingWriteLocked(bearer);
   if (const clike::ObjCMethod *method = bearer->GetObjCMethodAtIndex(idx)) {
@@ -1010,7 +1186,30 @@ TypeSystemClike::GetMemberFunctionAtIndex(opaque_compiler_type_t type,
     return TypeMemberFunctionImpl(GetCompilerType(&method->type.Get()),
                                   CompilerDecl(), name, kind);
   }
-  return TypeMemberFunctionImpl();
+
+  const clike::MemberFunction *method = bearer->GetMemberFunctionAtIndex(idx);
+  if (!method)
+    return TypeMemberFunctionImpl();
+
+  MemberFunctionKind kind;
+  switch (method->kind) {
+  case clike::MemberFunctionKind::Constructor:
+    kind = lldb::eMemberFunctionKindConstructor;
+    break;
+  case clike::MemberFunctionKind::Destructor:
+    kind = lldb::eMemberFunctionKindDestructor;
+    break;
+  case clike::MemberFunctionKind::Method:
+    kind = method->is_static ? lldb::eMemberFunctionKindStaticMethod
+                             : lldb::eMemberFunctionKindInstanceMethod;
+    break;
+  }
+  // Hand out a tagged Decl so GetMangledName/GetDemangledName can recover the
+  // linkage name; the (return/argument) types come from the function type.
+  CompilerDecl decl(
+      this, const_cast<clike::Decl *>(m_context.GetOrCreateDecl(method)));
+  return TypeMemberFunctionImpl(GetCompilerType(&method->type.Get()), decl,
+                                method->name.GetName().str(), kind);
 }
 
 CompilerType TypeSystemClike::GetPointeeType(opaque_compiler_type_t type) {
@@ -1032,6 +1231,24 @@ CompilerType TypeSystemClike::GetPointerType(opaque_compiler_type_t type) {
   if (!t)
     return CompilerType();
   return clike::Builder(*this).CreatePointerType(GetCompilerType(t.get()));
+}
+
+CompilerType
+TypeSystemClike::GetLValueReferenceType(opaque_compiler_type_t type) {
+  LockedType t = GetTypeForWrite(type);
+  if (!t)
+    return CompilerType();
+  return clike::Builder(*this).CreateReferenceType(GetCompilerType(t.get()),
+                                                   /*is_rvalue=*/false);
+}
+
+CompilerType
+TypeSystemClike::GetRValueReferenceType(opaque_compiler_type_t type) {
+  LockedType t = GetTypeForWrite(type);
+  if (!t)
+    return CompilerType();
+  return clike::Builder(*this).CreateReferenceType(GetCompilerType(t.get()),
+                                                   /*is_rvalue=*/true);
 }
 
 CompilerType
@@ -1616,6 +1833,27 @@ CompilerType TypeSystemClike::GetFieldAtIndex(opaque_compiler_type_t type,
   return GetCompilerType(&field->GetType().Get());
 }
 
+CompilerDecl
+TypeSystemClike::GetStaticFieldWithName(opaque_compiler_type_t type,
+                                        llvm::StringRef name) {
+  LockedType tt = GetTypeForWrite(type);
+  if (!tt)
+    return CompilerDecl();
+  CompleteTypeAssumingWriteLocked(tt.get());
+  const clike::Type *record = Desugar(tt.get());
+  for (uint32_t i = 0, n = record->GetNumStaticDataMembers(); i < n; ++i) {
+    const clike::StaticDataMember *member =
+        record->GetStaticDataMemberAtIndex(i);
+    if (member->name.GetName() == name)
+      // The opaque decl wraps a clike::Decl; the Decl* query
+      // methods (DeclGetName / GetTypeForDecl / DeclGetConstantValue) interpret
+      // it.
+      return CompilerDecl(
+          this, const_cast<clike::Decl *>(m_context.GetOrCreateDecl(member)));
+  }
+  return CompilerDecl();
+}
+
 clike::Type *TypeSystemClike::GetObjCBaseClassBearingType(clike::Type *type) {
   clike::Type *t = Desugar(type);
   // An Objective-C object is always handled through a pointer (`Foo *`), so a
@@ -1758,12 +1996,13 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
     return GetCompilerType(element_type);
   }
 
-  // A pointer is transparent, mirroring TypeSystemClang: when asked
-  // transparently, expanding it splices in the pointee aggregate's members
-  // instead of yielding a single deref child. Only an already-complete
-  // aggregate is expanded transparently so that merely inspecting a pointer
-  // doesn't force completion of an otherwise-lazy pointee; otherwise child 0 is
-  // the dereferenced value (which the DIL `ptr->member` path relies on).
+  // A pointer is transparent, mirroring TypeSystemClang (and the reference
+  // case below): when asked transparently, expanding it splices in the pointee
+  // aggregate's members instead of yielding a single deref child. Only an
+  // already-complete aggregate is expanded transparently so that merely
+  // inspecting a pointer doesn't force completion of an otherwise-lazy pointee;
+  // otherwise child 0 is the dereferenced value (which the DIL `ptr->member`
+  // path relies on).
   if (t->IsPointer()) {
     clike::Type *pointee = t->GetPointeeType();
     if (clike::IsVoid(pointee))
@@ -1826,6 +2065,40 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
     return GetCompilerType(pointee);
   }
 
+  // A reference is transparent, just like a pointer: expanding it either shows
+  // the referenced aggregate's members or the single referenced value.
+  if (t->IsReference()) {
+    clike::Type *pointee = t->GetPointeeType();
+
+    // As with pointers, only expand an already-complete referent transparently
+    // so that merely inspecting the reference doesn't force its completion.
+    if (transparent_pointers && pointee->IsAggregate() &&
+        pointee->IsComplete()) {
+      bool tmp_child_is_deref_of_parent = false;
+      return GetChildCompilerTypeAtIndexImpl(
+          pointee, exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
+          ignore_array_bounds, child_name, child_byte_size, child_byte_offset,
+          child_bitfield_bit_size, child_bitfield_bit_offset,
+          child_is_base_class, tmp_child_is_deref_of_parent, valobj,
+          language_flags);
+    }
+
+    child_is_deref_of_parent = true;
+    if (const char *parent_name =
+            valobj ? valobj->GetName().GetCString() : nullptr) {
+      child_name.assign(1, '&');
+      child_name += parent_name;
+    }
+    if (idx != 0)
+      return CompilerType();
+    // As for pointers, materializing the referent forces its completion.
+    CompleteTypeAssumingWriteLocked(pointee);
+    if (std::optional<uint64_t> byte_size = pointee->GetByteSize())
+      child_byte_size = *byte_size;
+    child_byte_offset = 0;
+    return GetCompilerType(pointee);
+  }
+
   // An ObjC interface with no debug-info ivars is completed from the runtime
   // (into the scratch context); resolve children against that completed type.
   if (CompilerType rt = GetRuntimeCompletedObjCType(t, exe_ctx))
@@ -1862,6 +2135,30 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
                                                     /*BaseOnly=*/false)
                          .GetString();
       child_byte_offset = base->GetByteOffset();
+      // A virtual base has no constant offset: its subobject can sit at
+      // different places in different most-derived objects (the diamond case).
+      // Read the real offset from the live object's vtable when we can, so e.g.
+      // Joiner1.Derived1.VBase and Joiner1.Derived2.VBase resolve to the one
+      // shared subobject. Falls back to byte_offset (0) if no live object.
+      if (base->IsVirtual()) {
+        // ReadVirtualBaseOffset may fall through to
+        // ClangASTGenerator::ComputeVBaseOffsetOffset, which builds a
+        // throwaway clang AST via the same machinery normal (non-nested)
+        // expression generation uses -- including calling back into this
+        // instance's own locking GetCompleteType, from what is, from its
+        // perspective, a fresh top-level call. We are already inside that
+        // lock here (GetChildCompilerTypeAtIndex holds it for this whole
+        // call), so briefly release it around this one call: `t`/`base`
+        // remain valid either way (base-class arrays are fixed once a
+        // record is completed, never appended to afterward), and we
+        // re-acquire before touching anything else.
+        m_mutex.unlock();
+        std::optional<int64_t> vbase_off =
+            ReadVirtualBaseOffset(*this, t, *base, valobj);
+        m_mutex.lock();
+        if (vbase_off)
+          child_byte_offset = *vbase_off;
+      }
       if (std::optional<uint64_t> byte_size =
               base->GetType().Get().GetByteSize())
         child_byte_size = *byte_size;
@@ -1997,12 +2294,13 @@ size_t TypeSystemClike::GetIndexOfChildMemberWithNameImpl(
   if (CompilerType rt = GetRuntimeCompletedObjCType(t, /*exe_ctx=*/nullptr))
     return rt.GetTypeSystem()->GetIndexOfChildMemberWithName(
         rt.GetOpaqueQualType(), name, omit_empty_base_classes, child_indexes);
-  // A pointer forwards the lookup to its pointee (when that has named
-  // members), so that e.g. `ptr->member` resolves against the pointed-to
-  // record. A pointer is transparent (see GetNumChildren): its children are the
-  // pointee aggregate's members directly, with no intervening deref child, so
-  // recurse without pushing an index-0 deref step -- keeping the returned
-  // indices consistent with the child layout.
+  // A pointer/reference forwards the lookup to its pointee (when that has
+  // named members), so that e.g. `ptr->member` / `ref.member` resolves against
+  // the pointed-to record. A pointer is transparent (see GetNumChildren): its
+  // children are the pointee aggregate's members directly, with no intervening
+  // deref child, so recurse without pushing an index-0 deref step -- matching
+  // the reference case and keeping the returned indices consistent with the
+  // child layout.
   if (t->GetPointeeType()) {
     clike::Type *pointee = t->GetNamedMemberPointee();
     if (!pointee)
@@ -2276,6 +2574,39 @@ void TypeSystemClike::AppendMemberDeclAssumingWriteLocked(
   s << dims;
 }
 
+// Append a clang-like member-function declaration ("<ret> <name>(<params>)
+// <cv-qualifiers> <ref-qualifier>;") for a record's method, mirroring how
+// clang::RecordDecl::print renders a CXXMethodDecl. Reuses BuildFunctionName's
+// return-type/parameter rendering.
+static void AppendMemberFunctionDecl(Stream &s,
+                                     const clike::MemberFunction &m) {
+  using namespace clike;
+  if (m.is_static)
+    s << "static ";
+  clike::Type &fn = m.type.Get();
+  std::string name = m.name.GetName().str();
+  if (fn.IsFunction()) {
+    s << clike::BuildFunctionName(&fn, name);
+  } else {
+    s << name << "()";
+  }
+  if (m.is_const)
+    s << " const";
+  if (m.is_volatile)
+    s << " volatile";
+  switch (m.ref_qualifier) {
+  case RefQualifier::None:
+    break;
+  case RefQualifier::LValue:
+    s << " &";
+    break;
+  case RefQualifier::RValue:
+    s << " &&";
+    break;
+  }
+  s.PutCString(";\n");
+}
+
 void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type,
                                           Stream &s, DescriptionLevel level) {
   // Lazily completes the type below, so this needs the write lock.
@@ -2348,8 +2679,10 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type,
 
   if (t->IsRecord()) {
     CompleteTypeAssumingWriteLocked(t);
-    // The source-spelling keyword (which doesn't affect layout) is tracked via
-    // IsClassKeyword().
+    // `struct` and `class` both map onto the same ClassType C++ class (the
+    // keyword doesn't affect layout); the actual source-spelling keyword is
+    // tracked separately via IsClassKeyword(). Consult that instead of the
+    // C++ type hierarchy so `struct Foo` prints "struct Foo", not "class Foo".
     const char *tag =
         t->IsUnion() ? "union" : (t->IsClassKeyword() ? "class" : "struct");
     // This dump context matches clang's printer, which uses the bare
@@ -2366,6 +2699,14 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type,
       if (field->IsBitfield())
         s.Printf(" : %u", field->GetBitfieldBitSize());
       s.PutCString(";\n");
+    }
+    CompleteMemberFunctionsAssumingWriteLocked(t);
+    for (uint32_t i = 0, e = t->GetNumMemberFunctions(); i != e; ++i) {
+      const clike::MemberFunction *m = t->GetMemberFunctionAtIndex(i);
+      if (!m)
+        continue;
+      s.PutCString("    ");
+      AppendMemberFunctionDecl(s, *m);
     }
     s.PutCString("}");
     return;
@@ -2572,7 +2913,16 @@ uint32_t TypeSystemClike::IsHomogeneousAggregate(opaque_compiler_type_t type,
 }
 
 bool TypeSystemClike::IsPolymorphicClass(opaque_compiler_type_t type) {
-  return false;
+  // A forward-declared/incomplete polymorphic record doesn't get
+  // SetRecordPolymorphic applied until DWARF completion runs, so complete
+  // the type first (matching the other predicates in this file, e.g.
+  // IsTemplateType / GetNumTemplateArguments), otherwise IsPolymorphic()
+  // reads the not-yet-populated default of false. This needs the write lock.
+  LockedType tt = GetTypeForWrite(type);
+  if (!tt)
+    return false;
+  clike::Type *t = CompleteTypeAssumingWriteLocked(tt.get());
+  return t && t->IsPolymorphic();
 }
 
 bool TypeSystemClike::IsTypedefType(opaque_compiler_type_t type) {
@@ -2606,18 +2956,19 @@ bool TypeSystemClike::IsVectorType(opaque_compiler_type_t type,
 
 CompilerType
 TypeSystemClike::GetFullyUnqualifiedType(opaque_compiler_type_t type) {
-  // GetFullyUnqualifiedTypeImpl may allocate fresh Pointer/Array wrapper
-  // nodes, so this needs the write lock.
+  // GetFullyUnqualifiedTypeImpl may allocate fresh Pointer/Reference/Array
+  // wrapper nodes, so this needs the write lock.
   LockedType t = GetTypeForWrite(type);
   return GetCompilerType(GetFullyUnqualifiedTypeImpl(t.get()));
 }
 
 clike::Type *TypeSystemClike::GetFullyUnqualifiedTypeImpl(clike::Type *t) {
   // Mirror TypeSystemClang::GetFullyUnqualifiedType: strip top-level
-  // cv-qualifiers, and recurse through pointers/arrays so their pointee/element
-  // is likewise fully unqualified (so `struct Foo * const` -> `struct Foo *`,
-  // and `const char *` -> `char *`). Other sugar (typedefs, elaborated
-  // spellings) is preserved.
+  // cv-qualifiers, and recurse through pointers/references/arrays so their
+  // pointee/element is likewise fully unqualified (so `namesp::Virtual * const`
+  // -> `namesp::Virtual *`, and `const char *` -> `char *`). Other sugar
+  // (typedefs, elaborated spellings) is preserved. A reference has no
+  // cv-qualifiers of its own, but its referent is unqualified.
   if (!t)
     return t;
   // Strip any stacked top-level cv-qualifiers.
@@ -2630,6 +2981,17 @@ clike::Type *TypeSystemClike::GetFullyUnqualifiedTypeImpl(clike::Type *t) {
     if (stripped != pointee)
       return static_cast<clike::Type *>(
           builder.CreatePointerType(GetCompilerType(stripped))
+              .GetOpaqueQualType());
+    return t;
+  }
+  if (t->IsReference()) {
+    clike::Type *pointee = t->GetPointeeType();
+    clike::Type *stripped = GetFullyUnqualifiedTypeImpl(pointee);
+    if (stripped != pointee)
+      return static_cast<clike::Type *>(
+          builder
+              .CreateReferenceType(GetCompilerType(stripped),
+                                   t->IsRValueReference())
               .GetOpaqueQualType());
     return t;
   }
@@ -2682,6 +3044,85 @@ bool TypeSystemClike::IsReferenceType(opaque_compiler_type_t type,
   if (is_rvalue)
     *is_rvalue = ref->IsRValueReference();
   return true;
+}
+
+bool TypeSystemClike::IsTemplateType(opaque_compiler_type_t type) {
+  // Template arguments are only populated once the record is completed, so
+  // this needs the write lock.
+  LockedType t = GetTypeForWrite(type);
+  if (!t)
+    return false;
+  // Template arguments are populated during completion.
+  CompleteTypeAssumingWriteLocked(t.get());
+  return Desugar(t.get())->GetNumTemplateArguments() > 0;
+}
+
+size_t TypeSystemClike::GetNumTemplateArguments(opaque_compiler_type_t type,
+                                                bool expand_pack) {
+  LockedType t = GetTypeForWrite(type);
+  if (!t)
+    return 0;
+  CompleteTypeAssumingWriteLocked(t.get());
+  return Desugar(t.get())->GetNumTemplateArguments();
+}
+
+lldb::TemplateArgumentKind
+TypeSystemClike::GetTemplateArgumentKind(opaque_compiler_type_t type,
+                                         size_t idx, bool expand_pack) {
+  LockedType t = GetTypeForWrite(type);
+  if (!t)
+    return eTemplateArgumentKindNull;
+  CompleteTypeAssumingWriteLocked(t.get());
+  if (const clike::TemplateArgument *arg =
+          Desugar(t.get())->GetTemplateArgumentAtIndex(idx))
+    return arg->kind;
+  return eTemplateArgumentKindNull;
+}
+
+CompilerType
+TypeSystemClike::GetTypeTemplateArgument(opaque_compiler_type_t type,
+                                         size_t idx, bool expand_pack) {
+  LockedType t = GetTypeForWrite(type);
+  if (!t)
+    return CompilerType();
+  CompleteTypeAssumingWriteLocked(t.get());
+  if (const clike::TemplateArgument *arg =
+          Desugar(t.get())->GetTemplateArgumentAtIndex(idx)) {
+    if (arg->kind != lldb::eTemplateArgumentKindType)
+      return CompilerType();
+    // A type argument always names a type -- a `void` argument (e.g.
+    // `coroutine_handle<void>`, which DWARF spells by omitting DW_AT_type)
+    // names the `void` builtin, so this is never an invalid CompilerType.
+    // That matches TypeSystemClang, whose `void` QualType is always valid.
+    return GetCompilerType(&arg->type->Get());
+  }
+  return CompilerType();
+}
+
+std::optional<CompilerType::IntegralTemplateArgument>
+TypeSystemClike::GetIntegralTemplateArgument(opaque_compiler_type_t type,
+                                             size_t idx, bool expand_pack) {
+  LockedType tt = GetTypeForWrite(type);
+  if (!tt)
+    return std::nullopt;
+  CompleteTypeAssumingWriteLocked(tt.get());
+  const clike::TemplateArgument *arg =
+      Desugar(tt.get())->GetTemplateArgumentAtIndex(idx);
+  if (!arg || arg->kind != eTemplateArgumentKindIntegral)
+    return std::nullopt;
+  // A pointer/reference-typed argument (e.g. `&temp1.member`) has no integral
+  // value; report it as absent rather than a bogus scalar.
+  if (arg->type && arg->type->Get().GetPointeeType())
+    return std::nullopt;
+
+  // Reconstruct the value with the argument type's signedness.
+  Scalar value;
+  if (arg->type && arg->type->Get().GetEncoding() == eEncodingSint)
+    value = static_cast<int64_t>(arg->integral_value);
+  else
+    value = arg->integral_value;
+  return CompilerType::IntegralTemplateArgument{
+      value, GetCompilerType(arg->type ? &arg->type->Get() : nullptr)};
 }
 
 CompilerType

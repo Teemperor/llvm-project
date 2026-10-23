@@ -9,15 +9,17 @@
 // Rendering a clike type back to its source spelling. Two names are
 // produced, mirroring the CompilerType API:
 //
-//   BuildCanonicalName -- the raw DWARF spelling, keeping inline namespaces.
-//     Data formatters match against exactly this, so it must reproduce what
-//     the compiler emitted.
+//   BuildCanonicalName -- the raw DWARF spelling, keeping defaulted template
+//     arguments and inline namespaces. Data formatters match against exactly
+//     this, so it must reproduce what the compiler emitted.
 //
-//   BuildDisplayName -- the user-facing spelling: inline namespaces are
-//     dropped.
+//   BuildDisplayName -- the user-facing spelling: defaulted template arguments
+//     and inline namespaces are dropped, so `std::__1::vector<int,
+//     std::__1::allocator<int>>` prints as `std::vector<int>`.
 //
 // This is a pure function of the type model -- nothing here needs the
-// TypeSystem.
+// TypeSystem, apart from completing a lazily-parsed record before reading its
+// template arguments, which the caller does.
 //
 //===----------------------------------------------------------------------===//
 
@@ -34,21 +36,29 @@ namespace clike {
 class Type;
 
 /// The type's canonical name: the spelling as the debug info recorded it, with
-/// inline namespaces kept. \p base_only asks for the unqualified spelling (no
-/// enclosing namespace scopes), matching clang's
-/// GetTypeNameForDecl(qualified=false).
+/// defaulted template arguments and inline namespaces kept. \p base_only asks
+/// for the unqualified spelling (no enclosing namespace/class scopes), matching
+/// clang's GetTypeNameForDecl(qualified=false).
+///
+/// The caller must have completed any class-template instantiation reachable
+/// from \p t first (see TypeSystemClike::CompleteTemplateInstantiationForName):
+/// an enum-typed non-type template argument is re-rendered from the modeled
+/// arguments, which only exist after completion.
 std::string BuildCanonicalName(Type *t, bool base_only);
 
-/// The type's display name: like BuildCanonicalName but dropping inline
-/// namespaces. Also the form used for the C-declarator spellings
-/// (`int (*)(const char *)`), which have no "raw DWARF name" to preserve.
-std::string BuildDisplayName(Type *t, bool keep_inline_namespaces = false);
+/// The type's display name: like BuildCanonicalName but dropping defaulted
+/// template arguments and inline namespaces. Also the form used for the
+/// C-declarator spellings (`int (*)(const char *)`), which have no "raw DWARF
+/// name" to preserve.
+std::string BuildDisplayName(Type *t, bool hide_default_args = true,
+                             bool keep_inline_namespaces = false);
 
 /// Render a function signature in C declarator form, placing \p decl (e.g. ""
-/// for a plain function, "(*)" for a function pointer, "(^)" for a block
-/// pointer) between the return type and the parameter list:
-/// `int (*)(const char *)`. \p fn must be a function type (see
-/// Type::IsFunction).
+/// for a plain function, "(*)" for a function pointer, "(&)" for a reference)
+/// between the return type and the parameter list: `int (*)(const char *)`.
+/// Exposed for `target modules dump ast`, which renders a member function's
+/// declaration the way clang::RecordDecl::print does. \p fn must be a function
+/// type (see Type::IsFunction).
 std::string BuildFunctionName(Type *fn, llvm::StringRef decl,
                               bool keep_inline_namespaces = false);
 

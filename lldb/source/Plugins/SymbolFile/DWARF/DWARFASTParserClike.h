@@ -17,6 +17,8 @@
 #include "llvm/ADT/DenseMap.h"
 
 #include <mutex>
+#include <utility>
+#include <vector>
 
 namespace lldb_private {
 class TypeSystemClike;
@@ -93,6 +95,40 @@ public:
   lldb_private::CompilerDeclContext GetDeclContextContainingUIDFromDWARF(
       const lldb_private::plugin::dwarf::DWARFDIE &die) override;
 
+  /// The DIE backing \p block. If the module uses a debug map (e.g. an
+  /// executable linked from object files without a dSYM), this looks through
+  /// it to the object file's SymbolFileDWARF that owns the DIE. Returns an
+  /// invalid DIE if \p block isn't backed by DWARF.
+  static lldb_private::plugin::dwarf::DWARFDIE
+  GetDIEForBlock(lldb_private::Block &block);
+
+  /// Collect the target namespaces of the `using namespace` directives
+  /// (DW_TAG_imported_module) lexically in scope at \p block_die and its
+  /// enclosing blocks, innermost-first. Used so an expression evaluated in a
+  /// block with an active using-directive resolves unqualified names through
+  /// the imported namespace.
+  void CollectUsingDirectiveNamespaces(
+      const lldb_private::plugin::dwarf::DWARFDIE &block_die,
+      std::vector<lldb_private::CompilerDeclContext> &namespaces);
+
+  /// Collect the `using` *declarations* (DW_TAG_imported_declaration, e.g.
+  /// `using Single::single;`) lexically in scope at \p block_die and its
+  /// enclosing blocks, innermost-first. Each is reported as the imported
+  /// unqualified name paired with the namespace it names the entity in, so an
+  /// expression evaluated in that scope resolves the imported name through that
+  /// namespace.
+  void CollectUsingDeclarations(
+      const lldb_private::plugin::dwarf::DWARFDIE &block_die,
+      std::vector<std::pair<lldb_private::ConstString,
+                            lldb_private::CompilerDeclContext>> &decls);
+
+  /// If \p function_die is a C++ member function (its semantic parent is a
+  /// class/struct/union), return the owning class' CompilerType; otherwise an
+  /// invalid CompilerType. Works for static member functions too, which have no
+  /// `this` pointer to derive the class from.
+  lldb_private::CompilerType GetOwningClassForFunctionFromDWARF(
+      const lldb_private::plugin::dwarf::DWARFDIE &function_die);
+
   void EnsureAllDIEsInDeclContextHaveBeenParsed(
       lldb_private::CompilerDeclContext decl_context) override {}
 
@@ -166,6 +202,10 @@ private:
   /// doesn't have the expected shape.
   lldb_private::CompilerType
   ParseBlockFunctionType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  lldb::TypeSP
+  ParseReferenceType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  lldb::TypeSP
+  ParsePointerToMemberType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP ParseTypedef(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParseCVQualifiedType(const lldb_private::plugin::dwarf::DWARFDIE &die);
