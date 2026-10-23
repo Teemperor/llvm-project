@@ -27,10 +27,16 @@ public:
   NamedType(Identifier name, DeclScope scope, Args &&...args)
       : Base(std::forward<Args>(args)...), m_name(name),
         m_unqualified_name(scope.GetUnqualifiedName()),
-        m_decl_context(scope.GetDeclContext()) {}
+        m_decl_context(scope.GetDeclContext()),
+        m_enclosing_namespace(scope.GetEnclosingNamespace()),
+        m_unnamed_scope(scope.GetUnnamedScope()) {}
 
   Identifier GetName() const override { return m_name; }
   const Namespace *GetDeclContext() const override { return m_decl_context; }
+  const Namespace *GetEnclosingNamespace() const override {
+    return m_enclosing_namespace;
+  }
+  Identifier GetUnnamedScope() const override { return m_unnamed_scope; }
   Identifier GetUnqualifiedName() const override { return m_unqualified_name; }
 
   /// True if this type has no name at all, e.g. an unnamed
@@ -43,6 +49,8 @@ private:
   Identifier m_name;
   Identifier m_unqualified_name;
   const Namespace *m_decl_context = nullptr;
+  const Namespace *m_enclosing_namespace = nullptr;
+  Identifier m_unnamed_scope;
 };
 
 } // namespace clike

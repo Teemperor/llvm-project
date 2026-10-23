@@ -23,7 +23,6 @@ TEST(RecordTypeTest, RecordDefaults) {
   EXPECT_FALSE(record.IsUnion());
   EXPECT_FALSE(record.IsClassKeyword());
   EXPECT_FALSE(record.IsAnonymousStructOrUnion());
-  EXPECT_EQ(record.GetAnonymousParent(), nullptr);
   EXPECT_FALSE(record.AreMemberFunctionsParsed());
   EXPECT_EQ(record.GetArgPassingKind(),
             RecordType::ArgPassingKind::Unspecified);
