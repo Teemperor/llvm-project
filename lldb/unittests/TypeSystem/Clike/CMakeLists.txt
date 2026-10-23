@@ -12,6 +12,7 @@ add_lldb_unittest(TypeSystemClikeUnitTests
   SugarTypeTest.cpp
   TypeCTest.cpp
   TypeNameTest.cpp
+  TypeObjCTest.cpp
   TypeSystemClikeBasicQueriesTest.cpp
   TypeSystemClikeChildrenTest.cpp
   TypeSystemClikeNameTest.cpp
@@ -27,5 +28,7 @@ add_lldb_unittest(TypeSystemClikeUnitTests
     lldbUtility
     lldbUtilityHelpers
     lldbPluginTypeSystemClike
+    lldbPluginObjCLanguage
+    lldbPluginObjCRuntime
     LLVMTestingSupport
   )
