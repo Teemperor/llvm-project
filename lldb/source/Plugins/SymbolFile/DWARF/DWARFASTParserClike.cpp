@@ -42,6 +42,7 @@
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/ScopeExit.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
 
@@ -885,6 +886,41 @@ TypeSP DWARFASTParserClike::ParseTypedef(const DWARFDIE &die) {
   SymbolFileDWARF *dwarf = die.GetDWARF();
   ConstString name(GetDIEQualifiedName(die));
 
+  // In Objective-C(++) code, the `id`, `Class` and `SEL` typedefs are mapped
+  // onto complete builtin types (mirroring DWARFASTParserClang). Debug info
+  // only ever forward-declares their opaque pointee records (objc_object /
+  // objc_class / objc_selector), so using the DWARF typedef verbatim would
+  // leave e.g. `*_cmd` (a `SEL`) dereferencing an incomplete type. The basic
+  // type's pointee is a complete empty record, so dereferencing works.
+  if (Language::LanguageIsObjC(SymbolFileDWARF::GetLanguage(*die.GetCU())) &&
+      name) {
+    std::optional<lldb::BasicType> basic_type;
+    if (name == "id")
+      basic_type = lldb::eBasicTypeObjCID;
+    else if (name == "Class")
+      basic_type = lldb::eBasicTypeObjCClass;
+    else if (name == "SEL")
+      basic_type = lldb::eBasicTypeObjCSel;
+    if (basic_type) {
+      // Reachable both as a fresh top-level DWARF parse and nested inside a
+      // record completion (e.g. resolving a member's type), so pick the
+      // lock-free entry point when we know we're already nested (tracked by
+      // m_completion_depth -- see CompleteTypeFromDWARF).
+      CompilerType basic =
+          m_completion_depth > 0
+              ? m_ts.GetBasicTypeFromASTAssumingWriteLocked(*basic_type)
+              : m_ts.GetBasicTypeFromAST(*basic_type);
+      if (basic) {
+        Declaration decl = GetDIEDeclaration(die);
+        return dwarf->MakeType(
+            die.GetID(), name,
+            llvm::expectedToOptional(basic.GetByteSize(nullptr)),
+            /*context=*/nullptr, LLDB_INVALID_UID, Type::eEncodingIsUID, decl,
+            basic, Type::ResolveState::Full);
+      }
+    }
+  }
+
   // Resolve the aliased type. A typedef can alias an incomplete type, so use
   // its forward-declared CompilerType.
   DWARFDIE underlying_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
@@ -1291,6 +1327,15 @@ DWARFASTParserClike::ResolveReferencedType(const DWARFDIE &referencing_die,
 
 bool DWARFASTParserClike::CompleteTypeFromDWARF(
     const DWARFDIE &die, Type *type, const CompilerType &compiler_type) {
+  // Entering here always means TypeSystemClike::GetCompleteType already holds
+  // the write lock on this same thread (this is SymbolFile::CompleteType's
+  // delegate). Track that with an explicit counter (rather than a recursive
+  // lock) so nested completion calls below know to use the lock-free
+  // "AssumingWriteLocked" entry points instead of re-entering the public,
+  // locking ones.
+  ++m_completion_depth;
+  llvm::scope_exit depth_guard([&] { --m_completion_depth; });
+
   if (!die)
     return false;
 
@@ -1656,6 +1701,12 @@ void DWARFASTParserClike::CompleteMemberFunctionsFromDWARF(clike::Type &type) {
   if (!record_ptr)
     return;
   clike::RecordType &record = *record_ptr;
+
+  // Same reentrancy tracking as CompleteTypeFromDWARF: entering here always
+  // means TypeSystemClike::CompleteMemberFunctions already holds the write
+  // lock on this same thread.
+  ++m_completion_depth;
+  llvm::scope_exit depth_guard([&] { --m_completion_depth; });
 
   // Serialize under the type-system lock, matching CompleteTypeFromDWARF. Parse
   // the member functions at most once (parsing again would append duplicates),
