@@ -11,6 +11,7 @@
 #include "Plugins/TypeSystem/Clike/LanguageOpts.h"
 #include "Plugins/TypeSystem/Clike/Type.h"
 #include "Plugins/TypeSystem/Clike/TypeC.h"
+#include "Plugins/TypeSystem/Clike/TypeCpp.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
@@ -107,7 +108,8 @@ TEST(ClikeTypesTest, ContextCreatedTypes) {
 
   Type *builtin = context.GetBuiltinType(
       "int", /*byte_size=*/4, lldb::eEncodingSint, lldb::eFormatDecimal);
-  Type *record = context.CreateRecordType("MyStruct", /*byte_size=*/8);
+  Type *record = context.CreateRecordType("MyStruct", /*byte_size=*/8,
+                                          /*is_cpp_class=*/false);
 
   ASSERT_NE(builtin, nullptr);
   ASSERT_NE(record, nullptr);
@@ -119,5 +121,37 @@ TEST(ClikeTypesTest, ContextCreatedTypes) {
   ASSERT_NE(as_struct, nullptr);
   EXPECT_TRUE(as_struct->IsAggregate());
   EXPECT_EQ(as_struct->GetName().GetName(), "MyStruct");
+  // A plain C struct is a RecordType but never a ClassType.
   EXPECT_TRUE(llvm::isa<RecordType>(record));
+  EXPECT_FALSE(llvm::isa<ClassType>(record));
+}
+
+// A C++ record is created as a ClassType that can carry base classes, while
+// still being a RecordType (and thus aggregate) like a plain struct.
+TEST(ClikeTypesTest, ClassTypeBaseClasses) {
+  Context context(llvm::cantFail(
+      LanguageOpts::Create(llvm::Triple("x86_64-pc-linux-gnu"))));
+
+  Type *base = context.CreateRecordType("Base", /*byte_size=*/8,
+                                        /*is_cpp_class=*/true);
+  Type *derived = context.CreateRecordType("Derived", /*byte_size=*/16,
+                                           /*is_cpp_class=*/true);
+
+  ASSERT_NE(base, nullptr);
+  ASSERT_NE(derived, nullptr);
+
+  EXPECT_TRUE(llvm::isa<RecordType>(derived));
+  ClassType *as_class = llvm::dyn_cast<ClassType>(derived);
+  ASSERT_NE(as_class, nullptr);
+  EXPECT_FALSE(llvm::isa<StructType>(derived));
+
+  EXPECT_EQ(as_class->GetNumBaseClasses(), 0u);
+  // Base classes are added through the Context (the gated mutation entry
+  // point); ClassType::AddBaseClass itself is private.
+  context.AddBaseClass(*as_class, TypeRef(*base), /*byte_offset=*/0);
+  ASSERT_EQ(as_class->GetNumBaseClasses(), 1u);
+  const BaseClass *b = as_class->GetBaseClassAtIndex(0);
+  ASSERT_NE(b, nullptr);
+  EXPECT_EQ(&b->GetType().Get(), base);
+  EXPECT_EQ(b->GetByteOffset(), 0u);
 }

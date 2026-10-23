@@ -30,7 +30,7 @@ struct TypeSystemClikeRecordQueriesTest : public testing::Test {
   /// Create a complete record with one `int` field named `x`.
   CompilerType MakeRecordWithField(llvm::StringRef record_name,
                                    llvm::StringRef field_name) {
-    CompilerType record = builder.CreateRecordType(record_name, 4);
+    CompilerType record = builder.CreateRecordType(record_name, 4, false);
     auto *r = llvm::cast<RecordType>(
         static_cast<clike::Type *>(record.GetOpaqueQualType()));
     builder.AddField(*r, builder.GetIdentifier(field_name),
@@ -64,7 +64,7 @@ TEST_F(TypeSystemClikeRecordQueriesTest, FieldsBasic) {
 // A bitfield's bit offset combines the storage-unit byte offset and the
 // bitfield's own bit offset within it, and reports is_bitfield.
 TEST_F(TypeSystemClikeRecordQueriesTest, BitfieldOffsets) {
-  CompilerType record = builder.CreateRecordType("BF", 4);
+  CompilerType record = builder.CreateRecordType("BF", 4, false);
   auto *r = llvm::cast<RecordType>(
       static_cast<clike::Type *>(record.GetOpaqueQualType()));
   builder.AddField(*r, builder.GetIdentifier("flag"),
@@ -84,7 +84,30 @@ TEST_F(TypeSystemClikeRecordQueriesTest, BitfieldOffsets) {
   EXPECT_EQ(bit_offset, 3u);
 }
 
-// A plain struct never has base classes, even after completion.
+// GetNumDirectBaseClasses/GetDirectBaseClassAtIndex report a ClassType's base
+// classes, with the bit offset derived from the base's byte offset.
+TEST_F(TypeSystemClikeRecordQueriesTest, DirectBaseClasses) {
+  CompilerType base = builder.CreateRecordType("Base", 4, true);
+  builder.SetRecordComplete(*llvm::cast<ClassType>(
+      static_cast<clike::Type *>(base.GetOpaqueQualType())));
+
+  CompilerType derived = builder.CreateRecordType("Derived", 8, true);
+  auto *derived_class = llvm::cast<ClassType>(
+      static_cast<clike::Type *>(derived.GetOpaqueQualType()));
+  builder.AddBaseClass(*derived_class,
+                       static_cast<clike::Type *>(base.GetOpaqueQualType()),
+                       /*byte_offset=*/4);
+  builder.SetRecordComplete(*derived_class);
+
+  EXPECT_EQ(ts->GetNumDirectBaseClasses(derived.GetOpaqueQualType()), 1u);
+  uint32_t bit_offset = 0;
+  CompilerType base_from_ts = ts->GetDirectBaseClassAtIndex(
+      derived.GetOpaqueQualType(), 0, &bit_offset);
+  EXPECT_EQ(base_from_ts.GetOpaqueQualType(), base.GetOpaqueQualType());
+  EXPECT_EQ(bit_offset, 32u);
+}
+
+// A plain (non-C++) struct never has base classes, even after completion.
 TEST_F(TypeSystemClikeRecordQueriesTest, StructHasNoBaseClasses) {
   CompilerType record = MakeRecordWithField("PlainStruct", "x");
   EXPECT_EQ(ts->GetNumDirectBaseClasses(record.GetOpaqueQualType()), 0u);
@@ -100,11 +123,33 @@ TEST_F(TypeSystemClikeRecordQueriesTest, NoVirtualBaseClasses) {
   EXPECT_EQ(ts->GetNumVirtualBaseClasses(record.GetOpaqueQualType()), 0u);
 }
 
+// GetStaticFieldWithName finds a static data member by name and returns an
+// (invalid) empty decl when there is none by that name.
+TEST_F(TypeSystemClikeRecordQueriesTest, StaticFieldLookup) {
+  CompilerType record = builder.CreateRecordType("Foo", 4, true);
+  auto *r = llvm::cast<ClassType>(
+      static_cast<clike::Type *>(record.GetOpaqueQualType()));
+  builder.AddStaticDataMember(
+      *r, "s_count", static_cast<clike::Type *>(GetInt().GetOpaqueQualType()),
+      "_ZN3Foo7s_countE", std::nullopt);
+  builder.SetRecordComplete(*r);
+
+  CompilerDecl decl =
+      ts->GetStaticFieldWithName(record.GetOpaqueQualType(), "s_count");
+  EXPECT_TRUE(decl.IsValid());
+  EXPECT_EQ(ts->DeclGetName(decl.GetOpaqueDecl()).GetStringRef(), "s_count");
+
+  CompilerDecl missing =
+      ts->GetStaticFieldWithName(record.GetOpaqueQualType(), "nonexistent");
+  EXPECT_FALSE(missing.IsValid());
+}
+
 // IsAnonymousType recognizes a record marked as an anonymous struct/union
 // (its members are injected into the enclosing scope), not an ordinary named
 // or unnamed-but-not-anonymous record.
 TEST_F(TypeSystemClikeRecordQueriesTest, IsAnonymousType) {
-  CompilerType record = builder.CreateRecordType("", 4, /*is_union=*/true);
+  CompilerType record = builder.CreateRecordType("", 4, false,
+                                                 /*is_union=*/true);
   auto *r = llvm::cast<RecordType>(
       static_cast<clike::Type *>(record.GetOpaqueQualType()));
   builder.SetRecordAnonymousStructOrUnion(*r);
@@ -119,7 +164,7 @@ TEST_F(TypeSystemClikeRecordQueriesTest, IsAnonymousType) {
 TEST_F(TypeSystemClikeRecordQueriesTest, TypeBitAlign) {
   CompilerType ld = builder.GetBuiltinType(
       "long double", 16, lldb::eEncodingIEEE754, lldb::eFormatFloat);
-  CompilerType record = builder.CreateRecordType("LD", 16);
+  CompilerType record = builder.CreateRecordType("LD", 16, false);
   auto *r = llvm::cast<RecordType>(
       static_cast<clike::Type *>(record.GetOpaqueQualType()));
   builder.AddField(*r, builder.GetIdentifier("ld"),
