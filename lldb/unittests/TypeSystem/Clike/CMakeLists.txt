@@ -11,6 +11,7 @@ add_lldb_unittest(TypeSystemClikeUnitTests
   RecordTypeTest.cpp
   SugarTypeTest.cpp
   TypeCTest.cpp
+  TypeCppTest.cpp
   TypeNameTest.cpp
   TypeObjCTest.cpp
   TypeSystemClikeBasicQueriesTest.cpp

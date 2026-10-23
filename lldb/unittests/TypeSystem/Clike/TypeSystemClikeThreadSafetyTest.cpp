@@ -34,7 +34,7 @@ struct TypeSystemClikeThreadSafetyTest : public testing::Test {
   /// Create a complete record with one `int` field named `x`.
   CompilerType MakeRecordWithField(llvm::StringRef record_name,
                                    llvm::StringRef field_name) {
-    CompilerType record = builder.CreateRecordType(record_name, 4);
+    CompilerType record = builder.CreateRecordType(record_name, 4, false);
     auto *r = llvm::cast<RecordType>(
         static_cast<clike::Type *>(record.GetOpaqueQualType()));
     builder.AddField(*r, builder.GetIdentifier(field_name),
