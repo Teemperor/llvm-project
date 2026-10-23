@@ -16,6 +16,9 @@
 
 #include "TypeName.h"
 
+#include "Plugins/SymbolFile/DWARF/DWARFASTParserClike.h"
+#include "Plugins/SymbolFile/DWARF/DWARFDIE.h"
+
 #include "lldb/Core/DumpDataExtractor.h"
 #include "lldb/Core/PluginManager.h"
 #include "lldb/Expression/UtilityFunction.h"
@@ -292,6 +295,12 @@ llvm::SmallVector<TypeSystemClike *, 4> TypeSystemClike::GetLockOrder() const {
          "an instance must always lock itself");
   m_lock_order_valid = true;
   return m_lock_order;
+}
+
+plugin::dwarf::DWARFASTParser *TypeSystemClike::GetDWARFParser() {
+  if (!m_dwarf_ast_parser_up)
+    m_dwarf_ast_parser_up = std::make_unique<DWARFASTParserClike>(*this);
+  return m_dwarf_ast_parser_up.get();
 }
 
 CompilerType TypeSystemClike::GetCompilerType(clike::Type *type) {

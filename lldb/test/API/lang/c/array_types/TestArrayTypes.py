@@ -14,6 +14,7 @@ class ArrayTypesTestCase(TestBase):
         # Find the line number to break inside main().
         self.line = line_number("main.c", "// Set break point at this line.")
 
+    @add_test_categories(["typesystem-clike"])
     def test_and_run_command(self):
         """Test 'frame variable var_name' on some variables with array types."""
         self.build()
@@ -80,7 +81,7 @@ class ArrayTypesTestCase(TestBase):
         )
 
     @expectedFailureNetBSD
-    @add_test_categories(["pyapi"])
+    @add_test_categories(["pyapi", "typesystem-clike"])
     def test_and_python_api(self):
         """Use Python APIs to inspect variables with array types."""
         self.build()
