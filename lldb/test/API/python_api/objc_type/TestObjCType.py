@@ -15,7 +15,7 @@ class ObjCSBTypeTestCase(TestBase):
         TestBase.setUp(self)
         self.line = line_number("main.m", "// Break at this line")
 
-    @add_test_categories(["objc", "pyapi"])
+    @add_test_categories(["typesystem-clike", "objc", "pyapi"])
     def test(self):
         """Test SBType for ObjC classes."""
         self.build()
