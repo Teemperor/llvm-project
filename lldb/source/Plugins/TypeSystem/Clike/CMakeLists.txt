@@ -5,6 +5,7 @@ add_lldb_library(lldbPluginTypeSystemClike PLUGIN
   Identifier.cpp
   LanguageOpts.cpp
   Namespace.cpp
+  ObjCMethodSignature.cpp
   RecordType.cpp
   ScratchTypeSystemClike.cpp
   SugarType.cpp
