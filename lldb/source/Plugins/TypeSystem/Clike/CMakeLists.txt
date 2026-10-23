@@ -11,6 +11,7 @@ add_lldb_library(lldbPluginTypeSystemClike PLUGIN
   Type.cpp
   TypeC.cpp
   TypeName.cpp
+  TypeObjC.cpp
   TypeSystemClike.cpp
 
   LINK_COMPONENTS
@@ -22,6 +23,7 @@ add_lldb_library(lldbPluginTypeSystemClike PLUGIN
     lldbUtility
     lldbPluginExpressionParserClang
     lldbPluginSymbolFileDWARF
+    lldbPluginObjCRuntime
   CLANG_LIBS
     clangBasic
 )
