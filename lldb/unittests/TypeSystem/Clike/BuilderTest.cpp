@@ -9,6 +9,7 @@
 #include "Plugins/TypeSystem/Clike/Builder.h"
 #include "Plugins/TypeSystem/Clike/Type.h"
 #include "Plugins/TypeSystem/Clike/TypeC.h"
+#include "Plugins/TypeSystem/Clike/TypeCpp.h"
 #include "Plugins/TypeSystem/Clike/TypeSystemClike.h"
 
 #include "llvm/Support/Casting.h"
@@ -31,7 +32,8 @@ struct BuilderTest : public testing::Test {
 // SetRecordComplete (the gated mutator) flips it to complete.
 TEST_F(BuilderTest, CreateAndCompleteRecord) {
   Builder builder(*ts);
-  CompilerType record = builder.CreateRecordType("Foo", 4);
+  CompilerType record =
+      builder.CreateRecordType("Foo", 4, /*is_cpp_class=*/false);
   ASSERT_TRUE(record.IsValid());
   auto *r = llvm::cast<RecordType>(
       static_cast<clike::Type *>(record.GetOpaqueQualType()));
@@ -48,7 +50,8 @@ TEST_F(BuilderTest, ReferenceToAnotherTypeSystemIsDirect) {
   auto other_ts = std::make_shared<TypeSystemClike>(
       "other", llvm::cantFail(clike::LanguageOpts::Create(
                    llvm::Triple("x86_64-pc-linux-gnu"))));
-  CompilerType other_record = Builder(*other_ts).CreateRecordType("Foo", 4);
+  CompilerType other_record =
+      Builder(*other_ts).CreateRecordType("Foo", 4, /*is_cpp_class=*/false);
   auto *other_node =
       static_cast<clike::Type *>(other_record.GetOpaqueQualType());
 
@@ -62,7 +65,8 @@ TEST_F(BuilderTest, ReferenceToAnotherTypeSystemIsDirect) {
 
   // Same via the raw-node entry points (what the DWARF parser uses).
   auto *record = llvm::cast<RecordType>(static_cast<clike::Type *>(
-      builder.CreateRecordType("Bar", 8).GetOpaqueQualType()));
+      builder.CreateRecordType("Bar", 8, /*is_cpp_class=*/true)
+          .GetOpaqueQualType()));
   builder.AddField(*record, builder.GetIdentifier("foo"), other_node,
                    /*byte_offset=*/0);
   ASSERT_EQ(record->GetNumFields(), 1u);
@@ -81,7 +85,8 @@ TEST_F(BuilderTest, AddField) {
   Builder builder(*ts);
   CompilerType int_type = builder.GetBuiltinType("int", 4, lldb::eEncodingSint,
                                                  lldb::eFormatDecimal);
-  CompilerType record = builder.CreateRecordType("Foo", 4);
+  CompilerType record =
+      builder.CreateRecordType("Foo", 4, /*is_cpp_class=*/false);
   auto *r = llvm::cast<RecordType>(
       static_cast<clike::Type *>(record.GetOpaqueQualType()));
 
@@ -96,9 +101,69 @@ TEST_F(BuilderTest, AddField) {
   EXPECT_EQ(&f->GetType().Get(), int_type.GetOpaqueQualType());
 }
 
-// A TypeRef always names a type, so the Builder resolves the things debug info
-// spells as "no type" into real ones: a missing pointee is `void` and a missing
-// enum base is `int`.
+// AddBaseClass only works on a ClassType (only those track base classes);
+// this exercises the mutator that Context::AddBaseClass gates.
+TEST_F(BuilderTest, AddBaseClass) {
+  Builder builder(*ts);
+  CompilerType base =
+      builder.CreateRecordType("Base", 4, /*is_cpp_class=*/true);
+  CompilerType derived = builder.CreateRecordType("Derived", 8,
+                                                  /*is_cpp_class=*/true);
+  auto *derived_class = llvm::cast<ClassType>(
+      static_cast<clike::Type *>(derived.GetOpaqueQualType()));
+
+  builder.AddBaseClass(*derived_class,
+                       static_cast<clike::Type *>(base.GetOpaqueQualType()),
+                       /*byte_offset=*/0);
+  ASSERT_EQ(derived_class->GetNumBaseClasses(), 1u);
+  EXPECT_EQ(&derived_class->GetBaseClassAtIndex(0)->GetType().Get(),
+            base.GetOpaqueQualType());
+}
+
+// AddTemplateArgument records a type-kind template argument (e.g. the `int`
+// of `vector<int>`), used by data formatters to recover element types.
+TEST_F(BuilderTest, AddTemplateArgument) {
+  Builder builder(*ts);
+  CompilerType int_type = builder.GetBuiltinType("int", 4, lldb::eEncodingSint,
+                                                 lldb::eFormatDecimal);
+  CompilerType record =
+      builder.CreateRecordType("vector<int>", 24, /*is_cpp_class=*/true);
+  auto *r = llvm::cast<ClassType>(
+      static_cast<clike::Type *>(record.GetOpaqueQualType()));
+  builder.SetRecordTemplateInstantiation(*r);
+
+  builder.AddTemplateArgument(
+      *r, lldb::eTemplateArgumentKindType,
+      static_cast<clike::Type *>(int_type.GetOpaqueQualType()),
+      /*integral_value=*/0, /*is_default=*/false);
+  ASSERT_EQ(r->GetNumTemplateArguments(), 1u);
+  const TemplateArgument *arg = r->GetTemplateArgumentAtIndex(0);
+  EXPECT_EQ(arg->kind, lldb::eTemplateArgumentKindType);
+  EXPECT_EQ(&arg->type->Get(), int_type.GetOpaqueQualType());
+  EXPECT_TRUE(r->IsTemplateInstantiation());
+}
+
+// AddTemplateTemplateArgument records a template-template argument by name
+// only (it names another template, which isn't itself a modeled Type).
+TEST_F(BuilderTest, AddTemplateTemplateArgument) {
+  Builder builder(*ts);
+  CompilerType record =
+      builder.CreateRecordType("C<float, T1>", std::nullopt, true);
+  auto *r = llvm::cast<ClassType>(
+      static_cast<clike::Type *>(record.GetOpaqueQualType()));
+
+  builder.AddTemplateTemplateArgument(*r, "T1", /*is_default=*/false);
+  ASSERT_EQ(r->GetNumTemplateArguments(), 1u);
+  const TemplateArgument *arg = r->GetTemplateArgumentAtIndex(0);
+  EXPECT_EQ(arg->kind, lldb::eTemplateArgumentKindTemplate);
+  EXPECT_EQ(arg->name.GetName(), "T1");
+  EXPECT_FALSE(arg->type);
+}
+
+// A TypeRef always names a type, so the Builder resolves the three things
+// debug info spells as "no type" into real ones: a missing pointee is `void`,
+// a missing enum base is `int`, and a `void` template type argument (which
+// DWARF spells by omitting DW_AT_type) is the `void` builtin.
 TEST_F(BuilderTest, AbsentTypesResolveToRealOnes) {
   Builder builder(*ts);
 
@@ -121,6 +186,19 @@ TEST_F(BuilderTest, AbsentTypesResolveToRealOnes) {
   EXPECT_EQ(opaque_enum->GetUnderlyingType()->GetName().GetName(), "int");
   EXPECT_TRUE(opaque_enum->IsSigned());
   EXPECT_EQ(opaque_enum->GetEncoding(), lldb::eEncodingSint);
+
+  // A `void` type argument, e.g. `coroutine_handle<void>`.
+  CompilerType record = builder.CreateRecordType("coroutine_handle<void>", 8,
+                                                 /*is_cpp_class=*/true);
+  auto *r = llvm::cast<ClassType>(
+      static_cast<clike::Type *>(record.GetOpaqueQualType()));
+  builder.AddTemplateArgument(*r, lldb::eTemplateArgumentKindType,
+                              /*type=*/nullptr, /*integral_value=*/0,
+                              /*is_default=*/false);
+  ASSERT_EQ(r->GetNumTemplateArguments(), 1u);
+  const TemplateArgument *arg = r->GetTemplateArgumentAtIndex(0);
+  ASSERT_TRUE(arg->type);
+  EXPECT_TRUE(IsVoid(&arg->type->Get()));
 }
 
 // A function type always has a return type: nothing-returned is `void`. A
@@ -154,7 +232,7 @@ TEST_F(BuilderTest, FunctionReturnFallsBackToVoidButParametersDoNot) {
 // the Context level.
 TEST_F(BuilderTest, PointerTypesUniquedThroughBuilder) {
   Builder builder(*ts);
-  CompilerType record = builder.CreateRecordType("Foo", 4);
+  CompilerType record = builder.CreateRecordType("Foo", 4, false);
   CompilerType p1 = builder.CreatePointerType(record);
   CompilerType p2 = builder.CreatePointerType(record);
   EXPECT_EQ(p1.GetOpaqueQualType(), p2.GetOpaqueQualType());
@@ -168,7 +246,7 @@ TEST_F(BuilderTest, DeclContextAndUnqualifiedName) {
   const Namespace *ns =
       builder.GetNamespace("std", nullptr, /*is_inline=*/false);
   CompilerType record = builder.CreateRecordType(
-      "std::string", 32, /*is_union=*/false, /*is_class_keyword=*/false,
+      "std::string", 32, true, /*is_union=*/false, /*is_class_keyword=*/false,
       DeclScope{ns, builder.GetIdentifier("string")});
 
   auto *t = static_cast<clike::Type *>(record.GetOpaqueQualType());
