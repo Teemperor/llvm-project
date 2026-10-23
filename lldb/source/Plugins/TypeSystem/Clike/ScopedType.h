@@ -18,11 +18,11 @@ namespace lldb_private {
 namespace clike {
 
 /// Stores the enclosing namespace of a type that can be declared inside one
-/// (records, enums and typedefs).
+/// (C++ classes, enums and typedefs).
 ///
 /// Kept separate from NamedType so that named types which can never live in a
-/// namespace don't have to pay for the member; they report the default null
-/// (global) DeclContext from Type.
+/// namespace (C structs, Objective-C interfaces) don't pay for the member;
+/// they report the default null (global) DeclContext from Type.
 ///
 /// The constructor has the same (name, scope, ...) shape as NamedType's and
 /// forwards everything to \p Base, so it can wrap NamedType or any class

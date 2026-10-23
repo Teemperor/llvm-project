@@ -37,17 +37,33 @@ TEST_F(ScopedTypeTest, StoresDeclContext) {
   EXPECT_EQ(type.GetUnqualifiedName().GetName(), "string");
 }
 
-// The named kinds (record, typedef) keep the namespace they're created in.
-TEST_F(ScopedTypeTest, NamedKindsKeepDeclContext) {
-  RecordType *record = context.CreateRecordType(
-      "std::string", /*byte_size=*/32, /*is_union=*/false,
-      /*is_class_keyword=*/false,
+// The C++-capable named kinds (class, enum, typedef) keep their namespace.
+TEST_F(ScopedTypeTest, CppKindsKeepDeclContext) {
+  RecordType *cls = context.CreateRecordType(
+      "std::string", /*byte_size=*/32, /*is_cpp_class=*/true,
+      /*is_union=*/false, /*is_class_keyword=*/false,
       DeclScope{ns, context.GetIdentifier("string")});
-  EXPECT_EQ(record->GetDeclContext(), ns);
+  EXPECT_EQ(cls->GetDeclContext(), ns);
 
   Type *int_type = context.GetBuiltinType(BuiltinKind::Int);
   TypedefType *td = context.CreateTypedefType(
       "std::size_type", TypeRef(*int_type),
       DeclScope{ns, context.GetIdentifier("size_type")});
   EXPECT_EQ(td->GetDeclContext(), ns);
+}
+
+// C structs and ObjC interfaces don't store a DeclContext: they're always in
+// the global namespace.
+TEST_F(ScopedTypeTest, CAndObjCKindsAreGlobal) {
+  RecordType *s = context.CreateRecordType(
+      "Foo", /*byte_size=*/4, /*is_cpp_class=*/false, /*is_union=*/false,
+      /*is_class_keyword=*/false,
+      DeclScope{nullptr, context.GetIdentifier("Foo")});
+  EXPECT_EQ(s->GetDeclContext(), nullptr);
+  EXPECT_EQ(s->GetUnqualifiedName().GetName(), "Foo");
+
+  ObjCInterfaceType *iface = context.CreateObjCInterfaceType(
+      "NSObject", std::nullopt,
+      DeclScope{nullptr, context.GetIdentifier("NSObject")});
+  EXPECT_EQ(iface->GetDeclContext(), nullptr);
 }

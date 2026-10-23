@@ -12,6 +12,7 @@
 #include "TypeName.h"
 #include "TypeObjC.h"
 
+#include "llvm/ADT/APSInt.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
 
@@ -174,6 +175,12 @@ std::string PointerType::GetCanonicalName(bool base_only) const {
   return GetPointeeType()->GetPointeeCanonicalName("*", base_only);
 }
 
+std::string
+PointerType::GetTemplateArgValueName(uint64_t value,
+                                     const DisplayNameOptions &opts) const {
+  return GetDisplayName(opts);
+}
+
 // An unnamed enum (e.g. a function-local `enum { ... } x;`) has no spelling in
 // the debug info. Match clang's TagDecl printing, which renders it as
 // "(unnamed enum)" (see TagDecl::printName), qualified by the enclosing
@@ -195,6 +202,27 @@ std::string EnumType::GetCanonicalName(bool base_only) const {
     return g_unnamed_enum_name.str();
   return BuildUnnamedTagScopePrefix(*this, /*keep_inline_namespaces=*/true) +
          g_unnamed_enum_name.str();
+}
+
+std::string
+EnumType::GetTemplateArgValueName(uint64_t value,
+                                  const DisplayNameOptions &opts) const {
+  // An enum-typed argument prints as `EnumName::Enumerator` when the value
+  // matches one of the enumerators, mirroring clang's TemplateArgument::print
+  // (which uses the matching enumerator's name). If no enumerator matches,
+  // clang falls back to the cast form `(EnumName)value`.
+  std::string enum_name = GetDisplayName(opts);
+  for (const Enumerator &e : GetEnumerators()) {
+    // The argument is a 64-bit value that is sign-extended for signed types,
+    // so bring the enumerator's bits into the same form.
+    if (llvm::APSInt(e.GetValue(), !IsSigned()).extOrTrunc(64).getZExtValue() ==
+        value)
+      return enum_name + "::" + e.GetName().GetName().str();
+  }
+  std::string value_str = IsSigned()
+                              ? std::to_string(static_cast<int64_t>(value))
+                              : std::to_string(value);
+  return "(" + enum_name + ")" + value_str;
 }
 
 std::string ArrayType::BuildName(

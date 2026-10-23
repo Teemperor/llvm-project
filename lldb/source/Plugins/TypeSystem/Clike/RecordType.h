@@ -22,7 +22,6 @@
 #include "ByteSizedType.h"
 #include "Identifier.h"
 #include "NamedType.h"
-#include "ScopedType.h"
 #include "Type.h"
 
 namespace lldb_private {
@@ -34,8 +33,7 @@ namespace clike {
 /// created from a forward declaration and their members are added when they
 /// are completed. Only Context can modify a record.
 class RecordType
-    : public llvm::RTTIExtends<RecordType,
-                               ScopedType<NamedType<ByteSizedType<Type>>>> {
+    : public llvm::RTTIExtends<RecordType, NamedType<ByteSizedType<Type>>> {
 public:
   static char ID;
 
