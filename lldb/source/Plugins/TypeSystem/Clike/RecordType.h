@@ -77,11 +77,6 @@ public:
     return m_is_anonymous_struct_union;
   }
 
-  /// The record that contains this anonymous struct or union, or null if this
-  /// is not an anonymous struct or union. Used to name the record (e.g.,
-  /// `MySock::(anonymous union)`).
-  const RecordType *GetAnonymousParent() const { return m_anonymous_parent; }
-
   /// How this record is passed to and returned from functions, as specified
   /// by DW_AT_calling_convention.
   enum class ArgPassingKind : uint8_t {
@@ -145,9 +140,6 @@ private:
     m_explicit_alignment_in_bits = align;
   }
   void SetIsAnonymousStructOrUnion(bool v) { m_is_anonymous_struct_union = v; }
-  void SetAnonymousParent(const RecordType *parent) {
-    m_anonymous_parent = parent;
-  }
   void SetArgPassingKind(ArgPassingKind kind) { m_arg_passing = kind; }
   void SetMemberFunctionsParsed() { m_member_functions_parsed = true; }
   void AddField(Identifier name, TypeRef type, uint64_t byte_offset,
@@ -161,7 +153,6 @@ private:
   }
 
   // Larger members first so that the bit-fields fill the tail padding.
-  const RecordType *m_anonymous_parent = nullptr;
   std::optional<uint64_t> m_explicit_alignment_in_bits;
   std::vector<Field> m_fields;
   std::vector<std::pair<Identifier, TypeRef>> m_nested_types;
