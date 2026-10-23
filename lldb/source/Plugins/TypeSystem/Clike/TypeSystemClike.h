@@ -52,6 +52,29 @@ public:
   // DWARF parsing
   plugin::dwarf::DWARFASTParser *GetDWARFParser() override;
 
+  /// The target namespaces of the `using namespace` directives lexically in
+  /// scope at \p block (innermost first). Used by the expression evaluator so
+  /// an unqualified name is resolved through an active using-directive. Empty
+  /// unless this type system was populated from DWARF.
+  std::vector<CompilerDeclContext> GetUsingDirectiveNamespaces(Block &block);
+
+  /// The `using` declarations (e.g. `using Single::single;`) lexically in scope
+  /// at \p block (innermost first), each reported as the imported unqualified
+  /// name paired with the namespace it names the entity in. Used by the
+  /// expression evaluator so an unqualified name brought in by a using
+  /// declaration resolves to that namespace's entity. Empty unless this type
+  /// system was populated from DWARF.
+  std::vector<std::pair<ConstString, CompilerDeclContext>>
+  GetUsingDeclarations(Block &block);
+
+  /// If \p function_block is the block of a C++ member function (including a
+  /// static member function, which has no `this`), return the owning class'
+  /// CompilerType; otherwise an invalid CompilerType. Used by the expression
+  /// evaluator to establish the `$__lldb_class` context for unqualified member
+  /// lookups even when there is no `this` pointer. Empty unless this type
+  /// system was populated from DWARF.
+  CompilerType GetOwningClassForFunction(Block &function_block);
+
   /// Wrap one of our own Type nodes into a CompilerType owned by this system.
   CompilerType GetCompilerType(clike::Type *type);
   /// A CompilerType's opaque pointer isn't itself const-tracked -- constness
@@ -199,6 +222,12 @@ public:
 
   using LockedType = LockedIn<clike::Type *>;
   using SharedLockedType = LockedIn<const clike::Type *>;
+  /// Same idea, but for the opaque CompilerDecl pointers handed out by the
+  /// DeclGet*/GetTypeForDecl family (see clike::Decl -- a variant
+  /// of StaticDataMember/MemberFunction). There is no write counterpart: a
+  /// Decl is created once by Context::GetOrCreateDecl and never mutated
+  /// afterward, so every consumer only ever needs read access.
+  using SharedLockedDecl = LockedIn<const clike::Decl *>;
 
   /// The ONLY sanctioned way to get a mutable Type* out of an opaque compiler
   /// type. Do not let the raw pointer outlive the returned LockedType.
@@ -211,6 +240,11 @@ public:
   SharedLockedType GetTypeForRead(lldb::opaque_compiler_type_t type) const {
     return SharedLockedType(LockSet(GetLockOrder(), /*exclusive=*/false),
                             GetClikeType(type));
+  }
+  /// The ONLY sanctioned way to get a read-only Decl* out of an opaque decl.
+  SharedLockedDecl GetDeclForRead(void *opaque_decl) const {
+    return SharedLockedDecl(LockSet(GetLockOrder(), /*exclusive=*/false),
+                            static_cast<const clike::Decl *>(opaque_decl));
   }
 
   /// The instances a query rooted at this one may touch, sorted by ascending
@@ -249,7 +283,9 @@ public:
 
   // CompilerDecl functions
   ConstString DeclGetName(void *opaque_decl) override;
+  ConstString DeclGetMangledName(void *opaque_decl) override;
   CompilerType GetTypeForDecl(void *opaque_decl) override;
+  Scalar DeclGetConstantValue(void *opaque_decl) override;
 
   // CompilerDeclContext functions
   ConstString DeclContextGetName(void *opaque_decl_ctx) override;
@@ -304,12 +340,17 @@ public:
   bool GetCompleteType(lldb::opaque_compiler_type_t type) override;
   bool IsForcefullyCompleted(lldb::opaque_compiler_type_t type) override;
 
-  /// Parse \p type's Objective-C methods from debug info if they haven't been
-  /// already. Methods are only needed by the expression evaluator (to send
-  /// messages), so -- unlike fields and the superclass -- they are not parsed
+  /// Parse \p type's member functions from debug info if they haven't been
+  /// already. Member functions are only needed by the expression evaluator (to
+  /// call methods), so -- unlike fields and base classes -- they are not parsed
   /// as part of GetCompleteType. This is the deferred step that fills them in
-  /// on demand.
+  /// on demand (see ClangASTGenerator::PopulateRecord).
   void CompleteMemberFunctions(clike::Type *type);
+
+  /// Complete an incomplete class-template instantiation so its modeled
+  /// template arguments are available for building its display name (see the
+  /// definition for details). A no-op for non-record or already-complete types.
+  void CompleteTemplateInstantiationForName(clike::Type *type);
 
   // AST related queries
   uint32_t GetPointerByteSize() override;
@@ -353,6 +394,10 @@ public:
                            size_t idx) override;
   CompilerType GetPointeeType(lldb::opaque_compiler_type_t type) override;
   CompilerType GetPointerType(lldb::opaque_compiler_type_t type) override;
+  CompilerType
+  GetLValueReferenceType(lldb::opaque_compiler_type_t type) override;
+  CompilerType
+  GetRValueReferenceType(lldb::opaque_compiler_type_t type) override;
   CompilerType GetTypeForFormatters(lldb::opaque_compiler_type_t type) override;
 
   // Exploring the type
@@ -377,6 +422,8 @@ public:
                                std::string &name, uint64_t *bit_offset_ptr,
                                uint32_t *bitfield_bit_size_ptr,
                                bool *is_bitfield_ptr) override;
+  CompilerDecl GetStaticFieldWithName(lldb::opaque_compiler_type_t type,
+                                      llvm::StringRef name) override;
   uint32_t GetNumDirectBaseClasses(lldb::opaque_compiler_type_t type) override;
   uint32_t GetNumVirtualBaseClasses(lldb::opaque_compiler_type_t type) override;
   CompilerType GetDirectBaseClassAtIndex(lldb::opaque_compiler_type_t type,
@@ -455,6 +502,19 @@ public:
   bool IsReferenceType(lldb::opaque_compiler_type_t type,
                        CompilerType *pointee_type, bool *is_rvalue) override;
 
+  // Template argument access (used by e.g. data formatters to recover a
+  // container's element type).
+  bool IsTemplateType(lldb::opaque_compiler_type_t type) override;
+  size_t GetNumTemplateArguments(lldb::opaque_compiler_type_t type,
+                                 bool expand_pack) override;
+  lldb::TemplateArgumentKind
+  GetTemplateArgumentKind(lldb::opaque_compiler_type_t type, size_t idx,
+                          bool expand_pack) override;
+  CompilerType GetTypeTemplateArgument(lldb::opaque_compiler_type_t type,
+                                       size_t idx, bool expand_pack) override;
+  std::optional<CompilerType::IntegralTemplateArgument>
+  GetIntegralTemplateArgument(lldb::opaque_compiler_type_t type, size_t idx,
+                              bool expand_pack) override;
   CompilerType GetDirectNestedTypeWithName(lldb::opaque_compiler_type_t type,
                                            llvm::StringRef name) override;
 
@@ -514,6 +574,11 @@ private:
   /// member functions before reading them.
   void CompleteMemberFunctionsAssumingWriteLocked(clike::Type *type);
 
+  /// CompleteTemplateInstantiationForName, assuming the write lock is already
+  /// held. Used for this method's own self-recursion and by GetTypeName/
+  /// GetDisplayTypeName, which already hold the lock themselves.
+  void CompleteTemplateInstantiationForNameAssumingWriteLocked(clike::Type *t);
+
   /// GetTypeName, assuming the write lock is already held. Used by
   /// DumpTypeDescription, which needs a type's name for several of its own
   /// Type* nodes while already holding the lock for the whole dump.
@@ -572,8 +637,8 @@ private:
   clike::Type *GetObjCBaseClassBearingType(clike::Type *type);
 
   /// Recursive worker for GetFullyUnqualifiedType: strip top-level
-  /// cv-qualifiers and recurse through pointer/array pointees so the whole
-  /// type is cv-unqualified (see the definition for details).
+  /// cv-qualifiers and recurse through pointer/reference/array pointees so the
+  /// whole type is cv-unqualified (see the definition for details).
   clike::Type *GetFullyUnqualifiedTypeImpl(clike::Type *type);
 
   /// For an Objective-C interface whose ivars are NOT in the debug info (e.g.
