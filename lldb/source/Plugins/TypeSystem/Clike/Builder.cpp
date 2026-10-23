@@ -72,7 +72,8 @@ CompilerType Builder::CreateArrayType(CompilerType element_type,
 
 CompilerType Builder::CreatePointerType(CompilerType pointee_type) {
   // No pointee means `void *` -- DWARF spells that as a DW_TAG_pointer_type
-  // with no DW_AT_type.
+  // with no DW_AT_type, and the ObjC encoding reader produces it for a pointer
+  // to something it can't decode.
   return m_ts.GetCompilerType(
       m_ts.m_context.CreatePointerType(ToTypeRefOrVoid(pointee_type)));
 }
