@@ -1477,7 +1477,7 @@ CGDebugInfo::getOrCreateRecordFwdDecl(const RecordType *Ty,
   if (llvm::DIType *T = getTypeOrNull(QualType(Ty, 0)))
     return cast<llvm::DICompositeType>(T);
   llvm::DIFile *DefUnit = getOrCreateFile(RD->getLocation());
-  const unsigned Line =
+  unsigned Line =
       getLineNumber(RD->getLocation().isValid() ? RD->getLocation() : CurLoc);
   StringRef RDName = getClassName(RD);
 
@@ -1487,6 +1487,10 @@ CGDebugInfo::getOrCreateRecordFwdDecl(const RecordType *Ty,
   const RecordDecl *D = RD->getDefinition();
   if (D && D->isCompleteDefinition())
     Size = CGM.getContext().getTypeSize(Ty);
+  else if (CGM.getCodeGenOpts().DebugOmittedTypeLocations)
+    // The backend emits the location of all forward declarations in this
+    // mode, but it should only point to definitions that were omitted.
+    Line = 0;
 
   llvm::DINode::DIFlags Flags = llvm::DINode::FlagFwdDecl;
 
@@ -3563,6 +3567,10 @@ llvm::DIType *CGDebugInfo::CreateType(const ObjCInterfaceType *Ty,
   ObjCInterfaceDecl *Def = ID->getDefinition();
   if (!Def || !Def->getImplementation()) {
     llvm::DIScope *Mod = getParentModuleOrNull(ID);
+    // The backend emits the location of all forward declarations in this
+    // mode, but it should only point to omitted record definitions.
+    if (CGM.getCodeGenOpts().DebugOmittedTypeLocations)
+      Line = 0;
     llvm::DIType *FwdDecl = DBuilder.createReplaceableCompositeType(
         llvm::dwarf::DW_TAG_structure_type, ID->getName(), Mod ? Mod : TheCU,
         DefUnit, Line, RuntimeLang);
@@ -4134,7 +4142,11 @@ llvm::DIType *CGDebugInfo::CreateEnumType(const EnumType *Ty) {
     llvm::TempDIScope TmpContext(DBuilder.createReplaceableCompositeType(
         llvm::dwarf::DW_TAG_enumeration_type, "", TheCU, DefUnit, 0));
 
-    unsigned Line = getLineNumber(ED->getLocation());
+    // The backend emits the location of all forward declarations in this
+    // mode, but it should only point to omitted record definitions.
+    unsigned Line = CGM.getCodeGenOpts().DebugOmittedTypeLocations
+                        ? 0
+                        : getLineNumber(ED->getLocation());
     StringRef EDName = ED->getName();
     llvm::DIType *RetTy = DBuilder.createReplaceableCompositeType(
         llvm::dwarf::DW_TAG_enumeration_type, EDName, EDContext, DefUnit, Line,

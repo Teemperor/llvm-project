@@ -5400,6 +5400,14 @@ def gsplit_dwarf_EQ : Joined<["-"], "gsplit-dwarf=">, Group<g_flags_Group>,
   Values<"split,single">;
 def gno_split_dwarf : Flag<["-"], "gno-split-dwarf">, Group<g_flags_Group>,
   Visibility<[ClangOption, CLOption, DXCOption, FlangOption]>;
+defm omitted_type_locations : BoolOption<"g", "omitted-type-locations",
+  CodeGenOpts<"DebugOmittedTypeLocations">, DefaultFalse,
+  PosFlag<SetTrue, [], [], "Emit">,
+  NegFlag<SetFalse, [], [], "Do not emit">,
+  BothFlags<[], [ClangOption, CC1Option],
+            " the source location of types whose definition is omitted from "
+            "the debug info (e.g. by -fno-standalone-debug)">>,
+  Group<g_flags_Group>;
 def gtemplate_alias : Flag<["-"], "gtemplate-alias">, Group<g_flags_Group>, Visibility<[ClangOption, CC1Option]>;
 def gno_template_alias : Flag<["-"], "gno-template-alias">, Group<g_flags_Group>, Visibility<[ClangOption]>;
 def gsimple_template_names : Flag<["-"], "gsimple-template-names">, Group<g_flags_Group>;

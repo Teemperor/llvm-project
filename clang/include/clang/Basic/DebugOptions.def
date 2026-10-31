@@ -131,6 +131,10 @@ DEBUGOPT(DebugInfoForProfiling, 1, 0, Compatible)
 /// Whether to record the sysroot path or scrub it from debug info.
 DEBUGOPT(DebugRecordSysroot, 1, 1, Compatible)
 
+/// Whether to emit the source location of record types whose definition is
+/// omitted from the debug info.
+DEBUGOPT(DebugOmittedTypeLocations, 1, 0, Compatible)
+
 /// Whether to emit DW_TAG_template_alias for template aliases.
 DEBUGOPT(DebugTemplateAlias, 1, 0, Compatible)
 

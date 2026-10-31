@@ -5057,6 +5057,12 @@ renderDebugOptions(const ToolChain &TC, const Driver &D, const llvm::Triple &T,
   if (UseDebugTemplateAlias)
     CmdArgs.push_back("-gtemplate-alias");
 
+  if (const Arg *A = Args.getLastArg(options::OPT_gomitted_type_locations,
+                                     options::OPT_gno_omitted_type_locations))
+    if (A->getOption().matches(options::OPT_gomitted_type_locations) &&
+        checkDebugInfoOption(A, Args, D, TC))
+      CmdArgs.push_back("-gomitted-type-locations");
+
   if (const Arg *A = Args.getLastArg(options::OPT_gsrc_hash_EQ)) {
     StringRef v = A->getValue();
     CmdArgs.push_back(Args.MakeArgString("-gsrc-hash=" + v));

@@ -127,6 +127,8 @@ LLVM_ABI bool getXRayFunctionIndex();
 
 LLVM_ABI bool getDebugStrictDwarf();
 
+LLVM_ABI bool getDebugFwdDeclLocations();
+
 LLVM_ABI unsigned getAlignLoops();
 
 LLVM_ABI bool getJMCInstrument();

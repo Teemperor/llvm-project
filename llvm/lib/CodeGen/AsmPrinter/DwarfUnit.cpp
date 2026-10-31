@@ -1294,8 +1294,9 @@ void DwarfUnit::constructTypeDIE(DIE &Buffer, const DICompositeType *CTy) {
     // Add accessibility info if available.
     addAccess(Buffer, CTy->getFlags());
 
-    // Add source line info if available.
-    if (!CTy->isForwardDecl())
+    // Add source line info if available. Forward declarations only get a
+    // source location on request.
+    if (!CTy->isForwardDecl() || Asm->TM.Options.DebugFwdDeclLocations)
       addSourceLine(Buffer, CTy);
 
     // No harm in adding the runtime language to the declaration.

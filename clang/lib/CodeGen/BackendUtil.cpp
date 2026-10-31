@@ -441,6 +441,7 @@ static bool initTargetOptions(const CompilerInstance &CI,
   Options.XRayFunctionIndex = CodeGenOpts.XRayFunctionIndex;
   Options.LoopAlignment = CodeGenOpts.LoopAlignment;
   Options.DebugStrictDwarf = CodeGenOpts.DebugStrictDwarf;
+  Options.DebugFwdDeclLocations = CodeGenOpts.DebugOmittedTypeLocations;
   Options.ObjectFilenameForDebug =
       CodeGenOpts.remapDebugPathPrefix(CodeGenOpts.ObjectFilenameForDebug);
   Options.JMCInstrument = CodeGenOpts.JMCInstrument;

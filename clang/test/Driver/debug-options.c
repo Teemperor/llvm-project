@@ -518,3 +518,10 @@
 // RUN: %clang -### -target x86_64 -c -gdwarf-5 -gtemplate-alias -gno-template-alias %s 2>&1 | FileCheck %s --check-prefixes=NO-TEMPLATE-ALIAS
 // TEMPLATE-ALIAS: "-gtemplate-alias"
 // NO-TEMPLATE-ALIAS-NOT: "-gtemplate-alias"
+
+//// Test -g[no-]omitted-type-locations.
+// RUN: %clang -### -target x86_64 -c -g -gomitted-type-locations %s 2>&1 | FileCheck %s --check-prefixes=OMITTED-TYPE-LOCS
+// RUN: %clang -### -target x86_64 -c -g -gomitted-type-locations -gno-omitted-type-locations %s 2>&1 | FileCheck %s --check-prefixes=NO-OMITTED-TYPE-LOCS
+// RUN: %clang -### -target x86_64 -c -g %s 2>&1 | FileCheck %s --check-prefixes=NO-OMITTED-TYPE-LOCS
+// OMITTED-TYPE-LOCS: "-gomitted-type-locations"
+// NO-OMITTED-TYPE-LOCS-NOT: "-gomitted-type-locations"

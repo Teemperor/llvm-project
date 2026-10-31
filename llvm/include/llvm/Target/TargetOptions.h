@@ -111,7 +111,8 @@ public:
         EmitAddrsig(false), BBAddrMap(false), EmitCallGraphSection(false),
         EmitCallSiteInfo(false), EnableDebugEntryValues(false),
         ValueTrackingVariableLocations(false), ForceDwarfFrameSection(false),
-        XRayFunctionIndex(true), DebugStrictDwarf(false), JMCInstrument(false),
+        XRayFunctionIndex(true), DebugStrictDwarf(false),
+        DebugFwdDeclLocations(false), JMCInstrument(false),
         EnableCFIFixup(false), MisExpect(false), XCOFFReadOnlyPointers(false),
         VerifyArgABICompliance(false) {}
 
@@ -254,6 +255,10 @@ public:
   /// When set to true, don't use DWARF extensions in later DWARF versions.
   /// By default, it is set to false.
   unsigned DebugStrictDwarf : 1;
+
+  /// When set to true, emit DW_AT_decl_file and DW_AT_decl_line for forward
+  /// declared composite types if they have a source location.
+  unsigned DebugFwdDeclLocations : 1;
 
   /// Enable JustMyCode instrumentation.
   unsigned JMCInstrument : 1;
