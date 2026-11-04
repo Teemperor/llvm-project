@@ -374,16 +374,47 @@ bool TypeSystemClike::IsScopedEnumerationType(
   return false;
 }
 
-bool TypeSystemClike::IsPossibleDynamicType(lldb::opaque_compiler_type_t type,
+bool TypeSystemClike::IsPossibleDynamicType(opaque_compiler_type_t type,
                                             CompilerType *target_type,
                                             bool check_cplusplus,
                                             bool check_objc) {
-  return false;
+  if (target_type)
+    target_type->Clear();
+  // May force-complete a pointee record below, so this needs the write lock.
+  LockedType tt = GetTypeForWrite(type);
+  if (!tt)
+    return false;
+
+  // A pointer to an Objective-C object, a pointer/reference to a polymorphic
+  // C++ class, or a `void *` -- see clike::Type::GetDynamicTypeCandidate. A
+  // pointee record may need completing to tell whether it is polymorphic.
+  clike::Type *pointee = Desugar(tt.get())->GetDynamicTypeCandidate(
+      (check_cplusplus ? clike::DynamicTypeCheck::CPlusPlus
+                       : clike::DynamicTypeCheck::None) |
+          (check_objc ? clike::DynamicTypeCheck::ObjC
+                      : clike::DynamicTypeCheck::None),
+      [this](clike::Type *t) { CompleteTypeAssumingWriteLocked(t); });
+  if (!pointee)
+    return false;
+  if (target_type)
+    target_type->SetCompilerType(weak_from_this(),
+                                 static_cast<opaque_compiler_type_t>(pointee));
+  return true;
 }
 
-bool TypeSystemClike::IsPointerType(lldb::opaque_compiler_type_t type,
+bool TypeSystemClike::IsPointerType(opaque_compiler_type_t type,
                                     CompilerType *pointee_type) {
-  return false;
+  if (pointee_type)
+    pointee_type->Clear();
+  SharedLockedType tt = GetTypeForRead(type);
+  if (!tt)
+    return false;
+  const clike::Type *t = Desugar(tt.get());
+  if (!t->IsPointer())
+    return false;
+  if (pointee_type)
+    *pointee_type = GetCompilerType(t->GetPointeeType());
+  return true;
 }
 
 bool TypeSystemClike::IsScalarType(opaque_compiler_type_t type) {
@@ -520,6 +551,17 @@ TypeSystemClike::GetTypeInfo(opaque_compiler_type_t type,
   if (!tt)
     return 0;
   const clike::Type *t = tt.get();
+  // Hand back the element/pointee type when asked; callers such as
+  // ValueObject::GetPointeeData rely on it to know how to read array elements
+  // or dereference pointers/references.
+  if (pointee_or_element_compiler_type) {
+    const clike::Type *desugared = Desugar(t);
+    clike::Type *inner = desugared->GetArrayElementType();
+    if (!inner)
+      inner = desugared->GetPointeeType();
+    if (inner)
+      *pointee_or_element_compiler_type = GetCompilerType(inner);
+  }
   return t->GetTypeInfo();
 }
 
@@ -585,14 +627,25 @@ TypeSystemClike::GetMemberFunctionAtIndex(opaque_compiler_type_t type,
   return TypeMemberFunctionImpl();
 }
 
-CompilerType
-TypeSystemClike::GetPointeeType(lldb::opaque_compiler_type_t type) {
-  return CompilerType();
+CompilerType TypeSystemClike::GetPointeeType(opaque_compiler_type_t type) {
+  SharedLockedType tt = GetTypeForRead(type);
+  if (!tt)
+    return CompilerType();
+  // A `void *` points at the `void` builtin, so this is a valid CompilerType
+  // for every pointer -- which is what callers like
+  // CompilerType::IsPointerToVoid expect (and what TypeSystemClang, whose
+  // `void` QualType is always valid, does). A reference's "pointee" is the
+  // referenced type, matching TypeSystemClang::GetPointeeType
+  // (clang::Type::getPointeeType() answers both pointers and references).
+  return GetCompilerType(Desugar(tt.get())->GetPointeeType());
 }
 
-CompilerType
-TypeSystemClike::GetPointerType(lldb::opaque_compiler_type_t type) {
-  return CompilerType();
+CompilerType TypeSystemClike::GetPointerType(opaque_compiler_type_t type) {
+  // Allocates a fresh PointerType node.
+  LockedType t = GetTypeForWrite(type);
+  if (!t)
+    return CompilerType();
+  return clike::Builder(*this).CreatePointerType(GetCompilerType(t.get()));
 }
 
 CompilerType
@@ -611,6 +664,12 @@ TypeSystemClike::GetTypeForFormatters(opaque_compiler_type_t type) {
   // meaningful to formatters).
   clike::Type *t = tt->StripCVQualifiers();
 
+  if (t->IsPointer()) {
+    clike::Type *pointee = t->GetPointeeType();
+    clike::Type *stripped = pointee->StripCVQualifiers();
+    if (stripped != pointee)
+      return clike::Builder(*this).CreatePointerType(GetCompilerType(stripped));
+  }
   return GetCompilerType(t);
 }
 
@@ -642,9 +701,31 @@ Format TypeSystemClike::GetFormat(opaque_compiler_type_t type) {
 }
 
 llvm::Expected<uint32_t>
-TypeSystemClike::GetNumChildren(lldb::opaque_compiler_type_t type,
+TypeSystemClike::GetNumChildren(opaque_compiler_type_t type,
                                 bool omit_empty_base_classes,
                                 const ExecutionContext *exe_ctx) {
+  // Lazily completes the type (and recurses through transparent
+  // pointers/references), so this needs the write lock.
+  LockedType t = GetTypeForWrite(type);
+  return GetNumChildrenImpl(t.get(), omit_empty_base_classes, exe_ctx);
+}
+
+llvm::Expected<uint32_t>
+TypeSystemClike::GetNumChildrenImpl(clike::Type *type,
+                                    bool omit_empty_base_classes,
+                                    const ExecutionContext *exe_ctx) {
+  if (!type)
+    return 0;
+  clike::Type *t = Desugar(type);
+  // A pointer/reference is transparent when its children are the pointee's
+  // members (see Type::GetTransparentChildPointee); otherwise its single child
+  // is the dereferenced value -- except for `void *`, which has no pointee to
+  // show and therefore no children (a reference can't be to void).
+  if (clike::Type *pointee = t->GetPointeeType()) {
+    if (clike::Type *transparent = t->GetTransparentChildPointee())
+      return GetNumChildrenImpl(transparent, omit_empty_base_classes, exe_ctx);
+    return clike::IsVoid(pointee) ? 0 : 1;
+  }
   return 0;
 }
 
@@ -729,20 +810,117 @@ CompilerType TypeSystemClike::GetVirtualBaseClassAtIndex(
 }
 
 llvm::Expected<CompilerType> TypeSystemClike::GetDereferencedType(
-    lldb::opaque_compiler_type_t type, ExecutionContext *exe_ctx,
+    opaque_compiler_type_t type, ExecutionContext *exe_ctx,
     std::string &deref_name, uint32_t &deref_byte_size,
     int32_t &deref_byte_offset, ValueObject *valobj, uint64_t &language_flags) {
-  return CompilerType();
+  // Only pointers, references and arrays can be dereferenced.
+  if (!IsPointerOrReferenceType(type, nullptr) &&
+      !IsArrayType(type, nullptr, nullptr, nullptr))
+    return llvm::createStringError("not a pointer, reference or array type");
+
+  // A `void *` cannot be dereferenced. Report a specific error (matching
+  // TypeSystemClang) rather than falling through to a zero-sized child, which
+  // would surface a generic "dereference failed" message.
+  if (IsPointerType(type, nullptr) && GetPointeeType(type).IsVoidType())
+    return llvm::createStringError("cannot dereference void *");
+
+  // The dereferenced value is child 0. Ask for it non-transparently so a
+  // pointer-to-aggregate yields the pointee itself rather than its members.
+  uint32_t child_bitfield_bit_size = 0;
+  uint32_t child_bitfield_bit_offset = 0;
+  bool child_is_base_class = false;
+  bool child_is_deref_of_parent = false;
+  return GetChildCompilerTypeAtIndex(
+      type, exe_ctx, /*idx=*/0, /*transparent_pointers=*/false,
+      /*omit_empty_base_classes=*/true, /*ignore_array_bounds=*/false,
+      deref_name, deref_byte_size, deref_byte_offset, child_bitfield_bit_size,
+      child_bitfield_bit_offset, child_is_base_class, child_is_deref_of_parent,
+      valobj, language_flags);
 }
 
 llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndex(
-    lldb::opaque_compiler_type_t type, ExecutionContext *exe_ctx, size_t idx,
+    opaque_compiler_type_t type, ExecutionContext *exe_ctx, size_t idx,
     bool transparent_pointers, bool omit_empty_base_classes,
     bool ignore_array_bounds, std::string &child_name,
     uint32_t &child_byte_size, int32_t &child_byte_offset,
     uint32_t &child_bitfield_bit_size, uint32_t &child_bitfield_bit_offset,
     bool &child_is_base_class, bool &child_is_deref_of_parent,
     ValueObject *valobj, uint64_t &language_flags) {
+  // Lazily completes the type (and recurses through transparent
+  // pointers/references), so this needs the write lock.
+  LockedType t = GetTypeForWrite(type);
+  return GetChildCompilerTypeAtIndexImpl(
+      t.get(), exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
+      ignore_array_bounds, child_name, child_byte_size, child_byte_offset,
+      child_bitfield_bit_size, child_bitfield_bit_offset, child_is_base_class,
+      child_is_deref_of_parent, valobj, language_flags);
+}
+
+llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
+    clike::Type *type, ExecutionContext *exe_ctx, size_t idx,
+    bool transparent_pointers, bool omit_empty_base_classes,
+    bool ignore_array_bounds, std::string &child_name,
+    uint32_t &child_byte_size, int32_t &child_byte_offset,
+    uint32_t &child_bitfield_bit_size, uint32_t &child_bitfield_bit_offset,
+    bool &child_is_base_class, bool &child_is_deref_of_parent,
+    ValueObject *valobj, uint64_t &language_flags) {
+  child_name.clear();
+  child_byte_size = 0;
+  child_byte_offset = 0;
+  child_bitfield_bit_size = 0;
+  child_bitfield_bit_offset = 0;
+  child_is_base_class = false;
+  child_is_deref_of_parent = false;
+  language_flags = 0;
+
+  if (!type)
+    return CompilerType();
+  CompleteTypeAssumingWriteLocked(type);
+  clike::Type *t = Desugar(type);
+
+  // A pointer is transparent, mirroring TypeSystemClang: when asked
+  // transparently, expanding it splices in the pointee aggregate's members
+  // instead of yielding a single deref child. Only an already-complete
+  // aggregate is expanded transparently so that merely inspecting a pointer
+  // doesn't force completion of an otherwise-lazy pointee; otherwise child 0 is
+  // the dereferenced value (which the DIL `ptr->member` path relies on).
+  if (t->IsPointer()) {
+    clike::Type *pointee = t->GetPointeeType();
+    if (clike::IsVoid(pointee))
+      return CompilerType(); // Can't dereference `void *`.
+
+    if (transparent_pointers && t->GetTransparentChildPointee()) {
+      bool tmp_child_is_deref_of_parent = false;
+      return GetChildCompilerTypeAtIndexImpl(
+          pointee, exe_ctx, idx, transparent_pointers, omit_empty_base_classes,
+          ignore_array_bounds, child_name, child_byte_size, child_byte_offset,
+          child_bitfield_bit_size, child_bitfield_bit_offset,
+          child_is_base_class, tmp_child_is_deref_of_parent, valobj,
+          language_flags);
+    }
+
+    child_is_deref_of_parent = true;
+    if (const char *parent_name =
+            valobj ? valobj->GetName().GetCString() : nullptr) {
+      child_name.assign(1, '*');
+      child_name += parent_name;
+    }
+    if (idx != 0)
+      return CompilerType();
+    // Dereferencing yields the pointee by value, so it must be complete now
+    // (this is the explicit access that is allowed to force completion of an
+    // otherwise-lazy pointee).
+    CompleteTypeAssumingWriteLocked(pointee);
+    std::optional<uint64_t> byte_size = pointee->GetByteSize();
+    if (!byte_size)
+      return llvm::createStringError(
+          "incomplete type \"" +
+          GetDisplayTypeNameAssumingWriteLocked(pointee).GetString() + "\"");
+    child_byte_size = *byte_size;
+    child_byte_offset = 0;
+    return GetCompilerType(pointee);
+  }
+
   return CompilerType();
 }
 
@@ -858,9 +1036,11 @@ bool TypeSystemClike::IsRuntimeGeneratedType(opaque_compiler_type_t type) {
   return false;
 }
 
-bool TypeSystemClike::IsPointerOrReferenceType(
-    lldb::opaque_compiler_type_t type, CompilerType *pointee_type) {
-  return false;
+bool TypeSystemClike::IsPointerOrReferenceType(opaque_compiler_type_t type,
+                                               CompilerType *pointee_type) {
+  if (IsPointerType(type, pointee_type))
+    return true;
+  return IsReferenceType(type, pointee_type, /*is_rvalue=*/nullptr);
 }
 
 unsigned TypeSystemClike::GetTypeQualifiers(opaque_compiler_type_t type) {
@@ -1004,6 +1184,16 @@ clike::Type *TypeSystemClike::GetFullyUnqualifiedTypeImpl(clike::Type *t) {
   // Strip any stacked top-level cv-qualifiers.
   t = t->StripCVQualifiers();
 
+  clike::Builder builder(*this);
+  if (t->IsPointer()) {
+    clike::Type *pointee = t->GetPointeeType();
+    clike::Type *stripped = GetFullyUnqualifiedTypeImpl(pointee);
+    if (stripped != pointee)
+      return static_cast<clike::Type *>(
+          builder.CreatePointerType(GetCompilerType(stripped))
+              .GetOpaqueQualType());
+    return t;
+  }
   return t;
 }
 
