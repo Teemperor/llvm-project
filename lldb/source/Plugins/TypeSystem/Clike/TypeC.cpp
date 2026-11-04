@@ -13,3 +13,4 @@ using namespace lldb_private::clike;
 // Storage for the LLVM RTTI discriminators. The addresses (not the values) are
 // what identify each class, so the initializer is irrelevant.
 char TypedefType::ID = 0;
+char CVQualifiedType::ID = 0;
