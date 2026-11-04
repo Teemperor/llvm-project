@@ -19,8 +19,9 @@ namespace clike {
 
 /// Represents a named type: its qualified and unqualified names.
 ///
-/// The enclosing namespace is not stored here, as not every named type can be
-/// declared in one. Only the unqualified name is taken from \p scope.
+/// The enclosing namespace is not stored here; see ScopedType for the kinds
+/// that can be declared in a namespace. Only the unqualified name is taken from
+/// \p scope.
 template <typename Base> class NamedType : public Base {
 public:
   /// \p name The qualified name.

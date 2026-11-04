@@ -9,6 +9,7 @@
 #include "TypeC.h"
 
 #include "Context.h"
+#include "TypeName.h"
 
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/MathExtras.h"
@@ -142,19 +143,25 @@ std::string PointerType::GetCanonicalName(bool base_only) const {
 
 // An unnamed enum (e.g. a function-local `enum { ... } x;`) has no spelling in
 // the debug info. Match clang's TagDecl printing, which renders it as
-// "(unnamed enum)" (see TagDecl::printName).
+// "(unnamed enum)" (see TagDecl::printName), qualified by the enclosing
+// namespace chain.
 static constexpr llvm::StringLiteral g_unnamed_enum_name = "(unnamed enum)";
 
 std::string EnumType::GetDisplayName(const DisplayNameOptions &opts) const {
   if (!IsUnnamed())
     return Type::GetDisplayName(opts);
-  return g_unnamed_enum_name.str();
+  return BuildUnnamedTagScopePrefix(*this, opts.keep_inline_namespaces) +
+         g_unnamed_enum_name.str();
 }
 
 std::string EnumType::GetCanonicalName(bool base_only) const {
   if (!IsUnnamed())
     return Type::GetCanonicalName(base_only);
-  return g_unnamed_enum_name.str();
+  // `base_only` asks for the unqualified spelling, so skip the prefix then.
+  if (base_only)
+    return g_unnamed_enum_name.str();
+  return BuildUnnamedTagScopePrefix(*this, /*keep_inline_namespaces=*/true) +
+         g_unnamed_enum_name.str();
 }
 
 std::string ArrayType::BuildName(

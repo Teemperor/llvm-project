@@ -31,6 +31,7 @@
 #include "Identifier.h"
 #include "NamedType.h"
 #include "RecordType.h"
+#include "ScopedType.h"
 #include "SugarType.h"
 #include "Type.h"
 
@@ -221,7 +222,7 @@ public:
 /// A typedef/using alias. It carries its own (alias) name but otherwise behaves
 /// like the type it aliases.
 class TypedefType
-    : public llvm::RTTIExtends<TypedefType, NamedType<SugarType>> {
+    : public llvm::RTTIExtends<TypedefType, ScopedType<NamedType<SugarType>>> {
 public:
   using RTTIExtends::RTTIExtends;
 
@@ -352,7 +353,8 @@ private:
 /// named constants; scoped enums (`enum class`) are distinguished so their
 /// enumerators are not treated as being in the enclosing scope.
 class EnumType
-    : public llvm::RTTIExtends<EnumType, NamedType<ByteSizedType<Type>>> {
+    : public llvm::RTTIExtends<EnumType,
+                                ScopedType<NamedType<ByteSizedType<Type>>>> {
 public:
   static char ID;
 

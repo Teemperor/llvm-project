@@ -56,6 +56,16 @@ std::string BuildDisplayName(Type *t, bool keep_inline_namespaces = false);
 std::string BuildFunctionName(Type *fn, llvm::StringRef decl,
                               bool keep_inline_namespaces = false);
 
+/// The enclosing scopes of the named type \p t as a prefix of its name (e.g.
+/// `std::`). Inline namespaces are only kept if \p keep_inline_namespaces is
+/// set; anonymous namespaces are always elided.
+std::string BuildScopePrefix(const Type &t, bool keep_inline_namespaces);
+
+/// Like BuildScopePrefix, but for an unnamed tag type (e.g. "(unnamed
+/// class)"), which keeps anonymous namespaces as "(anonymous namespace)::".
+std::string BuildUnnamedTagScopePrefix(const Type &t,
+                                       bool keep_inline_namespaces);
+
 } // namespace clike
 } // namespace lldb_private
 
