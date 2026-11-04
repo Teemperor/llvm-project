@@ -388,9 +388,20 @@ bool TypeSystemClike::IsMemberDataPointerType(opaque_compiler_type_t type) {
 }
 
 bool TypeSystemClike::IsBlockPointerType(
-    lldb::opaque_compiler_type_t type,
-    CompilerType *function_pointer_type_ptr) {
-  return false;
+    opaque_compiler_type_t type, CompilerType *function_pointer_type_ptr) {
+  // May allocate a fresh pointer type below, so this needs the write lock.
+  LockedType t = GetTypeForWrite(type);
+  if (!t)
+    return false;
+  clike::Type *ptr = Desugar(t.get());
+  if (!ptr->IsBlockPointer())
+    return false;
+  // Report the corresponding function-pointer type (a plain pointer to the
+  // block's function type), mirroring TypeSystemClang.
+  if (function_pointer_type_ptr)
+    *function_pointer_type_ptr = clike::Builder(*this).CreatePointerType(
+        GetCompilerType(ptr->GetPointeeType()));
+  return true;
 }
 
 bool TypeSystemClike::IsIntegerType(opaque_compiler_type_t type,
