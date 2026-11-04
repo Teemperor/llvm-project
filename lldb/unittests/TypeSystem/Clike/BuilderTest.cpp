@@ -159,3 +159,19 @@ TEST_F(BuilderTest, PointerTypesUniquedThroughBuilder) {
   CompilerType p2 = builder.CreatePointerType(record);
   EXPECT_EQ(p1.GetOpaqueQualType(), p2.GetOpaqueQualType());
 }
+
+// The DeclScope a named type is created with records the namespace and
+// unqualified spelling used to build its (possibly namespace-qualified) display
+// name.
+TEST_F(BuilderTest, DeclContextAndUnqualifiedName) {
+  Builder builder(*ts);
+  const Namespace *ns =
+      builder.GetNamespace("std", nullptr, /*is_inline=*/false);
+  CompilerType record = builder.CreateRecordType(
+      "std::string", 32, /*is_union=*/false, /*is_class_keyword=*/false,
+      DeclScope{ns, builder.GetIdentifier("string")});
+
+  auto *t = static_cast<clike::Type *>(record.GetOpaqueQualType());
+  EXPECT_EQ(t->GetDeclContext(), ns);
+  EXPECT_EQ(t->GetUnqualifiedName().GetName(), "string");
+}
