@@ -279,6 +279,30 @@ private:
   PtrAuthQualifier m_qualifier;
 };
 
+/// Pure display sugar preserving how a type was spelled in the source (e.g.
+/// `::Struct`, `$V< ::Struct>`), like clang's elaborated-type / template-type
+/// sugar. It is fully transparent: the *display* name uses the stored spelling
+/// (so a user's `::Struct` shows as `::Struct`), but the canonical type name
+/// desugars past it (so formatters keyed on `Struct` still match), mirroring
+/// TypeSystemClang's RemoveWrappingTypes.
+class ElaboratedType : public llvm::RTTIExtends<ElaboratedType, SugarType> {
+public:
+  static char ID;
+
+  ElaboratedType(TypeRef underlying_type, Identifier spelling)
+      : RTTIExtends(underlying_type), m_spelling(spelling) {}
+
+  /// The source spelling to use for the display name (e.g. `::Struct`).
+  Identifier GetSpelling() const { return m_spelling; }
+
+  Type *StripElaborated() override {
+    return GetUnderlyingType()->StripElaborated();
+  }
+
+private:
+  Identifier m_spelling;
+};
+
 /// A C/C++ enumeration type. It has an underlying integer type and a set of
 /// named constants; scoped enums (`enum class`) are distinguished so their
 /// enumerators are not treated as being in the enclosing scope.

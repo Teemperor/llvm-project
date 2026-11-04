@@ -239,6 +239,20 @@ TEST_F(TypeCTest, Typedef) {
   EXPECT_TRUE(llvm::isa<SugarType>(static_cast<Type *>(alias)));
 }
 
+// Elaborated sugar is peeled by StripElaborated, which stops at a typedef.
+TEST_F(TypeCTest, Elaborated) {
+  TypedefType *alias = context.CreateTypedefType("my_int", TypeRef(*Int()));
+  ElaboratedType *el =
+      context.CreateElaboratedType("::my_int", TypeRef(*alias));
+  ElaboratedType *el_el =
+      context.CreateElaboratedType("::my_int", TypeRef(*el));
+  EXPECT_EQ(el->GetSpelling().GetName(), "::my_int");
+  EXPECT_EQ(el_el->StripElaborated(), alias);
+  EXPECT_EQ(alias->StripElaborated(), alias);
+  // An elaborated type isn't itself a typedef.
+  EXPECT_EQ(el->GetTypedefedType(), nullptr);
+}
+
 // A cv-qualified type is sugar that records which qualifiers apply, and the
 // CVR mask collapses a whole chain of them.
 TEST_F(TypeCTest, CVQualified) {
