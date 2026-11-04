@@ -9,6 +9,9 @@
 #include "TypeName.h"
 
 #include "Type.h"
+#include "TypeC.h"
+
+#include "llvm/Support/Casting.h"
 
 namespace lldb_private {
 using namespace lldb_private::clike;
@@ -32,6 +35,12 @@ std::string clike::BuildDisplayName(Type *t, bool keep_inline_namespaces) {
   DisplayNameOptions opts;
   opts.keep_inline_namespaces = keep_inline_namespaces;
   return t->GetDisplayName(opts);
+}
+
+std::string clike::BuildFunctionName(Type *fn, llvm::StringRef decl,
+                                     bool keep_inline_namespaces) {
+  return llvm::cast<FunctionType>(fn)->GetDeclaratorName(
+      decl, keep_inline_namespaces);
 }
 
 std::string clike::BuildCanonicalName(Type *t, bool base_only) {
