@@ -111,6 +111,12 @@ public:
                                  bool addr_discriminated,
                                  unsigned extra_discriminator);
 
+  /// Create display sugar over \p underlying_type that preserves the source
+  /// \p spelling (e.g. `::Struct`) for the display name while remaining
+  /// transparent for the canonical type name.
+  ElaboratedType *CreateElaboratedType(llvm::StringRef spelling,
+                                       TypeRef underlying_type);
+
   /// Create an enumeration type with the given \p enumerators, declared in
   /// \p scope. \p underlying_type is the integer type backing the enum.
   EnumType *CreateEnumType(llvm::StringRef name,
