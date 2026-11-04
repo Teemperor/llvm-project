@@ -55,6 +55,16 @@ CompilerType Builder::CreateRecordType(llvm::StringRef name,
       unqualified_name));
 }
 
+CompilerType Builder::CreateArrayType(CompilerType element_type,
+                                      std::optional<uint64_t> num_elements,
+                                      bool is_vector, uint64_t die_uid) {
+  std::optional<TypeRef> element = ToTypeRef(element_type);
+  if (!element)
+    return CompilerType();
+  return m_ts.GetCompilerType(m_ts.m_context.CreateArrayType(
+      *element, num_elements, is_vector, die_uid));
+}
+
 CompilerType Builder::CreatePointerType(CompilerType pointee_type) {
   // No pointee means `void *` -- DWARF spells that as a DW_TAG_pointer_type
   // with no DW_AT_type.

@@ -45,6 +45,81 @@ TEST_F(TypeCTest, StructTypeClass) {
   EXPECT_TRUE(llvm::isa<StructType>(static_cast<Type *>(record)));
 }
 
+// An array's size is its element size times its count, computed on demand so a
+// later-known element size is picked up.
+TEST_F(TypeCTest, ArraySize) {
+  ArrayType *array = context.CreateArrayType(TypeRef(*Int()), 4);
+  EXPECT_EQ(array->GetElementType(), Int());
+  EXPECT_EQ(array->GetArrayElementType(), Int());
+  EXPECT_EQ(array->GetNumElements(), std::optional<uint64_t>(4));
+  EXPECT_FALSE(array->IsVector());
+  EXPECT_EQ(array->GetDIEUID(), UINT64_MAX);
+  EXPECT_EQ(array->GetByteSize(), std::optional<uint64_t>(16));
+  EXPECT_TRUE(array->IsAggregate());
+  EXPECT_EQ(array->GetTypeClass(), lldb::eTypeClassArray);
+  EXPECT_EQ(array->GetTypeInfo(),
+            uint32_t(lldb::eTypeHasChildren | lldb::eTypeIsArray));
+}
+
+// An array of unknown bound has no size at all rather than a size of zero.
+TEST_F(TypeCTest, ArrayOfUnknownBound) {
+  ArrayType *array = context.CreateArrayType(TypeRef(*Int()), std::nullopt);
+  EXPECT_FALSE(array->GetNumElements().has_value());
+  EXPECT_FALSE(array->GetByteSize().has_value());
+
+  // The DIE it came from is remembered, so a runtime (VLA) bound can be
+  // re-resolved per frame.
+  ArrayType *vla = context.CreateArrayType(TypeRef(*Int()), std::nullopt,
+                                           /*is_vector=*/false, /*die_uid=*/42);
+  EXPECT_EQ(vla->GetDIEUID(), 42u);
+}
+
+// A vector (DW_AT_GNU_vector) is laid out like an array but reported as a
+// vector so formatting treats it as one.
+TEST_F(TypeCTest, Vector) {
+  ArrayType *vec =
+      context.CreateArrayType(TypeRef(*Int()), 4, /*is_vector=*/true);
+  EXPECT_TRUE(vec->IsVector());
+  EXPECT_EQ(vec->GetTypeClass(), lldb::eTypeClassVector);
+  EXPECT_EQ(vec->GetTypeInfo(),
+            uint32_t(lldb::eTypeHasChildren | lldb::eTypeIsVector));
+  // Still sized like an array.
+  EXPECT_EQ(vec->GetByteSize(), std::optional<uint64_t>(16));
+}
+
+// An array is aligned like its elements. A vector is aligned to its size, but
+// at most to the target's maximum vector alignment.
+TEST_F(TypeCTest, ArrayAndVectorAlignment) {
+  Type *ld = context.GetBuiltinType(BuiltinKind::LongDouble);
+  EXPECT_EQ(context.CreateArrayType(TypeRef(*Int()), 3)->GetAlignmentInBits(),
+            32u);
+  EXPECT_EQ(context.CreateArrayType(TypeRef(*ld), 2)->GetAlignmentInBits(),
+            128u);
+  EXPECT_FALSE(context.CreateArrayType(TypeRef(*Void()), 2)
+                   ->GetAlignmentInBits()
+                   .has_value());
+
+  auto vector_align = [&](uint64_t num_elements) {
+    return context
+        .CreateArrayType(TypeRef(*Int()), num_elements,
+                         /*is_vector=*/true)
+        ->GetAlignmentInBits();
+  };
+  EXPECT_EQ(vector_align(2), 64u);
+  EXPECT_EQ(vector_align(3), 128u);
+  EXPECT_EQ(vector_align(4), 128u);
+  // x86-64 has no maximum vector alignment.
+  EXPECT_EQ(vector_align(8), 256u);
+
+  // AArch64 aligns vectors to at most 16 bytes.
+  Context aarch64{llvm::cantFail(
+      LanguageOpts::Create(llvm::Triple("aarch64-unknown-linux-gnu")))};
+  ArrayType *wide = aarch64.CreateArrayType(
+      TypeRef(*aarch64.GetBuiltinType(BuiltinKind::Int)), 8,
+      /*is_vector=*/true);
+  EXPECT_EQ(wide->GetAlignmentInBits(), 128u);
+}
+
 // A pointer takes the target's pointer width from the Context that owns it,
 // rather than storing a size of its own -- so even `void *` has a size.
 TEST_F(TypeCTest, PointerSizeComesFromContext) {
@@ -235,4 +310,28 @@ TEST_F(TypeCTest, HomogeneousAggregateBase) {
   RecordType *empty = CompleteRecord("Empty");
   EXPECT_EQ(empty->GetHomogeneousAggregateBase(num_fields), nullptr);
   EXPECT_EQ(num_fields, 0u);
+}
+
+// An HVA's fields must be the same vector type with matching width; two vectors
+// of different widths disqualify the record.
+TEST_F(TypeCTest, HomogeneousVectorAggregate) {
+  Type *flt = context.GetBuiltinType(BuiltinKind::Float);
+  ArrayType *vec4 =
+      context.CreateArrayType(TypeRef(*flt), 4, /*is_vector=*/true);
+  uint32_t num_fields = 0;
+
+  RecordType *hva = context.CreateRecordType("HVA", 32);
+  context.AddField(*hva, context.GetIdentifier("a"), TypeRef(*vec4), 0);
+  context.AddField(*hva, context.GetIdentifier("b"), TypeRef(*vec4), 16);
+  context.SetComplete(*hva);
+  EXPECT_EQ(hva->GetHomogeneousAggregateBase(num_fields), vec4);
+  EXPECT_EQ(num_fields, 2u);
+
+  ArrayType *vec2 =
+      context.CreateArrayType(TypeRef(*flt), 2, /*is_vector=*/true);
+  RecordType *ragged = context.CreateRecordType("Ragged", 24);
+  context.AddField(*ragged, context.GetIdentifier("a"), TypeRef(*vec4), 0);
+  context.AddField(*ragged, context.GetIdentifier("b"), TypeRef(*vec2), 16);
+  context.SetComplete(*ragged);
+  EXPECT_EQ(ragged->GetHomogeneousAggregateBase(num_fields), nullptr);
 }
