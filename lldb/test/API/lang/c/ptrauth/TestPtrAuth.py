@@ -11,6 +11,7 @@ class TestPtrAuth(Arm64eTestBase):
     NO_DEBUG_INFO_TESTCASE = True
     SHARED_BUILD_TESTCASE = False
 
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         self.build()
         _, process, _, _ = lldbutil.run_to_source_breakpoint(
