@@ -76,6 +76,23 @@ public:
     return static_cast<clike::Type *>(type);
   }
 
+  /// The CompilerDeclContext wrapping \p ctx, a declaration context owned by
+  /// this type system. Invalid for the global scope (a null \p ctx).
+  CompilerDeclContext
+  GetCompilerDeclContext(const clike::DeclarationContext *ctx) {
+    if (!ctx)
+      return CompilerDeclContext();
+    return CompilerDeclContext(this,
+                               const_cast<clike::DeclarationContext *>(ctx));
+  }
+
+  /// The declaration context wrapped by the opaque pointer of a
+  /// CompilerDeclContext of this type system (see GetCompilerDeclContext).
+  static const clike::DeclarationContext *
+  GetDeclarationContext(void *opaque_decl_ctx) {
+    return static_cast<const clike::DeclarationContext *>(opaque_decl_ctx);
+  }
+
   /// Locking. TypeSystemClike protects its Type/Context state with a single
   /// reader/writer lock -- but a query is not confined to one instance. A type
   /// may reference a type another instance owns (a `TypeRef` names a node, and
@@ -251,6 +268,8 @@ public:
   // CompilerDeclContext functions
   ConstString DeclContextGetName(void *opaque_decl_ctx) override;
   ConstString DeclContextGetScopeQualifiedName(void *opaque_decl_ctx) override;
+  std::vector<lldb_private::CompilerContext>
+  DeclContextGetCompilerContext(void *opaque_decl_ctx) override;
   bool DeclContextIsClassMethod(void *opaque_decl_ctx) override;
   bool DeclContextIsContainedInLookup(void *opaque_decl_ctx,
                                       void *other_opaque_decl_ctx) override;
