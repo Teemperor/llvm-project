@@ -247,20 +247,79 @@ CompilerType TypeSystemClike::GetTypeForDecl(void *opaque_decl) {
 }
 
 ConstString TypeSystemClike::DeclContextGetName(void *opaque_decl_ctx) {
-  return ConstString();
+  // A TypeSystemClike CompilerDeclContext wraps a clike::Namespace (the
+  // global namespace is a null opaque pointer, which is never a valid
+  // CompilerDeclContext).
+  if (!opaque_decl_ctx)
+    return ConstString();
+  auto read_lock = LockForRead();
+  auto *ns = static_cast<const clike::Namespace *>(opaque_decl_ctx);
+  return ConstString(ns->GetName().GetName());
 }
 
 ConstString
 TypeSystemClike::DeclContextGetScopeQualifiedName(void *opaque_decl_ctx) {
-  return ConstString();
+  if (!opaque_decl_ctx)
+    return ConstString();
+  auto read_lock = LockForRead();
+  auto *ns = static_cast<const clike::Namespace *>(opaque_decl_ctx);
+  // Build "A::B::C" from the namespace chain, skipping the (transparent)
+  // inline namespaces so the spelling matches the source.
+  llvm::SmallVector<llvm::StringRef, 4> parts;
+  for (const clike::Namespace *cur = ns; cur; cur = cur->GetParent()) {
+    if (cur->IsInline())
+      continue;
+    parts.push_back(cur->GetName().GetName());
+  }
+  std::string qualified;
+  for (llvm::StringRef part : llvm::reverse(parts)) {
+    if (!qualified.empty())
+      qualified += "::";
+    qualified += part.str();
+  }
+  return ConstString(qualified);
 }
 
 bool TypeSystemClike::DeclContextIsClassMethod(void *opaque_decl_ctx) {
   return false;
 }
 
+std::vector<lldb_private::CompilerContext>
+TypeSystemClike::DeclContextGetCompilerContext(void *opaque_decl_ctx) {
+  // Build the CompilerContext chain (topmost namespace first) so a
+  // namespace-scoped type query (TypeQuery(decl_ctx, name)) can match a type's
+  // DWARF lookup context. Inline namespaces stay in the chain (they are
+  // transparent for name printing but the DWARF context lists them too);
+  // ContextMatches handles anonymous namespaces optionally.
+  auto read_lock = LockForRead();
+  std::vector<lldb_private::CompilerContext> context;
+  for (auto *ns = static_cast<const clike::Namespace *>(opaque_decl_ctx); ns;
+       ns = ns->GetParent())
+    context.push_back(
+        {CompilerContextKind::Namespace, ConstString(ns->GetName().GetName())});
+  std::reverse(context.begin(), context.end());
+  return context;
+}
+
 bool TypeSystemClike::DeclContextIsContainedInLookup(
     void *opaque_decl_ctx, void *other_opaque_decl_ctx) {
+  // Namespaces are interned uniquely per Context, so identity is pointer
+  // equality. The lookup of a namespace also transparently contains any inline
+  // namespace nested (transitively through inline namespaces) inside it, so
+  // walk `other` up through its inline-namespace parents looking for a match.
+  auto read_lock = LockForRead();
+  auto *self = static_cast<const clike::Namespace *>(opaque_decl_ctx);
+  auto *other = static_cast<const clike::Namespace *>(other_opaque_decl_ctx);
+  for (const clike::Namespace *cur = other; cur; cur = cur->GetParent()) {
+    if (cur == self)
+      return true;
+    // Keep ascending while we are inside a transparent namespace: members of an
+    // inline namespace (and of an unnamed namespace, which is implicitly a
+    // using-directive into its parent) are visible in the enclosing scope. A
+    // named, non-inline namespace is a distinct lookup scope, so stop there.
+    if (!cur->IsInline() && !cur->GetName().GetName().empty())
+      break;
+  }
   return false;
 }
 
