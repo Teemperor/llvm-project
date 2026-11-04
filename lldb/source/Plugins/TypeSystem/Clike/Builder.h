@@ -84,6 +84,23 @@ public:
                               CompilerType underlying_type, bool is_scoped,
                               std::vector<Enumerator> enumerators = {},
                               DeclScope scope = {});
+  /// Create a function type returning \p return_type (an empty CompilerType
+  /// denotes `void`) and taking \p param_types. \p param_names holds the
+  /// parameters' declared names (empty if unnamed, and it may be shorter than
+  /// \p param_types), preserved so a synthesized clang ParmVarDecl can carry
+  /// them into diagnostics. \p use_void_for_empty_params controls how an
+  /// empty, non-variadic parameter list is later rendered -- see
+  /// FunctionType::UseVoidForEmptyParams.
+  ///
+  /// Returns an invalid CompilerType when one of \p param_types names no type
+  /// this Context can reference: the signature can't be modeled faithfully
+  /// then, and the caller should give up on the function rather than carry on
+  /// with a short one.
+  CompilerType
+  CreateFunctionType(CompilerType return_type,
+                     llvm::ArrayRef<CompilerType> param_types, bool is_variadic,
+                     bool use_void_for_empty_params = false,
+                     llvm::ArrayRef<llvm::StringRef> param_names = {});
   /// Intern a name into the Context so it can be used for a type or record
   /// member. All Identifiers must be created this way.
   Identifier GetIdentifier(llvm::StringRef name);
