@@ -27,3 +27,11 @@ BuiltinType *Context::GetBuiltinType(llvm::StringRef name,
       GetIdentifier(name), byte_size,
       builtin_types.GetAlignmentInBits(encoding, byte_size), encoding, format));
 }
+
+TypedefType *Context::CreateTypedefType(const DeclarationContext &decl_context,
+                                        llvm::StringRef name,
+                                        TypeRef underlying_type,
+                                        Identifier unqualified_name) {
+  return Track(std::make_unique<TypedefType>(
+      GetIdentifier(name), decl_context, unqualified_name, underlying_type));
+}
