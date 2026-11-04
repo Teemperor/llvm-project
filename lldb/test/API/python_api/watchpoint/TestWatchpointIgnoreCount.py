@@ -30,6 +30,7 @@ class WatchpointIgnoreCountTestCase(TestBase):
 
     # Read-write watchpoints not supported on SystemZ
     @expectedFailureAll(archs=["s390x"])
+    @add_test_categories(["typesystem-clike"])
     def test_set_watch_ignore_count(self):
         """Test SBWatchpoint.SetIgnoreCount() API."""
         self.build()
