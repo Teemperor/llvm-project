@@ -113,3 +113,20 @@ TEST_F(TypeSystemClikeRecordQueriesTest, IsAnonymousType) {
   CompilerType named = MakeRecordWithField("Named", "x");
   EXPECT_FALSE(ts->IsAnonymousType(named.GetOpaqueQualType()));
 }
+
+// GetTypeBitAlign reports the alignment of a record's most aligned member,
+// also for an array of the record.
+TEST_F(TypeSystemClikeRecordQueriesTest, TypeBitAlign) {
+  CompilerType ld = builder.GetBuiltinType(
+      "long double", 16, lldb::eEncodingIEEE754, lldb::eFormatFloat);
+  CompilerType record = builder.CreateRecordType("LD", 16);
+  auto *r = llvm::cast<RecordType>(
+      static_cast<clike::Type *>(record.GetOpaqueQualType()));
+  builder.AddField(*r, builder.GetIdentifier("ld"),
+                   static_cast<clike::Type *>(ld.GetOpaqueQualType()), 0);
+  builder.SetRecordComplete(*r);
+
+  EXPECT_EQ(ts->GetTypeBitAlign(record.GetOpaqueQualType(), nullptr), 128u);
+  EXPECT_EQ(record.GetArrayType(2).GetTypeBitAlign(nullptr), 128u);
+  EXPECT_EQ(GetInt().GetTypeBitAlign(nullptr), 32u);
+}

@@ -47,6 +47,16 @@ TEST_F(TypeSystemClikeNameTest, PointerNames) {
   EXPECT_EQ(ptr_ptr.GetTypeName().GetStringRef(), "int **");
 }
 
+// An array's name is "<element>[<count>]"; an array of unknown bound omits
+// the count.
+TEST_F(TypeSystemClikeNameTest, ArrayNames) {
+  CompilerType bounded = builder.CreateArrayType(GetInt(), 4);
+  EXPECT_EQ(bounded.GetTypeName().GetStringRef(), "int[4]");
+
+  CompilerType unbounded = builder.CreateArrayType(GetInt(), std::nullopt);
+  EXPECT_EQ(unbounded.GetTypeName().GetStringRef(), "int[]");
+}
+
 // A cv-qualified builtin spells its qualifiers as a prefix; a cv-qualified
 // record/enum/typedef drops them (their name comes from the decl, matching
 // TypeSystemClang).

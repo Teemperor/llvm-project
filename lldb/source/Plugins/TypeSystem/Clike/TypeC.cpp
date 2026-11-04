@@ -10,15 +10,34 @@
 
 #include "Context.h"
 
+#include "llvm/Support/MathExtras.h"
+
+#include <algorithm>
+
 using namespace lldb_private::clike;
 
 // Storage for the LLVM RTTI discriminators. The addresses (not the values) are
 // what identify each class, so the initializer is irrelevant.
 char StructType::ID = 0;
+char ArrayType::ID = 0;
 char PointerType::ID = 0;
 char TypedefType::ID = 0;
 char CVQualifiedType::ID = 0;
 char EnumType::ID = 0;
+
+std::optional<uint64_t> ArrayType::GetAlignmentInBits() const {
+  if (!m_is_vector)
+    return m_element_type.Get().GetAlignmentInBits();
+  std::optional<uint64_t> byte_size = GetByteSize();
+  if (!byte_size)
+    return std::nullopt;
+  uint64_t alignment =
+      std::max<uint64_t>(llvm::PowerOf2Ceil(*byte_size * 8), 8);
+  if (uint64_t max_alignment =
+          GetOwningContext().GetLanguageOpts().GetMaxVectorAlignInBits())
+    alignment = std::min(alignment, max_alignment);
+  return alignment;
+}
 
 std::optional<uint64_t> PointerType::GetByteSize() const {
   // A pointer is the target's pointer width, taken from the Context that owns

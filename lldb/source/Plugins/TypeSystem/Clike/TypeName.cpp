@@ -81,6 +81,34 @@ static std::string BuildDisplayNameImpl(clike::Type *t,
   if (!t)
     return "";
   // Composite types have no name of their own; build them from their parts.
+  if (llvm::isa<ArrayType>(t)) {
+    // A vector type (DW_AT_GNU_vector) is spelled like clang's ext_vector
+    // attribute rather than as an array, so vector formatters match and
+    // array/char-array formatters don't (see GetTypeName).
+    if (auto *vec = llvm::dyn_cast<ArrayType>(t); vec && vec->IsVector()) {
+      uint64_t n = vec->GetNumElements().value_or(0);
+      return llvm::formatv("{0} __attribute__((ext_vector_type({1})))",
+                           BuildDisplayNameImpl(vec->GetElementType(),
+                                                keep_inline_namespaces),
+                           n)
+          .str();
+    }
+    // For a multidimensional C array the DWARF/type nesting goes
+    // outermost-dimension first (`T[2][3]` == array-of-2 of array-of-3 of T),
+    // but the element name must be printed innermost-last. Peel the whole
+    // array chain collecting dimensions left-to-right, then append them after
+    // the innermost element's name so the brackets keep their source order.
+    std::string dims;
+    clike::Type *cur = t;
+    while (auto *array = llvm::dyn_cast<ArrayType>(cur)) {
+      if (std::optional<uint64_t> n = array->GetNumElements())
+        dims += llvm::formatv("[{0}]", *n).str();
+      else
+        dims += "[]";
+      cur = array->GetElementType();
+    }
+    return BuildDisplayNameImpl(cur, keep_inline_namespaces) + dims;
+  }
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
     clike::Type *pointee = ptr->GetPointeeType();
     // `void *` needs no special case: its pointee is the `void` builtin, whose
@@ -149,6 +177,35 @@ std::string clike::BuildDisplayName(Type *t, bool keep_inline_namespaces) {
 std::string clike::BuildCanonicalName(Type *t, bool base_only) {
   if (!t)
     return std::string();
+  // Arrays have no name of their own; build "<element>[<count>]". For a
+  // multidimensional array the nesting is outermost-dimension first, so peel
+  // the whole chain and print the dimensions in source order after the
+  // innermost element's name.
+  if (llvm::isa<ArrayType>(t)) {
+    // A vector type (DW_AT_GNU_vector) is spelled like clang's
+    // `<element> __attribute__((ext_vector_type(N)))` rather than as an array
+    // (`<element>[N]`), so it doesn't get matched by array/char-array
+    // formatters (matching TypeSystemClang's type name for vectors).
+    if (auto *vec = llvm::dyn_cast<ArrayType>(t); vec && vec->IsVector()) {
+      std::string element_name =
+          BuildCanonicalName(vec->GetElementType(), base_only);
+      uint64_t n = vec->GetNumElements().value_or(0);
+      return llvm::formatv("{0} __attribute__((ext_vector_type({1})))",
+                           element_name, n)
+          .str();
+    }
+    std::string dims;
+    Type *cur = t;
+    while (auto *array = llvm::dyn_cast<ArrayType>(cur)) {
+      if (std::optional<uint64_t> num_elements = array->GetNumElements())
+        dims += llvm::formatv("[{0}]", *num_elements).str();
+      else
+        dims += "[]";
+      cur = array->GetElementType();
+    }
+    std::string element_name = BuildCanonicalName(cur, base_only);
+    return element_name + dims;
+  }
   // Pointers have no name of their own either; build "<pointee> *".
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
     Type *pointee = ptr->GetPointeeType();

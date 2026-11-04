@@ -49,6 +49,77 @@ public:
   }
 };
 
+/// A C array type with a fixed number of elements such a `int[4]`.
+class ArrayType : public llvm::RTTIExtends<ArrayType, Type> {
+public:
+  static char ID;
+
+  /// \p num_elements is std::nullopt for an array of unknown bound.
+  /// \p is_vector marks a GCC/Clang vector type and \p die_uid is the UID of
+  /// the DWARF DIE that produced the array (see IsVector and GetDIEUID).
+  ArrayType(TypeRef element_type, std::optional<uint64_t> num_elements,
+            bool is_vector = false, uint64_t die_uid = UINT64_MAX)
+      : m_element_type(element_type),
+        m_num_elements(num_elements.value_or(kNoNumElements)),
+        m_die_uid(die_uid), m_is_vector(is_vector) {}
+
+  Type *GetElementType() const { return &m_element_type.Get(); }
+  Type *GetArrayElementType() const override { return GetElementType(); }
+
+  /// Number of elements, or std::nullopt for an array of unknown bound.
+  std::optional<uint64_t> GetNumElements() const override {
+    return m_num_elements == kNoNumElements
+               ? std::nullopt
+               : std::optional<uint64_t>(m_num_elements);
+  }
+
+  /// The UID of the DWARF DIE that produced this array, or UINT64_MAX (i.e.
+  /// LLDB_INVALID_UID). Lets the symbol file re-resolve a runtime
+  /// (variable-length) bound for an otherwise-unbounded array. Stored as a
+  /// plain uint64_t to avoid pulling lldb-forward.h (and its
+  /// `lldb_private::Type` forward declaration, which would make `Type`
+  /// ambiguous) into this header.
+  uint64_t GetDIEUID() const override { return m_die_uid; }
+
+  /// Whether this array is really a GCC/Clang vector type (DW_AT_GNU_vector,
+  /// e.g. `float __attribute__((ext_vector_type(4)))`). Vectors are laid out
+  /// like arrays but LLDB treats them as vector types for formatting.
+  bool IsVector() const override { return m_is_vector; }
+
+  // An array is an aggregate whose children are its elements.
+  bool IsAggregate() const override { return true; }
+
+  std::optional<uint64_t> GetByteSize() const override {
+    std::optional<uint64_t> num_elements = GetNumElements();
+    if (!num_elements)
+      return std::nullopt;
+    if (std::optional<uint64_t> elem_size = m_element_type.Get().GetByteSize())
+      return *elem_size * *num_elements;
+    return std::nullopt;
+  }
+
+  std::optional<uint64_t> GetAlignmentInBits() const override;
+
+  lldb::TypeClass GetTypeClass() const override {
+    return m_is_vector ? lldb::eTypeClassVector : lldb::eTypeClassArray;
+  }
+
+  uint32_t GetTypeInfo() const override {
+    if (m_is_vector)
+      return lldb::eTypeHasChildren | lldb::eTypeIsVector;
+    return lldb::eTypeHasChildren | lldb::eTypeIsArray;
+  }
+
+private:
+  // An array can't really have 2^64-1 elements, so steal that value as the
+  // "unbounded" sentinel instead of paying for std::optional's separate bool.
+  static constexpr uint64_t kNoNumElements = UINT64_MAX;
+  TypeRef m_element_type;
+  uint64_t m_num_elements;
+  uint64_t m_die_uid;
+  bool m_is_vector;
+};
+
 /// A simple pointer type.
 class PointerType : public llvm::RTTIExtends<PointerType, Type> {
 public:
