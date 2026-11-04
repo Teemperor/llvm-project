@@ -595,6 +595,25 @@ TypeSystemClike::GetPointerType(lldb::opaque_compiler_type_t type) {
   return CompilerType();
 }
 
+CompilerType
+TypeSystemClike::GetTypeForFormatters(opaque_compiler_type_t type) {
+  // May allocate a fresh Pointer/ArrayType below, so this needs the write
+  // lock.
+  LockedType tt = GetTypeForWrite(type);
+  if (!tt)
+    return CompilerType();
+  // Data formatters match on type name and are meant to be cv-agnostic (e.g.
+  // the C-string summary is registered for `char *`, and clang strips the
+  // cv-qualifiers so `const char *` matches too). Peel any top-level
+  // cv-qualifier sugar, and -- because a `char *` summary keys off the pointer
+  // type's spelling -- also rebuild a pointer whose pointee is cv-qualified as
+  // a pointer to the unqualified pointee. Typedefs are preserved (they are
+  // meaningful to formatters).
+  clike::Type *t = tt->StripCVQualifiers();
+
+  return GetCompilerType(t);
+}
+
 const llvm::fltSemantics &
 TypeSystemClike::GetFloatTypeSemantics(size_t byte_size, Format format) {
   return m_context.GetLanguageOpts().GetFloatTypeSemantics(byte_size, format);
@@ -844,8 +863,11 @@ bool TypeSystemClike::IsPointerOrReferenceType(
   return false;
 }
 
-unsigned TypeSystemClike::GetTypeQualifiers(lldb::opaque_compiler_type_t type) {
-  return 0;
+unsigned TypeSystemClike::GetTypeQualifiers(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  if (!t)
+    return 0;
+  return t->GetCVRQualifiers();
 }
 
 std::optional<size_t>
@@ -931,8 +953,9 @@ bool TypeSystemClike::IsBeingDefined(opaque_compiler_type_t type) {
   return false;
 }
 
-bool TypeSystemClike::IsConst(lldb::opaque_compiler_type_t type) {
-  return false;
+bool TypeSystemClike::IsConst(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  return t && t->IsConst();
 }
 
 uint32_t
@@ -963,8 +986,25 @@ bool TypeSystemClike::IsVectorType(lldb::opaque_compiler_type_t type,
 }
 
 CompilerType
-TypeSystemClike::GetFullyUnqualifiedType(lldb::opaque_compiler_type_t type) {
-  return CompilerType();
+TypeSystemClike::GetFullyUnqualifiedType(opaque_compiler_type_t type) {
+  // GetFullyUnqualifiedTypeImpl may allocate fresh Pointer/Array wrapper
+  // nodes, so this needs the write lock.
+  LockedType t = GetTypeForWrite(type);
+  return GetCompilerType(GetFullyUnqualifiedTypeImpl(t.get()));
+}
+
+clike::Type *TypeSystemClike::GetFullyUnqualifiedTypeImpl(clike::Type *t) {
+  // Mirror TypeSystemClang::GetFullyUnqualifiedType: strip top-level
+  // cv-qualifiers, and recurse through pointers/arrays so their pointee/element
+  // is likewise fully unqualified (so `struct Foo * const` -> `struct Foo *`,
+  // and `const char *` -> `char *`). Other sugar (typedefs, elaborated
+  // spellings) is preserved.
+  if (!t)
+    return t;
+  // Strip any stacked top-level cv-qualifiers.
+  t = t->StripCVQualifiers();
+
+  return t;
 }
 
 CompilerType TypeSystemClike::GetNonReferenceType(opaque_compiler_type_t type) {

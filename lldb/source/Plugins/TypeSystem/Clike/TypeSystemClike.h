@@ -330,6 +330,7 @@ public:
                            size_t idx) override;
   CompilerType GetPointeeType(lldb::opaque_compiler_type_t type) override;
   CompilerType GetPointerType(lldb::opaque_compiler_type_t type) override;
+  CompilerType GetTypeForFormatters(lldb::opaque_compiler_type_t type) override;
 
   // Exploring the type
   const llvm::fltSemantics &GetFloatTypeSemantics(size_t byte_size,
@@ -471,6 +472,11 @@ private:
   bool IsIntegerTypeImpl(const clike::Type *type, bool &is_signed);
 
   bool IsPromotableIntegerTypeImpl(const clike::Type *type);
+
+  /// Recursive worker for GetFullyUnqualifiedType: strip top-level
+  /// cv-qualifiers and recurse through pointer/array pointees so the whole
+  /// type is cv-unqualified (see the definition for details).
+  clike::Type *GetFullyUnqualifiedTypeImpl(clike::Type *type);
 
   std::string m_display_name;
   llvm::Triple m_triple;
