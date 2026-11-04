@@ -157,6 +157,10 @@ static std::string BuildDisplayNameImpl(clike::Type *t,
   }
   if (auto *fn = llvm::dyn_cast<FunctionType>(t))
     return BuildFunctionNameImpl(fn, "", keep_inline_namespaces);
+  if (auto *cx = llvm::dyn_cast<ComplexType>(t)) {
+    return "_Complex " +
+           BuildDisplayNameImpl(cx->GetElementType(), keep_inline_namespaces);
+  }
   if (auto *cv = llvm::dyn_cast<CVQualifiedType>(t)) {
     std::string qualifier;
     if (cv->IsConst())
@@ -253,6 +257,8 @@ std::string clike::BuildCanonicalName(Type *t, bool base_only) {
   // Function types and pointers to them need C declarator syntax
   // (`int (*)(const char *)`); BuildDisplayNameImpl already produces it.
   if (llvm::isa<FunctionType>(t))
+    return BuildDisplayNameImpl(t);
+  if (llvm::isa<ComplexType>(t))
     return BuildDisplayNameImpl(t);
   // Pointers have no name of their own either; build "<pointee> *".
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {

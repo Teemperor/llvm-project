@@ -342,6 +342,39 @@ TEST_F(TypeCTest, Function) {
   EXPECT_TRUE(variadic->IsVariadic());
 }
 
+// A `_Complex T` is two contiguous components, so twice the element size.
+TEST_F(TypeCTest, Complex) {
+  Type *dbl = context.GetBuiltinType(BuiltinKind::Double);
+  ComplexType *cplx = context.CreateComplexType(TypeRef(*dbl));
+  EXPECT_EQ(cplx->GetElementType(), dbl);
+  ASSERT_TRUE(dbl->GetByteSize().has_value());
+  EXPECT_EQ(cplx->GetByteSize(),
+            std::optional<uint64_t>(*dbl->GetByteSize() * 2));
+  EXPECT_EQ(cplx->GetTypeClass(), lldb::eTypeClassComplexFloat);
+}
+
+// Enumerations, complex types and sugar are aligned like the type they are
+// made of.
+TEST_F(TypeCTest, DerivedAlignment) {
+  Type *ld = context.GetBuiltinType(BuiltinKind::LongDouble);
+  EnumType *e = context.CreateEnumType("E", /*byte_size=*/16, TypeRef(*ld),
+                                       /*is_scoped=*/false);
+  EXPECT_EQ(e->GetAlignmentInBits(), 128u);
+  EXPECT_EQ(context.CreateComplexType(TypeRef(*ld))->GetAlignmentInBits(),
+            128u);
+  EXPECT_EQ(
+      context.CreateTypedefType("ld_t", TypeRef(*ld))->GetAlignmentInBits(),
+      128u);
+  EXPECT_EQ(context
+                .CreateCVQualifiedType(TypeRef(*ld), /*is_const=*/true,
+                                       /*is_volatile=*/false)
+                ->GetAlignmentInBits(),
+            128u);
+  FunctionType *fn =
+      context.CreateFunctionType(TypeRef(*Int()), {}, /*is_variadic=*/false);
+  EXPECT_FALSE(fn->GetAlignmentInBits().has_value());
+}
+
 // An HFA is a record whose direct fields are all the same floating-point type;
 // an HVA the same for vectors. A mix, or any other field kind, disqualifies it.
 TEST_F(TypeCTest, HomogeneousAggregateBase) {

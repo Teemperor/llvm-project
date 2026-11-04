@@ -199,6 +199,14 @@ TEST_F(ContextTest, ArrayByteSizeComputed) {
   EXPECT_FALSE(unbounded->GetByteSize().has_value());
 }
 
+// A complex type's byte size is twice its element's.
+TEST_F(ContextTest, ComplexByteSizeIsDoubleElement) {
+  BuiltinType *elem = context.GetBuiltinType("float", 4, lldb::eEncodingIEEE754,
+                                             lldb::eFormatFloat);
+  ComplexType *complex = context.CreateComplexType(TypeRef(*elem));
+  EXPECT_EQ(complex->GetByteSize(), 8u);
+}
+
 // Every type records the Context that created it, including the canonical
 // builtins (which KnownBuiltinTypes, not Track, creates).
 TEST_F(ContextTest, TypesKnowTheirOwningContext) {
