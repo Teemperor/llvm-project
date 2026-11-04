@@ -51,6 +51,9 @@ public:
   CompilerType CreateTypedefType(llvm::StringRef name,
                                  CompilerType underlying_type,
                                  DeclScope scope = {});
+  /// Create a const- and/or volatile-qualified version of \p underlying_type.
+  CompilerType CreateCVQualifiedType(CompilerType underlying_type,
+                                     bool is_const, bool is_volatile);
   /// Intern a name into the Context so it can be used for a type or record
   /// member. All Identifiers must be created this way.
   Identifier GetIdentifier(llvm::StringRef name);
