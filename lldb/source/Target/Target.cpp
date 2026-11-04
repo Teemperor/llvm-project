@@ -1679,7 +1679,7 @@ void Target::ClearModules(bool delete_locations) {
   m_section_load_history.Clear();
   m_images.Clear();
   MarkExecutableModule(nullptr);
-  m_scratch_type_system_map.Clear();
+  ClearScratchTypeSystems();
 }
 
 void Target::DidExec() {
@@ -2060,7 +2060,7 @@ void Target::ModulesDidUnload(ModuleList &module_list, bool delete_locations) {
         });
 
     if (should_flush_type_systems)
-      m_scratch_type_system_map.Clear();
+      ClearScratchTypeSystems();
 
     RunModuleHooks(/*is_load=*/false);
   }
@@ -2782,6 +2782,22 @@ Target::GetScratchTypeSystemForLanguage(lldb::LanguageType language,
 
   return m_scratch_type_system_map.GetTypeSystemForLanguage(language, this,
                                                             create_on_demand);
+}
+
+lldb::TypeSystemSP Target::GetOrCreateAuxiliaryClangScratchAST(
+    llvm::function_ref<lldb::TypeSystemSP()> create_callback) {
+  std::lock_guard<std::mutex> guard(m_aux_clang_scratch_ast_mutex);
+  if (!m_aux_clang_scratch_ast_sp)
+    m_aux_clang_scratch_ast_sp = create_callback();
+  return m_aux_clang_scratch_ast_sp;
+}
+
+void Target::ClearScratchTypeSystems() {
+  {
+    std::lock_guard<std::mutex> guard(m_aux_clang_scratch_ast_mutex);
+    m_aux_clang_scratch_ast_sp.reset();
+  }
+  m_scratch_type_system_map.Clear();
 }
 
 CompilerType Target::GetRegisterType(const RegisterInfo &reg_info) {
