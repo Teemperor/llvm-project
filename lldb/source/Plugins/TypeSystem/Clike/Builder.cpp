@@ -110,6 +110,30 @@ Builder::CreateEnumType(llvm::StringRef name, std::optional<uint64_t> byte_size,
       name, byte_size, *underlying, is_scoped, std::move(enumerators), scope));
 }
 
+CompilerType
+Builder::CreateFunctionType(CompilerType return_type,
+                            llvm::ArrayRef<CompilerType> param_types,
+                            bool is_variadic, bool use_void_for_empty_params,
+                            llvm::ArrayRef<llvm::StringRef> param_names) {
+  std::vector<TypeRef> params;
+  params.reserve(param_types.size());
+  for (const CompilerType &param_type : param_types) {
+    std::optional<TypeRef> param = ToTypeRef(param_type);
+    if (!param)
+      return CompilerType();
+    params.push_back(*param);
+  }
+  std::vector<Identifier> names;
+  names.reserve(param_names.size());
+  for (llvm::StringRef name : param_names)
+    names.push_back(GetIdentifier(name));
+  // A function that returns nothing returns `void`; DWARF spells that as a
+  // missing DW_AT_type.
+  return m_ts.GetCompilerType(m_ts.m_context.CreateFunctionType(
+      ToTypeRefOrVoid(return_type), params, is_variadic,
+      use_void_for_empty_params, names));
+}
+
 clike::Identifier Builder::GetIdentifier(llvm::StringRef name) {
   return m_ts.m_context.GetIdentifier(name);
 }
