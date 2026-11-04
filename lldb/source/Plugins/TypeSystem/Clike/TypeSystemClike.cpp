@@ -272,10 +272,43 @@ LanguageType TypeSystemClike::DeclContextGetLanguage(void *opaque_decl_ctx) {
 bool TypeSystemClike::Verify(opaque_compiler_type_t type) { return true; }
 #endif
 
-bool TypeSystemClike::IsArrayType(lldb::opaque_compiler_type_t type,
+bool TypeSystemClike::IsArrayType(opaque_compiler_type_t type,
                                   CompilerType *element_type, uint64_t *size,
                                   bool *is_incomplete) {
-  return false;
+  return IsArrayTypeImpl(GetTypeForRead(type).get(), element_type, size,
+                         is_incomplete);
+}
+
+bool TypeSystemClike::IsArrayTypeImpl(const clike::Type *type,
+                                      CompilerType *element_type,
+                                      uint64_t *size, bool *is_incomplete) {
+  if (element_type)
+    element_type->Clear();
+  if (size)
+    *size = 0;
+  if (is_incomplete)
+    *is_incomplete = false;
+
+  const clike::Type *t = Desugar(type);
+  clike::Type *element = t ? t->GetArrayElementType() : nullptr;
+  if (!element)
+    return false;
+  // A vector type (DW_AT_GNU_vector) is laid out like an array but is not an
+  // array type (matching TypeSystemClang, where a Vector/ExtVector is distinct
+  // from ConstantArray). Reporting it as an array makes char-element vectors
+  // match the char-array-to-string formatter and mis-render.
+  if (t->IsVector())
+    return false;
+
+  if (element_type)
+    *element_type = GetCompilerType(element);
+  if (std::optional<uint64_t> num_elements = t->GetNumElements()) {
+    if (size)
+      *size = *num_elements;
+  } else if (is_incomplete) {
+    *is_incomplete = true;
+  }
+  return true;
 }
 
 bool TypeSystemClike::IsAggregateType(opaque_compiler_type_t type) {
@@ -619,9 +652,27 @@ TypeClass TypeSystemClike::GetTypeClass(opaque_compiler_type_t type) {
 }
 
 CompilerType
-TypeSystemClike::GetArrayElementType(lldb::opaque_compiler_type_t type,
+TypeSystemClike::GetArrayElementType(opaque_compiler_type_t type,
                                      ExecutionContextScope *exe_scope) {
-  return CompilerType();
+  SharedLockedType t = GetTypeForRead(type);
+  if (!t)
+    return CompilerType();
+  return GetCompilerType(Desugar(t.get())->GetArrayElementType());
+}
+
+CompilerType TypeSystemClike::GetArrayType(opaque_compiler_type_t type,
+                                           uint64_t size) {
+  // Allocates a fresh ArrayType node.
+  LockedType t = GetTypeForWrite(type);
+  if (!t)
+    return CompilerType();
+  // Build an array of `size` elements of `type` (size 0 => unbounded). Used by
+  // the formatter matcher to form a typedef-stripped array candidate name (e.g.
+  // `MCHAR[5]` -> `char[5]`), so char-array-of-typedef matches the char[]
+  // string summary.
+  return clike::Builder(*this).CreateArrayType(
+      GetCompilerType(t.get()), size ? std::optional<uint64_t>(size)
+                                     : std::optional<uint64_t>(std::nullopt));
 }
 
 CompilerType TypeSystemClike::GetCanonicalType(opaque_compiler_type_t type) {
@@ -742,6 +793,17 @@ TypeSystemClike::GetTypeForFormatters(opaque_compiler_type_t type) {
     if (stripped != pointee)
       return clike::Builder(*this).CreatePointerType(GetCompilerType(stripped));
   }
+  // The C-string array summary keys off an array type's spelling
+  // (`char[N]` / `unsigned char[N]`), which clang produces by stripping the
+  // element's cv-qualifiers. An array of `const char` is modeled here with the
+  // cv-qualifier on the element (not the array), so rebuild the array with the
+  // unqualified element so `const char[N]` also matches.
+  if (clike::Type *element = t->GetArrayElementType()) {
+    clike::Type *stripped = element->StripCVQualifiers();
+    if (stripped != element)
+      return clike::Builder(*this).CreateArrayType(GetCompilerType(stripped),
+                                                   t->GetNumElements());
+  }
   return GetCompilerType(t);
 }
 
@@ -789,6 +851,20 @@ TypeSystemClike::GetNumChildrenImpl(clike::Type *type,
   if (!type)
     return 0;
   clike::Type *t = Desugar(type);
+  // An array's children are its elements.
+  if (t->GetArrayElementType()) {
+    if (std::optional<uint64_t> n = t->GetNumElements())
+      return *n;
+    // No static bound: this may be a variable-length array whose length is only
+    // known at runtime. Ask the symbol file to resolve it for this frame.
+    if (exe_ctx && t->GetDIEUID() != LLDB_INVALID_UID)
+      if (SymbolFile *sym_file = GetSymbolFile())
+        if (std::optional<SymbolFile::ArrayInfo> info =
+                sym_file->GetDynamicArrayInfoForUID(t->GetDIEUID(), exe_ctx))
+          if (!info->element_orders.empty())
+            return info->element_orders.back().value_or(0);
+    return 0;
+  }
   // A pointer/reference is transparent when its children are the pointee's
   // members (see Type::GetTransparentChildPointee); otherwise its single child
   // is the dereferenced value -- except for `void *`, which has no pointee to
@@ -1029,6 +1105,21 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
     return CompilerType();
   CompleteTypeAssumingWriteLocked(type);
   clike::Type *t = Desugar(type);
+
+  // Array elements: child N is the element at offset N * element_size.
+  if (clike::Type *element_type = t->GetArrayElementType()) {
+    if (!ignore_array_bounds) {
+      std::optional<uint64_t> num_elements = t->GetNumElements();
+      if (num_elements && idx >= *num_elements)
+        return CompilerType();
+    }
+    child_name = llvm::formatv("[{0}]", idx).str();
+    if (std::optional<uint64_t> byte_size = element_type->GetByteSize()) {
+      child_byte_size = *byte_size;
+      child_byte_offset = idx * *byte_size;
+    }
+    return GetCompilerType(element_type);
+  }
 
   // A pointer is transparent, mirroring TypeSystemClang: when asked
   // transparently, expanding it splices in the pointee aggregate's members
@@ -1614,9 +1705,21 @@ CompilerType TypeSystemClike::GetTypedefedType(opaque_compiler_type_t type) {
   return GetCompilerType(t->StripElaborated()->GetTypedefedType());
 }
 
-bool TypeSystemClike::IsVectorType(lldb::opaque_compiler_type_t type,
+bool TypeSystemClike::IsVectorType(opaque_compiler_type_t type,
                                    CompilerType *element_type, uint64_t *size) {
-  return false;
+  SharedLockedType tt = GetTypeForRead(type);
+  if (!tt)
+    return false;
+  const clike::Type *t = Desugar(tt.get());
+  if (!t->IsVector())
+    return false;
+  if (element_type)
+    *element_type = GetCompilerType(t->GetArrayElementType());
+  if (size) {
+    if (std::optional<uint64_t> num = t->GetNumElements())
+      *size = *num;
+  }
+  return true;
 }
 
 CompilerType
@@ -1645,6 +1748,15 @@ clike::Type *TypeSystemClike::GetFullyUnqualifiedTypeImpl(clike::Type *t) {
     if (stripped != pointee)
       return static_cast<clike::Type *>(
           builder.CreatePointerType(GetCompilerType(stripped))
+              .GetOpaqueQualType());
+    return t;
+  }
+  if (clike::Type *element = t->GetArrayElementType()) {
+    clike::Type *stripped = GetFullyUnqualifiedTypeImpl(element);
+    if (stripped != element)
+      return static_cast<clike::Type *>(
+          builder
+              .CreateArrayType(GetCompilerType(stripped), t->GetNumElements())
               .GetOpaqueQualType());
     return t;
   }

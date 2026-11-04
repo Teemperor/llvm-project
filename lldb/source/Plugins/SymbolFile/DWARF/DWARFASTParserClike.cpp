@@ -489,6 +489,53 @@ TypeSP DWARFASTParserClike::ParseStructureType(const DWARFDIE &die) {
   return type_sp;
 }
 
+TypeSP DWARFASTParserClike::ParseArrayType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  DWARFDIE element_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  Type *element_type = die.ResolveTypeUID(element_die);
+  if (!element_type)
+    return nullptr;
+
+  // A DWARF array can describe multiple dimensions via several subrange
+  // children. Build them from the innermost dimension outward so that e.g.
+  // `int[2][3]` becomes an array-of-2 of array-of-3 of int.
+  std::optional<SymbolFile::ArrayInfo> array_info = ParseChildArrayInfo(die);
+
+  CompilerType array_type = element_type->GetForwardCompilerType();
+  bool is_vector = die.GetAttributeValueAsUnsigned(DW_AT_GNU_vector, 0) != 0;
+  {
+    // Build the (possibly nested) array type(s) through a single Builder.
+    clike::Builder ts(m_ts);
+    // No bound information means an array of unknown length.
+    llvm::SmallVector<std::optional<uint64_t>, 1> dimensions = {std::nullopt};
+    if (array_info && !array_info->element_orders.empty())
+      dimensions = array_info->element_orders;
+    for (size_t i = dimensions.size(); i-- > 0;) {
+      // The outermost array remembers the backing DIE so a runtime
+      // (variable-length) bound can be re-resolved later (see GetNumChildren).
+      // A GCC/Clang vector type (e.g.
+      // `float __attribute__((ext_vector_type(4)))`) is described as an array
+      // with DW_AT_GNU_vector; mark it so LLDB treats it as a vector type for
+      // formatting.
+      const bool outermost = i == 0;
+      array_type = ts.CreateArrayType(
+          array_type, dimensions[i], /*is_vector=*/outermost && is_vector,
+          outermost ? die.GetID() : LLDB_INVALID_UID);
+    }
+  }
+
+  std::optional<uint64_t> byte_size =
+      llvm::expectedToOptional(array_type.GetByteSize(nullptr));
+
+  Declaration decl = GetDIEDeclaration(die);
+  ConstString empty_name;
+  return dwarf->MakeType(die.GetID(), empty_name, byte_size,
+                         /*context=*/nullptr, element_die.GetID(),
+                         Type::eEncodingIsUID, decl, array_type,
+                         Type::ResolveState::Full);
+}
+
 TypeSP DWARFASTParserClike::ParsePointerType(const DWARFDIE &die) {
   SymbolFileDWARF *dwarf = die.GetDWARF();
 
@@ -746,6 +793,9 @@ TypeSP DWARFASTParserClike::ParseTypeFromDWARF(const SymbolContext &sc,
   case DW_TAG_class_type:
   case DW_TAG_union_type:
     type_sp = ParseStructureType(die);
+    break;
+  case DW_TAG_array_type:
+    type_sp = ParseArrayType(die);
     break;
   case DW_TAG_pointer_type:
     type_sp = ParsePointerType(die);

@@ -1,9 +1,11 @@
 import lldb
+from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 from lldbsuite.test import lldbutil
 
 
 class ValueAPIGetExpressionPath(TestBase):
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         self.build()
 

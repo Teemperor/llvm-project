@@ -57,6 +57,15 @@ public:
                                 bool is_union = false,
                                 bool is_class_keyword = false,
                                 DeclScope scope = {});
+  /// Create an array of \p num_elements elements of \p element_type (or an
+  /// array of unknown bound when \p num_elements is std::nullopt).
+  /// \p is_vector marks a GCC/Clang vector type; \p die_uid is the UID of the
+  /// DWARF DIE the array came from, used to re-resolve a runtime bound (see
+  /// ArrayType).
+  CompilerType CreateArrayType(CompilerType element_type,
+                               std::optional<uint64_t> num_elements,
+                               bool is_vector = false,
+                               uint64_t die_uid = UINT64_MAX);
   /// Create a pointer to \p pointee_type (an empty CompilerType denotes a
   /// `void *`).
   CompilerType CreatePointerType(CompilerType pointee_type);
