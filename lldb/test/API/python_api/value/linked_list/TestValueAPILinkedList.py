@@ -21,6 +21,7 @@ class ValueAsLinkedListTestCase(TestBase):
         # Find the line number to break at.
         self.line = line_number("main.cpp", "// Break at this line")
 
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         """Exercise SBValue API linked_list_iter."""
         d = {"EXE": self.exe_name}
