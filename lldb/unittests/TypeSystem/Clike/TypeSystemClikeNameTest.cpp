@@ -94,3 +94,21 @@ TEST_F(TypeSystemClikeNameTest, UnnamedRecordName) {
   CompilerType anon_union = builder.CreateRecordType("", 4, /*is_union=*/true);
   EXPECT_EQ(anon_union.GetTypeName().GetStringRef(), "(unnamed union)");
 }
+
+// GetDisplayTypeName prefixes a type's declaring (non-inline) namespaces, but
+// skips an inline namespace (e.g. libc++'s `std::__1`) -- so `std::__1::foo`
+// still displays as `std::foo`.
+TEST_F(TypeSystemClikeNameTest, DisplayNameSkipsInlineNamespace) {
+  const Namespace *std_ns =
+      builder.GetNamespace("std", nullptr, /*is_inline=*/false);
+  const Namespace *inline_ns =
+      builder.GetNamespace("__1", std_ns, /*is_inline=*/true);
+
+  CompilerType record = builder.CreateRecordType(
+      "std::__1::basic_string", 32, /*is_union=*/false,
+      /*is_class_keyword=*/false,
+      DeclScope{inline_ns, builder.GetIdentifier("basic_string")});
+
+  EXPECT_EQ(ts->GetDisplayTypeName(record.GetOpaqueQualType()).GetStringRef(),
+            "std::basic_string");
+}
