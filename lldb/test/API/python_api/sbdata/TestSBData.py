@@ -49,6 +49,7 @@ class SBDataAPICase(TestBase):
 
     # Flaky on Windows on Arm buildbot https://github.com/llvm/llvm-project/issues/234117.
     @skipIf(oslist=["windows"], archs=["aarch64"])
+    @add_test_categories(["typesystem-clike"])
     def test_with_run_command(self):
         """Test the SBData APIs."""
         self.build()
