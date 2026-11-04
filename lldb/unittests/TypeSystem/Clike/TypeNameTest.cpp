@@ -110,6 +110,36 @@ TEST_F(TypeNameTest, Enum) {
   EXPECT_EQ(Canonical(e), "Color");
 }
 
+// A namespace-qualified type renders with its scope; base_only asks for the
+// unqualified spelling instead.
+TEST_F(TypeNameTest, NamespaceQualified) {
+  const Namespace *ns = context.GetNamespace(context.GetIdentifier("ns"),
+                                             nullptr, /*is_inline=*/false);
+  RecordType *record =
+      Record("ns::Foo", DeclScope{ns, context.GetIdentifier("Foo")});
+
+  EXPECT_EQ(BuildCanonicalName(record, /*base_only=*/false), "ns::Foo");
+  EXPECT_EQ(BuildCanonicalName(record, /*base_only=*/true), "Foo");
+}
+
+// An inline namespace is transparent in the display name (libc++'s `std::__1`
+// prints as `std`) but is kept in the canonical one.
+TEST_F(TypeNameTest, InlineNamespaceHiddenInDisplayName) {
+  const Namespace *std_ns = context.GetNamespace(context.GetIdentifier("std"),
+                                                 nullptr, /*is_inline=*/false);
+  const Namespace *inline_ns = context.GetNamespace(
+      context.GetIdentifier("__1"), std_ns, /*is_inline=*/true);
+
+  RecordType *record =
+      Record("std::__1::string",
+             DeclScope{inline_ns, context.GetIdentifier("string")});
+
+  EXPECT_EQ(Display(record), "std::string");
+  // Keeping inline namespaces spells the full scope.
+  EXPECT_EQ(BuildDisplayName(record, /*keep_inline_namespaces=*/true),
+            "std::__1::string");
+}
+
 // A function type renders in C declarator form, and BuildFunctionName places
 // the caller's declarator between the return type and the parameter list.
 TEST_F(TypeNameTest, FunctionDeclarator) {

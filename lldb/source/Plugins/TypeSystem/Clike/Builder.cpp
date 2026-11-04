@@ -207,6 +207,12 @@ void Builder::AddField(clike::RecordType &record, clike::Identifier name,
                             bitfield_bit_size, bitfield_bit_offset);
 }
 
+const clike::Namespace *Builder::GetNamespace(llvm::StringRef name,
+                                              const clike::Namespace *parent,
+                                              bool is_inline) {
+  return m_ts.m_context.GetNamespace(GetIdentifier(name), parent, is_inline);
+}
+
 void Builder::AddNestedType(clike::RecordType &record, clike::Identifier name,
                             clike::Type *type) {
   if (std::optional<TypeRef> nested = ToTypeRef(type))

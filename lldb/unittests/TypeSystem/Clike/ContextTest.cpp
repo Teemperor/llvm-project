@@ -44,6 +44,20 @@ TEST_F(ContextTest, CreateUnionRecord) {
   EXPECT_TRUE(r->IsUnion());
 }
 
+// The declaration scope a named type is created with is what it reports.
+TEST_F(ContextTest, CreateRecordWithDeclScope) {
+  const Namespace *ns =
+      context.GetNamespace(context.GetIdentifier("std"), nullptr, false);
+  RecordType *r =
+      context.CreateRecordType("std::string", /*byte_size=*/32,
+                               /*is_union=*/false, /*is_class_keyword=*/true,
+                               DeclScope{ns, context.GetIdentifier("string")});
+  EXPECT_EQ(r->GetName().GetName(), "std::string");
+  EXPECT_EQ(r->GetDeclContext(), ns);
+  EXPECT_EQ(r->GetUnqualifiedName().GetName(), "string");
+  EXPECT_TRUE(r->IsClassKeyword());
+}
+
 // A record created from a forward declaration learns its size (and any
 // explicitly recorded alignment) when it is completed. Sugar over it forwards
 // the size dynamically, so it picks up the size learned later.
