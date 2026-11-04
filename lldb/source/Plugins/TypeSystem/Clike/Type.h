@@ -274,6 +274,11 @@ public:
   virtual uint32_t GetTypeInfo() const { return 0; }
 
   /// The least specific language that can express this type.
+  ///
+  /// Called WITHOUT the owning TypeSystemClike's lock (see
+  /// TypeSystemClike::GetTypeForImmutableRead), so overrides may only look at
+  /// state fixed at construction: the kind, names, and sugar/pointee links --
+  /// never completion state such as members.
   virtual lldb::LanguageType GetMinimumLanguage() const {
     return lldb::eLanguageTypeC;
   }
