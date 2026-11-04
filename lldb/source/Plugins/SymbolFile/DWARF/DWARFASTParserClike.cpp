@@ -1043,6 +1043,21 @@ bool DWARFASTParserClike::CompleteTypeFromDWARF(
         ts.AddField(*record, ts.GetIdentifier(member.name), member_type,
                     byte_offset, bitfield_bit_size, bitfield_bit_offset);
 
+        // An unnamed data member (no DW_AT_name, and not an unnamed bitfield)
+        // whose type is an unnamed record is an anonymous struct/union: its
+        // members are injected into this record's scope. Mark the member's
+        // record type so SBType::IsAnonymousType reports it (mirroring clang's
+        // RecordDecl::isAnonymousStructOrUnion). A merely unnamed record given
+        // a member name (`struct { int x; } m;`) is not anonymous. Also record
+        // `record` (the enclosing MySock-like type) as its anonymous parent, so
+        // TypeSystemClike::BuildDisplayName/GetTypeName can qualify the
+        // otherwise nameless "(unnamed union)" spelling as "MySock::(anonymous
+        // union)", matching clang's NamedDecl::printNestedNameSpecifier.
+        if (!is_bitfield && member.name.empty())
+          if (auto *field_record =
+                  llvm::dyn_cast<clike::RecordType>(member_type))
+            if (field_record->GetName().GetName().empty())
+              ts.SetRecordAnonymousStructOrUnion(*field_record, *record);
         // Advance the running field-end used for gap detection. A field with a
         // known end that reaches past everything seen so far makes the running
         // end trustworthy again; an unsized one leaves it unknown.

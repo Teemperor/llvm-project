@@ -35,7 +35,7 @@ static std::string BuildUnnamedTagName(clike::Type *t) {
       !t->GetUnqualifiedName().GetName().empty())
     return {};
   if (auto *rec = llvm::dyn_cast<RecordType>(t)) {
-    std::string adj = "unnamed";
+    std::string adj = rec->IsAnonymousStructOrUnion() ? "anonymous" : "unnamed";
     if (rec->IsUnion())
       return "(" + adj + " union)";
     if (rec->IsClassKeyword())
@@ -45,6 +45,32 @@ static std::string BuildUnnamedTagName(clike::Type *t) {
   if (llvm::isa<EnumType>(t))
     return "(unnamed enum)";
   return {};
+}
+
+static std::string BuildDisplayNameImpl(clike::Type *t,
+                                        bool keep_inline_namespaces = false);
+
+// An anonymous struct/union (RecordType::IsAnonymousStructOrUnion) has no name
+// of its own to qualify -- its DeclContext (which only models enclosing
+// *namespaces*, never enclosing classes) is therefore useless for recovering
+// its enclosing scope. Instead it carries a direct pointer to the record it is
+// embedded in (GetAnonymousParent()); use that record's own (already fully
+// qualified) display name as the prefix, e.g. "MySock::" for the union in
+// `struct MySock { union { ... }; };`. This mirrors clang's
+// NamedDecl::printNestedNameSpecifier, which walks the DeclContext chain and,
+// unlike this model, treats an enclosing RecordDecl as a DeclContext too. Does
+// nothing if `t` is not an anonymous struct/union (e.g. a function-local
+// unnamed struct, which has no anonymous parent and clang likewise never
+// prefixes: printNestedNameSpecifier returns early for a function DeclContext).
+static void AppendAnonymousParentPrefix(clike::Type *t, std::string &out) {
+  auto *rec = llvm::dyn_cast<clike::RecordType>(t);
+  if (!rec)
+    return;
+  const clike::RecordType *parent = rec->GetAnonymousParent();
+  if (!parent)
+    return;
+  out += BuildDisplayNameImpl(const_cast<clike::RecordType *>(parent));
+  out += "::";
 }
 
 // Build a type's (simplified) display name from the type model: qualified with
@@ -101,7 +127,9 @@ static std::string BuildDisplayNameImpl(clike::Type *t,
     // qualifies it that way (see AppendAnonymousParentPrefix). Otherwise
     // qualify by the enclosing namespace chain instead, same as a named type.
     if (std::string unnamed = BuildUnnamedTagName(t); !unnamed.empty()) {
-      return unnamed;
+      std::string result;
+      AppendAnonymousParentPrefix(t, result);
+      return result + unnamed;
     }
     return t->GetName().GetName().str();
   }
@@ -182,7 +210,10 @@ std::string clike::BuildCanonicalName(Type *t, bool base_only) {
   // uses). `base_only` asks for the unqualified spelling, so skip both prefixes
   // in that case.
   if (std::string unnamed = BuildUnnamedTagName(t); !unnamed.empty()) {
-    return unnamed;
+    std::string result;
+    if (!base_only)
+      AppendAnonymousParentPrefix(t, result);
+    return result + unnamed;
   }
   return t->GetName().GetName().str();
 }
