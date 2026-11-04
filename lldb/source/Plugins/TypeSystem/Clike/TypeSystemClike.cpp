@@ -56,6 +56,141 @@ TypeSystemClike::TypeSystemClike(llvm::StringRef name, clike::LanguageOpts opts)
 
 TypeSystemClike::~TypeSystemClike() = default;
 
+//===----------------------------------------------------------------------===//
+// Cross-instance locking (see the locking note in TypeSystemClike.h).
+//===----------------------------------------------------------------------===//
+
+namespace {
+/// Which instances' locks this thread currently holds, and in which mode, so
+/// LockSet can tell a harmless nested acquisition from one that will deadlock.
+///
+/// Worth the bookkeeping because the platform hides both cases rather than
+/// exposing them: llvm::sys::RWMutex is pthread_rwlock_t on Darwin
+/// (LLVM_USE_RW_MUTEX_IMPL, see llvm/Support/RWMutex.h), pthread_rwlock_rdlock
+/// / _wrlock return EDEADLK when the calling thread already holds the write
+/// lock, and SmartRWMutex discards that error -- so a re-entrant acquisition
+/// here silently does not lock and execution carries on with no mutual
+/// exclusion at all, while the same code deadlocks on a host where RWMutex is
+/// std::shared_mutex. Neither shows up as a test failure, so these checks are
+/// the only thing keeping the locking discipline honest.
+#ifndef NDEBUG
+struct HeldLock {
+  const TypeSystemClike *ts;
+  bool exclusive;
+};
+thread_local llvm::SmallVector<HeldLock, 8> g_thread_held_locks;
+
+/// The mode this thread already holds \p ts in, or std::nullopt.
+std::optional<bool> HeldModeByThisThread(const TypeSystemClike *ts) {
+  for (const HeldLock &held : g_thread_held_locks)
+    if (held.ts == ts)
+      return held.exclusive;
+  return std::nullopt;
+}
+/// Whether this thread holds a lock on an instance ordered *after* \p ts, so
+/// that acquiring \p ts now would take the global order backwards.
+bool HoldsLockOrderedAfter(const TypeSystemClike *ts) {
+  for (const HeldLock &held : g_thread_held_locks)
+    if (held.ts > ts)
+      return true;
+  return false;
+}
+void NoteLockAcquired(const TypeSystemClike *ts, bool exclusive) {
+  g_thread_held_locks.push_back({ts, exclusive});
+}
+void NoteLockReleased(const TypeSystemClike *ts) {
+  for (auto it = g_thread_held_locks.rbegin(); it != g_thread_held_locks.rend();
+       ++it)
+    if (it->ts == ts) {
+      g_thread_held_locks.erase(std::next(it).base());
+      return;
+    }
+  llvm_unreachable("releasing a lock this thread never acquired");
+}
+#else
+std::optional<bool> HeldModeByThisThread(const TypeSystemClike *) {
+  return std::nullopt;
+}
+bool HoldsLockOrderedAfter(const TypeSystemClike *) { return false; }
+void NoteLockAcquired(const TypeSystemClike *, bool) {}
+void NoteLockReleased(const TypeSystemClike *) {}
+#endif
+} // namespace
+
+TypeSystemClike::LockSet::LockSet(llvm::ArrayRef<TypeSystemClike *> ordered,
+                                  bool exclusive)
+    : m_exclusive(exclusive) {
+  m_locked.reserve(ordered.size());
+  for (TypeSystemClike *ts : ordered) {
+    assert((m_locked.empty() || m_locked.back() < ts) &&
+           "lock order must be strictly ascending by address -- that single "
+           "global order is what keeps overlapping sets deadlock-free");
+    // Nested acquisition of a lock this thread already holds is harmless
+    // *provided* it already holds it at least as strongly: the access being
+    // asked for is already ours, so skip it rather than re-take it (which the
+    // mutex cannot express). This happens for real and legitimately -- a query
+    // holding the write lock hands a CompilerType to a data formatter or to the
+    // Objective-C runtime, which calls back in through the public API.
+    if (std::optional<bool> held = HeldModeByThisThread(ts)) {
+      assert((!exclusive || *held) &&
+             "cannot upgrade a reader lock this thread already holds to a "
+             "writer lock -- the outer entry point has to take the write lock");
+      continue;
+    }
+    // Taking a *new* lock while already holding one ordered after it runs the
+    // global order backwards, which is the cycle the ordering exists to
+    // prevent. The fix is never to lock here: it is for the outer entry point
+    // to have included this instance in its own set (see GetLockOrder) and for
+    // this code to reach it through a non-locking entry point.
+    assert(!HoldsLockOrderedAfter(ts) &&
+           "acquiring this instance's lock would take the global lock order "
+           "backwards -- see TypeSystemClike::GetLockOrder");
+    if (exclusive)
+      ts->m_mutex.lock();
+    else
+      ts->m_mutex.lock_shared();
+    // Recorded only after the lock is held, so Release() unlocks exactly what
+    // was acquired even if a lock throws.
+    m_locked.push_back(ts);
+    NoteLockAcquired(ts, exclusive);
+  }
+}
+
+void TypeSystemClike::LockSet::Release() {
+  // Reverse order, mirroring how nested scoped locks unwind.
+  for (TypeSystemClike *ts : llvm::reverse(m_locked)) {
+    NoteLockReleased(ts);
+    if (m_exclusive)
+      ts->m_mutex.unlock();
+    else
+      ts->m_mutex.unlock_shared();
+  }
+  m_locked.clear();
+}
+
+void TypeSystemClike::AppendLockOrder(
+    llvm::SmallVectorImpl<TypeSystemClike *> &out) const {
+  out.push_back(const_cast<TypeSystemClike *>(this));
+}
+
+llvm::SmallVector<TypeSystemClike *, 4> TypeSystemClike::GetLockOrder() const {
+  std::lock_guard<std::mutex> guard(m_lock_order_mutex);
+  if (m_lock_order_valid && !HasDynamicLockOrder())
+    return m_lock_order;
+
+  m_lock_order.clear();
+  AppendLockOrder(m_lock_order);
+  // Sort by address and dedup: this is the global order LockSet relies on, and
+  // AppendLockOrder is free to report an instance more than once (several
+  // compile units importing the same module, say).
+  llvm::sort(m_lock_order);
+  m_lock_order.erase(llvm::unique(m_lock_order), m_lock_order.end());
+  assert(llvm::is_contained(m_lock_order, this) &&
+         "an instance must always lock itself");
+  m_lock_order_valid = true;
+  return m_lock_order;
+}
+
 CompilerType TypeSystemClike::GetCompilerType(clike::Type *type) {
   return CompilerType(weak_from_this(), type);
 }
@@ -135,17 +270,17 @@ bool TypeSystemClike::IsArrayType(lldb::opaque_compiler_type_t type,
 }
 
 bool TypeSystemClike::IsAggregateType(opaque_compiler_type_t type) {
-  clike::Type *t = GetClikeType(type);
+  SharedLockedType t = GetTypeForRead(type);
   return t && t->IsAggregate();
 }
 
 bool TypeSystemClike::IsCharType(opaque_compiler_type_t type) {
-  clike::Type *t = GetClikeType(type);
+  SharedLockedType t = GetTypeForRead(type);
   if (!t)
     return false;
   // Strip typedef/cv sugar so `const char` (e.g. the pointee of `const char *`)
   // is recognized.
-  return Desugar(t)->IsChar();
+  return Desugar(t.get())->IsChar();
 }
 
 bool TypeSystemClike::IsCompleteType(opaque_compiler_type_t type) {
@@ -163,7 +298,7 @@ bool TypeSystemClike::IsCompleteType(opaque_compiler_type_t type) {
 bool TypeSystemClike::IsDefined(opaque_compiler_type_t type) { return false; }
 
 bool TypeSystemClike::IsFloatingPointType(opaque_compiler_type_t type) {
-  clike::Type *t = GetClikeType(type);
+  SharedLockedType t = GetTypeForRead(type);
   return t && t->GetEncoding() == eEncodingIEEE754;
 }
 
@@ -187,17 +322,17 @@ bool TypeSystemClike::IsFunctionPointerType(lldb::opaque_compiler_type_t type) {
 }
 
 bool TypeSystemClike::IsMemberFunctionPointerType(opaque_compiler_type_t type) {
-  clike::Type *t = GetClikeType(type);
+  SharedLockedType t = GetTypeForRead(type);
   if (!t)
     return false;
-  return Desugar(t)->IsMemberFunctionPointer();
+  return Desugar(t.get())->IsMemberFunctionPointer();
 }
 
 bool TypeSystemClike::IsMemberDataPointerType(opaque_compiler_type_t type) {
-  clike::Type *t = GetClikeType(type);
+  SharedLockedType t = GetTypeForRead(type);
   if (!t)
     return false;
-  return Desugar(t)->IsMemberDataPointer();
+  return Desugar(t.get())->IsMemberDataPointer();
 }
 
 bool TypeSystemClike::IsBlockPointerType(
@@ -209,8 +344,8 @@ bool TypeSystemClike::IsBlockPointerType(
 bool TypeSystemClike::IsIntegerType(opaque_compiler_type_t type,
                                     bool &is_signed) {
   is_signed = false;
-  clike::Type *tt = GetClikeType(type);
-  return tt && IsIntegerTypeImpl(tt, is_signed);
+  SharedLockedType tt = GetTypeForRead(type);
+  return tt && IsIntegerTypeImpl(tt.get(), is_signed);
 }
 
 bool TypeSystemClike::IsIntegerTypeImpl(const clike::Type *t, bool &is_signed) {
@@ -243,15 +378,15 @@ bool TypeSystemClike::IsPointerType(lldb::opaque_compiler_type_t type,
 }
 
 bool TypeSystemClike::IsScalarType(opaque_compiler_type_t type) {
-  clike::Type *t = GetClikeType(type);
+  SharedLockedType t = GetTypeForRead(type);
   return t && (t->GetTypeInfo() & eTypeIsScalar);
 }
 
 bool TypeSystemClike::IsVoidType(opaque_compiler_type_t type) {
-  clike::Type *t = GetClikeType(type);
+  SharedLockedType t = GetTypeForRead(type);
   if (!t)
     return false;
-  return clike::IsVoid(t);
+  return clike::IsVoid(t.get());
 }
 
 bool TypeSystemClike::CanPassInRegisters(const CompilerType &type) {
@@ -265,12 +400,13 @@ bool TypeSystemClike::SupportsLanguage(LanguageType language) {
 bool TypeSystemClike::GetCompleteType(opaque_compiler_type_t type) {
   if (!type)
     return false;
-  clike::Type *t = GetClikeType(type);
-  clike::Type *completed = CompleteTypeImpl(t);
+  LockedType t = GetTypeForWrite(type);
+  clike::Type *completed = CompleteTypeAssumingWriteLocked(t.get());
   return completed && completed->IsComplete();
 }
 
-clike::Type *TypeSystemClike::CompleteTypeImpl(clike::Type *type) {
+clike::Type *
+TypeSystemClike::CompleteTypeAssumingWriteLocked(clike::Type *type) {
   if (!type)
     return nullptr;
   // See through typedefs/qualifiers: it is the underlying record that carries
@@ -343,15 +479,27 @@ bool TypeSystemClike::GetPtrAuthAddressDiversity(
 
 ConstString TypeSystemClike::GetTypeName(opaque_compiler_type_t type,
                                          bool BaseOnly) {
-  if (!type)
+  LockedType t = GetTypeForWrite(type);
+  return GetTypeNameAssumingWriteLocked(t.get(), BaseOnly);
+}
+
+ConstString TypeSystemClike::GetTypeNameAssumingWriteLocked(clike::Type *t,
+                                                            bool BaseOnly) {
+  if (!t)
     return ConstString();
-  return ConstString(clike::BuildCanonicalName(GetClikeType(type), BaseOnly));
+  return ConstString(clike::BuildCanonicalName(t, BaseOnly));
 }
 
 ConstString TypeSystemClike::GetDisplayTypeName(opaque_compiler_type_t type) {
-  if (!type)
+  LockedType t = GetTypeForWrite(type);
+  return GetDisplayTypeNameAssumingWriteLocked(t.get());
+}
+
+ConstString
+TypeSystemClike::GetDisplayTypeNameAssumingWriteLocked(clike::Type *t) {
+  if (!t)
     return ConstString();
-  return ConstString(clike::BuildDisplayName(GetClikeType(type)));
+  return ConstString(clike::BuildDisplayName(t));
 }
 
 uint32_t
@@ -359,10 +507,10 @@ TypeSystemClike::GetTypeInfo(opaque_compiler_type_t type,
                              CompilerType *pointee_or_element_compiler_type) {
   if (pointee_or_element_compiler_type)
     pointee_or_element_compiler_type->Clear();
-  clike::Type *tt = GetClikeType(type);
+  SharedLockedType tt = GetTypeForRead(type);
   if (!tt)
     return 0;
-  const clike::Type *t = tt;
+  const clike::Type *t = tt.get();
   return t->GetTypeInfo();
 }
 
@@ -372,14 +520,14 @@ LanguageType TypeSystemClike::GetMinimumLanguage(opaque_compiler_type_t type) {
   // libc++ container data formatters are consulted (see
   // FormatManager::GetCandidateLanguages); see clike::Type::GetMinimumLanguage
   // for the rest.
-  clike::Type *tt = GetClikeType(type);
+  SharedLockedType tt = GetTypeForRead(type);
   if (tt)
-    return Desugar(tt)->GetMinimumLanguage();
+    return Desugar(tt.get())->GetMinimumLanguage();
   return eLanguageTypeC_plus_plus;
 }
 
 TypeClass TypeSystemClike::GetTypeClass(opaque_compiler_type_t type) {
-  clike::Type *t = GetClikeType(type);
+  SharedLockedType t = GetTypeForRead(type);
   return t ? t->GetTypeClass() : eTypeClassInvalid;
 }
 
@@ -390,11 +538,11 @@ TypeSystemClike::GetArrayElementType(lldb::opaque_compiler_type_t type,
 }
 
 CompilerType TypeSystemClike::GetCanonicalType(opaque_compiler_type_t type) {
-  clike::Type *t = GetClikeType(type);
+  SharedLockedType t = GetTypeForRead(type);
   if (!t)
     return CompilerType();
   // The canonical type is the type with all typedef/cv sugar stripped.
-  return GetCompilerType(Desugar(t));
+  return GetCompilerType(Desugar(t.get()));
 }
 
 CompilerType
@@ -446,22 +594,22 @@ TypeSystemClike::GetFloatTypeSemantics(size_t byte_size, Format format) {
 llvm::Expected<uint64_t>
 TypeSystemClike::GetBitSize(opaque_compiler_type_t type,
                             ExecutionContextScope *exe_scope) {
-  clike::Type *tt = GetClikeType(type);
+  SharedLockedType tt = GetTypeForRead(type);
   if (!tt)
     return llvm::createStringError("invalid type");
-  const clike::Type *t = Desugar(tt);
+  const clike::Type *t = Desugar(tt.get());
   if (std::optional<uint64_t> byte_size = t->GetByteSize())
     return *byte_size * 8;
   return llvm::createStringError("TypeSystemClike::GetBitSize: unknown size");
 }
 
 Encoding TypeSystemClike::GetEncoding(opaque_compiler_type_t type) {
-  clike::Type *t = GetClikeType(type);
+  SharedLockedType t = GetTypeForRead(type);
   return t ? t->GetEncoding() : eEncodingInvalid;
 }
 
 Format TypeSystemClike::GetFormat(opaque_compiler_type_t type) {
-  clike::Type *t = GetClikeType(type);
+  SharedLockedType t = GetTypeForRead(type);
   return t ? t->GetFormat() : eFormatDefault;
 }
 
@@ -474,15 +622,15 @@ TypeSystemClike::GetNumChildren(lldb::opaque_compiler_type_t type,
 
 BasicType
 TypeSystemClike::GetBasicTypeEnumeration(opaque_compiler_type_t type) {
-  clike::Type *t = GetClikeType(type);
+  SharedLockedType t = GetTypeForRead(type);
   if (!t)
     return eBasicTypeInvalid;
-  return Desugar(t)->GetBasicTypeEnumeration();
+  return Desugar(t.get())->GetBasicTypeEnumeration();
 }
 
 bool TypeSystemClike::IsPromotableIntegerType(opaque_compiler_type_t type) {
-  clike::Type *t = GetClikeType(type);
-  return t && IsPromotableIntegerTypeImpl(t);
+  SharedLockedType t = GetTypeForRead(type);
+  return t && IsPromotableIntegerTypeImpl(t.get());
 }
 
 bool TypeSystemClike::IsPromotableIntegerTypeImpl(const clike::Type *t) {
@@ -493,27 +641,29 @@ bool TypeSystemClike::IsPromotableIntegerTypeImpl(const clike::Type *t) {
 
 CompilerType
 TypeSystemClike::GetPromotedIntegerType(opaque_compiler_type_t type) {
-  clike::Type *tt = GetClikeType(type);
-  if (!tt || !IsPromotableIntegerTypeImpl(tt))
+  // May allocate a fresh builtin type via GetBasicTypeFromAST below, so this
+  // needs the write lock.
+  LockedType tt = GetTypeForWrite(type);
+  if (!tt || !IsPromotableIntegerTypeImpl(tt.get()))
     return CompilerType();
 
-  CompilerType int_type = GetBasicTypeFromAST(eBasicTypeInt);
+  CompilerType int_type = GetBasicTypeFromASTAssumingWriteLocked(eBasicTypeInt);
   std::optional<uint64_t> int_size =
       GetClikeType(int_type.GetOpaqueQualType())->GetByteSize();
 
   // The result of integer promotion is `int` if int can represent all values
   // of the source type, otherwise `unsigned int`. Compare byte sizes and
   // signedness against int.
-  std::optional<uint64_t> src_size = tt->GetByteSize();
+  std::optional<uint64_t> src_size = tt.get()->GetByteSize();
 
   bool is_signed = false;
-  bool src_is_integer = IsIntegerTypeImpl(tt, is_signed);
+  bool src_is_integer = IsIntegerTypeImpl(tt.get(), is_signed);
 
   if (src_size && int_size && *src_size >= *int_size && src_is_integer &&
       !is_signed) {
     // An unsigned source that is at least as wide as int cannot be represented
     // by int; promote to unsigned int instead.
-    return GetBasicTypeFromAST(eBasicTypeUnsignedInt);
+    return GetBasicTypeFromASTAssumingWriteLocked(eBasicTypeUnsignedInt);
   }
   return int_type;
 }
@@ -592,10 +742,10 @@ bool TypeSystemClike::DumpTypeValue(opaque_compiler_type_t type, Stream &s,
                                     uint32_t bitfield_bit_size,
                                     uint32_t bitfield_bit_offset,
                                     ExecutionContextScope *exe_scope) {
-  clike::Type *tt = GetClikeType(type);
+  SharedLockedType tt = GetTypeForRead(type);
   if (!tt)
     return false;
-  const clike::Type *t = Desugar(tt);
+  const clike::Type *t = Desugar(tt.get());
   // Aggregates don't have a scalar value to print; their children are dumped
   // individually.
   if (t->IsAggregate())
@@ -643,13 +793,14 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type,
 
 void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type,
                                           Stream &s, DescriptionLevel level) {
-  clike::Type *tt = GetClikeType(type);
+  // Lazily completes the type below, so this needs the write lock.
+  LockedType tt = GetTypeForWrite(type);
   if (!tt)
     return;
-  clike::Type *t = Desugar(tt);
+  clike::Type *t = Desugar(tt.get());
 
   // Anything else: just print its name.
-  if (ConstString name = GetTypeName(t, /*BaseOnly=*/false))
+  if (ConstString name = GetTypeNameAssumingWriteLocked(t, /*BaseOnly=*/false))
     s.PutCString(name.GetStringRef());
 }
 
@@ -680,14 +831,17 @@ unsigned TypeSystemClike::GetTypeQualifiers(lldb::opaque_compiler_type_t type) {
 std::optional<size_t>
 TypeSystemClike::GetTypeBitAlign(opaque_compiler_type_t type,
                                  ExecutionContextScope *exe_scope) {
-  clike::Type *tt = GetClikeType(type);
+  LockedType tt = GetTypeForWrite(type);
   if (!tt)
     return std::nullopt;
-  const clike::Type *t = Desugar(tt);
+  const clike::Type *t = Desugar(tt.get());
   return t ? t->GetAlignmentInBits() : std::nullopt;
 }
 
 CompilerType TypeSystemClike::GetBuiltinTypeByName(ConstString name) {
+  // The `_BitInt`/`unsigned _BitInt` branch below allocates a bespoke tracked
+  // type, so this needs the write lock.
+  auto write_lock = LockForWrite();
   llvm::StringRef name_ref = name.GetStringRef();
 
   // `_BitInt(N)` / `unsigned _BitInt(N)` are synthesized on demand (they never
@@ -727,6 +881,12 @@ CompilerType TypeSystemClike::GetBuiltinTypeByName(ConstString name) {
 }
 
 CompilerType TypeSystemClike::GetBasicTypeFromAST(BasicType basic_type) {
+  auto write_lock = LockForWrite();
+  return GetBasicTypeFromASTAssumingWriteLocked(basic_type);
+}
+
+CompilerType
+TypeSystemClike::GetBasicTypeFromASTAssumingWriteLocked(BasicType basic_type) {
   // Everything the type system models is one of the enumerated builtins.
   // Anything it doesn't (e.g. eBasicTypeHalf) has no basic type here.
   std::optional<clike::BuiltinKind> kind =
@@ -739,6 +899,7 @@ CompilerType TypeSystemClike::GetBasicTypeFromAST(BasicType basic_type) {
 CompilerType
 TypeSystemClike::GetBuiltinTypeForEncodingAndBitSize(Encoding encoding,
                                                      size_t bit_size) {
+  auto read_lock = LockForRead();
   std::optional<clike::BuiltinKind> kind =
       clike::KnownBuiltinTypes::KindForEncodingAndBitSize(encoding, bit_size);
   if (!kind)
@@ -784,7 +945,7 @@ TypeSystemClike::GetFullyUnqualifiedType(lldb::opaque_compiler_type_t type) {
 }
 
 CompilerType TypeSystemClike::GetNonReferenceType(opaque_compiler_type_t type) {
-  clike::Type *tt = GetClikeType(type);
+  SharedLockedType tt = GetTypeForRead(type);
   if (!tt)
     return CompilerType();
   // A reference may hide behind sugar (e.g. `typedef int &td_int_ref`), so look
@@ -796,7 +957,7 @@ CompilerType TypeSystemClike::GetNonReferenceType(opaque_compiler_type_t type) {
   // (not the referent's own typedef/cv sugar), mirroring clang: the
   // non-reference type of `const int &` is `const int`, and of `td_int_ref` is
   // `int`.
-  const clike::Type *t = Desugar(tt);
+  const clike::Type *t = Desugar(tt.get());
   if (t->IsReference())
     return GetCompilerType(t->GetPointeeType());
   return CompilerType(weak_from_this(), type);
@@ -809,10 +970,10 @@ bool TypeSystemClike::IsReferenceType(opaque_compiler_type_t type,
     pointee_type->Clear();
   if (is_rvalue)
     *is_rvalue = false;
-  clike::Type *tt = GetClikeType(type);
+  SharedLockedType tt = GetTypeForRead(type);
   if (!tt)
     return false;
-  const clike::Type *ref = Desugar(tt);
+  const clike::Type *ref = Desugar(tt.get());
   if (!ref->IsReference())
     return false;
   if (pointee_type)
