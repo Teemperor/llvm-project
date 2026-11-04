@@ -806,6 +806,17 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type,
   LockedType tt = GetTypeForWrite(type);
   if (!tt)
     return;
+  // A typedef is checked before desugaring (unlike the record/enum branches
+  // below, which want the canonical type): clang's equivalent dump
+  // only special-cases a type that IS itself a TypedefType, printing
+  // "typedef <name>" and leaving the underlying type alone, matching
+  // TypeSystemClang::DumpTypeDescription's `case clang::Type::Typedef`.
+  if (tt->GetTypedefedType()) {
+    s.PutCString("typedef ");
+    s.PutCString(GetTypeNameAssumingWriteLocked(tt.get(), /*BaseOnly=*/true)
+                     .GetStringRef());
+    return;
+  }
   clike::Type *t = Desugar(tt.get());
 
   // Anything else: just print its name.
@@ -934,13 +945,16 @@ bool TypeSystemClike::IsPolymorphicClass(opaque_compiler_type_t type) {
   return false;
 }
 
-bool TypeSystemClike::IsTypedefType(lldb::opaque_compiler_type_t type) {
-  return false;
+bool TypeSystemClike::IsTypedefType(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  return t && t->StripElaborated()->GetTypedefedType();
 }
 
-CompilerType
-TypeSystemClike::GetTypedefedType(lldb::opaque_compiler_type_t type) {
-  return CompilerType();
+CompilerType TypeSystemClike::GetTypedefedType(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  if (!t)
+    return CompilerType();
+  return GetCompilerType(t->StripElaborated()->GetTypedefedType());
 }
 
 bool TypeSystemClike::IsVectorType(lldb::opaque_compiler_type_t type,

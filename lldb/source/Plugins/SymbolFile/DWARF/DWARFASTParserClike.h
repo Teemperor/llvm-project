@@ -129,6 +129,7 @@ private:
   lldb::TypeSP ParseBaseType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParseUnspecifiedType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  lldb::TypeSP ParseTypedef(const lldb_private::plugin::dwarf::DWARFDIE &die);
 
   lldb_private::TypeSystemClike &m_ts;
 };
