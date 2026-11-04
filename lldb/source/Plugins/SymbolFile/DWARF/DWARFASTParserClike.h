@@ -136,6 +136,7 @@ private:
   ParseCVQualifiedType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParseAtomicType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  lldb::TypeSP ParseEnum(const lldb_private::plugin::dwarf::DWARFDIE &die);
 
   lldb_private::TypeSystemClike &m_ts;
 };
