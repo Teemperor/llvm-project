@@ -8,8 +8,9 @@
 //
 // All categories that can be used with LLDB_SCOPED_TIMER (see Timer.h).
 //
-// A category name consists of dot-separated components. Every component must
-// be a C++ identifier, because the category "A.B" is available in C++ as the
+// A category name consists of dot-separated components that determine the
+// nesting of the timer in the "statistics dump" JSON. Every component must be
+// a C++ identifier, because the category "A.B" is available in C++ as the
 // constant lldb_private::timers::A::B (see LLDB_SCOPED_TIMER). By convention
 // the name is "Class.Method". The build fails if a name is defined twice, or
 // if a category is nested in another category (e.g., "A.B" and "A.B.C").

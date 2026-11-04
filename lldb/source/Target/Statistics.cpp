@@ -19,6 +19,7 @@
 #include "lldb/Target/UnixSignals.h"
 #include "lldb/Utility/LLDBLog.h"
 #include "lldb/Utility/StructuredData.h"
+#include "lldb/Utility/Timer.h"
 
 using namespace lldb;
 using namespace lldb_private;
@@ -42,6 +43,35 @@ static double elapsed(const StatsTimepoint &start, const StatsTimepoint &end) {
   StatsDuration::Duration elapsed =
       end.time_since_epoch() - start.time_since_epoch();
   return elapsed.count();
+}
+
+/// Returns the statistics of all LLDB_SCOPED_TIMER categories. Every
+/// component of a category name is a nested JSON object, e.g. the category
+/// "expr.c++" is reported as {"expr": {"c++": {<stats>}}}. TimerCategories.td
+/// guarantees that a category is never nested in another category. All times
+/// are in seconds and include the time spent in nested timers.
+static json::Value TimersToJSON() {
+  auto seconds = [](uint64_t nanos) { return nanos / 1000000000.; };
+  auto get_or_create_object = [](json::Object &parent,
+                                 llvm::StringRef key) -> json::Object & {
+    json::Value &value = parent[key];
+    if (!value.getAsObject())
+      value = json::Object();
+    return *value.getAsObject();
+  };
+
+  json::Object timers;
+  for (const Timer::CategoryStats &stats : Timer::GetCategoryStats()) {
+    json::Object *obj = &timers;
+    for (llvm::StringRef component : stats.info->components)
+      obj = &get_or_create_object(*obj, component);
+    obj->try_emplace("count", stats.count);
+    obj->try_emplace("totalTime", seconds(stats.nanos_total));
+    obj->try_emplace("averageTime", seconds(stats.nanos_total) / stats.count);
+    obj->try_emplace("minTime", seconds(stats.nanos_min));
+    obj->try_emplace("maxTime", seconds(stats.nanos_max));
+  }
+  return std::move(timers);
 }
 
 void TargetStats::CollectStats(Target &target) {
@@ -297,6 +327,8 @@ void DebuggerStats::ResetStatistics(Debugger &debugger, Target *target) {
   else {
     for (const auto &target : debugger.GetTargetList().Targets())
       target->ResetStatistics();
+    // Timers are global, so only reset them when resetting everything.
+    Timer::ResetCategoryTimes();
   }
 }
 
@@ -478,6 +510,7 @@ llvm::json::Value DebuggerStats::ReportStatistics(
   if (!summary_only) {
     json::Value cmd_stats = debugger.GetCommandInterpreter().GetStatistics();
     global_stats.try_emplace("commands", std::move(cmd_stats));
+    global_stats.try_emplace("timers", TimersToJSON());
   }
 
   if (include_modules) {

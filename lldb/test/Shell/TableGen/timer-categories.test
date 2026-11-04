@@ -15,11 +15,15 @@
 # TREE-NEXT: } // namespace Module
 
 # RUN: lldb-tblgen -gen-lldb-timer-category-infos %t/valid.td | FileCheck %s --check-prefix=INFOS
+# INFOS:      static constexpr llvm::StringLiteral g_components_0[] = {"Expression", "Cxx", "Execute"};
+# INFOS-NEXT: static constexpr llvm::StringLiteral g_components_1[] = {"Expression", "Cxx", "Parse"};
+# INFOS-NEXT: static constexpr llvm::StringLiteral g_components_2[] = {"Expression", "Total"};
+# INFOS-NEXT: static constexpr llvm::StringLiteral g_components_3[] = {"Module", "GetObjectFile"};
 # INFOS:      static constexpr TimerCategoryInfo g_categories[] = {
-# INFOS-NEXT:     {"Expression.Cxx.Execute"},
-# INFOS-NEXT:     {"Expression.Cxx.Parse"},
-# INFOS-NEXT:     {"Expression.Total"},
-# INFOS-NEXT:     {"Module.GetObjectFile"},
+# INFOS-NEXT:     {"Expression.Cxx.Execute", g_components_0},
+# INFOS-NEXT:     {"Expression.Cxx.Parse", g_components_1},
+# INFOS-NEXT:     {"Expression.Total", g_components_2},
+# INFOS-NEXT:     {"Module.GetObjectFile", g_components_3},
 # INFOS-NEXT: };
 
 # RUN: not lldb-tblgen -gen-lldb-timer-categories %t/duplicate.td 2>&1 | FileCheck %s --check-prefix=DUPLICATE

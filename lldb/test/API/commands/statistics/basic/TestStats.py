@@ -440,6 +440,56 @@ class TestCase(TestBase):
         self.assertNotEqual(command_stats, None)
         self.assertEqual(command_stats["target list"], 2)
 
+    def test_timers(self):
+        """
+        Test "statistics dump" and the LLDB_SCOPED_TIMER statistics.
+        """
+        self.build()
+        exe = self.getBuildArtifact("a.out")
+        # Creating a target always runs this timer.
+        target = self.createTestTarget(file_path=exe)
+
+        debug_stats = self.get_stats()
+        self.assertIn("timers", debug_stats)
+        timers = debug_stats["timers"]
+        # The dot-separated category "TargetList.CreateTarget" is nested.
+        self.assertIn("TargetList", timers)
+        self.assertIn("CreateTarget", timers["TargetList"])
+        self.assertIn("count", timers["TargetList"]["CreateTarget"])
+
+        # Collect all timers by walking the nested objects. Objects with a
+        # "count" key contain timer statistics.
+        stat_keys = ["count", "totalTime", "averageTime", "minTime", "maxTime"]
+        all_timers = {}
+
+        def collect(obj, path):
+            if "count" in obj:
+                all_timers[".".join(path)] = obj
+            for key, value in obj.items():
+                if isinstance(value, dict):
+                    collect(value, path + [key])
+
+        collect(timers, [])
+        self.assertIn("TargetList.CreateTarget", all_timers)
+        for name, timer in all_timers.items():
+            for key in stat_keys:
+                self.assertIn(key, timer, f"'{key}' missing in timer '{name}'")
+            self.assertGreater(timer["count"], 0)
+            self.assertLessEqual(timer["minTime"], timer["averageTime"])
+            self.assertLessEqual(timer["averageTime"], timer["maxTime"])
+            self.assertLessEqual(timer["maxTime"], timer["totalTime"])
+            self.assertAlmostEqual(
+                timer["averageTime"] * timer["count"], timer["totalTime"]
+            )
+
+        # Timers are not part of the summary.
+        self.assertNotIn("timers", self.get_stats("--summary"))
+
+        # Resetting all statistics also resets the timers.
+        self.dbg.ResetStatistics()
+        timers = self.get_stats()["timers"]
+        self.assertNotIn("TargetList", timers)
+
     def test_breakpoints(self):
         """Test "statistics dump"
 
@@ -1015,6 +1065,7 @@ class TestCase(TestBase):
                 "api_options": {},
                 "expect": {
                     "commands": True,
+                    "timers": True,
                     "targets": True,
                     "targets.moduleIdentifiers": True,
                     "targets.breakpoints": True,
@@ -1032,6 +1083,7 @@ class TestCase(TestBase):
                 },
                 "expect": {
                     "commands": False,
+                    "timers": False,
                     "targets": True,
                     "targets.moduleIdentifiers": False,
                     "targets.breakpoints": False,
@@ -1050,6 +1102,7 @@ class TestCase(TestBase):
                 },
                 "expect": {
                     "commands": False,
+                    "timers": False,
                     "targets": True,
                     "targets.moduleIdentifiers": False,
                     "targets.breakpoints": False,
@@ -1068,6 +1121,7 @@ class TestCase(TestBase):
                 },
                 "expect": {
                     "commands": False,
+                    "timers": False,
                     "targets": False,
                     "modules": False,
                     "transcript": False,
@@ -1081,6 +1135,7 @@ class TestCase(TestBase):
                 },
                 "expect": {
                     "commands": False,
+                    "timers": False,
                     "targets": True,
                     "targets.moduleIdentifiers": False,
                     "targets.breakpoints": False,
@@ -1099,6 +1154,7 @@ class TestCase(TestBase):
                 },
                 "expect": {
                     "commands": True,
+                    "timers": True,
                     "targets": True,
                     "targets.moduleIdentifiers": False,
                     "targets.breakpoints": True,
@@ -1117,6 +1173,7 @@ class TestCase(TestBase):
                 },
                 "expect": {
                     "commands": True,
+                    "timers": True,
                     "targets": True,
                     "targets.moduleIdentifiers": False,
                     "targets.breakpoints": True,
@@ -1134,6 +1191,7 @@ class TestCase(TestBase):
                 },
                 "expect": {
                     "commands": True,
+                    "timers": True,
                     "targets": True,
                     "targets.moduleIdentifiers": False,
                     "targets.breakpoints": True,
@@ -1151,6 +1209,7 @@ class TestCase(TestBase):
                 },
                 "expect": {
                     "commands": True,
+                    "timers": True,
                     "targets": True,
                     "targets.moduleIdentifiers": True,
                     "targets.breakpoints": True,

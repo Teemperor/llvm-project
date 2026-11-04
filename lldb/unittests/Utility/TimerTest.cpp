@@ -51,6 +51,15 @@ std::optional<CategoryStats> ParseCategory(llvm::StringRef dump,
   return std::nullopt;
 }
 
+/// Returns the statistics of the given category or std::nullopt if no timer
+/// of the category finished.
+std::optional<Timer::CategoryStats> GetStats(llvm::StringRef category) {
+  for (const Timer::CategoryStats &stats : Timer::GetCategoryStats())
+    if (stats.info->name == category)
+      return stats;
+  return std::nullopt;
+}
+
 constexpr Timer::CategoryID g_cat_a = timers::TimerTest::A;
 constexpr Timer::CategoryID g_cat_b = timers::TimerTest::B;
 } // namespace
@@ -140,6 +149,31 @@ TEST(TimerTest, CategoryTimesStats) {
   EXPECT_EQ(2, cat_b->count);
 }
 
+TEST(TimerTest, CategoryStats) {
+  Timer::ResetCategoryTimes();
+  {
+    Timer t(g_cat_a);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  {
+    Timer t(g_cat_a);
+    std::this_thread::sleep_for(std::chrono::milliseconds(30));
+  }
+
+  std::optional<Timer::CategoryStats> stats = GetStats("TimerTest.A");
+  ASSERT_TRUE(stats.has_value());
+  EXPECT_EQ(2U, stats->count);
+  EXPECT_LE(10000000U, stats->nanos_min);
+  EXPECT_LE(30000000U, stats->nanos_max);
+  EXPECT_LT(stats->nanos_min, stats->nanos_max);
+  EXPECT_EQ(stats->nanos_total, stats->nanos);
+  EXPECT_LE(stats->nanos_min + stats->nanos_max, stats->nanos_total);
+
+  // Resetting removes the category from the reported statistics.
+  Timer::ResetCategoryTimes();
+  EXPECT_FALSE(GetStats("TimerTest.A").has_value());
+}
+
 TEST(TimerTest, DumpSortedByName) {
   Timer::ResetCategoryTimes();
   {
@@ -163,6 +197,9 @@ TEST(TimerTest, DumpSortedByName) {
 TEST(TimerTest, CategoryInfo) {
   const TimerCategoryInfo &info = Timer::GetCategoryInfo(g_cat_b);
   EXPECT_EQ("TimerTest.B", info.name);
+  ASSERT_EQ(2U, info.components.size());
+  EXPECT_EQ("TimerTest", info.components[0]);
+  EXPECT_EQ("B", info.components[1]);
 
   EXPECT_EQ("Module.GetObjectFile",
             Timer::GetCategoryInfo(timers::Module::GetObjectFile).name);
@@ -180,10 +217,7 @@ TEST(TimerTest, ScopedTimer) {
     LLDB_SCOPED_TIMERV(TimerTest::A, "({0})", 2);
   }
 
-  StreamString ss;
-  Timer::DumpCategoryTimes(ss);
-  std::optional<CategoryStats> cat_a =
-      ParseCategory(ss.GetString(), "TimerTest.A");
-  ASSERT_TRUE(cat_a.has_value()) << "String: " << ss.GetData();
-  EXPECT_EQ(3, cat_a->count);
+  std::optional<Timer::CategoryStats> stats = GetStats("TimerTest.A");
+  ASSERT_TRUE(stats.has_value());
+  EXPECT_EQ(3U, stats->count);
 }

@@ -10,11 +10,13 @@
 #define LLDB_UTILITY_TIMER_H
 
 #include "lldb/lldb-defines.h"
+#include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Chrono.h"
 #include "llvm/Support/FormatVariadic.h"
 #include <atomic>
 #include <cstdint>
+#include <vector>
 
 namespace lldb_private {
 class Stream;
@@ -24,6 +26,10 @@ class Stream;
 struct TimerCategoryInfo {
   /// The full category name, e.g. "Module.GetObjectFile".
   llvm::StringLiteral name;
+  /// The dot-separated components of the name, e.g. {"Module",
+  /// "GetObjectFile"}. They determine the nesting of the timer in the
+  /// "statistics dump" JSON.
+  llvm::ArrayRef<llvm::StringLiteral> components;
 };
 
 /// \class Timer Timer.h "lldb/Utility/Timer.h"
@@ -65,6 +71,24 @@ public:
 
   static void ResetCategoryTimes();
 
+  /// Accumulated statistics of a timer category.
+  struct CategoryStats {
+    const TimerCategoryInfo *info = nullptr;
+    /// Number of times a timer of this category finished.
+    uint64_t count = 0;
+    /// Time spent excluding time spent in nested timers.
+    uint64_t nanos = 0;
+    /// Time spent including time spent in nested timers. The min/max values
+    /// below are also inclusive.
+    uint64_t nanos_total = 0;
+    uint64_t nanos_min = 0;
+    uint64_t nanos_max = 0;
+  };
+
+  /// Returns the statistics of every category that recorded at least one
+  /// timer run, sorted by category name.
+  static std::vector<CategoryStats> GetCategoryStats();
+
 protected:
   using TimePoint = std::chrono::steady_clock::time_point;
   void ChildDuration(TimePoint::duration dur) { m_child_duration += dur; }
@@ -94,9 +118,10 @@ namespace timers {
 // The category is the path of a timer category in the lldb_private::timers
 // namespace, e.g. Module::GetObjectFile for the category "Module.GetObjectFile"
 // defined in lldb/Utility/TimerCategories.td. The category name identifies the
-// timer in the "log timers dump" output. When timers are displayed, the
-// category name is printed followed by the optional message, so the message
-// should only contain additional details.
+// timer in the "log timers dump" output and its dot-separated components
+// determine the nesting in the "statistics dump" JSON. When timers are
+// displayed, the category name is printed followed by the optional message, so
+// the message should only contain additional details.
 #define LLDB_SCOPED_TIMER(category)                                            \
   ::lldb_private::Timer _scoped_timer{::lldb_private::timers::category}
 #define LLDB_SCOPED_TIMERF(category, ...)                                      \

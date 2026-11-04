@@ -20,6 +20,7 @@
 #include <cinttypes>
 #include <cstdarg>
 #include <cstdio>
+#include <limits>
 
 using namespace lldb_private;
 
@@ -37,11 +38,17 @@ struct CategoryCounters {
   std::atomic<uint64_t> nanos{0};
   /// Time spent in this category including time spent in nested timers.
   std::atomic<uint64_t> nanos_total{0};
+  /// Shortest and longest (inclusive) duration of a single timer run.
+  std::atomic<uint64_t> nanos_min{std::numeric_limits<uint64_t>::max()};
+  std::atomic<uint64_t> nanos_max{0};
   std::atomic<uint64_t> count{0};
 
   void Reset() {
     nanos.store(0, std::memory_order_release);
     nanos_total.store(0, std::memory_order_release);
+    nanos_min.store(std::numeric_limits<uint64_t>::max(),
+                    std::memory_order_release);
+    nanos_max.store(0, std::memory_order_release);
     count.store(0, std::memory_order_release);
   }
 };
@@ -140,8 +147,20 @@ Timer::~Timer() {
 
   // Keep total results for each category so we can dump results.
   CategoryCounters &counters = g_counters[static_cast<size_t>(m_category)];
+  const uint64_t total_nanos = std::chrono::nanoseconds(total_dur).count();
   counters.nanos += std::chrono::nanoseconds(timer_dur).count();
-  counters.nanos_total += std::chrono::nanoseconds(total_dur).count();
+  counters.nanos_total += total_nanos;
+
+  uint64_t min = counters.nanos_min.load(std::memory_order_relaxed);
+  while (total_nanos < min &&
+         !counters.nanos_min.compare_exchange_weak(min, total_nanos))
+    ;
+  uint64_t max = counters.nanos_max.load(std::memory_order_relaxed);
+  while (total_nanos > max &&
+         !counters.nanos_max.compare_exchange_weak(max, total_nanos))
+    ;
+  // Increment the count last so that GetCategoryStats never sees a non-zero
+  // count without valid min/max values.
   counters.count++;
 }
 
@@ -152,19 +171,32 @@ void Timer::ResetCategoryTimes() {
     counters.Reset();
 }
 
-void Timer::DumpCategoryTimes(Stream &s) {
-  // The categories are sorted by name.
+std::vector<Timer::CategoryStats> Timer::GetCategoryStats() {
+  // The categories are already sorted by name.
+  std::vector<CategoryStats> result;
   for (size_t i = 0; i < std::size(g_counters); ++i) {
     const CategoryCounters &counters = g_counters[i];
     uint64_t count = counters.count.load(std::memory_order_acquire);
     if (count == 0)
       continue;
-    uint64_t nanos = counters.nanos.load(std::memory_order_acquire);
-    uint64_t nanos_total = counters.nanos_total.load(std::memory_order_acquire);
+    CategoryStats stats;
+    stats.info = &g_categories[i];
+    stats.count = count;
+    stats.nanos = counters.nanos.load(std::memory_order_acquire);
+    stats.nanos_total = counters.nanos_total.load(std::memory_order_acquire);
+    stats.nanos_min = counters.nanos_min.load(std::memory_order_acquire);
+    stats.nanos_max = counters.nanos_max.load(std::memory_order_acquire);
+    result.push_back(stats);
+  }
+  return result;
+}
+
+void Timer::DumpCategoryTimes(Stream &s) {
+  // GetCategoryStats returns the categories sorted by name.
+  for (const auto &stats : GetCategoryStats())
     s.Printf("%.9f sec (total: %.3fs; child: %.3fs; count: %" PRIu64
              ") for %s\n",
-             nanos / 1000000000., nanos_total / 1000000000.,
-             (nanos_total - nanos) / 1000000000., count,
-             g_categories[i].name.data());
-  }
+             stats.nanos / 1000000000., stats.nanos_total / 1000000000.,
+             (stats.nanos_total - stats.nanos) / 1000000000., stats.count,
+             stats.info->name.data());
 }

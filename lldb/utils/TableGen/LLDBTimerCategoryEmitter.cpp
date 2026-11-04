@@ -43,7 +43,7 @@ struct TreeNode {
 } // namespace
 
 /// Returns true if the given string is a valid C++ identifier. Every component
-/// becomes a C++ namespace or constant name.
+/// becomes a C++ namespace or constant name, as well as a JSON key.
 static bool isIdentifier(StringRef Str) {
   return !Str.empty() && (isAlpha(Str.front()) || Str.front() == '_') &&
          all_of(Str, [](char C) { return isAlnum(C) || C == '_'; });
@@ -148,9 +148,20 @@ void lldb_private::EmitTimerCategoryInfos(const RecordKeeper &Records,
   emitSourceFileHeader("LLDB timer category infos", OS, Records);
 
   std::vector<TimerCategory> Categories = getTimerCategories(Records);
-  OS << "// All timer categories indexed by their CategoryID.\n";
+  OS << "// The components of each timer category name.\n";
+  for (size_t ID = 0; ID < Categories.size(); ++ID) {
+    OS << "static constexpr llvm::StringLiteral g_components_" << ID
+       << "[] = {";
+    ListSeparator LS;
+    for (StringRef Component : Categories[ID].Components)
+      OS << LS << '"' << Component << '"';
+    OS << "};\n";
+  }
+
+  OS << "\n// All timer categories indexed by their CategoryID.\n";
   OS << "static constexpr TimerCategoryInfo g_categories[] = {\n";
   for (size_t ID = 0; ID < Categories.size(); ++ID)
-    OS << "    {\"" << Categories[ID].Name << "\"},\n";
+    OS << "    {\"" << Categories[ID].Name << "\", g_components_" << ID
+       << "},\n";
   OS << "};\n";
 }
