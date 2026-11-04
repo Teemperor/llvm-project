@@ -66,6 +66,26 @@ TEST_F(TypeSystemClikeBasicQueriesTest, IsFloatingPointType) {
   EXPECT_FALSE(GetInt().IsFloatingPointType());
 }
 
+// A FunctionType (and a typedef of one) reports as a function type.
+TEST_F(TypeSystemClikeBasicQueriesTest, IsFunctionType) {
+  CompilerType fn =
+      builder.CreateFunctionType(GetVoid(), {}, /*is_variadic=*/false);
+  EXPECT_TRUE(fn.IsFunctionType());
+  CompilerType alias = builder.CreateTypedefType("Fn", fn);
+  EXPECT_TRUE(alias.IsFunctionType());
+  EXPECT_FALSE(GetInt().IsFunctionType());
+}
+
+// Only a *pointer* to a function is a function-pointer type, not the function
+// type itself (mirrors clang's isFunctionPointerType()).
+TEST_F(TypeSystemClikeBasicQueriesTest, IsFunctionPointerType) {
+  CompilerType fn = builder.CreateFunctionType(GetVoid(), {}, false);
+  CompilerType fn_ptr = builder.CreatePointerType(fn);
+  EXPECT_TRUE(fn_ptr.IsFunctionPointerType());
+  EXPECT_FALSE(fn.IsFunctionPointerType());
+  EXPECT_FALSE(GetInt().IsFunctionPointerType());
+}
+
 // Signed and unsigned integer builtins report IsIntegerType with the correct
 // signedness; nullptr_t (despite an unsigned encoding) does not.
 TEST_F(TypeSystemClikeBasicQueriesTest, IsIntegerType) {
