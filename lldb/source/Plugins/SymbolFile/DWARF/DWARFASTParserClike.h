@@ -134,6 +134,12 @@ private:
   lldb::TypeSP ParseArrayType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParsePointerType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  /// Given the block-literal struct DIE of an Apple "blocks" pointer (the DIE
+  /// carrying DW_AT_APPLE_block), return the block's function type by following
+  /// its `__FuncPtr` member. Returns an invalid CompilerType if the struct
+  /// doesn't have the expected shape.
+  lldb_private::CompilerType
+  ParseBlockFunctionType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP ParseTypedef(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParseCVQualifiedType(const lldb_private::plugin::dwarf::DWARFDIE &die);

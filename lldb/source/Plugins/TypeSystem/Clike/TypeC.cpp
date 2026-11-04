@@ -21,6 +21,7 @@ using namespace lldb_private::clike;
 char StructType::ID = 0;
 char ArrayType::ID = 0;
 char PointerType::ID = 0;
+char BlockPointerType::ID = 0;
 char TypedefType::ID = 0;
 char CVQualifiedType::ID = 0;
 char EnumType::ID = 0;

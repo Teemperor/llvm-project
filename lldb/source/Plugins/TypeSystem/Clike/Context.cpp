@@ -57,6 +57,18 @@ PointerType *Context::CreatePointerType(TypeRef pointee_type) {
   return result;
 }
 
+BlockPointerType *Context::CreateBlockPointerType(TypeRef pointee_type) {
+  // Uniqued like a plain pointer (see CreatePointerType), but the is-block bit
+  // in the key keeps a block `T (^)` distinct from a plain `T *`.
+  auto key = std::make_pair(&pointee_type.Get(), /*is_block=*/true);
+  if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
+    return llvm::cast<BlockPointerType>(it->second);
+  BlockPointerType *result =
+      Track(std::make_unique<BlockPointerType>(pointee_type));
+  m_pointer_map[key] = result;
+  return result;
+}
+
 TypedefType *Context::CreateTypedefType(llvm::StringRef name,
                                         TypeRef underlying_type,
                                         DeclScope scope) {
