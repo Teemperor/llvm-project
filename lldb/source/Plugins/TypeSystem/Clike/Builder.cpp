@@ -26,6 +26,12 @@ std::optional<TypeRef> Builder::ToTypeRef(Type *type) const {
   return TypeRef(*type);
 }
 
+TypeRef Builder::ToTypeRefOrVoid(const CompilerType &type) {
+  if (std::optional<TypeRef> ref = ToTypeRef(type))
+    return *ref;
+  return TypeRef(*m_ts.m_context.GetBuiltinType(BuiltinKind::Void));
+}
+
 CompilerType Builder::GetBuiltinType(llvm::StringRef name,
                                      std::optional<uint64_t> byte_size,
                                      lldb::Encoding encoding,
@@ -37,6 +43,13 @@ CompilerType Builder::GetBuiltinType(llvm::StringRef name,
 CompilerType Builder::GetVoidType() {
   return m_ts.GetCompilerType(
       m_ts.m_context.GetBuiltinType(clike::BuiltinKind::Void));
+}
+
+CompilerType Builder::CreatePointerType(CompilerType pointee_type) {
+  // No pointee means `void *` -- DWARF spells that as a DW_TAG_pointer_type
+  // with no DW_AT_type.
+  return m_ts.GetCompilerType(
+      m_ts.m_context.CreatePointerType(ToTypeRefOrVoid(pointee_type)));
 }
 
 CompilerType Builder::CreateTypedefType(llvm::StringRef name,
