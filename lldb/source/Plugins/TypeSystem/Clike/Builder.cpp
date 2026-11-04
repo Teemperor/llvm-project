@@ -103,6 +103,16 @@ CompilerType Builder::CreateCVQualifiedType(CompilerType underlying_type,
       m_ts.m_context.CreateCVQualifiedType(*underlying, is_const, is_volatile));
 }
 
+CompilerType Builder::CreatePtrAuthType(CompilerType underlying_type,
+                                        unsigned key, bool addr_discriminated,
+                                        unsigned extra_discriminator) {
+  std::optional<TypeRef> underlying = ToTypeRef(underlying_type);
+  if (!underlying)
+    return CompilerType();
+  return m_ts.GetCompilerType(m_ts.m_context.CreatePtrAuthType(
+      *underlying, key, addr_discriminated, extra_discriminator));
+}
+
 CompilerType Builder::CreateEnumType(const DeclarationContext &decl_context,
                                      llvm::StringRef name,
                                      std::optional<uint64_t> byte_size,

@@ -25,6 +25,7 @@ char PointerType::ID = 0;
 char BlockPointerType::ID = 0;
 char TypedefType::ID = 0;
 char CVQualifiedType::ID = 0;
+char PtrAuthType::ID = 0;
 char EnumType::ID = 0;
 char FunctionType::ID = 0;
 char ComplexType::ID = 0;
@@ -257,4 +258,28 @@ std::string ComplexType::GetDisplayName(const DisplayNameOptions &opts) const {
 std::string ComplexType::GetCanonicalName(bool base_only) const {
   // The canonical name of a complex type is its display name.
   return GetDisplayName(DisplayNameOptions());
+}
+
+std::string PtrAuthType::Qualify(std::string underlying_name) const {
+  // Render the ARMv8.3 pointer-auth qualifier as
+  // `__ptrauth(key,addr_disc,extra)`, matching clang's TypePrinter /
+  // TypeSystemClang spelling.
+  std::string qualifier =
+      llvm::formatv("__ptrauth({0},{1},{2})", GetKey(),
+                    IsAddressDiscriminated() ? 1 : 0, GetExtraDiscriminator())
+          .str();
+  // Clang spells the qualifier as a declarator suffix on a pointer
+  // (`int *__ptrauth(...)`) but as a prefix otherwise (`__ptrauth(...)
+  // intp`).
+  if (GetUnderlyingType()->IsPointer())
+    return underlying_name + qualifier;
+  return qualifier + " " + underlying_name;
+}
+
+std::string PtrAuthType::GetDisplayName(const DisplayNameOptions &opts) const {
+  return Qualify(GetUnderlyingType()->GetDisplayName(opts));
+}
+
+std::string PtrAuthType::GetCanonicalName(bool base_only) const {
+  return Qualify(GetUnderlyingType()->GetCanonicalName(base_only));
 }
