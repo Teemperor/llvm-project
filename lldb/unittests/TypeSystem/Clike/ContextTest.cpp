@@ -155,6 +155,19 @@ TEST_F(ContextTest, PointerTypesAreUniqued) {
   EXPECT_EQ(p1->GetByteSize(), 8u);
 }
 
+// A block pointer and a plain pointer to the same pointee are distinct types
+// (the block pointer is a separate BlockPointerType kind).
+TEST_F(ContextTest, BlockPointerDistinctFromPlainPointer) {
+  Type *record = context.CreateRecordType("Foo", 4);
+  PointerType *plain = context.CreatePointerType(TypeRef(*record));
+  BlockPointerType *block = context.CreateBlockPointerType(TypeRef(*record));
+  EXPECT_NE(static_cast<Type *>(plain), static_cast<Type *>(block));
+  EXPECT_TRUE(llvm::isa<BlockPointerType>(block));
+  EXPECT_FALSE(llvm::isa<BlockPointerType>(plain));
+  // A BlockPointerType is still a PointerType.
+  EXPECT_TRUE(llvm::isa<PointerType>(block));
+}
+
 // `void *` is a pointer to the `void` builtin, not a pointer to nothing: a
 // TypeRef always names a type.
 TEST_F(ContextTest, VoidPointer) {
