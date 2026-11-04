@@ -271,6 +271,14 @@ public:
   /// BuildCanonicalName in TypeName.h, the entry point).
   virtual std::string GetCanonicalName(bool base_only) const;
 
+  /// Whether the canonical name of a cv-qualified version of this type spells
+  /// the cv-qualifiers. Matching TypeSystemClang's GetTypeName, they are only
+  /// spelled for types whose name is printed from the QualType (builtins,
+  /// pointers, ...). For a tag type (record/enum) or a typedef the name is
+  /// taken from the underlying decl, which carries no qualifiers, so
+  /// `const Enum` prints as `Enum` (while `const int` stays `const int`).
+  virtual bool SpellsCVQualifiersInCanonicalName() const { return true; }
+
   /// The size of this type in bytes, or std::nullopt if unknown (e.g., for an
   /// incomplete record or a function type).
   virtual std::optional<uint64_t> GetByteSize() const { return std::nullopt; }
