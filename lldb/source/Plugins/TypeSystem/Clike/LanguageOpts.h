@@ -89,6 +89,10 @@ public:
   /// The alignment (in bits) of a `_BitInt(bits)` on this target.
   uint64_t GetBitIntAlignInBits(unsigned bits) const;
 
+  /// The maximum alignment (in bits) of a vector type on this target, or zero
+  /// if there is no maximum.
+  uint64_t GetMaxVectorAlignInBits() const;
+
 private:
   /// The target's float formats.
   struct FloatSemantics {

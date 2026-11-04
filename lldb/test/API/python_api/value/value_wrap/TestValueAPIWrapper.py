@@ -9,6 +9,7 @@ from lldbsuite.test import lldbutil
 
 
 class ValueAPIWrapper(TestBase):
+    @add_test_categories(["typesystem-clike"])
     def test_accessors(self):
         """Test non-modifying operators (e.g. __getitem__, __add__)."""
         self.build()
@@ -192,6 +193,7 @@ class ValueAPIWrapper(TestBase):
 
         # FIXME: Missing __index__ for oct(), hex(), etc.
 
+    @add_test_categories(["typesystem-clike"])
     def test_in_place_modifiers(self):
         """Test in-place operators (__i...__(self, other))."""
         self.build()
