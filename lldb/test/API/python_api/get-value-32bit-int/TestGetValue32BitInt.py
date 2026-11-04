@@ -3,6 +3,7 @@ Check that SBValue.GetValueAsSigned() does the right thing for a 32-bit -1.
 """
 
 import lldb
+from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 import lldbsuite.test.lldbutil as lldbutil
 
@@ -10,6 +11,7 @@ import lldbsuite.test.lldbutil as lldbutil
 class TestCase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
     def test_with_run_command(self):
         self.build()
         lldbutil.run_to_source_breakpoint(
