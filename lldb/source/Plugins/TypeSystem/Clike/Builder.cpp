@@ -51,6 +51,17 @@ CompilerType Builder::CreateTypedefType(llvm::StringRef name,
       m_ts.m_context.CreateTypedefType(name, *underlying, scope));
 }
 
+CompilerType Builder::CreateCVQualifiedType(CompilerType underlying_type,
+                                            bool is_const, bool is_volatile) {
+  // `const void` (the pointee of a `const void *`) qualifies the `void`
+  // builtin, so there is always an underlying type here too.
+  std::optional<TypeRef> underlying = ToTypeRef(underlying_type);
+  if (!underlying)
+    return CompilerType();
+  return m_ts.GetCompilerType(
+      m_ts.m_context.CreateCVQualifiedType(*underlying, is_const, is_volatile));
+}
+
 clike::Identifier Builder::GetIdentifier(llvm::StringRef name) {
   return m_ts.m_context.GetIdentifier(name);
 }

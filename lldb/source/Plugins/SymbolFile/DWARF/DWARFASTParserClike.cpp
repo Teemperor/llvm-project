@@ -459,6 +459,76 @@ TypeSP DWARFASTParserClike::ParseTypedef(const DWARFDIE &die) {
                          typedef_type, Type::ResolveState::Full);
 }
 
+TypeSP DWARFASTParserClike::ParseCVQualifiedType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  // DWARF nests one qualifier per DIE (e.g. `const volatile int` is a
+  // DW_TAG_const_type wrapping a DW_TAG_volatile_type wrapping `int`), so each
+  // DIE carries exactly one of const/volatile.
+  bool is_const = die.Tag() == DW_TAG_const_type;
+  bool is_volatile = die.Tag() == DW_TAG_volatile_type;
+
+  DWARFDIE underlying_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  CompilerType underlying_type;
+  if (underlying_die) {
+    Type *underlying = die.ResolveTypeUID(underlying_die);
+    if (!underlying)
+      return nullptr;
+    underlying_type = underlying->GetForwardCompilerType();
+  }
+
+  CompilerType cv_type;
+  {
+    clike::Builder ts(m_ts);
+    // A missing DW_AT_type means the qualified type is `void` (e.g. the pointee
+    // of a `const void *`).
+    if (!underlying_type)
+      underlying_type = ts.GetVoidType();
+    cv_type = ts.CreateCVQualifiedType(underlying_type, is_const, is_volatile);
+  }
+
+  std::optional<uint64_t> byte_size =
+      llvm::expectedToOptional(cv_type.GetByteSize(nullptr));
+
+  Declaration decl = GetDIEDeclaration(die);
+  ConstString empty_name;
+  return dwarf->MakeType(die.GetID(), empty_name, byte_size,
+                         /*context=*/nullptr, underlying_die.GetID(),
+                         Type::eEncodingIsUID, decl, cv_type,
+                         Type::ResolveState::Full);
+}
+
+TypeSP DWARFASTParserClike::ParseAtomicType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  // A DW_TAG_atomic_type (`_Atomic(T)`) has the same size, layout and value as
+  // its underlying type T. TypeSystemClike doesn't model an atomic qualifier,
+  // so treat it transparently as T -- this is enough for value inspection (e.g.
+  // a libc++ `std::atomic`'s `__a_value` member is `_Atomic(int)`).
+  DWARFDIE underlying_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  CompilerType underlying_type;
+  if (underlying_die) {
+    Type *underlying = die.ResolveTypeUID(underlying_die);
+    if (!underlying)
+      return nullptr;
+    underlying_type = underlying->GetForwardCompilerType();
+  }
+  if (!underlying_type) {
+    clike::Builder ts(m_ts);
+    underlying_type = ts.GetVoidType();
+  }
+
+  std::optional<uint64_t> byte_size =
+      llvm::expectedToOptional(underlying_type.GetByteSize(nullptr));
+
+  Declaration decl = GetDIEDeclaration(die);
+  ConstString empty_name;
+  return dwarf->MakeType(die.GetID(), empty_name, byte_size,
+                         /*context=*/nullptr, underlying_die.GetID(),
+                         Type::eEncodingIsUID, decl, underlying_type,
+                         Type::ResolveState::Full);
+}
+
 /// The oldest DWARF version TypeSystemClike knows how to read. See
 /// IsSupportedDWARFVersion for why older ones are refused rather than
 /// approximated.
@@ -517,6 +587,13 @@ TypeSP DWARFASTParserClike::ParseTypeFromDWARF(const SymbolContext &sc,
   case DW_TAG_typedef:
   case DW_TAG_template_alias:
     type_sp = ParseTypedef(die);
+    break;
+  case DW_TAG_const_type:
+  case DW_TAG_volatile_type:
+    type_sp = ParseCVQualifiedType(die);
+    break;
+  case DW_TAG_atomic_type:
+    type_sp = ParseAtomicType(die);
     break;
   case DW_TAG_unspecified_type:
     type_sp = ParseUnspecifiedType(die);
