@@ -269,6 +269,16 @@ public:
   /// BuildCanonicalName in TypeName.h, the entry point).
   virtual std::string GetCanonicalName(bool base_only) const;
 
+  /// The display name of a pointer to this type, where \p sigil is the
+  /// pointer declarator (e.g. `*`).
+  virtual std::string GetPointeeDisplayName(llvm::StringRef sigil,
+                                            const DisplayNameOptions &opts) const;
+
+  /// The canonical name of a pointer to this type (see
+  /// GetPointeeDisplayName).
+  virtual std::string GetPointeeCanonicalName(llvm::StringRef sigil,
+                                              bool base_only) const;
+
   /// Whether the canonical name of a cv-qualified version of this type spells
   /// the cv-qualifiers. Matching TypeSystemClang's GetTypeName, they are only
   /// spelled for types whose name is printed from the QualType (builtins,

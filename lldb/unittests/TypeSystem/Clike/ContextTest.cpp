@@ -47,3 +47,13 @@ TEST_F(ContextTest, GetBuiltinTypeBespokeFallback) {
   EXPECT_EQ(bespoke->GetName().GetName(), "unusual_int_type");
   EXPECT_FALSE(bespoke->GetBuiltinKind().has_value());
 }
+
+// `void *` is a pointer to the `void` builtin, not a pointer to nothing: a
+// TypeRef always names a type.
+TEST_F(ContextTest, VoidPointer) {
+  BuiltinType *void_type = context.GetBuiltinType(BuiltinKind::Void);
+  PointerType *p = context.CreatePointerType(TypeRef(*void_type));
+  EXPECT_EQ(p->GetPointeeType(), void_type);
+  EXPECT_TRUE(p->GetPointeeType()->IsVoid());
+  EXPECT_EQ(p->GetByteSize(), 8u);
+}
