@@ -25,6 +25,7 @@ char PointerType::ID = 0;
 char TypedefType::ID = 0;
 char CVQualifiedType::ID = 0;
 char EnumType::ID = 0;
+char FunctionType::ID = 0;
 
 std::optional<uint64_t> ArrayType::GetAlignmentInBits() const {
   if (!m_is_vector)
@@ -186,4 +187,54 @@ std::string ArrayType::GetDisplayName(const DisplayNameOptions &opts) const {
 
 std::string ArrayType::GetCanonicalName(bool base_only) const {
   return BuildName([&](const Type &t) { return t.GetCanonicalName(base_only); });
+}
+
+std::string FunctionType::GetDeclaratorName(llvm::StringRef decl,
+                                            bool keep_inline_namespaces) const {
+  DisplayNameOptions opts;
+  opts.keep_inline_namespaces = keep_inline_namespaces;
+  // A function that returns nothing returns the `void` builtin, so there is
+  // always a return type to name.
+  std::string ret = GetReturnType()->GetDisplayName(opts);
+  std::string params;
+  for (const TypeRef &param : m_params) {
+    if (!params.empty())
+      params += ", ";
+    params += param.Get().GetDisplayName(opts);
+  }
+  if (m_is_variadic)
+    params += params.empty() ? "..." : ", ...";
+  // An empty, prototyped parameter list is rendered as `()` in C++ (matching
+  // clang's TypePrinter with UseVoidForZeroParams=false) but as `(void)` in C,
+  // where an empty parameter list without `void` instead means "unspecified
+  // parameters" (K&R). See UseVoidForEmptyParams for how that bit is
+  // determined at parse time. An unprototyped (K&R) function has a
+  // DW_TAG_unspecified_parameters child and is modelled as variadic above, so
+  // it prints as `(...)` regardless.
+  else if (params.empty() && m_use_void_for_empty_params)
+    params = "void";
+  return ret + " " + decl.str() + "(" + params + ")";
+}
+
+std::string
+FunctionType::GetDisplayName(const DisplayNameOptions &opts) const {
+  return GetDeclaratorName("", opts.keep_inline_namespaces);
+}
+
+// Function types and pointers to them need C declarator syntax
+// (`int (*)(const char *)`), which the display name already produces.
+std::string FunctionType::GetCanonicalName(bool base_only) const {
+  return GetDisplayName(DisplayNameOptions());
+}
+
+std::string
+FunctionType::GetPointeeDisplayName(llvm::StringRef sigil,
+                                    const DisplayNameOptions &opts) const {
+  return GetDeclaratorName(("(" + sigil + ")").str(),
+                           opts.keep_inline_namespaces);
+}
+
+std::string FunctionType::GetPointeeCanonicalName(llvm::StringRef sigil,
+                                                  bool base_only) const {
+  return GetPointeeDisplayName(sigil, DisplayNameOptions());
 }
