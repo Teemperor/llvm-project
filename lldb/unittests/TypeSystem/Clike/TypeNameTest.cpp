@@ -29,6 +29,19 @@ struct TypeNameTest : public testing::Test {
   Type *Char() { return context.GetBuiltinType(BuiltinKind::Char); }
   Type *Void() { return context.GetBuiltinType(BuiltinKind::Void); }
 
+  /// A complete record declared in \p decl_context, or in the global scope if
+  /// \p decl_context is null.
+  RecordType *Record(llvm::StringRef name,
+                     const DeclarationContext *decl_context = nullptr,
+                     Identifier unqualified_name = Identifier()) {
+    RecordType *record = context.CreateRecordType(
+        decl_context ? *decl_context : context.GetGlobalScope(), name,
+        /*byte_size=*/8, /*is_union=*/false, /*is_class_keyword=*/false,
+        unqualified_name);
+    context.SetComplete(*record);
+    return record;
+  }
+
   std::string Canonical(Type *t) {
     return BuildCanonicalName(t, /*base_only=*/false);
   }
@@ -41,6 +54,12 @@ TEST_F(TypeNameTest, Builtin) {
   EXPECT_EQ(Canonical(Int()), "int");
   EXPECT_EQ(Canonical(Void()), "void");
   EXPECT_EQ(Display(Int()), "int");
+}
+
+// A record renders with the name the debug info recorded.
+TEST_F(TypeNameTest, Record) {
+  EXPECT_EQ(Canonical(Record("MyStruct")), "MyStruct");
+  EXPECT_EQ(Display(Record("MyStruct")), "MyStruct");
 }
 
 // A pointer is spelled in C declarator form, and pointer-to-pointer nests
