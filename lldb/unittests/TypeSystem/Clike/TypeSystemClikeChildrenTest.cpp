@@ -74,6 +74,30 @@ TEST_F(TypeSystemClikeChildrenTest, RecordChildren) {
   EXPECT_FALSE(is_base);
 }
 
+// An array's children are its elements, named "[N]" with the appropriate
+// offset.
+TEST_F(TypeSystemClikeChildrenTest, ArrayChildren) {
+  CompilerType array = builder.CreateArrayType(GetInt(), 3);
+  auto num_children =
+      ts->GetNumChildren(array.GetOpaqueQualType(), false, nullptr);
+  ASSERT_THAT_EXPECTED(num_children, llvm::Succeeded());
+  EXPECT_EQ(*num_children, 3u);
+
+  std::string name;
+  uint32_t byte_size = 0;
+  int32_t byte_offset = 0;
+  uint32_t bf_size = 0, bf_offset = 0;
+  bool is_base = false, is_deref = false;
+  uint64_t lang_flags = 0;
+  auto child = ts->GetChildCompilerTypeAtIndex(
+      array.GetOpaqueQualType(), nullptr, 2, /*transparent_pointers=*/true,
+      true, false, name, byte_size, byte_offset, bf_size, bf_offset, is_base,
+      is_deref, nullptr, lang_flags);
+  ASSERT_THAT_EXPECTED(child, llvm::Succeeded());
+  EXPECT_EQ(name, "[2]");
+  EXPECT_EQ(byte_offset, 8);
+}
+
 // A pointer to a complete aggregate is transparent when asked (mirroring
 // TypeSystemClang): its children are the pointee's members, not a single
 // deref child.

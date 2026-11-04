@@ -89,6 +89,13 @@ TEST_F(TypeNameTest, CVQualified) {
   EXPECT_EQ(Canonical(volatile_int), "volatile int");
 }
 
+// An array renders with its bound; an unbounded one with empty brackets.
+TEST_F(TypeNameTest, Array) {
+  EXPECT_EQ(Canonical(context.CreateArrayType(TypeRef(*Int()), 4)), "int[4]");
+  EXPECT_EQ(Canonical(context.CreateArrayType(TypeRef(*Int()), std::nullopt)),
+            "int[]");
+}
+
 // A typedef reports its own name rather than what it aliases.
 TEST_F(TypeNameTest, Typedef) {
   TypedefType *alias = context.CreateTypedefType("my_int", TypeRef(*Int()));
