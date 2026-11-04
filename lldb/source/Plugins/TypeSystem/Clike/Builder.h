@@ -46,6 +46,9 @@ public:
   /// DW_AT_type, so the parser uses this to fill in the underlying type of a
   /// cv-qualified or typedef'd `void` (e.g. the pointee of a `const void *`).
   CompilerType GetVoidType();
+  /// Create a pointer to \p pointee_type (an empty CompilerType denotes a
+  /// `void *`).
+  CompilerType CreatePointerType(CompilerType pointee_type);
   /// Create a typedef named \p name aliasing \p underlying_type, declared in
   /// \p scope.
   CompilerType CreateTypedefType(llvm::StringRef name,
@@ -72,6 +75,14 @@ private:
   /// Wrap a Type (e.g. one the DWARF parser resolved) into a TypeRef. Null
   /// yields std::nullopt.
   std::optional<TypeRef> ToTypeRef(Type *type) const;
+  /// ToTypeRef, falling back to the `void` builtin when there is no type to
+  /// name. For the references DWARF spells as absent but C spells as `void`: a
+  /// pointer with no DW_AT_type is `void *`, and a subroutine with none returns
+  /// `void`. Modelling those as a reference to `void` (rather than as no
+  /// reference) is what lets every consumer skip a null check -- and mirrors
+  /// how sugar already wraps the `void` builtin for `const void` /
+  /// `typedef void`.
+  TypeRef ToTypeRefOrVoid(const CompilerType &type);
 
   TypeSystemClike &m_ts;
 };

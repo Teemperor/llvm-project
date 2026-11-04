@@ -13,6 +13,19 @@
 namespace lldb_private {
 using namespace lldb_private::clike;
 
+namespace {
+
+// Append a pointer declarator `sigil` to the name of the type it applies to.
+static std::string AppendDeclaratorSigil(std::string name,
+                                         llvm::StringRef sigil) {
+  // Clang omits the space between a pointer sigil and a following '*' (e.g.
+  // "int **", "void **"), but keeps it after a plain type name ("int *").
+  const bool tight = !name.empty() && name.back() == '*';
+  return name + (tight ? "" : " ") + sigil.str();
+}
+
+} // namespace
+
 std::string clike::BuildDisplayName(Type *t, bool keep_inline_namespaces) {
   if (!t)
     return "";
@@ -49,6 +62,19 @@ std::string clike::Type::GetCanonicalName(bool base_only) const {
       return unqualified.str();
   }
   return GetName().GetName().str();
+}
+
+std::string
+clike::Type::GetPointeeDisplayName(llvm::StringRef sigil,
+                                   const DisplayNameOptions &opts) const {
+  // `void *` needs no special case: its pointee is the `void` builtin, whose
+  // name is "void".
+  return AppendDeclaratorSigil(GetDisplayName(opts), sigil);
+}
+
+std::string clike::Type::GetPointeeCanonicalName(llvm::StringRef sigil,
+                                                 bool base_only) const {
+  return AppendDeclaratorSigil(GetCanonicalName(base_only), sigil);
 }
 
 } // namespace lldb_private
