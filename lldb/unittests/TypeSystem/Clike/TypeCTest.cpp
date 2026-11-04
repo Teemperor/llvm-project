@@ -27,8 +27,23 @@ struct TypeCTest : public testing::Test {
 
   Type *Int() { return context.GetBuiltinType(BuiltinKind::Int); }
   Type *Void() { return context.GetBuiltinType(BuiltinKind::Void); }
+
+  /// A complete record, since several queries below (pointer transparency)
+  /// deliberately only apply to complete aggregates.
+  RecordType *CompleteRecord(llvm::StringRef name) {
+    RecordType *record = context.CreateRecordType(name, /*byte_size=*/8);
+    context.SetComplete(*record);
+    return record;
+  }
 };
 } // namespace
+
+// A C struct reports the struct type class, distinguishing it from a C++ class.
+TEST_F(TypeCTest, StructTypeClass) {
+  RecordType *record = CompleteRecord("MyStruct");
+  EXPECT_EQ(record->GetTypeClass(), lldb::eTypeClassStruct);
+  EXPECT_TRUE(llvm::isa<StructType>(static_cast<Type *>(record)));
+}
 
 // A pointer takes the target's pointer width from the Context that owns it,
 // rather than storing a size of its own -- so even `void *` has a size.
@@ -56,6 +71,57 @@ TEST_F(TypeCTest, PointerSizeFollowsTarget) {
       TypeRef(*context32.GetBuiltinType(BuiltinKind::Int)));
   EXPECT_EQ(ptr->GetByteSize(), std::optional<uint64_t>(4));
   EXPECT_EQ(ptr->GetAlignmentInBits(), std::optional<uint64_t>(32));
+}
+
+// A pointer to a complete aggregate splices in the pointee's members; one to an
+// incomplete pointee (or to a non-aggregate such as `void`) keeps its deref
+// child, so that counting children never forces completion.
+TEST_F(TypeCTest, PointerTransparency) {
+  RecordType *complete = CompleteRecord("Complete");
+  PointerType *to_complete = context.CreatePointerType(TypeRef(*complete));
+  EXPECT_EQ(to_complete->GetTransparentChildPointee(), complete);
+  EXPECT_EQ(to_complete->GetNamedMemberPointee(), complete);
+
+  RecordType *incomplete =
+      context.CreateRecordType("Incomplete", /*byte_size=*/std::nullopt);
+  PointerType *to_incomplete = context.CreatePointerType(TypeRef(*incomplete));
+  EXPECT_EQ(to_incomplete->GetTransparentChildPointee(), nullptr);
+  // The by-name path is more permissive: resolving a name may complete it.
+  EXPECT_EQ(to_incomplete->GetNamedMemberPointee(), incomplete);
+
+  PointerType *void_ptr = context.CreatePointerType(TypeRef(*Void()));
+  EXPECT_EQ(void_ptr->GetTransparentChildPointee(), nullptr);
+  EXPECT_EQ(void_ptr->GetNamedMemberPointee(), nullptr);
+}
+
+// A pointer to a record is a C++ construct (so class formatters fire); a
+// pointer to anything else a C one.
+TEST_F(TypeCTest, PointerMinimumLanguage) {
+  EXPECT_EQ(context.CreatePointerType(TypeRef(*Int()))->GetMinimumLanguage(),
+            lldb::eLanguageTypeC);
+  RecordType *record = CompleteRecord("Rec");
+  EXPECT_EQ(context.CreatePointerType(TypeRef(*record))->GetMinimumLanguage(),
+            lldb::eLanguageTypeC_plus_plus);
+  // Seen through sugar on the pointee.
+  TypedefType *alias = context.CreateTypedefType("Rec_t", TypeRef(*record));
+  EXPECT_EQ(context.CreatePointerType(TypeRef(*alias))->GetMinimumLanguage(),
+            lldb::eLanguageTypeC_plus_plus);
+}
+
+// A `void *` is always a possible dynamic type; a pointer to a C struct or a
+// scalar never is.
+TEST_F(TypeCTest, PointerDynamicTypeCandidate) {
+  auto complete = [](Type *) {};
+  const DynamicTypeCheck kBoth =
+      DynamicTypeCheck::CPlusPlus | DynamicTypeCheck::ObjC;
+  PointerType *void_ptr = context.CreatePointerType(TypeRef(*Void()));
+  EXPECT_EQ(void_ptr->GetDynamicTypeCandidate(DynamicTypeCheck::None, complete),
+            Void());
+  PointerType *int_ptr = context.CreatePointerType(TypeRef(*Int()));
+  EXPECT_EQ(int_ptr->GetDynamicTypeCandidate(kBoth, complete), nullptr);
+  RecordType *record = CompleteRecord("CStruct");
+  PointerType *record_ptr = context.CreatePointerType(TypeRef(*record));
+  EXPECT_EQ(record_ptr->GetDynamicTypeCandidate(kBoth, complete), nullptr);
 }
 
 // A typedef is sugar: it reports its own name and type class but forwards
@@ -142,4 +208,31 @@ TEST_F(TypeCTest, Enum) {
   EXPECT_TRUE(colors->IsScopedEnumeration());
   // A scoped enum doesn't promote implicitly.
   EXPECT_FALSE(colors->IsPromotableInteger());
+}
+
+// An HFA is a record whose direct fields are all the same floating-point type;
+// an HVA the same for vectors. A mix, or any other field kind, disqualifies it.
+TEST_F(TypeCTest, HomogeneousAggregateBase) {
+  Type *flt = context.GetBuiltinType(BuiltinKind::Float);
+  uint32_t num_fields = 0;
+
+  RecordType *hfa = context.CreateRecordType("HFA", 8);
+  context.AddField(*hfa, context.GetIdentifier("a"), TypeRef(*flt), 0);
+  context.AddField(*hfa, context.GetIdentifier("b"), TypeRef(*flt), 4);
+  context.SetComplete(*hfa);
+  EXPECT_EQ(hfa->GetHomogeneousAggregateBase(num_fields), flt);
+  EXPECT_EQ(num_fields, 2u);
+
+  // A mix of a float and an int is not homogeneous.
+  RecordType *mixed = context.CreateRecordType("Mixed", 8);
+  context.AddField(*mixed, context.GetIdentifier("a"), TypeRef(*flt), 0);
+  context.AddField(*mixed, context.GetIdentifier("b"), TypeRef(*Int()), 4);
+  context.SetComplete(*mixed);
+  EXPECT_EQ(mixed->GetHomogeneousAggregateBase(num_fields), nullptr);
+  EXPECT_EQ(num_fields, 0u);
+
+  // An empty record has no base type either.
+  RecordType *empty = CompleteRecord("Empty");
+  EXPECT_EQ(empty->GetHomogeneousAggregateBase(num_fields), nullptr);
+  EXPECT_EQ(num_fields, 0u);
 }
