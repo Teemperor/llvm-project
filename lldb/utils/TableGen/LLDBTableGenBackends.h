@@ -34,6 +34,7 @@ void EmitPropertyDefs(const RecordKeeper &RK, raw_ostream &OS);
 void EmitPropertyEnumDefs(const RecordKeeper &RK, raw_ostream &OS);
 void EmitTimerCategories(const RecordKeeper &RK, raw_ostream &OS);
 void EmitTimerCategoryInfos(const RecordKeeper &RK, raw_ostream &OS);
+void EmitCommandTimerCategories(const RecordKeeper &RK, raw_ostream &OS);
 int EmitSBAPIDWARFEnum(int argc, char **argv);
 
 } // namespace lldb_private

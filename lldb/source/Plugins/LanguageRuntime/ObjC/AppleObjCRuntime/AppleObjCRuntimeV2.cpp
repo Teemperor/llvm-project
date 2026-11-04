@@ -1015,7 +1015,7 @@ public:
   };
 
   CommandObjectObjC_ClassTable_Dump(CommandInterpreter &interpreter)
-      : CommandObjectParsed(interpreter, "dump",
+      : CommandObjectParsed(interpreter, "language objc class-table dump",
                             "Dump information on Objective-C classes "
                             "known to the current process.",
                             "language objc class-table dump",
@@ -1124,11 +1124,12 @@ class CommandObjectMultiwordObjC_TaggedPointer_Info
     : public CommandObjectParsed {
 public:
   CommandObjectMultiwordObjC_TaggedPointer_Info(CommandInterpreter &interpreter)
-      : CommandObjectParsed(
-            interpreter, "info", "Dump information on a tagged pointer.",
-            "language objc tagged-pointer info",
-            eCommandRequiresProcess | eCommandProcessMustBeLaunched |
-                eCommandProcessMustBePaused) {
+      : CommandObjectParsed(interpreter, "language objc tagged-pointer info",
+                            "Dump information on a tagged pointer.",
+                            "language objc tagged-pointer info",
+                            eCommandRequiresProcess |
+                                eCommandProcessMustBeLaunched |
+                                eCommandProcessMustBePaused) {
     AddSimpleArgumentList(eArgTypeAddress, eArgRepeatPlus);
   }
 

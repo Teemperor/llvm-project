@@ -27,6 +27,7 @@ using namespace lldb_private;
 namespace {
 /// A timer category.
 struct TimerCategory {
+  const Record *Def;
   StringRef Name;
   /// The dot-separated components of the timer name.
   SmallVector<StringRef, 4> Components;
@@ -47,6 +48,47 @@ struct TreeNode {
 static bool isIdentifier(StringRef Str) {
   return !Str.empty() && (isAlpha(Str.front()) || Str.front() == '_') &&
          all_of(Str, [](char C) { return isAlnum(C) || C == '_'; });
+}
+
+/// Returns the name of the C++ namespace or constant for the given component.
+/// Components that are C++ keywords get a trailing underscore, e.g., the
+/// category "Command.breakpoint.delete" is Command::breakpoint::delete_.
+static std::string getCppName(StringRef Component) {
+  static constexpr StringLiteral Keywords[] = {
+      "alignas",       "alignof",     "and",
+      "and_eq",        "asm",         "auto",
+      "bitand",        "bitor",       "bool",
+      "break",         "case",        "catch",
+      "char",          "char8_t",     "char16_t",
+      "char32_t",      "class",       "compl",
+      "concept",       "const",       "consteval",
+      "constexpr",     "constinit",   "const_cast",
+      "continue",      "co_await",    "co_return",
+      "co_yield",      "decltype",    "default",
+      "delete",        "do",          "double",
+      "dynamic_cast",  "else",        "enum",
+      "explicit",      "export",      "extern",
+      "false",         "float",       "for",
+      "friend",        "goto",        "if",
+      "inline",        "int",         "long",
+      "mutable",       "namespace",   "new",
+      "noexcept",      "not",         "not_eq",
+      "nullptr",       "operator",    "or",
+      "or_eq",         "private",     "protected",
+      "public",        "register",    "reinterpret_cast",
+      "requires",      "return",      "short",
+      "signed",        "sizeof",      "static",
+      "static_assert", "static_cast", "struct",
+      "switch",        "template",    "this",
+      "thread_local",  "throw",       "true",
+      "try",           "typedef",     "typeid",
+      "typename",      "union",       "unsigned",
+      "using",         "virtual",     "void",
+      "volatile",      "wchar_t",     "while",
+      "xor",           "xor_eq"};
+  if (is_contained(Keywords, Component))
+    return (Component + "_").str();
+  return Component.str();
 }
 
 /// Returns all timer categories sorted by name. Their index in the result is
@@ -82,6 +124,7 @@ getTimerCategories(const RecordKeeper &Records) {
   std::vector<TimerCategory> Result;
   for (const auto &[Name, Category] : RecordsByName) {
     TimerCategory &Entry = Result.emplace_back();
+    Entry.Def = Category;
     Entry.Name = Name;
     Name.split(Entry.Components, '.');
     for (StringRef Component : Entry.Components)
@@ -111,13 +154,14 @@ getTimerCategories(const RecordKeeper &Records) {
 static void emitTree(const TreeNode &Node, raw_ostream &OS) {
   for (const auto &[Component, Child] : Node.Children) {
     if (Child.ID) {
-      OS << "inline constexpr Timer::CategoryID " << Component << "{"
-         << *Child.ID << "};\n";
+      OS << "inline constexpr Timer::CategoryID " << getCppName(Component)
+         << "{" << *Child.ID << "};\n";
       continue;
     }
-    OS << "namespace " << Component << " {\n";
+    std::string Namespace = getCppName(Component);
+    OS << "namespace " << Namespace << " {\n";
     emitTree(Child, OS);
-    OS << "} // namespace " << Component << "\n";
+    OS << "} // namespace " << Namespace << "\n";
   }
 }
 
@@ -164,4 +208,28 @@ void lldb_private::EmitTimerCategoryInfos(const RecordKeeper &Records,
     OS << "    {\"" << Categories[ID].Name << "\", g_components_" << ID
        << "},\n";
   OS << "};\n";
+}
+
+void lldb_private::EmitCommandTimerCategories(const RecordKeeper &Records,
+                                              raw_ostream &OS) {
+  emitSourceFileHeader("LLDB command timer categories", OS, Records);
+
+  // The commands that have a timer category with the C++ path of their
+  // CategoryID constant, sorted by command name.
+  std::vector<std::pair<StringRef, std::string>> Commands;
+  for (const TimerCategory &Category : getTimerCategories(Records)) {
+    if (!Category.Def->isSubClassOf("CommandTimer"))
+      continue;
+    std::string Path;
+    ListSeparator LS("::");
+    for (StringRef Component : Category.Components) {
+      Path += LS;
+      Path += getCppName(Component);
+    }
+    Commands.emplace_back(Category.Def->getValueAsString("Command"), Path);
+  }
+  llvm::sort(Commands, less_first());
+
+  for (const auto &[Command, Path] : Commands)
+    OS << "{\"" << Command << "\", timers::" << Path << "},\n";
 }

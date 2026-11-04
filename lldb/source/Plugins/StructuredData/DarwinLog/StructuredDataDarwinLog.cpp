@@ -857,7 +857,8 @@ private:
 class StatusCommand : public CommandObjectParsed {
 public:
   StatusCommand(CommandInterpreter &interpreter)
-      : CommandObjectParsed(interpreter, "status",
+      : CommandObjectParsed(interpreter,
+                            "plugin structured-data darwin-log status",
                             "Show whether Darwin log supported is available"
                             " and enabled.",
                             "plugin structured-data darwin-log status",
@@ -946,7 +947,8 @@ public:
     auto enable_cmd_sp = CommandObjectSP(
         new EnableCommand(interpreter,
                           true, // enable
-                          "enable", enable_help, enable_syntax));
+                          "plugin structured-data darwin-log enable",
+                          enable_help, enable_syntax));
     LoadSubCommand("enable", enable_cmd_sp);
 
     // disable
@@ -955,7 +957,8 @@ public:
     auto disable_cmd_sp = CommandObjectSP(
         new EnableCommand(interpreter,
                           false, // disable
-                          "disable", disable_help, disable_syntax));
+                          "plugin structured-data darwin-log disable",
+                          disable_help, disable_syntax));
     LoadSubCommand("disable", disable_cmd_sp);
 
     // status

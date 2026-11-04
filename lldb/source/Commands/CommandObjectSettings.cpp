@@ -336,7 +336,7 @@ class CommandObjectSettingsWrite : public CommandObjectParsed {
 public:
   CommandObjectSettingsWrite(CommandInterpreter &interpreter)
       : CommandObjectParsed(
-            interpreter, "settings export",
+            interpreter, "settings write",
             "Write matching debugger settings and their "
             "current values to a file that can be read in with "
             "\"settings read\". Defaults to writing all settings.",

@@ -5392,14 +5392,16 @@ public:
     LoadSubCommand(
         "delete",
         CommandObjectSP(new CommandObjectTargetStopHookDelete(interpreter)));
-    LoadSubCommand("disable",
-                   CommandObjectSP(new CommandObjectTargetStopHookEnableDisable(
-                       interpreter, false, "target stop-hook disable [<id>]",
-                       "Disable a stop-hook.", "target stop-hook disable")));
-    LoadSubCommand("enable",
-                   CommandObjectSP(new CommandObjectTargetStopHookEnableDisable(
-                       interpreter, true, "target stop-hook enable [<id>]",
-                       "Enable a stop-hook.", "target stop-hook enable")));
+    LoadSubCommand(
+        "disable",
+        CommandObjectSP(new CommandObjectTargetStopHookEnableDisable(
+            interpreter, false, "target stop-hook disable",
+            "Disable a stop-hook.", "target stop-hook disable [<id>]")));
+    LoadSubCommand(
+        "enable",
+        CommandObjectSP(new CommandObjectTargetStopHookEnableDisable(
+            interpreter, true, "target stop-hook enable", "Enable a stop-hook.",
+            "target stop-hook enable [<id>]")));
     LoadSubCommand("list", CommandObjectSP(new CommandObjectTargetStopHookList(
                                interpreter)));
   }

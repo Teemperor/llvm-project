@@ -26,6 +26,39 @@
 # INFOS-NEXT:     {"Module.GetObjectFile", g_components_3},
 # INFOS-NEXT: };
 
+# RUN: lldb-tblgen -gen-lldb-timer-categories %t/commands.td | FileCheck %s --check-prefix=COMMAND-TREE
+# COMMAND-TREE:      namespace Command {
+# COMMAND-TREE-NEXT: inline constexpr Timer::CategoryID Other{0};
+# COMMAND-TREE-NEXT: inline constexpr Timer::CategoryID _regexp_break{1};
+# COMMAND-TREE-NEXT: namespace breakpoint {
+# COMMAND-TREE-NEXT: inline constexpr Timer::CategoryID delete_{2};
+# COMMAND-TREE-NEXT: } // namespace breakpoint
+# COMMAND-TREE-NEXT: namespace register_ {
+# COMMAND-TREE-NEXT: inline constexpr Timer::CategoryID read{3};
+# COMMAND-TREE-NEXT: } // namespace register_
+# COMMAND-TREE-NEXT: namespace thread {
+# COMMAND-TREE-NEXT: inline constexpr Timer::CategoryID step_in{4};
+# COMMAND-TREE-NEXT: } // namespace thread
+# COMMAND-TREE-NEXT: } // namespace Command
+
+# RUN: lldb-tblgen -gen-lldb-timer-category-infos %t/commands.td | FileCheck %s --check-prefix=COMMAND-INFOS
+# COMMAND-INFOS:      {"Command.Other", g_components_0},
+# COMMAND-INFOS-NEXT: {"Command._regexp_break", g_components_1},
+# COMMAND-INFOS-NEXT: {"Command.breakpoint.delete", g_components_2},
+# COMMAND-INFOS-NEXT: {"Command.register.read", g_components_3},
+# COMMAND-INFOS-NEXT: {"Command.thread.step_in", g_components_4},
+
+# RUN: lldb-tblgen -gen-lldb-command-timer-categories %t/commands.td | FileCheck %s --check-prefix=COMMANDS
+# COMMANDS:      {"_regexp-break", timers::Command::_regexp_break},
+# COMMANDS-NEXT: {"breakpoint delete", timers::Command::breakpoint::delete_},
+# COMMANDS-NEXT: {"register read", timers::Command::register_::read},
+# COMMANDS-NEXT: {"thread step-in", timers::Command::thread::step_in},
+# COMMANDS-NOT:  Other
+
+# RUN: not lldb-tblgen -gen-lldb-command-timer-categories %t/duplicate-command.td 2>&1 | FileCheck %s --check-prefix=DUPLICATE-COMMAND
+# DUPLICATE-COMMAND: duplicate-command.td:7:1: error: duplicate timer category 'Command.thread.step_in'
+# DUPLICATE-COMMAND: duplicate-command.td:6:1: note: previous definition is here
+
 # RUN: not lldb-tblgen -gen-lldb-timer-categories %t/duplicate.td 2>&1 | FileCheck %s --check-prefix=DUPLICATE
 # DUPLICATE: duplicate.td:4:1: error: duplicate timer category 'A.B'
 # DUPLICATE: duplicate.td:2:1: note: previous definition is here
@@ -72,3 +105,24 @@ def : TimerCategory<"Expression.c++">;
 #--- leading-digit.td
 class TimerCategory<string name> { string Name = name; }
 def : TimerCategory<"A.1B">;
+
+#--- commands.td
+class TimerCategory<string name> { string Name = name; }
+class CommandTimer<string command>
+    : TimerCategory<"Command." # !subst("-", "_", !subst(" ", ".", command))> {
+  string Command = command;
+}
+def : CommandTimer<"thread step-in">;
+def : CommandTimer<"breakpoint delete">;
+def : CommandTimer<"register read">;
+def : CommandTimer<"_regexp-break">;
+def : TimerCategory<"Command.Other">;
+
+#--- duplicate-command.td
+class TimerCategory<string name> { string Name = name; }
+class CommandTimer<string command>
+    : TimerCategory<"Command." # !subst("-", "_", !subst(" ", ".", command))> {
+  string Command = command;
+}
+def : CommandTimer<"thread step-in">;
+def : CommandTimer<"thread step_in">;

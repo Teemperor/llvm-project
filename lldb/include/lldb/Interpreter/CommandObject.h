@@ -23,6 +23,7 @@
 #include "lldb/Utility/Args.h"
 #include "lldb/Utility/CompletionRequest.h"
 #include "lldb/Utility/StringList.h"
+#include "lldb/Utility/Timer.h"
 #include "lldb/lldb-private.h"
 
 namespace lldb_private {
@@ -132,6 +133,15 @@ public:
   virtual llvm::StringRef GetSyntax();
 
   llvm::StringRef GetCommandName() const;
+
+  /// Returns the timer category of the built-in command with the given full
+  /// name (see TimerCategories.td), or std::nullopt if there is none.
+  static std::optional<Timer::CategoryID>
+  GetTimerCategory(llvm::StringRef command_name);
+
+  /// Returns the timer category that measures the execution of this command.
+  /// Commands without their own category use the "Command.Other" category.
+  Timer::CategoryID GetTimerCategory() const;
 
   virtual void SetHelp(llvm::StringRef str);
 

@@ -8,3 +8,9 @@ lldb_tablegen(TimerCategories.inc -gen-lldb-timer-categories
 lldb_tablegen(TimerCategoryInfos.inc -gen-lldb-timer-category-infos
   SOURCE TimerCategories.td
   TARGET LLDBTimerCategoryInfosGen)
+
+# Maps command names to their timer category. Only included by
+# CommandObject.cpp.
+lldb_tablegen(CommandTimerCategories.inc -gen-lldb-command-timer-categories
+  SOURCE TimerCategories.td
+  TARGET LLDBCommandTimerCategoriesGen)

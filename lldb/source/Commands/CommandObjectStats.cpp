@@ -21,7 +21,7 @@ using namespace lldb_private;
 class CommandObjectStatsEnable : public CommandObjectParsed {
 public:
   CommandObjectStatsEnable(CommandInterpreter &interpreter)
-      : CommandObjectParsed(interpreter, "enable",
+      : CommandObjectParsed(interpreter, "statistics enable",
                             "Enable statistics collection", nullptr,
                             eCommandProcessMustBePaused) {}
 
@@ -42,7 +42,7 @@ protected:
 class CommandObjectStatsDisable : public CommandObjectParsed {
 public:
   CommandObjectStatsDisable(CommandInterpreter &interpreter)
-      : CommandObjectParsed(interpreter, "disable",
+      : CommandObjectParsed(interpreter, "statistics disable",
                             "Disable statistics collection", nullptr,
                             eCommandProcessMustBePaused) {}
 

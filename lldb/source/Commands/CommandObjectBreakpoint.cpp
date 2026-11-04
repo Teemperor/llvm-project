@@ -2895,7 +2895,7 @@ class CommandObjectBreakpointNameConfigure : public CommandObjectParsed {
 public:
   CommandObjectBreakpointNameConfigure(CommandInterpreter &interpreter)
       : CommandObjectParsed(
-            interpreter, "configure",
+            interpreter, "breakpoint name configure",
             "Configure the options for the breakpoint"
             " name provided.  "
             "If you provide a breakpoint id, the options will be copied from "
@@ -2989,7 +2989,8 @@ class CommandObjectBreakpointNameAdd : public CommandObjectParsed {
 public:
   CommandObjectBreakpointNameAdd(CommandInterpreter &interpreter)
       : CommandObjectParsed(
-            interpreter, "add", "Add a name to the breakpoints provided.",
+            interpreter, "breakpoint name add",
+            "Add a name to the breakpoints provided.",
             "breakpoint name add <command-options> <breakpoint-id-list>",
             eCommandAllowsDummyTarget) {
     AddSimpleArgumentList(eArgTypeBreakpointID, eArgRepeatOptional);
@@ -3063,7 +3064,7 @@ class CommandObjectBreakpointNameDelete : public CommandObjectParsed {
 public:
   CommandObjectBreakpointNameDelete(CommandInterpreter &interpreter)
       : CommandObjectParsed(
-            interpreter, "delete",
+            interpreter, "breakpoint name delete",
             "Delete a name from the breakpoints provided.",
             "breakpoint name delete <command-options> <breakpoint-id-list>",
             eCommandAllowsDummyTarget) {
@@ -3135,7 +3136,7 @@ private:
 class CommandObjectBreakpointNameList : public CommandObjectParsed {
 public:
   CommandObjectBreakpointNameList(CommandInterpreter &interpreter)
-      : CommandObjectParsed(interpreter, "list",
+      : CommandObjectParsed(interpreter, "breakpoint name list",
                             "List either the names for a breakpoint or info "
                             "about a given name.  With no arguments, lists all "
                             "names",

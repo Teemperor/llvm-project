@@ -19,6 +19,8 @@
 #include "lldb/Interpreter/CommandOptionArgumentTable.h"
 #include "lldb/Interpreter/Options.h"
 #include "lldb/Utility/ArchSpec.h"
+#include "lldb/Utility/Timer.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/ScopeExit.h"
 
 // These are for the Sourcename completers.
@@ -824,8 +826,37 @@ Thread *CommandObject::GetDefaultThread() {
     return nullptr;
 }
 
+namespace {
+struct CommandTimerCategory {
+  llvm::StringLiteral command;
+  Timer::CategoryID category;
+};
+} // namespace
+
+// The timer categories of all built-in commands, sorted by command name.
+static constexpr CommandTimerCategory g_command_timer_categories[] = {
+#include "lldb/Utility/CommandTimerCategories.inc"
+};
+
+std::optional<Timer::CategoryID>
+CommandObject::GetTimerCategory(llvm::StringRef command_name) {
+  const auto *it = llvm::lower_bound(
+      g_command_timer_categories, command_name,
+      [](const CommandTimerCategory &entry, llvm::StringRef name) {
+        return entry.command < name;
+      });
+  if (it == std::end(g_command_timer_categories) || it->command != command_name)
+    return std::nullopt;
+  return it->category;
+}
+
+Timer::CategoryID CommandObject::GetTimerCategory() const {
+  return GetTimerCategory(GetCommandName()).value_or(timers::Command::Other);
+}
+
 void CommandObjectParsed::Execute(const char *args_string,
                                   CommandReturnObject &result) {
+  Timer scoped_timer(GetTimerCategory());
   bool handled = false;
   Args cmd_args(args_string);
   if (HasOverrideCallback()) {
@@ -869,6 +900,7 @@ void CommandObjectParsed::Execute(const char *args_string,
 
 void CommandObjectRaw::Execute(const char *args_string,
                                CommandReturnObject &result) {
+  Timer scoped_timer(GetTimerCategory());
   bool handled = false;
   if (HasOverrideCallback()) {
     std::string full_command(GetCommandName());

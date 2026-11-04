@@ -16,7 +16,7 @@ using namespace lldb_private;
 
 CommandObjectCPlusPlusDemangle::CommandObjectCPlusPlusDemangle(
     CommandInterpreter &interpreter)
-    : CommandObjectParsed(interpreter, "demangle",
+    : CommandObjectParsed(interpreter, "language cplusplus demangle",
                           "Demangle a C++ mangled name.",
                           "language cplusplus demangle [<mangled-name> ...]") {
   AddSimpleArgumentList(eArgTypeSymbol, eArgRepeatPlus);

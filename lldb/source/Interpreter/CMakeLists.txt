@@ -91,5 +91,6 @@ add_lldb_library(lldbInterpreter NO_PLUGIN_DEPENDENCIES
 add_dependencies(lldbInterpreter
   lldbInterpreterInterfaces
   LLDBInterpreterPropertiesGen
-  LLDBInterpreterPropertiesEnumGen)
+  LLDBInterpreterPropertiesEnumGen
+  LLDBCommandTimerCategoriesGen)
 
