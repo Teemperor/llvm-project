@@ -7,6 +7,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "ScratchTypeSystemClike.h"
+#include "lldb/Core/Module.h"
+#include "lldb/Core/ModuleList.h"
 
 #include "lldb/Target/Target.h"
 
@@ -19,9 +21,16 @@ ScratchTypeSystemClike::ScratchTypeSystemClike(Target &target,
                                                clike::LanguageOpts opts)
     : TypeSystemClike(std::string("scratch TypeSystemClike for ") +
                           target.GetArchitecture().GetArchitectureName(),
-                      std::move(opts)) {}
+                      std::move(opts)),
+      m_target_wp(target.shared_from_this()) {
+  // See TypeSystemClike::GetScratchInstances: module instances have to be able
+  // to find us before they take any lock.
+  RegisterScratchInstance(this);
+}
 
-ScratchTypeSystemClike::~ScratchTypeSystemClike() = default;
+ScratchTypeSystemClike::~ScratchTypeSystemClike() {
+  UnregisterScratchInstance(this);
+}
 
 llvm::Expected<lldb::TypeSystemSP>
 ScratchTypeSystemClike::Create(Target &target, llvm::Triple triple) {
@@ -30,4 +39,46 @@ ScratchTypeSystemClike::Create(Target &target, llvm::Triple triple) {
   if (!opts)
     return opts.takeError();
   return std::make_shared<ScratchTypeSystemClike>(target, std::move(*opts));
+}
+
+void ScratchTypeSystemClike::AppendLockOrder(
+    llvm::SmallVectorImpl<TypeSystemClike *> &out) const {
+  TypeSystemClike::AppendLockOrder(out);
+  lldb::TargetSP target_sp = m_target_wp.lock();
+  if (!target_sp)
+    return;
+  // Copy the pointers out under the image list's own lock and release it before
+  // returning: GetLockOrder's caller is about to take TypeSystemClike locks,
+  // and holding the module list across that would introduce a second lock order
+  // to reason about.
+  std::vector<Module *> images;
+  for (const lldb::ModuleSP &module_sp : target_sp->GetImages().Modules())
+    if (module_sp) {
+      images.push_back(module_sp.get());
+      AppendClikeTypeSystemsOf(*module_sp, out);
+    }
+  // Module instances fold this set into their own, so if the images changed
+  // their cached sets are stale too (see IsLockOrderStale).
+  if (images != m_lock_order_images) {
+    m_lock_order_images = std::move(images);
+    BumpLockOrderEpoch();
+  }
+}
+
+bool ScratchTypeSystemClike::IsLockOrderStale() const {
+  lldb::TargetSP target_sp = m_target_wp.lock();
+  if (!target_sp)
+    return !m_lock_order_images.empty();
+  // A pointer comparison per image under the image list's lock -- far cheaper
+  // than AppendLockOrder's walk over every image's type systems.
+  size_t i = 0;
+  for (const lldb::ModuleSP &module_sp : target_sp->GetImages().Modules()) {
+    if (!module_sp)
+      continue;
+    if (i >= m_lock_order_images.size() ||
+        m_lock_order_images[i] != module_sp.get())
+      return true;
+    ++i;
+  }
+  return i != m_lock_order_images.size();
 }

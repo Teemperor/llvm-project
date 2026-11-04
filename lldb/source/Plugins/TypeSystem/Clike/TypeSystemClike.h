@@ -574,18 +574,74 @@ protected:
   /// Must not take any TypeSystemClike lock: it runs before they are acquired.
   /// Called with m_lock_order_mutex held.
   ///
-  /// The base implementation contributes this instance.
+  /// The base implementation contributes this instance plus, when it has a
+  /// symbol file, the type systems of the Clang modules that symbol file
+  /// imports (transitively). That list comes straight out of the DWARF -- see
+  /// SymbolFile::ForEachExternalModule -- so it is known without parsing a
+  /// single type, which is what lets the set be complete before locking.
   virtual void
   AppendLockOrder(llvm::SmallVectorImpl<TypeSystemClike *> &out) const;
 
-  /// Whether AppendLockOrder can return a different set over time, in which
-  /// case GetLockOrder must recompute on every call instead of caching.
-  virtual bool HasDynamicLockOrder() const { return false; }
+  /// Whether the cached lock order is out of date for a reason the global
+  /// lock-order epoch (see BumpLockOrderEpoch) does not capture. Called with
+  /// m_lock_order_mutex held, on every GetLockOrder, so it must be cheap. The
+  /// base instance has no such reason: its imports are fixed once its symbol
+  /// file is known (GetLockOrder itself watches for that), and everything else
+  /// it folds in is covered by the epoch.
+  virtual bool IsLockOrderStale() const { return false; }
+
+  /// Invalidate every instance's cached lock order. GetLockOrder runs on every
+  /// query, so recomputing the set each time (which walks the scratch
+  /// instances' target images) dominates the cost of the queries themselves;
+  /// instead each instance caches its set together with the epoch it was
+  /// computed at. The epoch moves whenever an input to *some* instance's set
+  /// may have changed:
+  ///   - a scratch instance registers or unregisters,
+  ///   - an instance computes its lock order for the first time -- the point
+  ///     at which it can first hold types another instance's query may reach,
+  ///     so sets computed before then may lack it without harm,
+  ///   - an instance is destroyed,
+  ///   - a scratch instance notices its target's image list changed (see
+  ///     ScratchTypeSystemClike::IsLockOrderStale).
+  /// These are all rare, so the caches stay valid across the bulk of queries.
+  static void BumpLockOrderEpoch();
+
+  /// Append every TypeSystemClike \p module already has to \p out. Shared by
+  /// the base AppendLockOrder (for imported Clang modules) and the scratch
+  /// override (for the target's images).
+  static void
+  AppendClikeTypeSystemsOf(Module &module,
+                           llvm::SmallVectorImpl<TypeSystemClike *> &out);
+
+  /// Like AppendClikeTypeSystemsOf, but *creates* \p module's TypeSystemClike
+  /// if it has none yet. Used for the Clang modules our debug info imports:
+  /// their type systems are created lazily by the very query that first reaches
+  /// into them (see DWARFASTParserClike::FindClangModuleDefinitionType), so
+  /// waiting for one to exist means it is missing from the set exactly when it
+  /// is first needed. The DWARF bounds this list to the real import graph, so
+  /// it is not the open-ended cost that doing the same for every image would
+  /// be.
+  static void AppendOrCreateClikeTypeSystemOf(
+      Module &module, llvm::SmallVectorImpl<TypeSystemClike *> &out);
+
+  /// Every live scratch instance, so a module instance can find the scratches
+  /// that may reach it. A module cannot work that out from its own state -- a
+  /// Module belongs to any number of Targets and nothing maps back the other
+  /// way -- and it has to be knowable *before* locking, so the scratches
+  /// register here as they are created rather than being discovered from a
+  /// query's execution context.
+  static void RegisterScratchInstance(TypeSystemClike *scratch);
+  static void UnregisterScratchInstance(TypeSystemClike *scratch);
+  static llvm::SmallVector<TypeSystemClike *, 2> GetScratchInstances();
 
 private:
-  /// GetLockOrder's cache, used only when !HasDynamicLockOrder().
+  /// GetLockOrder's cache, valid while the global lock-order epoch still
+  /// equals m_lock_order_epoch, the symbol file is still
+  /// m_lock_order_sym_file and !IsLockOrderStale().
   mutable llvm::SmallVector<TypeSystemClike *, 4> m_lock_order;
   mutable bool m_lock_order_valid = false;
+  mutable uint64_t m_lock_order_epoch = 0;
+  mutable SymbolFile *m_lock_order_sym_file = nullptr;
 
   /// Guards m_lock_order only. Separate from m_mutex, and never held while any
   /// m_mutex is: the lock order has to be readable before the locks it
