@@ -73,6 +73,37 @@ static void AppendAnonymousParentPrefix(clike::Type *t, std::string &out) {
   out += "::";
 }
 
+// Render a function signature in C declarator form, placing `decl` (e.g. "" for
+// a plain function, "(*)" for a function pointer, "(^)" for a block pointer)
+// between the return type and the parameter list: `int (*)(const char *)`.
+static std::string BuildFunctionNameImpl(clike::FunctionType *fn,
+                                         llvm::StringRef decl,
+                                         bool keep_inline_namespaces = false) {
+  // A function that returns nothing returns the `void` builtin, so there is
+  // always a return type to name.
+  std::string ret =
+      BuildDisplayNameImpl(fn->GetReturnType(), keep_inline_namespaces);
+  std::string params;
+  for (uint32_t i = 0, e = fn->GetNumParameters(); i != e; ++i) {
+    if (!params.empty())
+      params += ", ";
+    params += BuildDisplayNameImpl(fn->GetParameterAtIndex(i),
+                                   keep_inline_namespaces);
+  }
+  if (fn->IsVariadic())
+    params += params.empty() ? "..." : ", ...";
+  // An empty, prototyped parameter list is rendered as `()` in C++ (matching
+  // clang's TypePrinter with UseVoidForZeroParams=false) but as `(void)` in C,
+  // where an empty parameter list without `void` instead means "unspecified
+  // parameters" (K&R). See FunctionType::UseVoidForEmptyParams for how that bit
+  // is determined at parse time. An unprototyped (K&R) function has a
+  // DW_TAG_unspecified_parameters child and is modelled as variadic above, so
+  // it prints as `(...)` regardless.
+  else if (params.empty() && fn->UseVoidForEmptyParams())
+    params = "void";
+  return ret + " " + decl.str() + "(" + params + ")";
+}
+
 // Build a type's (simplified) display name from the type model: qualified with
 // its declaring namespaces (inline ones skipped).
 static std::string BuildDisplayNameImpl(clike::Type *t,
@@ -111,6 +142,8 @@ static std::string BuildDisplayNameImpl(clike::Type *t,
   }
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
     clike::Type *pointee = ptr->GetPointeeType();
+    if (auto *fn = llvm::dyn_cast<FunctionType>(pointee))
+      return BuildFunctionNameImpl(fn, "(*)", keep_inline_namespaces);
     // `void *` needs no special case: its pointee is the `void` builtin, whose
     // name is "void".
     std::string pointee_name =
@@ -120,6 +153,8 @@ static std::string BuildDisplayNameImpl(clike::Type *t,
     const bool tight = !pointee_name.empty() && pointee_name.back() == '*';
     return pointee_name + (tight ? "*" : " *");
   }
+  if (auto *fn = llvm::dyn_cast<FunctionType>(t))
+    return BuildFunctionNameImpl(fn, "", keep_inline_namespaces);
   if (auto *cv = llvm::dyn_cast<CVQualifiedType>(t)) {
     std::string qualifier;
     if (cv->IsConst())
@@ -167,11 +202,18 @@ static std::string BuildDisplayNameImpl(clike::Type *t,
 
 } // namespace
 
-// The exported entry points. BuildDisplayName just names the file-local
-// implementation above; the recursion stays internal.
+// The exported entry points. BuildDisplayName/BuildFunctionName just name the
+// file-local implementations above; the recursion between them all stays
+// internal.
 
 std::string clike::BuildDisplayName(Type *t, bool keep_inline_namespaces) {
   return BuildDisplayNameImpl(t, keep_inline_namespaces);
+}
+
+std::string clike::BuildFunctionName(Type *fn, llvm::StringRef decl,
+                                     bool keep_inline_namespaces) {
+  return BuildFunctionNameImpl(llvm::cast<FunctionType>(fn), decl,
+                               keep_inline_namespaces);
 }
 
 std::string clike::BuildCanonicalName(Type *t, bool base_only) {
@@ -206,9 +248,15 @@ std::string clike::BuildCanonicalName(Type *t, bool base_only) {
     std::string element_name = BuildCanonicalName(cur, base_only);
     return element_name + dims;
   }
+  // Function types and pointers to them need C declarator syntax
+  // (`int (*)(const char *)`); BuildDisplayNameImpl already produces it.
+  if (llvm::isa<FunctionType>(t))
+    return BuildDisplayNameImpl(t);
   // Pointers have no name of their own either; build "<pointee> *".
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
     Type *pointee = ptr->GetPointeeType();
+    if (llvm::isa<FunctionType>(pointee))
+      return BuildDisplayNameImpl(t);
     std::string pointee_name = BuildCanonicalName(pointee, base_only);
     // Clang omits the space before '*' when the pointee already ends in a
     // pointer sigil ("void **"), so keep the two tight.

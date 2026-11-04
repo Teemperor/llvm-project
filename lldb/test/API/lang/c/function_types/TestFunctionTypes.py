@@ -15,6 +15,7 @@ class FunctionTypesTestCase(TestBase):
         # Find the line number to break inside main().
         self.line = line_number("main.c", "// Set break point at this line.")
 
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         """Test 'callback' has function ptr type, then break on the function."""
         self.build()

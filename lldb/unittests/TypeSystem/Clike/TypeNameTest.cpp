@@ -109,3 +109,45 @@ TEST_F(TypeNameTest, Enum) {
                                        TypeRef(*Int()), /*is_scoped=*/false);
   EXPECT_EQ(Canonical(e), "Color");
 }
+
+// A function type renders in C declarator form, and BuildFunctionName places
+// the caller's declarator between the return type and the parameter list.
+TEST_F(TypeNameTest, FunctionDeclarator) {
+  CVQualifiedType *const_char =
+      context.CreateCVQualifiedType(TypeRef(*Char()), /*is_const=*/true,
+                                    /*is_volatile=*/false);
+  FunctionType *fn = context.CreateFunctionType(
+      TypeRef(*Int()),
+      {TypeRef(*context.CreatePointerType(TypeRef(*const_char)))},
+      /*is_variadic=*/false);
+
+  EXPECT_EQ(BuildFunctionName(fn, ""), "int (const char *)");
+  EXPECT_EQ(BuildFunctionName(fn, "(*)"), "int (*)(const char *)");
+  EXPECT_EQ(BuildFunctionName(fn, "(^)"), "int (^)(const char *)");
+}
+
+// A variadic function's parameter list ends in `...`; an empty one renders as
+// `()` unless the type asked for the `(void)` spelling.
+TEST_F(TypeNameTest, FunctionVariadicAndEmptyParams) {
+  FunctionType *variadic = context.CreateFunctionType(
+      TypeRef(*Int()), {TypeRef(*Int())}, /*is_variadic=*/true);
+  EXPECT_EQ(BuildFunctionName(variadic, ""), "int (int, ...)");
+
+  FunctionType *no_params =
+      context.CreateFunctionType(TypeRef(*Void()), {}, /*is_variadic=*/false);
+  EXPECT_EQ(BuildFunctionName(no_params, ""), "void ()");
+
+  FunctionType *void_params =
+      context.CreateFunctionType(TypeRef(*Void()), {}, /*is_variadic=*/false,
+                                 /*use_void_for_empty_params=*/true);
+  EXPECT_EQ(BuildFunctionName(void_params, ""), "void (void)");
+}
+
+// A function pointer renders as a declarator around the pointer, not as
+// `int ()*`.
+TEST_F(TypeNameTest, FunctionPointerName) {
+  FunctionType *fn = context.CreateFunctionType(
+      TypeRef(*Int()), {TypeRef(*Int())}, /*is_variadic=*/false);
+  PointerType *fn_ptr = context.CreatePointerType(TypeRef(*fn));
+  EXPECT_EQ(Canonical(fn_ptr), "int (*)(int)");
+}

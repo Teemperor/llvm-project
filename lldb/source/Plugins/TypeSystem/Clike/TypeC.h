@@ -299,6 +299,84 @@ private:
   std::vector<Enumerator> m_enumerators;
 };
 
+/// A function type: a return type plus parameter types. For a member function
+/// the parameters exclude the implicit object (`this`) parameter. Used to build
+/// clang::FunctionDecl/CXXMethodDecl signatures for calling functions from
+/// expressions.
+class FunctionType : public llvm::RTTIExtends<FunctionType, Type> {
+public:
+  static char ID;
+
+  /// \p param_names holds the declared name of each parameter in \p params
+  /// (an empty Identifier for an unnamed one); it may be shorter than
+  /// \p params, in which case the remaining parameters are unnamed.
+  /// \p use_void_for_empty_params: see UseVoidForEmptyParams.
+  FunctionType(TypeRef return_type, std::vector<TypeRef> params,
+               std::vector<Identifier> param_names, bool is_variadic,
+               bool use_void_for_empty_params)
+      : m_return_type(return_type), m_params(std::move(params)),
+        m_param_names(std::move(param_names)), m_is_variadic(is_variadic),
+        m_use_void_for_empty_params(use_void_for_empty_params) {
+    assert(m_param_names.size() <= m_params.size() &&
+           "more parameter names than parameters");
+    m_param_names.resize(m_params.size());
+  }
+
+  bool IsFunction() const override { return true; }
+
+  /// The declared return type. Never null: a function returning nothing
+  /// returns the `void` builtin.
+  Type *GetReturnType() const override { return &m_return_type.Get(); }
+
+  uint32_t GetNumParameters() const override { return m_params.size(); }
+  Type *GetParameterAtIndex(uint32_t idx) const override {
+    if (idx < m_params.size())
+      return &m_params[idx].Get();
+    return nullptr;
+  }
+
+  /// The declared name of the parameter at \p idx (its DW_AT_name), or an empty
+  /// StringRef if the parameter was unnamed. Used so a synthesized clang
+  /// ParmVarDecl can carry the original parameter name (e.g. so a diagnostic
+  /// reads "requires single argument 'x'" rather than "requires 1 argument").
+  llvm::StringRef GetParameterNameAtIndex(uint32_t idx) const {
+    if (idx < m_param_names.size())
+      return m_param_names[idx].GetName();
+    return {};
+  }
+
+  bool IsVariadic() const { return m_is_variadic; }
+
+  /// Whether an empty, non-variadic parameter list should be spelled `(void)`
+  /// instead of `()`. This mirrors clang's
+  /// `PrintingPolicy::UseVoidForZeroParams`, which is true for a prototyped C
+  /// function (`int foo(void);`) and false for C++ (where `int foo();` already
+  /// means an empty prototype). TypeSystemClike has a single Context shared
+  /// across C and C++ compile units (unlike TypeSystemClang, which gets one
+  /// ASTContext/LangOptions per language), so this can't be a global
+  /// printing-policy setting -- it has to be decided per
+  /// DW_TAG_subroutine_type/subprogram at parse time from DW_AT_prototyped plus
+  /// the owning compile unit's language and stored here.
+  bool UseVoidForEmptyParams() const { return m_use_void_for_empty_params; }
+
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassFunction;
+  }
+  uint32_t GetTypeInfo() const override {
+    return lldb::eTypeIsFuncPrototype | lldb::eTypeHasValue;
+  }
+
+private:
+  TypeRef m_return_type;
+  std::vector<TypeRef> m_params;
+  // Parallel to m_params: the declared name of each parameter (empty Identifier
+  // for an unnamed parameter). Kept separate so the common size/layout queries
+  // that only need parameter *types* don't touch it.
+  std::vector<Identifier> m_param_names;
+  bool m_is_variadic;
+  bool m_use_void_for_empty_params;
+};
+
 } // namespace clike
 } // namespace lldb_private
 

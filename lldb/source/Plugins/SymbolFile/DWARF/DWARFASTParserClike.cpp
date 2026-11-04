@@ -734,6 +734,87 @@ TypeSP DWARFASTParserClike::ParseEnum(const DWARFDIE &die) {
                          enum_type, Type::ResolveState::Full);
 }
 
+TypeSP DWARFASTParserClike::ParseFunctionType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  // Resolve the return type (a missing DW_AT_type means `void`).
+  DWARFDIE return_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  CompilerType return_type;
+  if (return_die)
+    if (Type *ret = die.ResolveTypeUID(return_die))
+      return_type = ret->GetForwardCompilerType();
+
+  // Resolve the parameter types, skipping the implicit object (`this`)
+  // parameter (DW_AT_artificial) so a method's signature matches its
+  // clang::CXXMethodDecl.
+  std::vector<CompilerType> params;
+  std::vector<llvm::StringRef> param_names;
+  bool is_variadic = false;
+  for (DWARFDIE child : die.children()) {
+    if (child.Tag() == DW_TAG_formal_parameter) {
+      if (child.GetAttributeValueAsUnsigned(DW_AT_artificial, 0))
+        continue;
+      DWARFDIE param_die = child.GetAttributeValueAsReferenceDIE(DW_AT_type);
+      if (param_die)
+        if (Type *p = die.ResolveTypeUID(param_die)) {
+          params.push_back(p->GetForwardCompilerType());
+          // Preserve the parameter's declared name (DW_AT_name) so the
+          // synthesized clang ParmVarDecl carries it into diagnostics (e.g.
+          // "requires single argument 'x'").
+          const char *name = child.GetName();
+          param_names.push_back(name ? name : "");
+        }
+    } else if (child.Tag() == DW_TAG_unspecified_parameters) {
+      is_variadic = true;
+    }
+  }
+
+  // An empty, non-variadic parameter list should be spelled `(void)` rather
+  // than `()` when the function is explicitly prototyped (DW_AT_prototyped)
+  // and the owning compile unit's language is plain C: in C++ (and
+  // Objective-C/Objective-C++, which are never K&R-style) `int foo();`
+  // already means an empty prototype, but in C it means "unspecified
+  // parameters" (K&R), so `(void)` is needed to say "takes no arguments".
+  // Mirrors clang's PrintingPolicy::UseVoidForZeroParams (true iff !CPlusPlus,
+  // but clang has a separate ASTContext per language and so never has to
+  // reconsider ObjC here); TypeSystemClike instead has one Context shared
+  // across languages, so this is decided per-DIE and must explicitly exclude
+  // ObjC/ObjC++ via LanguageIsC rather than just negating LanguageIsCPlusPlus.
+  // DW_AT_prototyped is looked up with check_elaborating_dies=true (bypassing
+  // the DWARFBaseDIE convenience wrapper, which hardcodes it to false) because
+  // it commonly lives on an out-of-line DW_AT_specification DIE rather than the
+  // DW_TAG_subprogram actually being parsed here (see
+  // DWARFASTParserClang::GetObjectParameter for the same pattern).
+  DWARFFormValue prototyped_form_value;
+  bool is_prototyped = die.GetDIE()->GetAttributeValue(
+      die.GetCU(), DW_AT_prototyped, prototyped_form_value,
+      /*end_attr_offset_ptr=*/nullptr, /*check_elaborating_dies=*/true);
+  bool use_void_for_empty_params =
+      !is_variadic && params.empty() && is_prototyped &&
+      Language::LanguageIsC(SymbolFileDWARF::GetLanguage(*die.GetCU()));
+
+  CompilerType function_type;
+  {
+    // An absent return type is `void` -- CreateFunctionType fills that in.
+    clike::Builder builder(m_ts);
+    function_type =
+        builder.CreateFunctionType(return_type, params, is_variadic,
+                                   use_void_for_empty_params, param_names);
+    // A parameter type that can't be referenced would leave the function
+    // with a silently shortened signature, which is worse than having no
+    // function type at all (a caller would type-check a call against it).
+    if (!function_type)
+      return nullptr;
+  }
+
+  Declaration decl = GetDIEDeclaration(die);
+  ConstString empty_name;
+  return dwarf->MakeType(die.GetID(), empty_name, /*byte_size=*/std::nullopt,
+                         /*context=*/nullptr, LLDB_INVALID_UID,
+                         Type::eEncodingIsUID, decl, function_type,
+                         Type::ResolveState::Full);
+}
+
 /// The oldest DWARF version TypeSystemClike knows how to read. See
 /// IsSupportedDWARFVersion for why older ones are refused rather than
 /// approximated.
@@ -813,6 +894,10 @@ TypeSP DWARFASTParserClike::ParseTypeFromDWARF(const SymbolContext &sc,
     break;
   case DW_TAG_enumeration_type:
     type_sp = ParseEnum(die);
+    break;
+  case DW_TAG_subroutine_type:
+  case DW_TAG_subprogram:
+    type_sp = ParseFunctionType(die);
     break;
   case DW_TAG_unspecified_type:
     type_sp = ParseUnspecifiedType(die);
