@@ -14,6 +14,7 @@ class TestReadMemCString(TestBase):
     @requireNotWasm(
         "linear memory has no unmapped pages, so a bad in-range pointer still reads"
     )
+    @add_test_categories(["typesystem-clike"])
     def test_read_memory_c_string(self):
         """Test corner case behavior of SBProcess::ReadCStringFromMemory"""
         self.build()

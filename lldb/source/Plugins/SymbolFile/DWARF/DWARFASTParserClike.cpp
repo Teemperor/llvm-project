@@ -425,6 +425,32 @@ DWARFASTParserClike::GetDeclContextContainingUIDFromDWARF(const DWARFDIE &die) {
   return CompilerDeclContext();
 }
 
+TypeSP DWARFASTParserClike::ParsePointerType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  std::optional<uint64_t> byte_size =
+      die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size);
+
+  // Resolve the pointee type. A missing DW_AT_type means `void *`, in which
+  // case the pointee stays empty. A pointer may point to an incomplete type,
+  // so use the forward-declared CompilerType and don't force completion here.
+  DWARFDIE pointee_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  CompilerType pointee_type;
+  if (pointee_die)
+    if (Type *pointee = die.ResolveTypeUID(pointee_die))
+      pointee_type = pointee->GetForwardCompilerType();
+
+  CompilerType pointer_type =
+      clike::Builder(m_ts).CreatePointerType(pointee_type);
+
+  Declaration decl = GetDIEDeclaration(die);
+  ConstString empty_name;
+  return dwarf->MakeType(die.GetID(), empty_name, byte_size,
+                         /*context=*/nullptr, pointee_die.GetID(),
+                         Type::eEncodingIsUID, decl, pointer_type,
+                         Type::ResolveState::Full);
+}
+
 TypeSP DWARFASTParserClike::ParseTypedef(const DWARFDIE &die) {
   SymbolFileDWARF *dwarf = die.GetDWARF();
   ConstString name(GetDIEQualifiedName(die));
@@ -583,6 +609,9 @@ TypeSP DWARFASTParserClike::ParseTypeFromDWARF(const SymbolContext &sc,
   switch (die.Tag()) {
   case DW_TAG_base_type:
     type_sp = ParseBaseType(die);
+    break;
+  case DW_TAG_pointer_type:
+    type_sp = ParsePointerType(die);
     break;
   case DW_TAG_typedef:
   case DW_TAG_template_alias:
