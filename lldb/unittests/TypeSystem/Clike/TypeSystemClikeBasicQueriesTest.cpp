@@ -76,6 +76,24 @@ TEST_F(TypeSystemClikeBasicQueriesTest, IsIntegerType) {
   EXPECT_FALSE(ts->IsIntegerType(nullptr_t.GetOpaqueQualType(), is_signed));
 }
 
+// IsScopedEnumerationType / IsEnumerationType distinguish `enum class` from a
+// plain `enum`, and report the correct signedness derived from the underlying
+// type.
+TEST_F(TypeSystemClikeBasicQueriesTest, EnumerationQueries) {
+  CompilerType plain_enum =
+      builder.CreateEnumType("E", 4, GetInt(), /*is_scoped=*/false);
+  CompilerType scoped_enum =
+      builder.CreateEnumType("ScopedE", 4, GetInt(), /*is_scoped=*/true);
+
+  EXPECT_FALSE(ts->IsScopedEnumerationType(plain_enum.GetOpaqueQualType()));
+  EXPECT_TRUE(ts->IsScopedEnumerationType(scoped_enum.GetOpaqueQualType()));
+
+  bool is_signed = false;
+  EXPECT_TRUE(ts->IsEnumerationType(plain_enum.GetOpaqueQualType(), is_signed));
+  EXPECT_TRUE(is_signed);
+  EXPECT_FALSE(ts->IsEnumerationType(GetInt().GetOpaqueQualType(), is_signed));
+}
+
 // IsPointerType reports the pointee type through the out-parameter.
 TEST_F(TypeSystemClikeBasicQueriesTest, IsPointerType) {
   CompilerType ptr = builder.CreatePointerType(GetInt());

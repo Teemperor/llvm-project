@@ -20,6 +20,25 @@ using namespace lldb_private::clike;
 
 namespace {
 
+// An unnamed record/enum (e.g. a function-local `struct { ... } x;`) has no
+// spelling in the debug info. Match clang's TagDecl printing, which renders
+// such a type as "(unnamed struct)" / "(unnamed union)" / "(unnamed class)" /
+// "(unnamed enum)" (see TagDecl::printName) -- except an *anonymous*
+// struct/union (RecordType::IsAnonymousStructOrUnion, e.g. `struct { int x; };`
+// with no member name) prints "(anonymous struct)"/"(anonymous union)" instead,
+// matching clang's TagDecl::printAnonymousTagDecl, which special-cases
+// RecordDecl::isAnonymousStructOrUnion() to say "anonymous" rather than
+// "unnamed". Returns an empty string for any other (named or non-tag) type.
+static std::string BuildUnnamedTagName(clike::Type *t) {
+  using namespace clike;
+  if (!t->GetName().GetName().empty() ||
+      !t->GetUnqualifiedName().GetName().empty())
+    return {};
+  if (llvm::isa<EnumType>(t))
+    return "(unnamed enum)";
+  return {};
+}
+
 // Build a type's (simplified) display name from the type model: qualified with
 // its declaring namespaces (inline ones skipped).
 static std::string BuildDisplayNameImpl(clike::Type *t,
@@ -67,7 +86,15 @@ static std::string BuildDisplayNameImpl(clike::Type *t,
   // unqualified name; fall back to their stored name.
   llvm::StringRef unqualified = t->GetUnqualifiedName().GetName();
   if (unqualified.empty()) {
-    // Builtins have no unqualified name but do carry a stored name.
+    // An unnamed record/enum prints as "(unnamed struct)" etc. (matching
+    // clang); builtins have no unqualified name but do carry a stored name. An
+    // anonymous struct/union additionally gets its enclosing record's name
+    // prefixed (e.g. "MySock::(anonymous union)"), since clang's own printer
+    // qualifies it that way (see AppendAnonymousParentPrefix). Otherwise
+    // qualify by the enclosing namespace chain instead, same as a named type.
+    if (std::string unnamed = BuildUnnamedTagName(t); !unnamed.empty()) {
+      return unnamed;
+    }
     return t->GetName().GetName().str();
   }
 
@@ -113,7 +140,8 @@ std::string clike::BuildCanonicalName(Type *t, bool base_only) {
       else
         break;
     }
-    const bool drop_qualifiers = llvm::isa<TypedefType>(leaf);
+    const bool drop_qualifiers =
+        llvm::isa<EnumType>(leaf) || llvm::isa<TypedefType>(leaf);
     if (drop_qualifiers)
       return underlying_name;
     std::string result;
@@ -135,6 +163,17 @@ std::string clike::BuildCanonicalName(Type *t, bool base_only) {
     llvm::StringRef unqualified = t->GetUnqualifiedName().GetName();
     if (!unqualified.empty())
       return unqualified.str();
+  }
+  // An unnamed record/enum has no spelling in the debug info; render it as
+  // "(unnamed struct)" etc. to match clang / TypeSystemClang. An anonymous
+  // struct/union additionally gets its enclosing record's name prefixed (e.g.
+  // "MySock::(anonymous union)"); see AppendAnonymousParentPrefix. Otherwise
+  // qualify by the enclosing namespace chain instead (keeping inline
+  // namespaces, matching the raw-spelling convention this function otherwise
+  // uses). `base_only` asks for the unqualified spelling, so skip both prefixes
+  // in that case.
+  if (std::string unnamed = BuildUnnamedTagName(t); !unnamed.empty()) {
+    return unnamed;
   }
   return t->GetName().GetName().str();
 }

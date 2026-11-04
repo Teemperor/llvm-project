@@ -17,6 +17,7 @@ using namespace lldb_private::clike;
 char PointerType::ID = 0;
 char TypedefType::ID = 0;
 char CVQualifiedType::ID = 0;
+char EnumType::ID = 0;
 
 std::optional<uint64_t> PointerType::GetByteSize() const {
   // A pointer is the target's pointer width, taken from the Context that owns

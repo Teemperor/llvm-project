@@ -106,3 +106,40 @@ TEST_F(TypeCTest, CVQualified) {
   EXPECT_EQ(v_alias->GetCVRQualifiers(), 0x4u);
   EXPECT_EQ(v_alias->StripCVQualifiers(), alias);
 }
+
+// An enum has an underlying integer type it takes its encoding from, and the
+// enumerators it was created with.
+TEST_F(TypeCTest, Enum) {
+  EnumType *e = context.CreateEnumType("Color", /*byte_size=*/4,
+                                       TypeRef(*Int()), /*is_scoped=*/false);
+  EXPECT_EQ(e->GetName().GetName(), "Color");
+  EXPECT_EQ(e->GetUnderlyingType(), Int());
+  EXPECT_EQ(e->GetEnumerationIntegerType(), Int());
+  EXPECT_EQ(e->GetByteSize(), std::optional<uint64_t>(4));
+  EXPECT_EQ(e->GetFormat(), lldb::eFormatEnum);
+  EXPECT_EQ(e->GetTypeClass(), lldb::eTypeClassEnumeration);
+  // Matches TypeSystemClang: an enum is NOT flagged as a scalar.
+  EXPECT_EQ(e->GetTypeInfo(),
+            uint32_t(lldb::eTypeIsEnumeration | lldb::eTypeHasValue));
+  // `int` is signed, so the enum is too, and it inherits its encoding.
+  EXPECT_TRUE(e->IsSigned());
+  EXPECT_EQ(e->GetEncoding(), Int()->GetEncoding());
+  EXPECT_FALSE(e->IsScoped());
+  EXPECT_FALSE(e->IsScopedEnumeration());
+  EXPECT_TRUE(e->GetEnumerators().empty());
+  // An unscoped enum is an integer that promotes like one.
+  EXPECT_TRUE(e->IsInteger());
+  EXPECT_TRUE(e->IsPromotableInteger());
+
+  EnumType *colors = context.CreateEnumType(
+      "Colors", /*byte_size=*/4, TypeRef(*Int()), /*is_scoped=*/true,
+      {{context.GetIdentifier("Red"), llvm::APInt(32, 0)},
+       {context.GetIdentifier("Green"), llvm::APInt(32, 1)}});
+  ASSERT_EQ(colors->GetEnumerators().size(), 2u);
+  EXPECT_EQ(colors->GetEnumerators()[0].GetName().GetName(), "Red");
+  EXPECT_EQ(colors->GetEnumerators()[1].GetValue(), llvm::APInt(32, 1));
+  EXPECT_TRUE(colors->IsScoped());
+  EXPECT_TRUE(colors->IsScopedEnumeration());
+  // A scoped enum doesn't promote implicitly.
+  EXPECT_FALSE(colors->IsPromotableInteger());
+}
