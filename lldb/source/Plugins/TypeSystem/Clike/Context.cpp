@@ -84,3 +84,13 @@ EnumType *Context::CreateEnumType(const DeclarationContext &decl_context,
       GetIdentifier(name), decl_context, unqualified_name, byte_size,
       underlying_type, is_scoped, std::move(enumerators)));
 }
+
+FunctionType *
+Context::CreateFunctionType(TypeRef return_type, llvm::ArrayRef<TypeRef> params,
+                            bool is_variadic, bool use_void_for_empty_params,
+                            llvm::ArrayRef<Identifier> param_names) {
+  return Track(std::make_unique<FunctionType>(
+      return_type, std::vector<TypeRef>(params.begin(), params.end()),
+      std::vector<Identifier>(param_names.begin(), param_names.end()),
+      is_variadic, use_void_for_empty_params));
+}
