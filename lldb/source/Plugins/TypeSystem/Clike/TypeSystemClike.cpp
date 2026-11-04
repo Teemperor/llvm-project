@@ -369,9 +369,24 @@ bool TypeSystemClike::IsIntegerTypeImpl(const clike::Type *t, bool &is_signed) {
   return true;
 }
 
-bool TypeSystemClike::IsScopedEnumerationType(
-    lldb::opaque_compiler_type_t type) {
-  return false;
+bool TypeSystemClike::IsScopedEnumerationType(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  if (!t)
+    return false;
+  return Desugar(t.get())->IsScopedEnumeration();
+}
+
+bool TypeSystemClike::IsEnumerationType(opaque_compiler_type_t type,
+                                        bool &is_signed) {
+  is_signed = false;
+  SharedLockedType t = GetTypeForRead(type);
+  if (!t)
+    return false;
+  clike::Type *integer_type = Desugar(t.get())->GetEnumerationIntegerType();
+  if (!integer_type)
+    return false;
+  is_signed = integer_type->GetEncoding() == eEncodingSint;
+  return true;
 }
 
 bool TypeSystemClike::IsPossibleDynamicType(opaque_compiler_type_t type,
@@ -597,8 +612,44 @@ CompilerType TypeSystemClike::GetCanonicalType(opaque_compiler_type_t type) {
 }
 
 CompilerType
-TypeSystemClike::GetEnumerationIntegerType(lldb::opaque_compiler_type_t type) {
-  return CompilerType();
+TypeSystemClike::GetEnumerationIntegerType(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  if (!t)
+    return CompilerType();
+  return GetCompilerType(Desugar(t.get())->GetEnumerationIntegerType());
+}
+
+void TypeSystemClike::ForEachEnumerator(
+    opaque_compiler_type_t type,
+    std::function<bool(const CompilerType &integer_type, ConstString name,
+                       const llvm::APSInt &value)> const &callback) {
+  SharedLockedType t = GetTypeForRead(type);
+  if (!t)
+    return;
+  const clike::Type *enum_type = Desugar(t.get());
+  clike::Type *underlying = enum_type->GetEnumerationIntegerType();
+  if (!underlying)
+    return;
+
+  CompilerType integer_type = GetCompilerType(underlying);
+  const bool is_signed = underlying->GetEncoding() == eEncodingSint;
+  // Enumerator values are stored as raw bits; recover their APSInt using the
+  // underlying type's width and signedness so that values are extended
+  // correctly. Read the
+  // byte size directly off the underlying Type (not via
+  // integer_type.GetByteSize(), which would call back into this instance's
+  // own GetBitSize and re-acquire the lock already held above).
+  unsigned bit_width = 64;
+  if (std::optional<uint64_t> byte_size = underlying->GetByteSize())
+    bit_width = static_cast<unsigned>(*byte_size * 8);
+
+  for (const clike::Enumerator &enumerator : enum_type->GetEnumerators()) {
+    llvm::APSInt value =
+        llvm::APSInt(enumerator.GetValue(), !is_signed).extOrTrunc(bit_width);
+    if (!callback(integer_type, ConstString(enumerator.GetName().GetName()),
+                  value))
+      break;
+  }
 }
 
 int TypeSystemClike::GetFunctionArgumentCount(
@@ -759,6 +810,32 @@ TypeSystemClike::GetPromotedIntegerType(opaque_compiler_type_t type) {
   CompilerType int_type = GetBasicTypeFromASTAssumingWriteLocked(eBasicTypeInt);
   std::optional<uint64_t> int_size =
       GetClikeType(int_type.GetOpaqueQualType())->GetByteSize();
+
+  // Unscoped enumerations without a fixed underlying type promote to the first
+  // of {int, unsigned int, long, ...} that can represent all enumerator values.
+  // For the common case where the values fit in int, that is int -- regardless
+  // of whether the DWARF underlying integer happens to be unsigned. Match
+  // Clang, which computes the promotion type from the value range.
+  const clike::Type *enum_type = Desugar(tt.get());
+  if (clike::Type *enum_integer_type = enum_type->GetEnumerationIntegerType()) {
+    bool needs_unsigned = false;
+    if (int_size) {
+      const unsigned int_bits = *int_size * 8;
+      const bool enum_signed =
+          enum_integer_type->GetEncoding() == eEncodingSint;
+      for (const clike::Enumerator &e : enum_type->GetEnumerators()) {
+        // int can represent [-2^(n-1), 2^(n-1) - 1].
+        const llvm::APInt &v = e.GetValue();
+        if (enum_signed ? !v.isSignedIntN(int_bits) : !v.isIntN(int_bits - 1)) {
+          needs_unsigned = true;
+          break;
+        }
+      }
+    }
+    if (needs_unsigned)
+      return GetBasicTypeFromASTAssumingWriteLocked(eBasicTypeUnsignedInt);
+    return int_type;
+  }
 
   // The result of integer promotion is `int` if int can represent all values
   // of the source type, otherwise `unsigned int`. Compare byte sizes and
@@ -942,6 +1019,116 @@ LLVM_DUMP_METHOD void TypeSystemClike::dump(opaque_compiler_type_t type) const {
 }
 #endif
 
+/// Render an enum value as an enumerator name when it matches one exactly. For
+/// a "bitfield/flag" enum (every enumerator is a single bit or a union of
+/// previously-seen bits) a combined value is decomposed into `A | B`. Mirrors
+/// TypeSystemClang's DumpEnumValue.
+static bool DumpEnumValue(const clike::Type &enum_type, Stream &s,
+                          const DataExtractor &data, lldb::offset_t byte_offset,
+                          size_t byte_size, uint32_t bitfield_bit_offset,
+                          uint32_t bitfield_bit_size) {
+  lldb::offset_t offset = byte_offset;
+  const bool is_signed =
+      enum_type.GetEnumerationIntegerType()->GetEncoding() == eEncodingSint;
+  const uint64_t enum_svalue =
+      is_signed
+          ? static_cast<uint64_t>(data.GetMaxS64Bitfield(
+                &offset, byte_size, bitfield_bit_size, bitfield_bit_offset))
+          : data.GetMaxU64Bitfield(&offset, byte_size, bitfield_bit_size,
+                                   bitfield_bit_offset);
+
+  bool can_be_bitfield = true;
+  uint64_t covered_bits = 0;
+  int num_enumerators = 0;
+
+  // Look for an exact match while applying the bitfield heuristic: an enum is
+  // likely a flag set if every enumerator is a single bit or a superset of the
+  // bits seen so far.
+  llvm::ArrayRef<clike::Enumerator> enumerators = enum_type.GetEnumerators();
+  if (enumerators.empty())
+    can_be_bitfield = false;
+  // The value to print is at most 64 bits wide, so an enumerator that doesn't
+  // fit into 64 bits can never match it and doesn't take part in the flag
+  // heuristic. Other enumerators are compared by their (sign-extended if
+  // signed) 64 bits.
+  auto get_raw_bits =
+      [is_signed](const clike::Enumerator &e) -> std::optional<uint64_t> {
+    const llvm::APInt &v = e.GetValue();
+    if (is_signed)
+      return v.isSignedIntN(64) ? std::optional<uint64_t>(v.getSExtValue())
+                                : std::nullopt;
+    return v.isIntN(64) ? std::optional<uint64_t>(v.getZExtValue())
+                        : std::nullopt;
+  };
+  for (const clike::Enumerator &enumerator : enumerators) {
+    std::optional<uint64_t> raw_bits = get_raw_bits(enumerator);
+    if (!raw_bits) {
+      can_be_bitfield = false;
+      continue;
+    }
+    uint64_t val = *raw_bits;
+    if (is_signed)
+      val = llvm::SignExtend64(val, 8 * byte_size);
+    if (llvm::popcount(val) != 1 && (val & ~covered_bits) != 0)
+      can_be_bitfield = false;
+    covered_bits |= val;
+    ++num_enumerators;
+    if (val == enum_svalue) {
+      s.PutCString(enumerator.GetName().GetName());
+      return true;
+    }
+  }
+
+  // Unsigned values make more sense for flags.
+  offset = byte_offset;
+  const uint64_t enum_uvalue = data.GetMaxU64Bitfield(
+      &offset, byte_size, bitfield_bit_size, bitfield_bit_offset);
+
+  // No exact match and this isn't a flag enum: print the value numerically.
+  if (!can_be_bitfield) {
+    if (is_signed)
+      s.Printf("%" PRIi64, static_cast<int64_t>(enum_svalue));
+    else
+      s.Printf("%" PRIu64, enum_uvalue);
+    return true;
+  }
+
+  if (!enum_uvalue) {
+    // Flag enum, but the value is 0 and matched no enumerator above.
+    s.Printf("0x%" PRIx64, enum_uvalue);
+    return true;
+  }
+
+  uint64_t remaining_value = enum_uvalue;
+  std::vector<std::pair<uint64_t, llvm::StringRef>> values;
+  values.reserve(num_enumerators);
+  for (const clike::Enumerator &enumerator : enumerators)
+    if (uint64_t raw_bits = get_raw_bits(enumerator).value_or(0))
+      values.emplace_back(raw_bits, enumerator.GetName().GetName());
+
+  // Sort by descending population count (stably) so that in
+  // `enum { A, B, ALL = A|B }` we emit ALL before A/B, and `A | C` keeps the
+  // declaration order for equal popcounts.
+  llvm::stable_sort(values, [](const auto &a, const auto &b) {
+    return llvm::popcount(a.first) > llvm::popcount(b.first);
+  });
+
+  for (const auto &val : values) {
+    if ((remaining_value & val.first) != val.first)
+      continue;
+    remaining_value &= ~val.first;
+    s.PutCString(val.second);
+    if (remaining_value)
+      s.PutCString(" | ");
+  }
+
+  // Print any bits not covered by an enumerator as hex.
+  if (remaining_value)
+    s.Printf("0x%" PRIx64, remaining_value);
+
+  return true;
+}
+
 bool TypeSystemClike::DumpTypeValue(opaque_compiler_type_t type, Stream &s,
                                     Format format, const DataExtractor &data,
                                     offset_t data_offset, size_t data_byte_size,
@@ -958,6 +1145,13 @@ bool TypeSystemClike::DumpTypeValue(opaque_compiler_type_t type, Stream &s,
     return false;
   if (format == eFormatDefault)
     format = t->GetFormat();
+  // Enumerations: show the enumerator name when possible rather than the raw
+  // integer value.
+  if (t->GetEnumerationIntegerType()) {
+    if (format == eFormatEnum || format == eFormatDefault)
+      return DumpEnumValue(*t, s, data, data_offset, data_byte_size,
+                           bitfield_bit_offset, bitfield_bit_size);
+  }
   // Some formats dump the value as a sequence of smaller items rather than one
   // scalar: e.g. the char/bytes formats print each byte, and the unicode
   // formats print each code unit. Split the byte size into that many items so
@@ -1015,6 +1209,26 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type,
     return;
   }
   clike::Type *t = Desugar(tt.get());
+
+  if (clike::Type *enum_integer_type = t->GetEnumerationIntegerType()) {
+    CompleteTypeAssumingWriteLocked(t);
+    // Scoped enums (`enum class`) print their tag so the definition matches C++
+    // source form. The class/struct distinction is not modeled, so scoped enums
+    // always use `class` (clang's default spelling).
+    const char *scope = t->IsScopedEnumeration() ? " class" : "";
+    s.Printf(
+        "enum%s %s {\n", scope,
+        GetTypeNameAssumingWriteLocked(t, /*BaseOnly=*/false).GetCString());
+    const bool is_signed = enum_integer_type->GetEncoding() == eEncodingSint;
+    for (const clike::Enumerator &e : t->GetEnumerators()) {
+      llvm::SmallString<40> value;
+      e.GetValue().toString(value, /*Radix=*/10, is_signed);
+      s.Printf("    %s = %s,\n", e.GetName().GetName().str().c_str(),
+               value.c_str());
+    }
+    s.PutCString("}");
+    return;
+  }
 
   // Anything else: just print its name.
   if (ConstString name = GetTypeNameAssumingWriteLocked(t, /*BaseOnly=*/false))
