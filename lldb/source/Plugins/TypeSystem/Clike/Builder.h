@@ -57,6 +57,13 @@ public:
   /// Create a const- and/or volatile-qualified version of \p underlying_type.
   CompilerType CreateCVQualifiedType(CompilerType underlying_type,
                                      bool is_const, bool is_volatile);
+  /// Create an enumeration type with the given \p enumerators (whose names
+  /// must come from GetIdentifier), declared in \p scope.
+  CompilerType CreateEnumType(llvm::StringRef name,
+                              std::optional<uint64_t> byte_size,
+                              CompilerType underlying_type, bool is_scoped,
+                              std::vector<Enumerator> enumerators = {},
+                              DeclScope scope = {});
   /// Intern a name into the Context so it can be used for a type or record
   /// member. All Identifiers must be created this way.
   Identifier GetIdentifier(llvm::StringRef name);

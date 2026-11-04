@@ -154,6 +154,7 @@ class EnumTypesTestCase(TestBase):
                 member.signed, value_matches[idx], "Value matches for %d" % (idx)
             )
 
+    @add_test_categories(["typesystem-clike"])
     def test_api(self):
         """Test that the SBTypeEnumMember API's work correctly for enum_test_days"""
         self.build()
