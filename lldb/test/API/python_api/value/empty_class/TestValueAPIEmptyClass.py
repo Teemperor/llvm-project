@@ -5,6 +5,7 @@ from lldbsuite.test import lldbutil
 
 
 class ValueAPIEmptyClassTestCase(TestBase):
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         self.build()
         line = line_number("main.cpp", "// Break at this line")

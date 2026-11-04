@@ -277,6 +277,7 @@ class TypeAndTypeListTestCase(TestBase):
             self.assertEqual(int_enum_uchar.GetName(), "unsigned char")
 
     @expectedFailureAll(debug_info=["pdb"], bugnumber="llvm.org/pr149498")
+    @add_test_categories(["typesystem-clike"])
     def test_nested_typedef(self):
         """Exercise FindDirectNestedType for typedefs."""
         self.build()
@@ -334,6 +335,7 @@ class TypeAndTypeListTestCase(TestBase):
         self.assertFalse(get_function_type.is_reference)
 
     @expectedFailureAll(debug_info=["pdb"], bugnumber="llvm.org/pr149498")
+    @add_test_categories(["typesystem-clike"])
     def test_GetByteAlign(self):
         """Exercise SBType::GetByteAlign"""
         self.build()
@@ -355,6 +357,7 @@ class TypeAndTypeListTestCase(TestBase):
         # And an over-aligned type.
         self.assertEqual(module.FindFirstType("OverAlignedStruct").GetByteAlign(), 128)
 
+    @add_test_categories(["typesystem-clike"])
     def test_GetByteStride(self):
         """Exercise SBType::GetByteStride"""
         self.build()
