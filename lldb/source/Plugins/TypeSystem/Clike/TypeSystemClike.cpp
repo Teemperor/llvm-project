@@ -488,6 +488,27 @@ TypeSystemClike::CompleteTypeAssumingWriteLocked(clike::Type *type) {
   return t;
 }
 
+bool TypeSystemClike::IsForcefullyCompleted(opaque_compiler_type_t type) {
+  if (!type)
+    return false;
+  LockedType t = GetTypeForWrite(type);
+  // TypeSystemClike never force-completes a record as an empty definition the
+  // way TypeSystemClang does (see GetCompleteType above) -- a record with no
+  // definition anywhere in the debug info is left genuinely incomplete
+  // instead. So this reports the closest equivalent: a record/enum that is
+  // still incomplete after best-effort completion (i.e. -flimit-debug-info
+  // stripped its only definition). ValueObject::GetSummaryAsCString uses this
+  // to print "<incomplete type>" instead of trying to summarize a type it has
+  // no members for. Scoped to RecordType (not desugared through references
+  // etc.) to mirror TypeSystemClang::IsForcefullyCompleted, which only
+  // recognizes a plain clang::RecordType.
+  clike::Type *record = Desugar(t.get());
+  if (!record->IsRecord())
+    return false;
+  clike::Type *completed = CompleteTypeAssumingWriteLocked(record);
+  return !(completed && completed->IsComplete());
+}
+
 uint32_t TypeSystemClike::GetPointerByteSize() {
   return m_context.GetLanguageOpts().GetBuiltinSizes().pointer_size;
 }
@@ -777,7 +798,28 @@ TypeSystemClike::GetNumChildrenImpl(clike::Type *type,
       return GetNumChildrenImpl(transparent, omit_empty_base_classes, exe_ctx);
     return clike::IsVoid(pointee) ? 0 : 1;
   }
-  return 0;
+  if (!t->IsAggregate())
+    return 0;
+  CompleteTypeAssumingWriteLocked(type);
+  // A record/enum with no debug info defining it anywhere (e.g.
+  // -flimit-debug-info hid its only definition, or a forward-declared
+  // `struct Opaque;` that is never defined at all) stays incomplete even
+  // after GetCompleteType, since TypeSystemClike deliberately does not
+  // force-complete it as an empty definition the way TypeSystemClang does
+  // (see GetCompleteType's comment). TypeSystemClang's completion source
+  // always leaves a Record reporting *some* field count (0, if it could only
+  // force-complete an empty definition) rather than erroring at this level --
+  // GetCompleteRecordType never returns null for a Record, so its
+  // GetNumChildren Record case practically never takes its "incomplete" branch.
+  // Match that by reporting zero children (not an error) here; a
+  // pointer/reference to such a type still surfaces the error through
+  // GetChildCompilerTypeAtIndex's pointer branch instead (see
+  // TestValueObjectErrors), which is the scenario the error string was actually
+  // meant for.
+  if (!t->IsComplete())
+    return 0;
+  // The children of a record are its fields.
+  return t->GetNumFields();
 }
 
 BasicType
@@ -854,16 +896,39 @@ TypeSystemClike::GetPromotedIntegerType(opaque_compiler_type_t type) {
   return int_type;
 }
 
-uint32_t TypeSystemClike::GetNumFields(lldb::opaque_compiler_type_t type) {
-  return 0;
+uint32_t TypeSystemClike::GetNumFields(opaque_compiler_type_t type) {
+  // Lazily completes the type, so this needs the write lock.
+  LockedType t = GetTypeForWrite(type);
+  if (!t)
+    return 0;
+  CompleteTypeAssumingWriteLocked(t.get());
+  return Desugar(t.get())->GetNumFields();
 }
 
-CompilerType TypeSystemClike::GetFieldAtIndex(lldb::opaque_compiler_type_t type,
+CompilerType TypeSystemClike::GetFieldAtIndex(opaque_compiler_type_t type,
                                               size_t idx, std::string &name,
                                               uint64_t *bit_offset_ptr,
                                               uint32_t *bitfield_bit_size_ptr,
                                               bool *is_bitfield_ptr) {
-  return CompilerType();
+  LockedType t = GetTypeForWrite(type);
+  if (!t)
+    return CompilerType();
+  CompleteTypeAssumingWriteLocked(t.get());
+  const Field *field = Desugar(t.get())->GetFieldAtIndex(idx);
+  if (!field)
+    return CompilerType();
+  name = field->GetName().GetName().str();
+  if (bit_offset_ptr) {
+    *bit_offset_ptr = field->GetByteOffset() * 8;
+    if (field->IsBitfield())
+      *bit_offset_ptr += field->GetBitfieldBitOffset();
+  }
+  if (bitfield_bit_size_ptr)
+    *bitfield_bit_size_ptr =
+        field->IsBitfield() ? field->GetBitfieldBitSize() : 0;
+  if (is_bitfield_ptr)
+    *is_bitfield_ptr = field->IsBitfield();
+  return GetCompilerType(&field->GetType().Get());
 }
 
 uint32_t TypeSystemClike::GetNumDirectBaseClasses(opaque_compiler_type_t type) {
@@ -998,19 +1063,97 @@ llvm::Expected<CompilerType> TypeSystemClike::GetChildCompilerTypeAtIndexImpl(
     return GetCompilerType(pointee);
   }
 
-  return CompilerType();
+  // The children of a record are its fields.
+  const Field *field = t->GetFieldAtIndex(idx);
+  if (!field)
+    return CompilerType();
+
+  child_name = field->GetName().GetName().str();
+  child_byte_offset = field->GetByteOffset();
+  if (std::optional<uint64_t> byte_size = field->GetType().Get().GetByteSize())
+    child_byte_size = *byte_size;
+  if (field->IsBitfield()) {
+    child_bitfield_bit_size = field->GetBitfieldBitSize();
+    child_bitfield_bit_offset = field->GetBitfieldBitOffset();
+  }
+  return GetCompilerType(&field->GetType().Get());
 }
 
 llvm::Expected<uint32_t>
-TypeSystemClike::GetIndexOfChildWithName(lldb::opaque_compiler_type_t type,
+TypeSystemClike::GetIndexOfChildWithName(opaque_compiler_type_t type,
                                          llvm::StringRef name,
                                          bool omit_empty_base_classes) {
-  return 0;
+  LockedType t = GetTypeForWrite(type);
+  return GetIndexOfChildWithNameImpl(t.get(), name, omit_empty_base_classes);
+}
+
+llvm::Expected<uint32_t> TypeSystemClike::GetIndexOfChildWithNameImpl(
+    clike::Type *type, llvm::StringRef name, bool omit_empty_base_classes) {
+  if (!type)
+    return llvm::createStringError("invalid type");
+  CompleteTypeAssumingWriteLocked(type);
+  clike::Type *t = Desugar(type);
+  // A pointer/reference is transparent for named lookups (mirroring
+  // TypeSystemClang): its named children are the aggregate pointee's members,
+  // so forward the lookup. A pointer to a non-aggregate has only its (unnamed)
+  // deref child, so no named member is directly addressable.
+  if (t->GetPointeeType()) {
+    if (clike::Type *pointee = t->GetNamedMemberPointee())
+      return GetIndexOfChildWithNameImpl(pointee, name,
+                                         omit_empty_base_classes);
+    return llvm::createStringError(
+        "TypeSystemClike::GetIndexOfChildWithName: no such child");
+  }
+  // The children of a record are its fields.
+  for (uint32_t i = 0, e = t->GetNumFields(); i < e; ++i) {
+    if (t->GetFieldAtIndex(i)->GetName().GetName() == name)
+      return i;
+  }
+  return llvm::createStringError(
+      "TypeSystemClike::GetIndexOfChildWithName: no such child");
 }
 
 size_t TypeSystemClike::GetIndexOfChildMemberWithName(
-    lldb::opaque_compiler_type_t type, llvm::StringRef name,
+    opaque_compiler_type_t type, llvm::StringRef name,
     bool omit_empty_base_classes, std::vector<uint32_t> &child_indexes) {
+  // Lazily completes the type, so this needs the write lock.
+  LockedType t = GetTypeForWrite(type);
+  return GetIndexOfChildMemberWithNameImpl(
+      t.get(), name, omit_empty_base_classes, child_indexes);
+}
+
+size_t TypeSystemClike::GetIndexOfChildMemberWithNameImpl(
+    clike::Type *type, llvm::StringRef name, bool omit_empty_base_classes,
+    std::vector<uint32_t> &child_indexes) {
+  if (!type)
+    return 0;
+  CompleteTypeAssumingWriteLocked(type);
+  clike::Type *t = Desugar(type);
+  // A pointer forwards the lookup to its pointee (when that has named
+  // members), so that e.g. `ptr->member` resolves against the pointed-to
+  // record. A pointer is transparent (see GetNumChildren): its children are the
+  // pointee aggregate's members directly, with no intervening deref child, so
+  // recurse without pushing an index-0 deref step -- keeping the returned
+  // indices consistent with the child layout.
+  if (t->GetPointeeType()) {
+    clike::Type *pointee = t->GetNamedMemberPointee();
+    if (!pointee)
+      return 0;
+    return GetIndexOfChildMemberWithNameImpl(
+        pointee, name, omit_empty_base_classes, child_indexes);
+  }
+
+  // A matching field is a direct child. An unnamed field is an anonymous
+  // union/struct whose members are reached as if they belonged to this record,
+  // so recurse into it.
+  for (uint32_t i = 0, e = t->GetNumFields(); i < e; ++i) {
+    const Field *field = t->GetFieldAtIndex(i);
+    llvm::StringRef field_name = field->GetName().GetName();
+    if (field_name == name) {
+      child_indexes.push_back(i);
+      return child_indexes.size();
+    }
+  }
   return 0;
 }
 
@@ -1191,6 +1334,30 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type,
   DumpTypeDescription(type, s, level);
 }
 
+// Append a C declarator ("<type> <name>") for a record member, using array
+// declarator syntax (`char padding[0]`) when the member's type is an array so
+// the printed definition matches C source form. Assumes the caller (only
+// TypeSystemClike::DumpTypeDescription) already holds the write lock.
+void TypeSystemClike::AppendMemberDeclAssumingWriteLocked(
+    Stream &s, clike::Type *field_type, llvm::StringRef name) {
+  std::string dims;
+  clike::Type *cur = field_type;
+  while (clike::Type *element = cur ? cur->GetArrayElementType() : nullptr) {
+    if (std::optional<uint64_t> n = cur->GetNumElements())
+      dims += llvm::formatv("[{0}]", *n).str();
+    else
+      dims += "[]";
+    cur = element;
+  }
+  std::string base = GetTypeNameAssumingWriteLocked(cur, /*BaseOnly=*/false)
+                         .GetStringRef()
+                         .str();
+  s << base;
+  if (!name.empty())
+    s << " " << name;
+  s << dims;
+}
+
 void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type,
                                           Stream &s, DescriptionLevel level) {
   // Lazily completes the type below, so this needs the write lock.
@@ -1225,6 +1392,31 @@ void TypeSystemClike::DumpTypeDescription(opaque_compiler_type_t type,
       e.GetValue().toString(value, /*Radix=*/10, is_signed);
       s.Printf("    %s = %s,\n", e.GetName().GetName().str().c_str(),
                value.c_str());
+    }
+    s.PutCString("}");
+    return;
+  }
+
+  if (t->IsRecord()) {
+    CompleteTypeAssumingWriteLocked(t);
+    // The source-spelling keyword (which doesn't affect layout) is tracked via
+    // IsClassKeyword().
+    const char *tag =
+        t->IsUnion() ? "union" : (t->IsClassKeyword() ? "class" : "struct");
+    // This dump context matches clang's printer, which uses the bare
+    // (unqualified) tag name here, not the fully-qualified name.
+    s.Printf("%s %s {\n", tag,
+             GetTypeNameAssumingWriteLocked(t, /*BaseOnly=*/true).GetCString());
+    for (uint32_t i = 0, e = t->GetNumFields(); i != e; ++i) {
+      const clike::Field *field = t->GetFieldAtIndex(i);
+      if (!field)
+        continue;
+      s.PutCString("    ");
+      AppendMemberDeclAssumingWriteLocked(s, &field->GetType().Get(),
+                                          field->GetName().GetName());
+      if (field->IsBitfield())
+        s.Printf(" : %u", field->GetBitfieldBitSize());
+      s.PutCString(";\n");
     }
     s.PutCString("}");
     return;
@@ -1270,8 +1462,22 @@ TypeSystemClike::GetTypeBitAlign(opaque_compiler_type_t type,
   LockedType tt = GetTypeForWrite(type);
   if (!tt)
     return std::nullopt;
+  CompleteForAlignmentAssumingWriteLocked(tt.get());
   const clike::Type *t = Desugar(tt.get());
   return t ? t->GetAlignmentInBits() : std::nullopt;
+}
+
+void TypeSystemClike::CompleteForAlignmentAssumingWriteLocked(
+    clike::Type *type) {
+  clike::Type *t = Desugar(type);
+  while (t && t->GetArrayElementType())
+    t = Desugar(t->GetArrayElementType());
+  if (!t || !t->IsRecord())
+    return;
+  CompleteTypeAssumingWriteLocked(t);
+  for (uint32_t i = 0, e = t->GetNumFields(); i != e; ++i)
+    CompleteForAlignmentAssumingWriteLocked(
+        &t->GetFieldAtIndex(i)->GetType().Get());
 }
 
 CompilerType TypeSystemClike::GetBuiltinTypeByName(ConstString name) {
@@ -1352,10 +1558,25 @@ bool TypeSystemClike::IsConst(opaque_compiler_type_t type) {
   return t && t->IsConst();
 }
 
-uint32_t
-TypeSystemClike::IsHomogeneousAggregate(lldb::opaque_compiler_type_t type,
-                                        CompilerType *base_type_ptr) {
-  return 0;
+uint32_t TypeSystemClike::IsHomogeneousAggregate(opaque_compiler_type_t type,
+                                                 CompilerType *base_type_ptr) {
+  // Lazily completes the type, so this needs the write lock.
+  LockedType tt = GetTypeForWrite(type);
+  if (!tt)
+    return 0;
+  clike::Type *record = Desugar(tt.get());
+  if (!record->IsRecord())
+    return 0;
+  clike::Type *completed = CompleteTypeAssumingWriteLocked(record);
+  if (!completed || !completed->IsComplete())
+    return 0;
+  uint32_t num_fields = 0;
+  clike::Type *base_type = record->GetHomogeneousAggregateBase(num_fields);
+  if (!base_type)
+    return 0;
+  if (base_type_ptr)
+    *base_type_ptr = GetCompilerType(base_type);
+  return num_fields;
 }
 
 bool TypeSystemClike::IsPolymorphicClass(opaque_compiler_type_t type) {
@@ -1448,4 +1669,14 @@ bool TypeSystemClike::IsReferenceType(opaque_compiler_type_t type,
   if (is_rvalue)
     *is_rvalue = ref->IsRValueReference();
   return true;
+}
+
+CompilerType
+TypeSystemClike::GetDirectNestedTypeWithName(opaque_compiler_type_t type,
+                                             llvm::StringRef name) {
+  LockedType t = GetTypeForWrite(type);
+  if (!t)
+    return CompilerType();
+  CompleteTypeAssumingWriteLocked(t.get());
+  return GetCompilerType(Desugar(t.get())->GetNestedTypeWithName(name));
 }

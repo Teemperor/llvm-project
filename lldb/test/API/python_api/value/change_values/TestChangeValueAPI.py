@@ -23,6 +23,7 @@ class ChangeValueAPITestCase(TestBase):
 
     @expectedFlakeyLinux("llvm.org/pr25652")
     @skipIfWasm  # Wasm exposes no stack pointer register
+    @add_test_categories(["typesystem-clike"])
     def test_change_value(self):
         """Exercise the SBValue::SetValueFromCString API."""
         d = {"EXE": self.exe_name}
