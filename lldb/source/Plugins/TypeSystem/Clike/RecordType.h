@@ -52,7 +52,7 @@ public:
       : RTTIExtends(name, scope, byte_size),
         DeclarationContext(DeclarationContext::Kind::Record), m_complete(false),
         m_is_union(is_union), m_is_class_keyword(is_class_keyword),
-        m_member_functions_parsed(false),
+        m_is_anonymous_struct_union(false), m_member_functions_parsed(false),
         m_arg_passing(ArgPassingKind::Unspecified) {}
 
   /// The scope this record is declared in (see Type::GetDeclContext).
@@ -84,6 +84,18 @@ public:
   /// True if this record was declared with the `class` keyword. Only used for
   /// naming unnamed records (e.g., `(unnamed class)`).
   bool IsClassKeyword() const override { return m_is_class_keyword; }
+
+  /// True if this is an unnamed record that is also an unnamed member of its
+  /// parent record (`struct { int y; };`), so its members are part of the
+  /// parent's scope.
+  bool IsAnonymousStructOrUnion() const override {
+    return m_is_anonymous_struct_union;
+  }
+
+  /// The record that contains this anonymous struct or union, or null if this
+  /// is not an anonymous struct or union. Used to name the record (e.g.,
+  /// `MySock::(anonymous union)`).
+  const RecordType *GetAnonymousParent() const { return m_anonymous_parent; }
 
   /// How this record is passed to and returned from functions, as specified
   /// by DW_AT_calling_convention.
@@ -137,6 +149,8 @@ protected:
 private:
   /// The name of an unnamed record, e.g. "(unnamed struct)".
   std::string GetUnnamedName() const;
+  /// The enclosing scopes of an unnamed record as a prefix of its name.
+  std::string GetUnnamedScopePrefix() const;
 
   // Only Context can modify records.
   friend class Context;
@@ -144,6 +158,10 @@ private:
   void SetByteSizeFromDefinition(uint64_t byte_size) { SetByteSize(byte_size); }
   void SetExplicitAlignmentInBits(uint64_t align) {
     m_explicit_alignment_in_bits = align;
+  }
+  void SetIsAnonymousStructOrUnion(bool v) { m_is_anonymous_struct_union = v; }
+  void SetAnonymousParent(const RecordType *parent) {
+    m_anonymous_parent = parent;
   }
   void SetArgPassingKind(ArgPassingKind kind) { m_arg_passing = kind; }
   void SetMemberFunctionsParsed() { m_member_functions_parsed = true; }
@@ -158,12 +176,14 @@ private:
   }
 
   // Larger members first so that the bit-fields fill the tail padding.
+  const RecordType *m_anonymous_parent = nullptr;
   std::optional<uint64_t> m_explicit_alignment_in_bits;
   std::vector<Field> m_fields;
   std::vector<std::pair<Identifier, TypeRef>> m_nested_types;
   bool m_complete : 1;
   bool m_is_union : 1;
   bool m_is_class_keyword : 1;
+  bool m_is_anonymous_struct_union : 1;
   bool m_member_functions_parsed : 1;
   ArgPassingKind m_arg_passing : 2;
 };
