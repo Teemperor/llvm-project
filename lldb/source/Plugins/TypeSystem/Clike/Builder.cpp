@@ -14,6 +14,18 @@ using namespace lldb;
 
 Builder::Builder(TypeSystemClike &ts) : m_ts(ts) {}
 
+std::optional<TypeRef> Builder::ToTypeRef(const CompilerType &type) {
+  if (!type.GetTypeSystem().dyn_cast_or_null<TypeSystemClike>())
+    return std::nullopt;
+  return ToTypeRef(TypeSystemClike::GetClikeType(type.GetOpaqueQualType()));
+}
+
+std::optional<TypeRef> Builder::ToTypeRef(Type *type) const {
+  if (!type)
+    return std::nullopt;
+  return TypeRef(*type);
+}
+
 CompilerType Builder::GetBuiltinType(llvm::StringRef name,
                                      std::optional<uint64_t> byte_size,
                                      lldb::Encoding encoding,
@@ -27,6 +39,23 @@ CompilerType Builder::GetVoidType() {
       m_ts.m_context.GetBuiltinType(clike::BuiltinKind::Void));
 }
 
+CompilerType Builder::CreateTypedefType(const DeclarationContext &decl_context,
+                                        llvm::StringRef name,
+                                        CompilerType underlying_type,
+                                        Identifier unqualified_name) {
+  // A `typedef void Foo;` aliases the `void` builtin, so a typedef always has
+  // an underlying type to name.
+  std::optional<TypeRef> underlying = ToTypeRef(underlying_type);
+  if (!underlying)
+    return CompilerType();
+  return m_ts.GetCompilerType(m_ts.m_context.CreateTypedefType(
+      decl_context, name, *underlying, unqualified_name));
+}
+
 clike::Identifier Builder::GetIdentifier(llvm::StringRef name) {
   return m_ts.m_context.GetIdentifier(name);
+}
+
+const DeclarationContext &Builder::GetGlobalScope() {
+  return m_ts.m_context.GetGlobalScope();
 }

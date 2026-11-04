@@ -27,11 +27,13 @@ class SetWatchpointAPITestCase(TestBase):
         self._test_watch_val(variable_watchpoint=False)
 
     @expectedFailureAll(archs=["s390x"])
+    @add_test_categories(["typesystem-clike"])
     def test_watch_variable(self):
         """Test watchpoint on an SBValue backed by a variable yields a variable watchpoint."""
         self._test_watch_val(variable_watchpoint=True)
 
     @expectedFailureAll(archs=["s390x"])
+    @add_test_categories(["typesystem-clike"])
     def test_local_variable_watchpoint_scoped_to_frame(self):
         """Test watchpoint on a frame local variable only triggers when in the frame scope."""
         target, process, thread, _ = lldbutil.run_to_source_breakpoint(
