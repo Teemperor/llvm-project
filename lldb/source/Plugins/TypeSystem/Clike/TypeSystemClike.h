@@ -11,6 +11,12 @@
 
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
+#include "llvm/TargetParser/Triple.h"
+
+#include "Builder.h"
+#include "Context.h"
+
+#include <memory>
 
 namespace lldb_private {
 
@@ -20,35 +26,64 @@ class TypeSystemClike : public TypeSystem {
   static char ID;
 
 public:
-  TypeSystemClike();
+  /// \p opts must already have been derived from a real target; use Create
+  /// below rather than deriving them at the call site.
+  TypeSystemClike(llvm::StringRef name, clike::LanguageOpts opts);
   ~TypeSystemClike() override;
 
-  // PluginInterface
+  /// The type system for \p triple, or an error if language options cannot be
+  /// derived for that target (see clike::LanguageOpts::Create).
+  static llvm::Expected<lldb::TypeSystemSP> Create(llvm::StringRef name,
+                                                   llvm::Triple triple);
+
+  /// Wrap one of our own Type nodes into a CompilerType owned by this system.
+  CompilerType GetCompilerType(clike::Type *type);
+
+  /// Recover the Type node backing a CompilerType created by this system.
+  static clike::Type *GetClikeType(lldb::opaque_compiler_type_t type) {
+    return static_cast<clike::Type *>(type);
+  }
+
+  /// The target triple this type system was created for (used e.g. to build a
+  /// throwaway Clang AST for ABI/vtable-layout queries).
+  const llvm::Triple &GetTriple() const { return m_triple; }
+
+  // Plugin lifecycle
   static void Initialize();
   static void Terminate();
+
   static llvm::StringRef GetPluginNameStatic() { return "cpp"; }
-  llvm::StringRef GetPluginName() override { return GetPluginNameStatic(); }
 
   static lldb::TypeSystemSP CreateInstance(lldb::LanguageType language,
                                            Module *module, Target *target);
+
   static LanguageSet GetSupportedLanguagesForTypes();
   static LanguageSet GetSupportedLanguagesForExpressions();
+
+  // PluginInterface
+  llvm::StringRef GetPluginName() override { return GetPluginNameStatic(); }
 
   // LLVM RTTI support
   bool isA(const void *ClassID) const override { return ClassID == &ID; }
   static bool classof(const TypeSystem *ts) { return ts->isA(&ID); }
 
+  // CompilerDecl functions
   ConstString DeclGetName(void *opaque_decl) override;
   CompilerType GetTypeForDecl(void *opaque_decl) override;
+
+  // CompilerDeclContext functions
   ConstString DeclContextGetName(void *opaque_decl_ctx) override;
   ConstString DeclContextGetScopeQualifiedName(void *opaque_decl_ctx) override;
   bool DeclContextIsClassMethod(void *opaque_decl_ctx) override;
   bool DeclContextIsContainedInLookup(void *opaque_decl_ctx,
                                       void *other_opaque_decl_ctx) override;
   lldb::LanguageType DeclContextGetLanguage(void *opaque_decl_ctx) override;
+
+  // Tests
 #ifndef NDEBUG
   bool Verify(lldb::opaque_compiler_type_t type) override;
 #endif
+
   bool IsArrayType(lldb::opaque_compiler_type_t type,
                    CompilerType *element_type, uint64_t *size,
                    bool *is_incomplete) override;
@@ -79,13 +114,19 @@ public:
   bool IsVoidType(lldb::opaque_compiler_type_t type) override;
   bool CanPassInRegisters(const CompilerType &type) override;
   bool SupportsLanguage(lldb::LanguageType language) override;
+
+  // Type Completion
   bool GetCompleteType(lldb::opaque_compiler_type_t type) override;
+
+  // AST related queries
   uint32_t GetPointerByteSize() override;
   CompilerType GetPointerDiffType(bool is_signed) override;
   CompilerType GetSizeType() override;
   unsigned GetPtrAuthKey(lldb::opaque_compiler_type_t type) override;
   unsigned GetPtrAuthDiscriminator(lldb::opaque_compiler_type_t type) override;
   bool GetPtrAuthAddressDiversity(lldb::opaque_compiler_type_t type) override;
+
+  // Accessors
   ConstString GetTypeName(lldb::opaque_compiler_type_t type,
                           bool BaseOnly) override;
   ConstString GetDisplayTypeName(lldb::opaque_compiler_type_t type) override;
@@ -94,6 +135,8 @@ public:
   lldb::LanguageType
   GetMinimumLanguage(lldb::opaque_compiler_type_t type) override;
   lldb::TypeClass GetTypeClass(lldb::opaque_compiler_type_t type) override;
+
+  // Creating related types
   CompilerType GetArrayElementType(lldb::opaque_compiler_type_t type,
                                    ExecutionContextScope *exe_scope) override;
   CompilerType GetCanonicalType(lldb::opaque_compiler_type_t type) override;
@@ -110,6 +153,8 @@ public:
                            size_t idx) override;
   CompilerType GetPointeeType(lldb::opaque_compiler_type_t type) override;
   CompilerType GetPointerType(lldb::opaque_compiler_type_t type) override;
+
+  // Exploring the type
   const llvm::fltSemantics &GetFloatTypeSemantics(size_t byte_size,
                                                   lldb::Format format) override;
   llvm::Expected<uint64_t>
@@ -123,6 +168,9 @@ public:
                  const ExecutionContext *exe_ctx) override;
   lldb::BasicType
   GetBasicTypeEnumeration(lldb::opaque_compiler_type_t type) override;
+  bool IsPromotableIntegerType(lldb::opaque_compiler_type_t type) override;
+  CompilerType
+  GetPromotedIntegerType(lldb::opaque_compiler_type_t type) override;
   uint32_t GetNumFields(lldb::opaque_compiler_type_t type) override;
   CompilerType GetFieldAtIndex(lldb::opaque_compiler_type_t type, size_t idx,
                                std::string &name, uint64_t *bit_offset_ptr,
@@ -158,6 +206,12 @@ public:
                                 llvm::StringRef name,
                                 bool omit_empty_base_classes,
                                 std::vector<uint32_t> &child_indexes) override;
+
+  // Dumping types
+#ifndef NDEBUG
+  LLVM_DUMP_METHOD void dump(lldb::opaque_compiler_type_t type) const override;
+#endif
+
   bool DumpTypeValue(lldb::opaque_compiler_type_t type, Stream &s,
                      lldb::Format format, const DataExtractor &data,
                      lldb::offset_t data_offset, size_t data_byte_size,
@@ -171,7 +225,9 @@ public:
       lldb::DescriptionLevel level = lldb::eDescriptionLevelFull) override;
   void Dump(llvm::raw_ostream &output, llvm::StringRef filter,
             bool show_color) override;
+
   bool IsRuntimeGeneratedType(lldb::opaque_compiler_type_t type) override;
+
   bool IsPointerOrReferenceType(lldb::opaque_compiler_type_t type,
                                 CompilerType *pointee_type) override;
   unsigned GetTypeQualifiers(lldb::opaque_compiler_type_t type) override;
@@ -179,6 +235,7 @@ public:
   GetTypeBitAlign(lldb::opaque_compiler_type_t type,
                   ExecutionContextScope *exe_scope) override;
   CompilerType GetBasicTypeFromAST(lldb::BasicType basic_type) override;
+  CompilerType GetBuiltinTypeByName(ConstString name) override;
   CompilerType GetBuiltinTypeForEncodingAndBitSize(lldb::Encoding encoding,
                                                    size_t bit_size) override;
   bool IsBeingDefined(lldb::opaque_compiler_type_t type) override;
@@ -195,6 +252,21 @@ public:
   CompilerType GetNonReferenceType(lldb::opaque_compiler_type_t type) override;
   bool IsReferenceType(lldb::opaque_compiler_type_t type,
                        CompilerType *pointee_type, bool *is_rvalue) override;
+
+private:
+  friend class clike::Builder;
+
+  /// Completes the record \p type desugars to from the debug info, if it
+  /// isn't complete yet, and returns the desugared type.
+  clike::Type *CompleteTypeImpl(clike::Type *type);
+
+  bool IsIntegerTypeImpl(const clike::Type *type, bool &is_signed);
+
+  bool IsPromotableIntegerTypeImpl(const clike::Type *type);
+
+  std::string m_display_name;
+  llvm::Triple m_triple;
+  clike::Context m_context;
 };
 
 } // namespace lldb_private
