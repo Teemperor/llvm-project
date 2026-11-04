@@ -16,12 +16,14 @@
 #include <cassert>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/BitmaskEnum.h"
 #include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/ExtensibleRTTI.h"
 
@@ -51,6 +53,12 @@ enum class DynamicTypeCheck : uint8_t {
   LLVM_MARK_AS_BITMASK_ENUM(/*LargestValue=*/ObjC)
 };
 LLVM_ENABLE_BITMASK_ENUMS_IN_NAMESPACE();
+
+/// \see Type::GetDisplayName
+struct DisplayNameOptions {
+  /// Keep inline namespaces (e.g. `std::__1::`) rather than hiding them.
+  bool keep_inline_namespaces = false;
+};
 
 /// A reference to another Type.
 ///
@@ -230,6 +238,16 @@ public:
   /// The name of this type without namespace qualifiers (e.g., `string` or
   /// `vector<int, std::allocator<int>>`).
   virtual Identifier GetUnqualifiedName() const { return Identifier(); }
+
+  /// The user-facing spelling of this type (see BuildDisplayName in
+  /// TypeName.h, the entry point). Each type kind renders itself; the default
+  /// renders a named type (e.g. a builtin). The default implementations of the
+  /// name rendering functions are defined in TypeName.cpp.
+  virtual std::string GetDisplayName(const DisplayNameOptions &opts) const;
+
+  /// The spelling of this type as the debug info recorded it (see
+  /// BuildCanonicalName in TypeName.h, the entry point).
+  virtual std::string GetCanonicalName(bool base_only) const;
 
   /// The size of this type in bytes, or std::nullopt if unknown (e.g., for an
   /// incomplete record or a function type).
@@ -492,6 +510,16 @@ private:
 
   Context *m_context = nullptr;
 };
+
+/// Returns the desugared \p t, or null if \p t is null.
+inline Type *Desugar(Type *t) { return t ? t->Desugar() : nullptr; }
+inline const Type *Desugar(const Type *t) { return t ? t->Desugar() : nullptr; }
+
+/// True if \p t is non-null and `void` after desugaring.
+inline bool IsVoid(const Type *t) {
+  const Type *desugared = Desugar(t);
+  return desugared && desugared->IsVoid();
+}
 
 } // namespace clike
 } // namespace lldb_private
