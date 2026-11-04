@@ -45,6 +45,13 @@ public:
     return Type::GetDeclContext(ctxt);
   }
 
+  /// True if this type has no name at all, e.g. an unnamed
+  /// `enum { ... } x;`.
+  bool IsUnnamed() const {
+    return m_qualified_name.GetName().empty() &&
+           this->GetUnqualifiedName().GetName().empty();
+  }
+
 private:
   Identifier m_qualified_name;
   const DeclarationContext *m_decl_context = nullptr;
