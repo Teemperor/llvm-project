@@ -34,6 +34,14 @@ static std::string BuildUnnamedTagName(clike::Type *t) {
   if (!t->GetName().GetName().empty() ||
       !t->GetUnqualifiedName().GetName().empty())
     return {};
+  if (auto *rec = llvm::dyn_cast<RecordType>(t)) {
+    std::string adj = "unnamed";
+    if (rec->IsUnion())
+      return "(" + adj + " union)";
+    if (rec->IsClassKeyword())
+      return "(" + adj + " class)";
+    return "(" + adj + " struct)";
+  }
   if (llvm::isa<EnumType>(t))
     return "(unnamed enum)";
   return {};
@@ -140,8 +148,9 @@ std::string clike::BuildCanonicalName(Type *t, bool base_only) {
       else
         break;
     }
-    const bool drop_qualifiers =
-        llvm::isa<EnumType>(leaf) || llvm::isa<TypedefType>(leaf);
+    const bool drop_qualifiers = llvm::isa<RecordType>(leaf) ||
+                                 llvm::isa<EnumType>(leaf) ||
+                                 llvm::isa<TypedefType>(leaf);
     if (drop_qualifiers)
       return underlying_name;
     std::string result;

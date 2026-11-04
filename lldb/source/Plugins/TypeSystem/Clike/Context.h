@@ -69,6 +69,15 @@ public:
     return builtin_types.MatchByName(name);
   }
 
+  /// Create a record type. \p is_class_keyword records whether the source
+  /// used the `class` keyword (only used to name an unnamed record). \p scope
+  /// is where the record is declared (see DeclScope).
+  RecordType *CreateRecordType(llvm::StringRef name,
+                               std::optional<uint64_t> byte_size,
+                               bool is_union = false,
+                               bool is_class_keyword = false,
+                               DeclScope scope = {});
+
   /// Create a pointer type pointing to \p pointee_type. A `void *` points at
   /// the `void` builtin (see TypeRef), not at "nothing". Its byte size is the
   /// target's pointer size.
@@ -91,11 +100,50 @@ public:
                            std::vector<Enumerator> enumerators = {},
                            DeclScope scope = {});
 
+  /// Structural mutation of already-created record types. These are the gated
+  /// entry points for the mutations that happen during lazy completion; the
+  /// corresponding Type methods are private and befriend this class.
+  /// @{
+  void SetComplete(RecordType &record) { record.SetIsComplete(true); }
+  void SetByteSize(RecordType &record, uint64_t byte_size) {
+    record.SetByteSizeFromDefinition(byte_size);
+  }
+  void SetExplicitAlignmentInBits(RecordType &record, uint64_t align) {
+    record.SetExplicitAlignmentInBits(align);
+  }
+  void SetMemberFunctionsParsed(RecordType &record) {
+    record.SetMemberFunctionsParsed();
+  }
+  void SetArgPassingKind(RecordType &record, RecordType::ArgPassingKind kind) {
+    record.SetArgPassingKind(kind);
+  }
+  void AddField(RecordType &record, Identifier name, TypeRef type,
+                uint64_t byte_offset, uint32_t bitfield_bit_size = 0,
+                uint32_t bitfield_bit_offset = 0) {
+    AssertOwnsType(record);
+    record.AddField(name, type, byte_offset, bitfield_bit_size,
+                    bitfield_bit_offset);
+  }
+  void AddNestedType(RecordType &record, Identifier name, TypeRef type) {
+    AssertOwnsType(record);
+    record.AddNestedType(name, type);
+  }
+  /// @}
+
   /// Intern a name into this Context's IdentifierMap. All Identifiers used by
   /// types owned by this Context must be created here so that their backing
   /// storage lives exactly as long as the Context (and its types).
   Identifier GetIdentifier(llvm::StringRef name) {
     return identifiers.get(name);
+  }
+
+  /// Invoke \p callback for every RecordType owned by this Context, in creation
+  /// order. Used by `target modules dump ast` to synthesize a Clang AST of all
+  /// the record types the module has produced.
+  template <typename F> void ForEachRecordType(F callback) const {
+    for (const std::unique_ptr<Type> &type : m_types)
+      if (auto *record = llvm::dyn_cast<RecordType>(type.get()))
+        callback(record);
   }
 
 private:
@@ -104,6 +152,24 @@ private:
     result->SetOwningContext(*this);
     m_types.push_back(std::move(type));
     return result;
+  }
+
+  /// Every entry point that creates or mutates a type checks that this Context
+  /// is the one that owns it, so a mutation aimed at the wrong Context is
+  /// caught where it is introduced. The types a type *references* are not
+  /// checked: a reference may name a type another Context owns (see
+  /// Type::GetOwningContext, which keeps that recoverable). Compiles away
+  /// entirely without assertions.
+  void AssertOwnsType(const Type &type) const {
+    assert(Owns(&type) &&
+           "this Context does not own the type being created or modified");
+  }
+
+  /// Whether this Context owns \p type -- i.e. created it, or holds it as one
+  /// of its canonical builtins. Cheap, and available in every build: a type
+  /// records its owner (Type::GetOwningContext).
+  bool Owns(const Type *type) const {
+    return type && &type->GetOwningContext() == this;
   }
 
   std::vector<std::unique_ptr<Type>> m_types;
