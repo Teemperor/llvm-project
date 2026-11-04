@@ -81,3 +81,10 @@ TEST_F(TypeNameTest, Typedef) {
   EXPECT_EQ(Canonical(alias), "my_int");
   EXPECT_EQ(Display(alias), "my_int");
 }
+
+// An enum reports its own name.
+TEST_F(TypeNameTest, Enum) {
+  EnumType *e = context.CreateEnumType("Color", /*byte_size=*/4,
+                                       TypeRef(*Int()), /*is_scoped=*/false);
+  EXPECT_EQ(Canonical(e), "Color");
+}
