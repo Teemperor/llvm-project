@@ -204,6 +204,10 @@ static std::string BuildDisplayNameImpl(clike::Type *t,
       return underlying + qualifier;
     return qualifier + " " + underlying;
   }
+  // Elaborated display sugar: show the source spelling (e.g. `::Struct`) rather
+  // than the wrapped type's own name.
+  if (auto *el = llvm::dyn_cast<ElaboratedType>(t))
+    return el->GetSpelling().GetName().str();
 
   // Named leaf type (record/typedef/enum/builtin). Builtins carry no
   // unqualified name; fall back to their stored name.
@@ -245,6 +249,11 @@ std::string clike::BuildFunctionName(Type *fn, llvm::StringRef decl,
 std::string clike::BuildCanonicalName(Type *t, bool base_only) {
   if (!t)
     return std::string();
+  // Strip elaborated display sugar (e.g. the `::` of `::Struct`) from the
+  // canonical name: the source spelling only affects the *display* name, so a
+  // formatter keyed on `Struct` still matches a `::Struct`-spelled value.
+  // Typedefs are kept (they are meaningful, distinct names).
+  t = t->StripElaborated();
   // Arrays have no name of their own; build "<element>[<count>]". For a
   // multidimensional array the nesting is outermost-dimension first, so peel
   // the whole chain and print the dimensions in source order after the
@@ -304,7 +313,9 @@ std::string clike::BuildCanonicalName(Type *t, bool base_only) {
     // qualifiers are spelled.
     Type *leaf = cv->GetUnderlyingType();
     while (true) {
-      if (auto *inner = llvm::dyn_cast<CVQualifiedType>(leaf))
+      if (auto *el = llvm::dyn_cast<ElaboratedType>(leaf))
+        leaf = el->GetUnderlyingType();
+      else if (auto *inner = llvm::dyn_cast<CVQualifiedType>(leaf))
         leaf = inner->GetUnderlyingType();
       else
         break;
