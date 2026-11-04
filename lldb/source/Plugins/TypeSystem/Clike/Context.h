@@ -104,6 +104,13 @@ public:
   CVQualifiedType *CreateCVQualifiedType(TypeRef underlying_type, bool is_const,
                                          bool is_volatile);
 
+  /// Create a pointer-authentication-qualified version of \p underlying_type
+  /// (a `T *__ptrauth(key, addr_disc, extra)` type). \p underlying_type is the
+  /// signed pointer (or a typedef thereof).
+  PtrAuthType *CreatePtrAuthType(TypeRef underlying_type, unsigned key,
+                                 bool addr_discriminated,
+                                 unsigned extra_discriminator);
+
   /// Create an enumeration type with the given \p enumerators, declared in
   /// \p scope. \p underlying_type is the integer type backing the enum.
   EnumType *CreateEnumType(llvm::StringRef name,
