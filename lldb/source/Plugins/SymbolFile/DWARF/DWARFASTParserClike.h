@@ -1,0 +1,136 @@
+//===----------------------------------------------------------------------===//
+//
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
+
+#ifndef LLDB_SOURCE_PLUGINS_SYMBOLFILE_DWARF_DWARFASTPARSERCLIKE_H
+#define LLDB_SOURCE_PLUGINS_SYMBOLFILE_DWARF_DWARFASTPARSERCLIKE_H
+
+#include "DWARFASTParser.h"
+#include "DWARFDIE.h"
+
+#include "lldb/Utility/ConstString.h"
+
+#include <mutex>
+
+namespace lldb_private {
+class TypeSystemClike;
+namespace clike {
+class Type;
+class RecordType;
+class Builder;
+} // namespace clike
+} // namespace lldb_private
+
+/// Parses DWARF debug info into the lldb-internal TypeSystemClike
+/// representation.
+///
+/// This is the TypeSystemClike counterpart of DWARFASTParserClang. It only
+/// knows how to build the small subset of the type system that TypeSystemClike
+/// currently understands (base types and records).
+class DWARFASTParserClike : public lldb_private::plugin::dwarf::DWARFASTParser {
+public:
+  DWARFASTParserClike(lldb_private::TypeSystemClike &ts);
+
+  ~DWARFASTParserClike() override;
+
+  // LLVM RTTI support
+  static bool classof(const DWARFASTParser *Parser) {
+    return Parser->GetKind() == Kind::DWARFASTParserClike;
+  }
+
+  // DWARFASTParser interface.
+  lldb::TypeSP
+  ParseTypeFromDWARF(const lldb_private::SymbolContext &sc,
+                     const lldb_private::plugin::dwarf::DWARFDIE &die,
+                     bool *type_is_new_ptr) override;
+
+  lldb_private::ConstString ConstructDemangledNameFromDWARF(
+      const lldb_private::plugin::dwarf::DWARFDIE &die) override;
+
+  lldb_private::Function *
+  ParseFunctionFromDWARF(lldb_private::CompileUnit &comp_unit,
+                         const lldb_private::plugin::dwarf::DWARFDIE &die,
+                         lldb_private::AddressRanges func_ranges) override;
+
+  bool CompleteTypeFromDWARF(
+      const lldb_private::plugin::dwarf::DWARFDIE &die,
+      lldb_private::Type *type,
+      const lldb_private::CompilerType &compiler_type) override;
+
+  lldb_private::CompilerDecl GetDeclForUIDFromDWARF(
+      const lldb_private::plugin::dwarf::DWARFDIE &die) override {
+    return lldb_private::CompilerDecl();
+  }
+
+  lldb_private::CompilerDeclContext GetDeclContextForUIDFromDWARF(
+      const lldb_private::plugin::dwarf::DWARFDIE &die) override;
+
+  lldb_private::CompilerDeclContext GetDeclContextContainingUIDFromDWARF(
+      const lldb_private::plugin::dwarf::DWARFDIE &die) override;
+
+  void EnsureAllDIEsInDeclContextHaveBeenParsed(
+      lldb_private::CompilerDeclContext decl_context) override {}
+
+  std::string
+  GetDIEClassTemplateParams(lldb_private::plugin::dwarf::DWARFDIE die) override;
+
+  // TypeSystemClike doesn't import types from another AST, so it can't complete
+  // types that way.
+  bool CanCompleteTypeFromImporter(
+      const lldb_private::CompilerType &compiler_type) override {
+    return false;
+  }
+
+  bool CompleteTypeFromImporter(
+      const lldb_private::CompilerType &compiler_type) override {
+    return false;
+  }
+
+  void MapDeclDIEToDefDIE(
+      const lldb_private::plugin::dwarf::DWARFDIE &decl_die,
+      const lldb_private::plugin::dwarf::DWARFDIE &def_die) override {}
+
+  // TypeSystemClike doesn't track clang decl contexts.
+  void *GetCachedDeclContext(
+      const lldb_private::plugin::dwarf::DWARFDIE &die) override {
+    return nullptr;
+  }
+
+  void LinkCachedDeclContextToDIE(
+      void *decl_ctx,
+      const lldb_private::plugin::dwarf::DWARFDIE &die) override {}
+
+private:
+  /// TypeSystemClike understands DWARF 4 and later only.
+  ///
+  /// The older versions are not a subset: DWARF 2 and 3 spell things
+  /// differently rather than less completely (no DW_AT_data_bit_offset, so
+  /// bitfields are described by the DWARF 2 bit-offset triple that has to be
+  /// read relative to the storage unit and byte order; DW_AT_bit_size on
+  /// non-bitfields; no unified DW_AT_high_pc semantics; different reference
+  /// forms). Every one of those would need its own translation, and reading
+  /// such a unit as if it were DWARF 4 does not fail loudly -- it yields types
+  /// that are quietly the wrong size or shape. Rejecting the unit means
+  /// missing types, which is the honest answer and is easy to recognise.
+  ///
+  /// Returns false for a DIE from a unit older than DWARF 4, warning once per
+  /// module so that the missing types have a stated reason.
+  bool
+  IsSupportedDWARFVersion(const lldb_private::plugin::dwarf::DWARFDIE &die);
+
+  /// Warned about an unsupported DWARF version already; see
+  /// IsSupportedDWARFVersion.
+  std::once_flag m_unsupported_version_warning;
+
+  lldb::TypeSP ParseBaseType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  lldb::TypeSP
+  ParseUnspecifiedType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+
+  lldb_private::TypeSystemClike &m_ts;
+};
+
+#endif // LLDB_SOURCE_PLUGINS_SYMBOLFILE_DWARF_DWARFASTPARSERCLIKE_H

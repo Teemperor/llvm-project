@@ -6,6 +6,7 @@ from lldbsuite.test import lldbutil
 
 class TestCase(TestBase):
     @no_debug_info_test
+    @add_test_categories(["typesystem-clike"])
     def test_FindTypes_on_scratch_AST(self):
         """
         Tests FindTypes invoked with only LLDB's scratch AST present.
