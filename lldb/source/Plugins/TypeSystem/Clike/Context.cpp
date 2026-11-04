@@ -36,6 +36,13 @@ RecordType *Context::CreateRecordType(llvm::StringRef name,
       GetIdentifier(name), scope, byte_size, is_union, is_class_keyword));
 }
 
+ArrayType *Context::CreateArrayType(TypeRef element_type,
+                                    std::optional<uint64_t> num_elements,
+                                    bool is_vector, uint64_t die_uid) {
+  return Track(std::make_unique<ArrayType>(element_type, num_elements,
+                                           is_vector, die_uid));
+}
+
 PointerType *Context::CreatePointerType(TypeRef pointee_type) {
   // Unique pointer types by (pointee, is-block) so that two
   // independently-formed `T *` (e.g. a variable's type and
