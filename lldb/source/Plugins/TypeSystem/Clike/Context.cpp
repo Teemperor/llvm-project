@@ -28,6 +28,14 @@ BuiltinType *Context::GetBuiltinType(llvm::StringRef name,
       builtin_types.GetAlignmentInBits(encoding, byte_size), encoding, format));
 }
 
+RecordType *Context::CreateRecordType(llvm::StringRef name,
+                                      std::optional<uint64_t> byte_size,
+                                      bool is_union, bool is_class_keyword,
+                                      DeclScope scope) {
+  return Track(std::make_unique<StructType>(
+      GetIdentifier(name), scope, byte_size, is_union, is_class_keyword));
+}
+
 PointerType *Context::CreatePointerType(TypeRef pointee_type) {
   // Unique pointer types by (pointee, is-block) so that two
   // independently-formed `T *` (e.g. a variable's type and
