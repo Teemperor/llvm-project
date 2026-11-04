@@ -70,6 +70,13 @@ CompilerType Builder::CreatePointerType(CompilerType pointee_type) {
       m_ts.m_context.CreatePointerType(ToTypeRefOrVoid(pointee_type)));
 }
 
+CompilerType Builder::CreateBlockPointerType(CompilerType pointee_type) {
+  // A block pointer is a pointer, so it follows the same rule (see above); in
+  // practice its pointee is always the block's function type.
+  return m_ts.GetCompilerType(
+      m_ts.m_context.CreateBlockPointerType(ToTypeRefOrVoid(pointee_type)));
+}
+
 CompilerType Builder::CreateTypedefType(llvm::StringRef name,
                                         CompilerType underlying_type,
                                         DeclScope scope) {

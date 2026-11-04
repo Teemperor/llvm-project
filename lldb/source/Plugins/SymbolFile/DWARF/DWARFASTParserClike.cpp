@@ -536,6 +536,35 @@ TypeSP DWARFASTParserClike::ParseArrayType(const DWARFDIE &die) {
                          Type::ResolveState::Full);
 }
 
+CompilerType DWARFASTParserClike::ParseBlockFunctionType(const DWARFDIE &die) {
+  // An Apple "blocks" pointer points at a compiler-generated literal struct
+  // (marked with DW_AT_APPLE_block) that contains a `__FuncPtr` member: a
+  // pointer to the block's invoke function. Follow that member to recover the
+  // block's function type.
+  if (!die || !die.GetAttributeValueAsUnsigned(DW_AT_APPLE_block, 0))
+    return CompilerType();
+
+  for (DWARFDIE child : die.children()) {
+    if (child.Tag() != DW_TAG_member)
+      continue;
+    const char *member_name = child.GetAttributeValueAsString(DW_AT_name, "");
+    if (!member_name || strcmp(member_name, "__FuncPtr") != 0)
+      continue;
+
+    DWARFDIE func_ptr_type = child.GetAttributeValueAsReferenceDIE(DW_AT_type);
+    if (!func_ptr_type)
+      return CompilerType();
+    DWARFDIE func_type =
+        func_ptr_type.GetAttributeValueAsReferenceDIE(DW_AT_type);
+    if (!func_type)
+      return CompilerType();
+    if (Type *function = die.ResolveTypeUID(func_type))
+      return function->GetForwardCompilerType();
+    return CompilerType();
+  }
+  return CompilerType();
+}
+
 TypeSP DWARFASTParserClike::ParsePointerType(const DWARFDIE &die) {
   SymbolFileDWARF *dwarf = die.GetDWARF();
 
@@ -547,12 +576,22 @@ TypeSP DWARFASTParserClike::ParsePointerType(const DWARFDIE &die) {
   // so use the forward-declared CompilerType and don't force completion here.
   DWARFDIE pointee_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
   CompilerType pointee_type;
-  if (pointee_die)
-    if (Type *pointee = die.ResolveTypeUID(pointee_die))
+  bool is_block = false;
+  if (pointee_die) {
+    // An Apple "blocks" pointer (`int (^)(int)`) points at a block-literal
+    // struct; model it as a pointer to the block's function type, flagged as a
+    // block pointer, rather than a pointer to the literal struct.
+    if (CompilerType block_func = ParseBlockFunctionType(pointee_die)) {
+      pointee_type = block_func;
+      is_block = true;
+    } else if (Type *pointee = die.ResolveTypeUID(pointee_die)) {
       pointee_type = pointee->GetForwardCompilerType();
+    }
+  }
 
   CompilerType pointer_type =
-      clike::Builder(m_ts).CreatePointerType(pointee_type);
+      is_block ? clike::Builder(m_ts).CreateBlockPointerType(pointee_type)
+               : clike::Builder(m_ts).CreatePointerType(pointee_type);
 
   Declaration decl = GetDIEDeclaration(die);
   ConstString empty_name;
