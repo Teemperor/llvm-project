@@ -94,3 +94,65 @@ TEST_F(TypeSystemClikeNameTest, UnnamedRecordName) {
   CompilerType anon_union = builder.CreateRecordType("", 4, /*is_union=*/true);
   EXPECT_EQ(anon_union.GetTypeName().GetStringRef(), "(unnamed union)");
 }
+
+// GetDisplayTypeName prefixes a type's declaring (non-inline) namespaces, but
+// skips an inline namespace (e.g. libc++'s `std::__1`) -- so `std::__1::foo`
+// still displays as `std::foo`.
+TEST_F(TypeSystemClikeNameTest, DisplayNameSkipsInlineNamespace) {
+  const Namespace *std_ns =
+      builder.GetNamespace("std", nullptr, /*is_inline=*/false);
+  const Namespace *inline_ns =
+      builder.GetNamespace("__1", std_ns, /*is_inline=*/true);
+
+  CompilerType record =
+      builder.CreateRecordType("std::__1::basic_string", 32, /*is_union=*/false,
+                               /*is_class_keyword=*/false, inline_ns,
+                               builder.GetIdentifier("basic_string"));
+
+  EXPECT_EQ(ts->GetDisplayTypeName(record.GetOpaqueQualType()).GetStringRef(),
+            "std::basic_string");
+}
+
+// A CompilerDeclContext wraps a declaration context. Its qualified name skips
+// inline namespaces, while its CompilerContext chain lists every scope.
+TEST_F(TypeSystemClikeNameTest, CompilerDeclContext) {
+  const Namespace *std_ns =
+      builder.GetNamespace("std", nullptr, /*is_inline=*/false);
+  const Namespace *inline_ns =
+      builder.GetNamespace("__1", std_ns, /*is_inline=*/true);
+  CompilerType record = builder.CreateRecordType(
+      "std::__1::Outer", 1, /*is_union=*/false, /*is_class_keyword=*/false,
+      inline_ns, builder.GetIdentifier("Outer"));
+  const auto *outer = llvm::cast<RecordType>(
+      static_cast<clike::Type *>(record.GetOpaqueQualType()));
+
+  EXPECT_FALSE(ts->GetCompilerDeclContext(nullptr).IsValid());
+
+  CompilerDeclContext ns_ctx = ts->GetCompilerDeclContext(inline_ns);
+  EXPECT_EQ(ns_ctx.GetName().GetStringRef(), "__1");
+  EXPECT_EQ(ns_ctx.GetScopeQualifiedName().GetStringRef(), "std");
+  EXPECT_EQ(TypeSystemClike::GetDeclarationContext(
+                ns_ctx.GetOpaqueDeclContext()),
+            inline_ns);
+
+  CompilerDeclContext record_ctx = ts->GetCompilerDeclContext(outer);
+  EXPECT_EQ(record_ctx.GetName().GetStringRef(), "Outer");
+  EXPECT_EQ(record_ctx.GetScopeQualifiedName().GetStringRef(), "std::Outer");
+  EXPECT_EQ(TypeSystemClike::GetDeclarationContext(
+                record_ctx.GetOpaqueDeclContext()),
+            outer);
+  std::vector<CompilerContext> context = record_ctx.GetCompilerContext();
+  ASSERT_EQ(context.size(), 3u);
+  EXPECT_EQ(context[0].kind, CompilerContextKind::Namespace);
+  EXPECT_EQ(context[0].name.GetStringRef(), "std");
+  EXPECT_EQ(context[1].kind, CompilerContextKind::Namespace);
+  EXPECT_EQ(context[1].name.GetStringRef(), "__1");
+  EXPECT_EQ(context[2].kind, CompilerContextKind::ClassOrStruct);
+  EXPECT_EQ(context[2].name.GetStringRef(), "Outer");
+
+  // The lookup of `std` also contains the inline namespace, but not the record
+  // declared in it.
+  CompilerDeclContext std_ctx = ts->GetCompilerDeclContext(std_ns);
+  EXPECT_TRUE(std_ctx.IsContainedInLookup(ns_ctx));
+  EXPECT_FALSE(std_ctx.IsContainedInLookup(record_ctx));
+}
