@@ -143,7 +143,9 @@ static std::string BuildDisplayNameImpl(clike::Type *t,
   if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
     clike::Type *pointee = ptr->GetPointeeType();
     if (auto *fn = llvm::dyn_cast<FunctionType>(pointee))
-      return BuildFunctionNameImpl(fn, "(*)", keep_inline_namespaces);
+      return BuildFunctionNameImpl(
+          fn, llvm::isa<BlockPointerType>(ptr) ? "(^)" : "(*)",
+          keep_inline_namespaces);
     // `void *` needs no special case: its pointee is the `void` builtin, whose
     // name is "void".
     std::string pointee_name =

@@ -91,6 +91,10 @@ public:
   /// target's pointer size.
   PointerType *CreatePointerType(TypeRef pointee_type);
 
+  /// Create an Apple "blocks" pointer (`int (^)(int)`), whose pointee is a
+  /// FunctionType. Its byte size is the target's pointer size.
+  BlockPointerType *CreateBlockPointerType(TypeRef pointee_type);
+
   /// Create a typedef named \p name aliasing \p underlying_type, declared in
   /// \p scope.
   TypedefType *CreateTypedefType(llvm::StringRef name, TypeRef underlying_type,

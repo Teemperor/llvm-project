@@ -169,6 +169,24 @@ TEST_F(TypeCTest, PointerTransparency) {
   EXPECT_EQ(void_ptr->GetNamedMemberPointee(), nullptr);
 }
 
+// A pointer to a function is a function pointer; a block pointer never is, even
+// though it also points at a function type.
+TEST_F(TypeCTest, FunctionPointer) {
+  FunctionType *fn =
+      context.CreateFunctionType(TypeRef(*Int()), {}, /*is_variadic=*/false);
+  PointerType *fn_ptr = context.CreatePointerType(TypeRef(*fn));
+  EXPECT_TRUE(fn_ptr->IsFunctionPointer());
+
+  PointerType *int_ptr = context.CreatePointerType(TypeRef(*Int()));
+  EXPECT_FALSE(int_ptr->IsFunctionPointer());
+
+  BlockPointerType *block = context.CreateBlockPointerType(TypeRef(*fn));
+  EXPECT_FALSE(block->IsFunctionPointer());
+  EXPECT_TRUE(block->IsBlockPointer());
+  EXPECT_TRUE(block->IsPointer());
+  EXPECT_TRUE(llvm::isa<PointerType>(static_cast<Type *>(block)));
+}
+
 // A pointer to a record is a C++ construct (so class formatters fire); a
 // pointer to anything else a C one.
 TEST_F(TypeCTest, PointerMinimumLanguage) {
