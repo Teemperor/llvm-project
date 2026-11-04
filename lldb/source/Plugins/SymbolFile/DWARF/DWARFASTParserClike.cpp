@@ -555,6 +555,74 @@ TypeSP DWARFASTParserClike::ParseAtomicType(const DWARFDIE &die) {
                          Type::ResolveState::Full);
 }
 
+TypeSP DWARFASTParserClike::ParseEnum(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+  ConstString name(GetDIEQualifiedName(die));
+  std::optional<uint64_t> byte_size =
+      die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size);
+  bool is_scoped = die.GetAttributeValueAsUnsigned(DW_AT_enum_class, 0) != 0;
+
+  // The enum's underlying integer type, if the producer recorded one.
+  DWARFDIE underlying_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  CompilerType underlying_type;
+  if (underlying_die) {
+    if (Type *underlying = die.ResolveTypeUID(underlying_die))
+      underlying_type = underlying->GetForwardCompilerType();
+  }
+
+  // An opaque/forward-declared enum carries neither a DW_AT_byte_size nor an
+  // underlying type. C enums default to `int`, so fall back to that (mirroring
+  // TypeSystemClang) -- otherwise a pointer to such an enum has an unknown-size
+  // pointee and can't be dereferenced (e.g. to report "<parent is NULL>").
+  if (!byte_size) {
+    if (underlying_type)
+      byte_size =
+          llvm::expectedToOptional(underlying_type.GetByteSize(nullptr));
+    if (!byte_size)
+      byte_size = 4;
+  }
+
+  // An enum always has an integer type backing it (see EnumType), so supply
+  // the one C would have chosen when the producer recorded none: a signed
+  // integer of the recorded width, or plain `int` when there was no width
+  // either. Mirrors DWARFASTParserClang::ParseEnum.
+  if (!underlying_type)
+    underlying_type = m_ts.GetBuiltinTypeForEncodingAndBitSize(
+        lldb::eEncodingSint, *byte_size * 8);
+
+  CompilerType enum_type;
+  {
+    clike::Builder ts(m_ts);
+    // Enumerators are few and cheap, so parse them eagerly here rather than
+    // deferring to lazy completion.
+    std::vector<clike::Enumerator> enumerators;
+    bool is_signed = true;
+    underlying_type.IsIntegerType(is_signed);
+    for (DWARFDIE child : die.children()) {
+      if (child.Tag() != DW_TAG_enumerator)
+        continue;
+      const char *enumerator_name = child.GetName();
+      if (!enumerator_name || !enumerator_name[0])
+        continue;
+      // The raw 64-bit value carries the two's-complement bits for signed
+      // enumerators. Bring it to the width of the enumeration, sign-extending
+      // it for signed enumerations that are wider than 64 bits.
+      uint64_t value = child.GetAttributeValueAsUnsigned(DW_AT_const_value, 0);
+      enumerators.emplace_back(ts.GetIdentifier(enumerator_name),
+                               llvm::APInt(*byte_size * 8, value, is_signed,
+                                           /*implicitTrunc=*/true));
+    }
+    enum_type = ts.CreateEnumType(
+        name.GetStringRef(), byte_size, underlying_type, is_scoped,
+        std::move(enumerators), GetTypeDeclScope(die, ts));
+  }
+
+  Declaration decl = GetDIEDeclaration(die);
+  return dwarf->MakeType(die.GetID(), name, byte_size, /*context=*/nullptr,
+                         underlying_die.GetID(), Type::eEncodingIsUID, decl,
+                         enum_type, Type::ResolveState::Full);
+}
+
 /// The oldest DWARF version TypeSystemClike knows how to read. See
 /// IsSupportedDWARFVersion for why older ones are refused rather than
 /// approximated.
@@ -623,6 +691,9 @@ TypeSP DWARFASTParserClike::ParseTypeFromDWARF(const SymbolContext &sc,
     break;
   case DW_TAG_atomic_type:
     type_sp = ParseAtomicType(die);
+    break;
+  case DW_TAG_enumeration_type:
+    type_sp = ParseEnum(die);
     break;
   case DW_TAG_unspecified_type:
     type_sp = ParseUnspecifiedType(die);
