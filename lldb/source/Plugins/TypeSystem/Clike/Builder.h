@@ -80,6 +80,11 @@ public:
   /// Create a const- and/or volatile-qualified version of \p underlying_type.
   CompilerType CreateCVQualifiedType(CompilerType underlying_type,
                                      bool is_const, bool is_volatile);
+  /// Create a `__ptrauth`-qualified version of \p underlying_type (a signed
+  /// pointer, or a typedef thereof).
+  CompilerType CreatePtrAuthType(CompilerType underlying_type, unsigned key,
+                                 bool addr_discriminated,
+                                 unsigned extra_discriminator);
   /// Create an enumeration type with the given \p enumerators (whose names
   /// must come from GetIdentifier), declared in \p scope.
   CompilerType CreateEnumType(llvm::StringRef name,

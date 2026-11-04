@@ -250,6 +250,35 @@ private:
   bool m_is_volatile;
 };
 
+/// A pointer carrying an ARMv8.3 pointer-authentication qualifier
+/// (`T *__ptrauth(key, address_discriminated, extra_discriminator)`). It is
+/// transparent sugar over the signed type (a pointer or a typedef thereof) for
+/// layout/value purposes, but carries the signing schema so LLDB can strip the
+/// authentication bits off the raw pointer value and print `__ptrauth(...)`.
+class PtrAuthType : public llvm::RTTIExtends<PtrAuthType, SugarType> {
+public:
+  static char ID;
+
+  PtrAuthType(TypeRef underlying_type, PtrAuthQualifier qualifier)
+      : RTTIExtends(underlying_type), m_qualifier(qualifier) {}
+
+  /// See PtrAuthQualifier.
+  unsigned GetKey() const { return m_qualifier.GetKey(); }
+  bool IsAddressDiscriminated() const {
+    return m_qualifier.IsAddressDiscriminated();
+  }
+  unsigned GetExtraDiscriminator() const {
+    return m_qualifier.GetExtraDiscriminator();
+  }
+
+  std::optional<PtrAuthQualifier> GetPtrAuthQualifier() const override {
+    return m_qualifier;
+  }
+
+private:
+  PtrAuthQualifier m_qualifier;
+};
+
 /// A C/C++ enumeration type. It has an underlying integer type and a set of
 /// named constants; scoped enums (`enum class`) are distinguished so their
 /// enumerators are not treated as being in the enclosing scope.

@@ -593,18 +593,33 @@ CompilerType TypeSystemClike::GetPointerDiffType(bool is_signed) {
                                 lldb::eEncodingUint, lldb::eFormatUnsigned);
 }
 
-unsigned TypeSystemClike::GetPtrAuthKey(lldb::opaque_compiler_type_t type) {
+unsigned TypeSystemClike::GetPtrAuthKey(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  if (t)
+    if (std::optional<clike::PtrAuthQualifier> q = t->GetPtrAuthQualifier())
+      return q->GetKey();
   return 0;
 }
 
-unsigned
-TypeSystemClike::GetPtrAuthDiscriminator(lldb::opaque_compiler_type_t type) {
+unsigned TypeSystemClike::GetPtrAuthDiscriminator(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  if (t)
+    if (std::optional<clike::PtrAuthQualifier> q = t->GetPtrAuthQualifier())
+      return q->GetExtraDiscriminator();
   return 0;
 }
 
-bool TypeSystemClike::GetPtrAuthAddressDiversity(
-    lldb::opaque_compiler_type_t type) {
+bool TypeSystemClike::GetPtrAuthAddressDiversity(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  if (t)
+    if (std::optional<clike::PtrAuthQualifier> q = t->GetPtrAuthQualifier())
+      return q->IsAddressDiscriminated();
   return false;
+}
+
+bool TypeSystemClike::HasPointerAuthQualifier(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  return t && t->GetPtrAuthQualifier().has_value();
 }
 
 ConstString TypeSystemClike::GetTypeName(opaque_compiler_type_t type,

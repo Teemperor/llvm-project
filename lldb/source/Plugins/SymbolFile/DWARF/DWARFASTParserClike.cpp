@@ -742,6 +742,43 @@ TypeSP DWARFASTParserClike::ParseAtomicType(const DWARFDIE &die) {
                          Type::ResolveState::Full);
 }
 
+TypeSP DWARFASTParserClike::ParsePtrAuthType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  // A DW_TAG_LLVM_ptrauth_type wraps a signed pointer (or a typedef of one) and
+  // carries the pointer-authentication signing schema.
+  DWARFDIE underlying_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  if (!underlying_die)
+    return nullptr;
+  Type *underlying = die.ResolveTypeUID(underlying_die);
+  if (!underlying)
+    return nullptr;
+  CompilerType underlying_type = underlying->GetForwardCompilerType();
+
+  const unsigned key =
+      die.GetAttributeValueAsUnsigned(DW_AT_LLVM_ptrauth_key, 0);
+  const bool addr_disc = die.GetAttributeValueAsUnsigned(
+                             DW_AT_LLVM_ptrauth_address_discriminated, 0) != 0;
+  const unsigned extra = die.GetAttributeValueAsUnsigned(
+      DW_AT_LLVM_ptrauth_extra_discriminator, 0);
+
+  CompilerType ptrauth_type;
+  {
+    clike::Builder ts(m_ts);
+    ptrauth_type = ts.CreatePtrAuthType(underlying_type, key, addr_disc, extra);
+  }
+
+  std::optional<uint64_t> byte_size =
+      llvm::expectedToOptional(ptrauth_type.GetByteSize(nullptr));
+
+  Declaration decl = GetDIEDeclaration(die);
+  ConstString empty_name;
+  return dwarf->MakeType(die.GetID(), empty_name, byte_size,
+                         /*context=*/nullptr, underlying_die.GetID(),
+                         Type::eEncodingIsUID, decl, ptrauth_type,
+                         Type::ResolveState::Full);
+}
+
 TypeSP DWARFASTParserClike::ParseEnum(const DWARFDIE &die) {
   SymbolFileDWARF *dwarf = die.GetDWARF();
   ConstString name(GetDIEQualifiedName(die));
@@ -964,6 +1001,9 @@ TypeSP DWARFASTParserClike::ParseTypeFromDWARF(const SymbolContext &sc,
   case DW_TAG_const_type:
   case DW_TAG_volatile_type:
     type_sp = ParseCVQualifiedType(die);
+    break;
+  case DW_TAG_LLVM_ptrauth_type:
+    type_sp = ParsePtrAuthType(die);
     break;
   case DW_TAG_atomic_type:
     type_sp = ParseAtomicType(die);

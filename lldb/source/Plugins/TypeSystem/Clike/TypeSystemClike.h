@@ -306,6 +306,7 @@ public:
   unsigned GetPtrAuthKey(lldb::opaque_compiler_type_t type) override;
   unsigned GetPtrAuthDiscriminator(lldb::opaque_compiler_type_t type) override;
   bool GetPtrAuthAddressDiversity(lldb::opaque_compiler_type_t type) override;
+  bool HasPointerAuthQualifier(lldb::opaque_compiler_type_t type) override;
 
   // Accessors
   ConstString GetTypeName(lldb::opaque_compiler_type_t type,
