@@ -547,13 +547,48 @@ protected:
   /// Must not take any TypeSystemClike lock: it runs before they are acquired.
   /// Called with m_lock_order_mutex held.
   ///
-  /// The base implementation contributes this instance.
+  /// The base implementation contributes this instance plus, when it has a
+  /// symbol file, the type systems of the Clang modules that symbol file
+  /// imports (transitively). That list comes straight out of the DWARF -- see
+  /// SymbolFile::ForEachExternalModule -- so it is known without parsing a
+  /// single type, which is what lets the set be complete before locking.
   virtual void
   AppendLockOrder(llvm::SmallVectorImpl<TypeSystemClike *> &out) const;
 
   /// Whether AppendLockOrder can return a different set over time, in which
-  /// case GetLockOrder must recompute on every call instead of caching.
-  virtual bool HasDynamicLockOrder() const { return false; }
+  /// case GetLockOrder must recompute on every call instead of caching. Always
+  /// true today: the gmodules import graph is fixed once the symbol file is
+  /// known, but every set also folds in the scratch instances' sets, and those
+  /// follow their target's image list.
+  virtual bool HasDynamicLockOrder() const { return true; }
+
+  /// Append every TypeSystemClike \p module already has to \p out. Shared by
+  /// the base AppendLockOrder (for imported Clang modules) and the scratch
+  /// override (for the target's images).
+  static void
+  AppendClikeTypeSystemsOf(Module &module,
+                           llvm::SmallVectorImpl<TypeSystemClike *> &out);
+
+  /// Like AppendClikeTypeSystemsOf, but *creates* \p module's TypeSystemClike
+  /// if it has none yet. Used for the Clang modules our debug info imports:
+  /// their type systems are created lazily by the very query that first reaches
+  /// into them (see DWARFASTParserClike::FindClangModuleDefinitionType), so
+  /// waiting for one to exist means it is missing from the set exactly when it
+  /// is first needed. The DWARF bounds this list to the real import graph, so
+  /// it is not the open-ended cost that doing the same for every image would
+  /// be.
+  static void AppendOrCreateClikeTypeSystemOf(
+      Module &module, llvm::SmallVectorImpl<TypeSystemClike *> &out);
+
+  /// Every live scratch instance, so a module instance can find the scratches
+  /// that may reach it. A module cannot work that out from its own state -- a
+  /// Module belongs to any number of Targets and nothing maps back the other
+  /// way -- and it has to be knowable *before* locking, so the scratches
+  /// register here as they are created rather than being discovered from a
+  /// query's execution context.
+  static void RegisterScratchInstance(TypeSystemClike *scratch);
+  static void UnregisterScratchInstance(TypeSystemClike *scratch);
+  static llvm::SmallVector<TypeSystemClike *, 2> GetScratchInstances();
 
 private:
   /// GetLockOrder's cache, used only when !HasDynamicLockOrder().
