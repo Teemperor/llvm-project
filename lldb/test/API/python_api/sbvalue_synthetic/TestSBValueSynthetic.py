@@ -23,6 +23,7 @@ class TestSBValueSynthetic(TestBase):
         self.expect(str(formatted), exe=False, substrs=["synth_child"])
         self.expect(str(has_formatted), exe=False, substrs=["synth_child"])
 
+    @add_test_categories(["typesystem-clike"])
     def test_synth_arr(self):
         self.build()
         lldbutil.run_to_source_breakpoint(
