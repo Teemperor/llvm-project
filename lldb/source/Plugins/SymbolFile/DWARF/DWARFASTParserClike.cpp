@@ -41,12 +41,30 @@
 #include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
 
 #include <algorithm>
+#include <future>
 #include <vector>
 
 using namespace lldb;
 using namespace lldb_private;
 using namespace lldb_private::plugin::dwarf;
 using namespace llvm::dwarf;
+
+// Launch policy for resolving a record's referenced member/base types while
+// completing it. The DWARF/SymbolFile side is not thread safe here:
+// SymbolFileDWARF guards itself with the Module's recursive_mutex, which
+// CompleteType already holds while CompleteTypeFromDWARF runs. A worker thread
+// calling ResolveTypeUID would block trying to re-acquire that mutex
+// (recursive_mutex only re-enters on the owning thread) while this thread waits
+// on the worker -- a deadlock.
+//
+// So the resolutions run with std::launch::deferred: each future executes
+// inline, on this thread, when its result is needed. Since that makes this
+// single-threaded, TypeSystemClike itself does no locking (see
+// clike::Builder). The work is nevertheless structured as independent
+// futures, so it can be spread across cores once the DWARF reads no longer
+// require the Module mutex to be held across completion -- but that will also
+// mean giving TypeSystemClike its serialization back.
+static constexpr std::launch kMemberResolutionPolicy = std::launch::deferred;
 
 DWARFASTParserClike::DWARFASTParserClike(TypeSystemClike &ts)
     : DWARFASTParser(Kind::DWARFASTParserClike), m_ts(ts) {}
@@ -425,6 +443,52 @@ DWARFASTParserClike::GetDeclContextContainingUIDFromDWARF(const DWARFDIE &die) {
   return CompilerDeclContext();
 }
 
+TypeSP DWARFASTParserClike::ParseStructureType(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+
+  // Record the fully-qualified, template-argument-bearing spelling of the type
+  // (e.g. the instantiation "Wrapper<int>" or "std::__1::vector<int, ...>")
+  // rather than the bare DW_AT_name ("Wrapper" / "vector").
+  ConstString name(GetDIEQualifiedName(die));
+  std::optional<uint64_t> byte_size =
+      die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size);
+
+  bool is_union = die.Tag() == DW_TAG_union_type;
+  // Both `struct` and `class` are modeled by the same record type, so remember
+  // the source keyword to reproduce it in display names (e.g. for an unnamed
+  // record: "(unnamed struct)" vs "(unnamed class)").
+  bool is_class_keyword = die.Tag() == DW_TAG_class_type;
+
+  CompilerType compiler_type;
+  {
+    clike::Builder builder(m_ts);
+    compiler_type = builder.CreateRecordType(name.GetStringRef(), byte_size,
+                                             is_union, is_class_keyword,
+                                             GetTypeDeclScope(die, builder));
+  }
+
+  Declaration decl = GetDIEDeclaration(die);
+  // The lldb_private::Type record (unlike the clike::Type above) is
+  // named with the bare, unqualified DW_AT_name spelling -- e.g. "valarray"
+  // rather than "std::__1::valarray<int>" -- to match TypeSystemClang (whose
+  // Type::m_name is the raw DW_AT_name), since e.g. DIL's out-of-bounds-index
+  // diagnostic prints this name and is tested against that unqualified form.
+  ConstString unqualified_name(GetDIEUnqualifiedName(die));
+  TypeSP type_sp = dwarf->MakeType(die.GetID(), unqualified_name, byte_size,
+                                   /*context=*/nullptr, LLDB_INVALID_UID,
+                                   Type::eEncodingIsUID, decl, compiler_type,
+                                   Type::ResolveState::Forward);
+
+  // Remember which DIE backs this (so far incomplete) record so that
+  // SymbolFileDWARF::CompleteType can find it and call back into
+  // CompleteTypeFromDWARF when the members are needed.
+  if (std::optional<DIERef> die_ref = die.GetDIERef())
+    dwarf->GetForwardDeclCompilerTypeToDIE().insert_or_assign(
+        compiler_type.GetOpaqueQualType(), *die_ref);
+
+  return type_sp;
+}
+
 TypeSP DWARFASTParserClike::ParsePointerType(const DWARFDIE &die) {
   SymbolFileDWARF *dwarf = die.GetDWARF();
 
@@ -678,6 +742,11 @@ TypeSP DWARFASTParserClike::ParseTypeFromDWARF(const SymbolContext &sc,
   case DW_TAG_base_type:
     type_sp = ParseBaseType(die);
     break;
+  case DW_TAG_structure_type:
+  case DW_TAG_class_type:
+  case DW_TAG_union_type:
+    type_sp = ParseStructureType(die);
+    break;
   case DW_TAG_pointer_type:
     type_sp = ParsePointerType(die);
     break;
@@ -710,7 +779,162 @@ TypeSP DWARFASTParserClike::ParseTypeFromDWARF(const SymbolContext &sc,
   return type_sp;
 }
 
+clike::Type *
+DWARFASTParserClike::ResolveReferencedType(const DWARFDIE &referencing_die,
+                                           const DWARFDIE &type_die) {
+  if (!type_die)
+    return nullptr;
+
+  // This drives both the DWARF type bookkeeping (SymbolFileDWARF's DIE->type
+  // map) and the TypeSystemClike mutation, hence the Builder.
+  clike::Builder ts(m_ts);
+  Type *resolved = referencing_die.ResolveTypeUID(type_die);
+  if (!resolved)
+    return nullptr;
+  CompilerType forward = resolved->GetForwardCompilerType();
+  return TypeSystemClike::GetClikeType(forward.GetOpaqueQualType());
+}
+
 bool DWARFASTParserClike::CompleteTypeFromDWARF(
     const DWARFDIE &die, Type *type, const CompilerType &compiler_type) {
-  return false;
+  if (!die)
+    return false;
+
+  if (!IsSupportedDWARFVersion(die))
+    return false;
+
+  // A DW_TAG_structure/class/union DIE is always backed by a RecordType.
+  clike::Type *clike_type =
+      TypeSystemClike::GetClikeType(compiler_type.GetOpaqueQualType());
+  if (!clike_type || !clike_type->IsAggregate())
+    return false;
+  auto *record = static_cast<clike::RecordType *>(clike_type);
+
+  // SymbolFileDWARF::CompleteType falls back to the declaration DIE when it
+  // can't find a defining DIE anywhere in the debug info (e.g. a type that is
+  // only ever forward declared, like `struct FwdClass;`). Such a DIE still
+  // carries DW_AT_declaration and has no members to add, so leave the record
+  // incomplete instead of marking a declaration-only record complete. This is
+  // what lets SBType::IsTypeComplete correctly report a forward-declared type
+  // (or the pointee of a pointer to one) as incomplete.
+  if (die.GetAttributeValueAsUnsigned(DW_AT_declaration, 0))
+    return false;
+
+  // Mark complete up front so that a member whose type (indirectly) refers back
+  // to this record doesn't recurse forever, and so that a re-entrant completion
+  // of the same record bails out here.
+  {
+    clike::Builder ts(m_ts);
+    if (record->IsComplete())
+      return true;
+    // The record may have been created from a forward-declaration DIE (which
+    // carries no DW_AT_byte_size); the definition DIE we are completing against
+    // has the real size, so record it now. Without this a record defined in a
+    // different compile unit than its forward declaration keeps a null byte
+    // size after completion, which breaks dereferencing pointers to it and the
+    // expression-parser record layout.
+    if (!record->GetByteSize())
+      if (std::optional<uint64_t> byte_size =
+              die.GetAttributeValueAsOptionalUnsigned(DW_AT_byte_size))
+        ts.SetRecordByteSize(*record, *byte_size);
+    // An explicit `DW_AT_alignment` (e.g. from `alignas(...)`) cannot be
+    // recovered from the size, so record it for GetTypeBitAlign.
+    if (std::optional<uint64_t> align =
+            die.GetAttributeValueAsOptionalUnsigned(DW_AT_alignment))
+      ts.SetRecordExplicitAlignmentInBits(*record, *align * 8);
+    ts.SetRecordComplete(*record);
+
+    // DW_AT_calling_convention on the record describes how it is passed and
+    // returned by value. Record it so ClangASTGenerator can reproduce the ABI
+    // when the expression evaluator calls a function that takes/returns this
+    // record by value (e.g. a struct with a non-trivial copy constructor is
+    // passed by reference / returned via sret). Mirrors DWARFASTParserClang.
+    switch (die.GetAttributeValueAsUnsigned(DW_AT_calling_convention,
+                                            llvm::dwarf::DW_CC_normal)) {
+    case llvm::dwarf::DW_CC_pass_by_value:
+      ts.SetRecordArgPassingKind(
+          *record, clike::RecordType::ArgPassingKind::PassByValue);
+      break;
+    case llvm::dwarf::DW_CC_pass_by_reference:
+      ts.SetRecordArgPassingKind(
+          *record, clike::RecordType::ArgPassingKind::CannotPassInRegs);
+      break;
+    default:
+      break;
+    }
+  }
+
+  // Collect the members in declaration order, along with the DWARF reference
+  // to each one's type. Only the (heavier) type resolution below is structured
+  // to be spread out; this DWARF traversal is not.
+  struct MemberInfo {
+    enum class Kind { Field, NestedType } kind;
+    llvm::StringRef name; // Field/nested-type name; else empty.
+    uint64_t byte_offset = 0;
+    DWARFDIE referencing_die;
+    DWARFDIE type_die;
+  };
+  std::vector<MemberInfo> members;
+
+  for (DWARFDIE child : die.children()) {
+    const dw_tag_t tag = child.Tag();
+    if (tag == DW_TAG_member) {
+      std::optional<uint64_t> data_member_location =
+          child.GetAttributeValueAsOptionalUnsigned(DW_AT_data_member_location);
+      members.push_back({MemberInfo::Kind::Field, child.GetName(),
+                         data_member_location.value_or(0), child,
+                         child.GetAttributeValueAsReferenceDIE(DW_AT_type)});
+    } else if (tag == DW_TAG_typedef || tag == DW_TAG_structure_type ||
+               tag == DW_TAG_union_type || tag == DW_TAG_enumeration_type) {
+      // A type declared inside this record. Resolving the child DIE itself
+      // yields the nested type; data formatters look these up by name. Skip
+      // anonymous ones.
+      const char *nested_name = child.GetName();
+      if (nested_name && nested_name[0])
+        members.push_back({MemberInfo::Kind::NestedType, nested_name,
+                           /*byte_offset=*/0, die, child});
+    }
+  }
+
+  // Resolve each referenced type. These run inline (deferred) today -- see
+  // kMemberResolutionPolicy.
+  std::vector<std::future<clike::Type *>> resolved;
+  resolved.reserve(members.size());
+  for (const MemberInfo &member : members) {
+    DWARFDIE referencing_die = member.referencing_die;
+    DWARFDIE type_die = member.type_die;
+    resolved.push_back(
+        std::async(kMemberResolutionPolicy, [this, referencing_die, type_die] {
+          return ResolveReferencedType(referencing_die, type_die);
+        }));
+  }
+
+  // Force each deferred resolution to run, in order.
+  std::vector<clike::Type *> member_types(members.size());
+  for (size_t i = 0; i < members.size(); ++i)
+    member_types[i] = resolved[i].get();
+
+  // Integrate the resolved members into the record, in declaration order.
+  clike::Builder ts(m_ts);
+
+  for (size_t i = 0; i < members.size(); ++i) {
+    clike::Type *member_type = member_types[i];
+    const MemberInfo &member = members[i];
+    switch (member.kind) {
+    case MemberInfo::Kind::Field:
+      // Intern the member name through the type system's Context so its
+      // storage is owned alongside the types (rather than pointing into DWARF
+      // data).
+      if (member_type)
+        ts.AddField(*record, ts.GetIdentifier(member.name), member_type,
+                    member.byte_offset);
+      break;
+    case MemberInfo::Kind::NestedType:
+      if (member_type)
+        ts.AddNestedType(*record, ts.GetIdentifier(member.name), member_type);
+      break;
+    }
+  }
+
+  return true;
 }
