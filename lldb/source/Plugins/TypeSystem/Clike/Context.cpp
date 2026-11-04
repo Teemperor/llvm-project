@@ -55,3 +55,13 @@ CVQualifiedType *Context::CreateCVQualifiedType(TypeRef underlying_type,
   return Track(std::make_unique<CVQualifiedType>(underlying_type, is_const,
                                                  is_volatile));
 }
+
+EnumType *Context::CreateEnumType(llvm::StringRef name,
+                                  std::optional<uint64_t> byte_size,
+                                  TypeRef underlying_type, bool is_scoped,
+                                  std::vector<Enumerator> enumerators,
+                                  DeclScope scope) {
+  return Track(std::make_unique<EnumType>(GetIdentifier(name), scope, byte_size,
+                                          underlying_type, is_scoped,
+                                          std::move(enumerators)));
+}
