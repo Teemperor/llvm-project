@@ -83,6 +83,14 @@ CVQualifiedType *Context::CreateCVQualifiedType(TypeRef underlying_type,
                                                  is_volatile));
 }
 
+PtrAuthType *Context::CreatePtrAuthType(TypeRef underlying_type, unsigned key,
+                                        bool addr_discriminated,
+                                        unsigned extra_discriminator) {
+  return Track(std::make_unique<PtrAuthType>(
+      underlying_type,
+      PtrAuthQualifier{key, addr_discriminated, extra_discriminator}));
+}
+
 EnumType *Context::CreateEnumType(llvm::StringRef name,
                                   std::optional<uint64_t> byte_size,
                                   TypeRef underlying_type, bool is_scoped,
