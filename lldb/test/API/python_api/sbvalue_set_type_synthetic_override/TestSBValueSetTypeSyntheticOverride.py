@@ -7,6 +7,7 @@ from lldbsuite.test import lldbutil
 class TestCase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         self.build()
         _, _, thread, _ = lldbutil.run_to_source_breakpoint(
