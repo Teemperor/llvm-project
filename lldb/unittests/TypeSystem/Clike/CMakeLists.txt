@@ -1,4 +1,5 @@
 add_lldb_unittest(TypeSystemClikeUnitTests
+  BuilderTest.cpp
   BuiltinTypesTest.cpp
   ByteSizedTypeTest.cpp
   ContextTest.cpp
@@ -13,6 +14,8 @@ add_lldb_unittest(TypeSystemClikeUnitTests
   TypeSystemClikeBasicQueriesTest.cpp
   TypeSystemClikeChildrenTest.cpp
   TypeSystemClikeNameTest.cpp
+  TypeSystemClikeRecordQueriesTest.cpp
+  TypeSystemClikeThreadSafetyTest.cpp
   TypeTest.cpp
 
   LINK_LIBS

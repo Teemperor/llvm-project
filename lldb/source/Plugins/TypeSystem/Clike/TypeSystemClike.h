@@ -311,6 +311,7 @@ public:
 
   // Type Completion
   bool GetCompleteType(lldb::opaque_compiler_type_t type) override;
+  bool IsForcefullyCompleted(lldb::opaque_compiler_type_t type) override;
 
   // AST related queries
   uint32_t GetPointerByteSize() override;
@@ -451,6 +452,9 @@ public:
   bool IsReferenceType(lldb::opaque_compiler_type_t type,
                        CompilerType *pointee_type, bool *is_rvalue) override;
 
+  CompilerType GetDirectNestedTypeWithName(lldb::opaque_compiler_type_t type,
+                                           llvm::StringRef name) override;
+
 private:
   friend class clike::Builder;
   friend class ::DWARFASTParserClike;
@@ -473,6 +477,11 @@ private:
   /// its fields.
   clike::Type *CompleteTypeAssumingWriteLocked(clike::Type *type);
 
+  /// Completes \p type and every record it contains by value (as a field or
+  /// array element), as the alignment of a record depends on the
+  /// alignment of these members. Assumes the write lock is held.
+  void CompleteForAlignmentAssumingWriteLocked(clike::Type *type);
+
   /// GetBasicTypeFromAST, assuming the write lock is already held. Used by
   /// query methods that already hold the lock themselves (e.g.
   /// GetPromotedIntegerType).
@@ -489,6 +498,10 @@ private:
   /// error message while already holding the lock.
   ConstString GetDisplayTypeNameAssumingWriteLocked(clike::Type *t);
 
+  /// Helper for DumpTypeDescription; assumes the write lock is already held.
+  void AppendMemberDeclAssumingWriteLocked(Stream &s, clike::Type *field_type,
+                                           llvm::StringRef name);
+
   bool IsIntegerTypeImpl(const clike::Type *type, bool &is_signed);
 
   bool IsPromotableIntegerTypeImpl(const clike::Type *type);
@@ -501,6 +514,18 @@ private:
   GetChildAtIndexImpl(clike::Type *type, ExecutionContext *exe_ctx, size_t idx,
                       bool transparent_pointers, bool omit_empty_base_classes,
                       bool ignore_array_bounds, ValueObject *valobj);
+
+  llvm::Expected<uint32_t>
+  GetIndexOfChildWithNameImpl(clike::Type *type, llvm::StringRef name,
+                              bool omit_empty_base_classes);
+
+  // Recursive worker for GetIndexOfChildMemberWithName. An unnamed (anonymous
+  // union/struct) field is transparently searched, as it injects its members
+  // into its immediately enclosing record.
+  size_t
+  GetIndexOfChildMemberWithNameImpl(clike::Type *type, llvm::StringRef name,
+                                    bool omit_empty_base_classes,
+                                    std::vector<uint32_t> &child_indexes);
 
   /// Recursive worker for GetFullyUnqualifiedType: strip top-level
   /// cv-qualifiers and recurse through pointer/array pointees so the whole
