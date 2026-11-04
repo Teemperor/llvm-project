@@ -16,6 +16,7 @@
 #include "SymbolFileDWARF.h"
 
 #include "Plugins/TypeSystem/Clike/Builder.h"
+#include "Plugins/TypeSystem/Clike/Namespace.h"
 #include "Plugins/TypeSystem/Clike/Type.h"
 #include "Plugins/TypeSystem/Clike/TypeC.h"
 #include "Plugins/TypeSystem/Clike/TypeSystemClike.h"
@@ -426,6 +427,76 @@ DWARFASTParserClike::ConstructDemangledNameFromDWARF(const DWARFDIE &die) {
   return ConstString(sstr.GetString());
 }
 
+/// Build the chain of enclosing namespaces for \p die, marking libc++-style
+/// inline namespaces (DWARF's DW_AT_export_symbols) so they can be skipped when
+/// printing the type name. Returns the innermost namespace, or null if the type
+/// is not (directly) inside a namespace.
+static const clike::Namespace *BuildDeclNamespace(const DWARFDIE &die,
+                                                  clike::Builder &builder) {
+  llvm::SmallVector<DWARFDIE, 4> namespaces;
+  for (DWARFDIE parent = die.GetParent(); parent; parent = parent.GetParent()) {
+    // Only namespace scopes are modelled here; stop at the CU or any other
+    // (e.g. record) scope.
+    if (parent.Tag() != DW_TAG_namespace)
+      break;
+    namespaces.push_back(parent);
+  }
+  // Build outermost-first so each namespace can reference its parent.
+  const clike::Namespace *ns = nullptr;
+  for (DWARFDIE ns_die : llvm::reverse(namespaces)) {
+    const char *ns_name = ns_die.GetName();
+    bool is_inline =
+        ns_die.GetAttributeValueAsUnsigned(DW_AT_export_symbols, 0) != 0;
+    ns = builder.GetNamespace(ns_name ? ns_name : "", ns, is_inline);
+  }
+  return ns;
+}
+
+/// The declaration context of the type described by \p die: its innermost
+/// enclosing namespace (see BuildDeclNamespace), or the global scope if \p die
+/// isn't nested in any namespace.
+static const clike::DeclarationContext &
+BuildTypeDeclContext(const DWARFDIE &die, clike::Builder &builder) {
+  if (const clike::Namespace *ns = BuildDeclNamespace(die, builder))
+    return *ns;
+  return builder.GetGlobalScope();
+}
+
+/// Resolve a DW_TAG_imported_declaration namespace alias (e.g.
+/// `namespace C = B::C;`) to the actual DW_TAG_namespace DIE it ultimately
+/// refers to, following chains of aliases (`namespace G = F;` where `F` is
+/// itself an alias). Returns an invalid DIE if \p die is not an alias that
+/// resolves to a namespace.
+static DWARFDIE ResolveNamespaceAliasDIE(DWARFDIE die) {
+  // Guard against pathological cycles in the debug info.
+  for (unsigned depth = 0; die && depth < 64; ++depth) {
+    if (die.Tag() == DW_TAG_namespace)
+      return die;
+    if (die.Tag() != DW_TAG_imported_declaration)
+      return DWARFDIE();
+    die = die.GetAttributeValueAsReferenceDIE(DW_AT_import);
+  }
+  return DWARFDIE();
+}
+
+/// Build the interned Namespace for a DW_TAG_namespace DIE \p ns_die itself
+/// (i.e. including \p ns_die, not just its parents). Also accepts a
+/// DW_TAG_imported_declaration namespace alias, transparently building the
+/// namespace it aliases (mirroring Clang, where an alias resolves to the
+/// aliased NamespaceDecl). Returns null if \p ns_die is not (or does not alias)
+/// a namespace.
+static const clike::Namespace *BuildNamespaceForDIE(const DWARFDIE &ns_die,
+                                                    clike::Builder &builder) {
+  DWARFDIE resolved = ResolveNamespaceAliasDIE(ns_die);
+  if (!resolved)
+    return nullptr;
+  const clike::Namespace *parent = BuildDeclNamespace(resolved, builder);
+  const char *name = resolved.GetName();
+  bool is_inline =
+      resolved.GetAttributeValueAsUnsigned(DW_AT_export_symbols, 0) != 0;
+  return builder.GetNamespace(name ? name : "", parent, is_inline);
+}
+
 /// The unqualified spelling of a named type DIE, including any reconstructed
 /// template arguments (e.g. "FwdTemplateClass<int>"). This mirrors
 /// GetDIEQualifiedName but omits the enclosing namespace/class scopes, since
@@ -471,12 +542,28 @@ static clike::Identifier GetTypeUnqualifiedName(const DWARFDIE &die,
 
 CompilerDeclContext
 DWARFASTParserClike::GetDeclContextForUIDFromDWARF(const DWARFDIE &die) {
-  return CompilerDeclContext();
+  // The decl context *of* a DIE. For a namespace DIE that is the namespace
+  // itself (this backs SymbolFileDWARF::FindNamespace, which the expression
+  // evaluator uses to discover a C++ namespace by name); for any other entity
+  // (e.g. a function, so an expression evaluated in a namespaced frame can
+  // resolve unqualified names in that namespace) it is the enclosing namespace.
+  clike::Builder builder(m_ts);
+  const clike::Namespace *ns = (die.Tag() == DW_TAG_namespace ||
+                                die.Tag() == DW_TAG_imported_declaration)
+                                   ? BuildNamespaceForDIE(die, builder)
+                                   : BuildDeclNamespace(die, builder);
+  return m_ts.GetCompilerDeclContext(ns);
 }
 
 CompilerDeclContext
 DWARFASTParserClike::GetDeclContextContainingUIDFromDWARF(const DWARFDIE &die) {
-  return CompilerDeclContext();
+  // The containing context of a DIE is the innermost enclosing namespace (used
+  // by DIEInDeclContext to check whether a candidate namespace lives in a given
+  // parent scope). A null chain means the global namespace, which has no valid
+  // CompilerDeclContext.
+  clike::Builder builder(m_ts);
+  const clike::Namespace *ns = BuildDeclNamespace(die, builder);
+  return m_ts.GetCompilerDeclContext(ns);
 }
 
 TypeSP DWARFASTParserClike::ParseStructureType(const DWARFDIE &die) {
@@ -499,8 +586,8 @@ TypeSP DWARFASTParserClike::ParseStructureType(const DWARFDIE &die) {
   {
     clike::Builder builder(m_ts);
     compiler_type = builder.CreateRecordType(
-        builder.GetGlobalScope(), name.GetStringRef(), byte_size, is_union,
-        is_class_keyword, GetTypeUnqualifiedName(die, builder));
+        BuildTypeDeclContext(die, builder), name.GetStringRef(), byte_size,
+        is_union, is_class_keyword, GetTypeUnqualifiedName(die, builder));
   }
 
   Declaration decl = GetDIEDeclaration(die);
@@ -659,7 +746,7 @@ TypeSP DWARFASTParserClike::ParseTypedef(const DWARFDIE &die) {
     if (!underlying_type)
       underlying_type = ts.GetVoidType();
     typedef_type =
-        ts.CreateTypedefType(ts.GetGlobalScope(), name.GetStringRef(),
+        ts.CreateTypedefType(BuildTypeDeclContext(die, ts), name.GetStringRef(),
                              underlying_type, GetTypeUnqualifiedName(die, ts));
   }
 
@@ -837,8 +924,9 @@ TypeSP DWARFASTParserClike::ParseEnum(const DWARFDIE &die) {
                                            /*implicitTrunc=*/true));
     }
     enum_type = ts.CreateEnumType(
-        ts.GetGlobalScope(), name.GetStringRef(), byte_size, underlying_type,
-        is_scoped, std::move(enumerators), GetTypeUnqualifiedName(die, ts));
+        BuildTypeDeclContext(die, ts), name.GetStringRef(), byte_size,
+        underlying_type, is_scoped, std::move(enumerators),
+        GetTypeUnqualifiedName(die, ts));
   }
 
   Declaration decl = GetDIEDeclaration(die);

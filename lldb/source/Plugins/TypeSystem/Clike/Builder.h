@@ -126,6 +126,10 @@ public:
   /// declaration context of types that are not nested in any scope.
   const DeclarationContext &GetGlobalScope();
 
+  /// Intern a namespace (see Context::GetNamespace).
+  const Namespace *GetNamespace(llvm::StringRef name, const Namespace *parent,
+                                bool is_inline);
+
   // Structural completion of a record type.
   void SetRecordComplete(RecordType &record);
   /// Record the size of \p record, created from a forward declaration (which
