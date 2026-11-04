@@ -39,7 +39,8 @@ ObjectContainerSP ObjectContainer::FindPlugin(const lldb::ModuleSP &module_sp,
   if (!module_sp)
     return {};
 
-  LLDB_SCOPED_TIMERF("ObjectContainer::FindPlugin (module = "
+  LLDB_SCOPED_TIMERF(ObjectContainer::FindPlugin,
+                     "(module = "
                      "%s, process = %p, header_addr = "
                      "0x%" PRIx64 ")",
                      module_sp->GetFileSpec().GetPath().c_str(),

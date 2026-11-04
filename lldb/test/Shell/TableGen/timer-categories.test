@@ -1,0 +1,70 @@
+# Test the checks and output of the lldb-tblgen timer category backends.
+
+# RUN: split-file %s %t
+
+# RUN: lldb-tblgen -gen-lldb-timer-categories %t/valid.td | FileCheck %s --check-prefix=TREE
+# TREE:      namespace Expression {
+# TREE-NEXT: namespace Cxx {
+# TREE-NEXT: inline constexpr Timer::CategoryID Execute{0};
+# TREE-NEXT: inline constexpr Timer::CategoryID Parse{1};
+# TREE-NEXT: } // namespace Cxx
+# TREE-NEXT: inline constexpr Timer::CategoryID Total{2};
+# TREE-NEXT: } // namespace Expression
+# TREE-NEXT: namespace Module {
+# TREE-NEXT: inline constexpr Timer::CategoryID GetObjectFile{3};
+# TREE-NEXT: } // namespace Module
+
+# RUN: lldb-tblgen -gen-lldb-timer-category-infos %t/valid.td | FileCheck %s --check-prefix=INFOS
+# INFOS:      static constexpr TimerCategoryInfo g_categories[] = {
+# INFOS-NEXT:     {"Expression.Cxx.Execute"},
+# INFOS-NEXT:     {"Expression.Cxx.Parse"},
+# INFOS-NEXT:     {"Expression.Total"},
+# INFOS-NEXT:     {"Module.GetObjectFile"},
+# INFOS-NEXT: };
+
+# RUN: not lldb-tblgen -gen-lldb-timer-categories %t/duplicate.td 2>&1 | FileCheck %s --check-prefix=DUPLICATE
+# DUPLICATE: duplicate.td:4:1: error: duplicate timer category 'A.B'
+# DUPLICATE: duplicate.td:2:1: note: previous definition is here
+
+# RUN: not lldb-tblgen -gen-lldb-timer-categories %t/nested.td 2>&1 | FileCheck %s --check-prefix=NESTED
+# NESTED: nested.td:3:1: error: timer category 'A.B.C' is nested in timer category 'A.B'
+# NESTED: nested.td:2:1: note: timer category 'A.B' is defined here
+
+# RUN: not lldb-tblgen -gen-lldb-timer-categories %t/empty-component.td 2>&1 | FileCheck %s --check-prefix=EMPTY
+# EMPTY: empty-component.td:2:1: error: timer category 'A..B' contains the component '' which is not a C++ identifier
+
+# RUN: not lldb-tblgen -gen-lldb-timer-categories %t/not-identifier.td 2>&1 | FileCheck %s --check-prefix=IDENTIFIER
+# IDENTIFIER: not-identifier.td:2:1: error: timer category 'Expression.c++' contains the component 'c++' which is not a C++ identifier
+
+# RUN: not lldb-tblgen -gen-lldb-timer-categories %t/leading-digit.td 2>&1 | FileCheck %s --check-prefix=DIGIT
+# DIGIT: leading-digit.td:2:1: error: timer category 'A.1B' contains the component '1B' which is not a C++ identifier
+
+#--- valid.td
+class TimerCategory<string name> { string Name = name; }
+def : TimerCategory<"Module.GetObjectFile">;
+def : TimerCategory<"Expression.Cxx.Parse">;
+def : TimerCategory<"Expression.Total">;
+def : TimerCategory<"Expression.Cxx.Execute">;
+
+#--- duplicate.td
+class TimerCategory<string name> { string Name = name; }
+def : TimerCategory<"A.B">;
+def : TimerCategory<"A.C">;
+def : TimerCategory<"A.B">;
+
+#--- nested.td
+class TimerCategory<string name> { string Name = name; }
+def : TimerCategory<"A.B">;
+def : TimerCategory<"A.B.C">;
+
+#--- empty-component.td
+class TimerCategory<string name> { string Name = name; }
+def : TimerCategory<"A..B">;
+
+#--- not-identifier.td
+class TimerCategory<string name> { string Name = name; }
+def : TimerCategory<"Expression.c++">;
+
+#--- leading-digit.td
+class TimerCategory<string name> { string Name = name; }
+def : TimerCategory<"A.1B">;

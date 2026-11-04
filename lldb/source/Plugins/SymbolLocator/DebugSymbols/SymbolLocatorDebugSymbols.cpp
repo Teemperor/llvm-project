@@ -774,7 +774,8 @@ std::optional<FileSpec> SymbolLocatorDebugSymbols::LocateExecutableSymbolFile(
   const UUID *uuid = module_spec.GetUUIDPtr();
 
   LLDB_SCOPED_TIMERF(
-      "LocateExecutableSymbolFileDsym (file = %s, arch = %s, uuid = %p)",
+      SymbolLocatorDebugSymbols::LocateExecutableSymbolFile,
+      "(file = %s, arch = %s, uuid = %p)",
       exec_fspec ? exec_fspec->GetFilename().nonEmptyOr("<NULL>").str().c_str()
                  : "<NULL>",
       arch ? arch->GetArchitectureName() : "<NULL>", (const void *)uuid);

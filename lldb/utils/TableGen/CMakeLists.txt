@@ -14,6 +14,7 @@ if (NOT DEFINED LLDB_TABLEGEN_EXE)
       LLDBPropertyDefEmitter.cpp
       LLDBTableGen.cpp
       LLDBTableGenUtils.cpp
+      LLDBTimerCategoryEmitter.cpp
       )
   endif()
 endif()

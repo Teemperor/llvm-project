@@ -68,7 +68,7 @@ void DWARFDebugAranges::AppendRange(dw_offset_t offset, dw_addr_t low_pc,
 }
 
 void DWARFDebugAranges::Sort(bool minimize) {
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(DWARFDebugAranges::Sort);
 
   m_aranges.Sort();
   m_aranges.CombineConsecutiveEntriesWithEqualData();

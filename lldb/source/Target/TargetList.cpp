@@ -249,7 +249,7 @@ Status TargetList::CreateTargetInternal(Debugger &debugger,
                                         LoadDependentFiles load_dependent_files,
                                         lldb::PlatformSP &platform_sp,
                                         lldb::TargetSP &target_sp) {
-  LLDB_SCOPED_TIMERF("TargetList::CreateTarget (file = '%s', arch = '%s')",
+  LLDB_SCOPED_TIMERF(TargetList::CreateTarget, "(file = '%s', arch = '%s')",
                      user_exe_path.str().c_str(),
                      specified_arch.GetArchitectureName());
   Status error;

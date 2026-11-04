@@ -246,7 +246,7 @@ void Symtab::InitNameIndexes() {
 
   m_name_indexes_computed = true;
   ElapsedTime elapsed(m_objfile->GetModule()->GetSymtabIndexTime());
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(Symtab::InitNameIndexes);
 
   // Collect all loaded language plugins.
   std::vector<Language *> languages;
@@ -450,7 +450,7 @@ void Symtab::PreloadSymbols() {
 void Symtab::AppendSymbolNamesToMap(const IndexCollection &indexes,
                                     bool add_demangled, bool add_mangled,
                                     NameToIndexMap &name_to_index_map) const {
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(Symtab::AppendSymbolNamesToMap);
   if (add_demangled || add_mangled) {
     std::lock_guard<std::recursive_mutex> guard(m_mutex);
 
@@ -604,7 +604,7 @@ struct SymbolIndexComparator {
 void Symtab::SortSymbolIndexesByValue(std::vector<uint32_t> &indexes,
                                       bool remove_duplicates) const {
   std::lock_guard<std::recursive_mutex> guard(m_mutex);
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(Symtab::SortSymbolIndexesByValue);
   // No need to sort if we have zero or one items...
   if (indexes.size() <= 1)
     return;
@@ -676,7 +676,7 @@ uint32_t Symtab::AppendSymbolIndexesWithName(ConstString symbol_name,
                                              std::vector<uint32_t> &indexes) {
   std::lock_guard<std::recursive_mutex> guard(m_mutex);
 
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(Symtab::AppendSymbolIndexesWithName);
   if (symbol_name) {
     const size_t old_size = indexes.size();
     InitNameIndexes();
@@ -814,7 +814,7 @@ void Symtab::FindAllSymbolsWithNameAndType(
     Visibility symbol_visibility, std::vector<uint32_t> &symbol_indexes) {
   std::lock_guard<std::recursive_mutex> guard(m_mutex);
 
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(Symtab::FindAllSymbolsWithNameAndType);
   // Initialize all of the lookup by name indexes before converting NAME to a
   // uniqued string NAME_STR below.
   InitNameIndexes();
@@ -844,7 +844,7 @@ Symbol *Symtab::FindFirstSymbolWithNameAndType(ConstString name,
                                                Debug symbol_debug_type,
                                                Visibility symbol_visibility) {
   std::lock_guard<std::recursive_mutex> guard(m_mutex);
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(Symtab::FindFirstSymbolWithNameAndType);
   InitNameIndexes();
 
   if (name) {

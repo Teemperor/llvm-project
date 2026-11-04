@@ -28,6 +28,8 @@ enum ActionType {
   GenOptionDefs,
   GenPropertyDefs,
   GenPropertyEnumDefs,
+  GenTimerCategories,
+  GenTimerCategoryInfos,
 };
 
 static cl::opt<ActionType> Action(
@@ -41,7 +43,12 @@ static cl::opt<ActionType> Action(
                clEnumValN(GenPropertyDefs, "gen-lldb-property-defs",
                           "Generate lldb property definitions"),
                clEnumValN(GenPropertyEnumDefs, "gen-lldb-property-enum-defs",
-                          "Generate lldb property enum definitions")));
+                          "Generate lldb property enum definitions"),
+               clEnumValN(GenTimerCategories, "gen-lldb-timer-categories",
+                          "Generate lldb timer categories"),
+               clEnumValN(GenTimerCategoryInfos,
+                          "gen-lldb-timer-category-infos",
+                          "Generate lldb timer category infos")));
 
 static bool LLDBTableGenMain(raw_ostream &OS, const RecordKeeper &Records) {
   switch (Action) {
@@ -59,6 +66,12 @@ static bool LLDBTableGenMain(raw_ostream &OS, const RecordKeeper &Records) {
     break;
   case GenPropertyEnumDefs:
     EmitPropertyEnumDefs(Records, OS);
+    break;
+  case GenTimerCategories:
+    EmitTimerCategories(Records, OS);
+    break;
+  case GenTimerCategoryInfos:
+    EmitTimerCategoryInfos(Records, OS);
     break;
   }
   return false;

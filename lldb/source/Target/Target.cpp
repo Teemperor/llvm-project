@@ -1715,9 +1715,9 @@ void Target::RebuildModuleListWithExecutable(
     });
 
     ElapsedTime elapsed(m_stats.GetCreateTime());
-    LLDB_SCOPED_TIMERF(
-        "Target::RebuildModuleListWithExecutable (executable = '%s')",
-        executable_sp->GetFileSpec().GetPath().c_str());
+    LLDB_SCOPED_TIMERF(Target::RebuildModuleListWithExecutable,
+                       "(executable = '%s')",
+                       executable_sp->GetFileSpec().GetPath().c_str());
 
     const bool notify = true;
     // Mark it before appending, because the append notifies observers that

@@ -281,7 +281,8 @@ protected:
       }
 
       const char *file_path = command.GetArgumentAtIndex(0);
-      LLDB_SCOPED_TIMERF("(lldb) target create '%s'", file_path);
+      LLDB_SCOPED_TIMERF(CommandObjectTargetCreate::DoExecute, "(file = '%s')",
+                         file_path);
 
       bool must_set_platform_path = false;
 

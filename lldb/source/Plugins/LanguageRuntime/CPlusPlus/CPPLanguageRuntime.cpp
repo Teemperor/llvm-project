@@ -186,7 +186,7 @@ line_entry_helper(Target &target, const SymbolContext &sc, Symbol *symbol,
 CPPLanguageRuntime::LibCppStdFunctionCallableInfo
 CPPLanguageRuntime::FindLibCppStdFunctionCallableInfo(
     lldb::ValueObjectSP &valobj_sp) {
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(CPPLanguageRuntime::FindLibCppStdFunctionCallableInfo);
 
   LibCppStdFunctionCallableInfo optional_info;
 

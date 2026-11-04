@@ -10,6 +10,7 @@
 #define LLDB_UTILITY_TIMER_H
 
 #include "lldb/lldb-defines.h"
+#include "llvm/ADT/StringRef.h"
 #include "llvm/Support/Chrono.h"
 #include "llvm/Support/FormatVariadic.h"
 #include <atomic>
@@ -18,37 +19,38 @@
 namespace lldb_private {
 class Stream;
 
+/// Static information about a timer category. All timer categories are
+/// defined in lldb/Utility/TimerCategories.td.
+struct TimerCategoryInfo {
+  /// The full category name, e.g. "Module.GetObjectFile".
+  llvm::StringLiteral name;
+};
+
 /// \class Timer Timer.h "lldb/Utility/Timer.h"
 /// A timer class that simplifies common timing metrics.
 
 class Timer {
 public:
-  class Category {
-  public:
-    explicit Category(const char *category_name);
-    llvm::StringRef GetName() { return m_name; }
+  /// Identifies a timer category. Every category defined in
+  /// TimerCategories.td has a constant in the lldb_private::timers namespace,
+  /// e.g. "Module.GetObjectFile" is timers::Module::GetObjectFile.
+  enum class CategoryID : uint32_t {};
 
-  private:
-    friend class Timer;
-    const char *m_name;
-    std::atomic<uint64_t> m_nanos;
-    std::atomic<uint64_t> m_nanos_total;
-    std::atomic<uint64_t> m_count;
-    std::atomic<Category *> m_next;
+  static const TimerCategoryInfo &GetCategoryInfo(CategoryID id);
 
-    Category(const Category &) = delete;
-    const Category &operator=(const Category &) = delete;
-  };
+  /// Starts a timer that is only described by its category name.
+  explicit Timer(CategoryID category);
 
-  /// Default constructor.
-  Timer(Category &category, const char *format, ...)
+  /// Starts a timer with a message that is printed after the category name.
+  Timer(CategoryID category, const char *format, ...)
 #if !defined(_MSC_VER)
-  // MSVC appears to have trouble recognizing the this argument in the constructor.
+      // MSVC appears to have trouble recognizing the this argument in the
+      // constructor.
       __attribute__((format(printf, 3, 4)))
 #endif
-    ;
+      ;
 
-  Timer(Category &category, const llvm::formatv_object_base &obj);
+  Timer(CategoryID category, const llvm::formatv_object_base &obj);
 
   /// Destructor
   ~Timer();
@@ -69,7 +71,7 @@ protected:
 
   void Start(llvm::function_ref<std::string()> start_message_func);
 
-  Category &m_category;
+  CategoryID m_category;
   TimePoint m_total_start;
   TimePoint::duration m_child_duration{0};
 
@@ -81,18 +83,27 @@ private:
   const Timer &operator=(const Timer &) = delete;
 };
 
+/// The CategoryID constants of all timer categories, nested in namespaces that
+/// mirror the dot-separated category names.
+namespace timers {
+#include "lldb/Utility/TimerCategories.inc"
+} // namespace timers
+
 } // namespace lldb_private
 
-// Use a format string because LLVM_PRETTY_FUNCTION might not be a string
-// literal.
-#define LLDB_SCOPED_TIMER()                                                    \
-  static ::lldb_private::Timer::Category _cat(LLVM_PRETTY_FUNCTION);           \
-  ::lldb_private::Timer _scoped_timer(_cat, "%s", LLVM_PRETTY_FUNCTION)
-#define LLDB_SCOPED_TIMERF(...)                                                \
-  static ::lldb_private::Timer::Category _cat(LLVM_PRETTY_FUNCTION);           \
-  ::lldb_private::Timer _scoped_timer(_cat, __VA_ARGS__)
-#define LLDB_SCOPED_TIMERV(...)                                                \
-  static ::lldb_private::Timer::Category _cat(LLVM_PRETTY_FUNCTION);           \
-  ::lldb_private::Timer _scoped_timer(_cat, llvm::formatv(__VA_ARGS__))
+// The category is the path of a timer category in the lldb_private::timers
+// namespace, e.g. Module::GetObjectFile for the category "Module.GetObjectFile"
+// defined in lldb/Utility/TimerCategories.td. The category name identifies the
+// timer in the "log timers dump" output. When timers are displayed, the
+// category name is printed followed by the optional message, so the message
+// should only contain additional details.
+#define LLDB_SCOPED_TIMER(category)                                            \
+  ::lldb_private::Timer _scoped_timer{::lldb_private::timers::category}
+#define LLDB_SCOPED_TIMERF(category, ...)                                      \
+  ::lldb_private::Timer _scoped_timer(::lldb_private::timers::category,        \
+                                      __VA_ARGS__)
+#define LLDB_SCOPED_TIMERV(category, ...)                                      \
+  ::lldb_private::Timer _scoped_timer(::lldb_private::timers::category,        \
+                                      llvm::formatv(__VA_ARGS__))
 
 #endif // LLDB_UTILITY_TIMER_H

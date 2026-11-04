@@ -570,7 +570,8 @@ uint32_t Module::ResolveSymbolContextsForFileSpec(
     const FileSpec &file_spec, uint32_t line, bool check_inlines,
     lldb::SymbolContextItem resolve_scope, SymbolContextList &sc_list) {
   std::lock_guard<std::recursive_mutex> guard(m_mutex);
-  LLDB_SCOPED_TIMERF("Module::ResolveSymbolContextForFilePath (%s:%u, "
+  LLDB_SCOPED_TIMERF(Module::ResolveSymbolContextsForFileSpec,
+                     "(%s:%u, "
                      "check_inlines = %s, resolve_scope = 0x%8.8x)",
                      file_spec.GetPath().c_str(), line,
                      check_inlines ? "yes" : "no", resolve_scope);
@@ -988,7 +989,7 @@ SymbolFile *Module::GetSymbolFile(bool can_create, Stream *feedback_strm) {
       }
       ObjectFile *obj_file = GetObjectFile();
       if (obj_file != nullptr) {
-        LLDB_SCOPED_TIMER();
+        LLDB_SCOPED_TIMER(Module::GetSymbolFile);
         m_symfile_up.reset(
             SymbolVendor::FindPlugin(shared_from_this(), feedback_strm));
         m_did_load_symfile = true;
@@ -1179,7 +1180,7 @@ ObjectFile *Module::GetObjectFile() {
   if (!m_did_load_objfile.load()) {
     std::lock_guard<std::recursive_mutex> guard(m_mutex);
     if (!m_did_load_objfile.load()) {
-      LLDB_SCOPED_TIMERF("Module::GetObjectFile () module = %s",
+      LLDB_SCOPED_TIMERF(Module::GetObjectFile, "(module = %s)",
                          GetFileSpec().GetFilename().str().c_str());
       lldb::offset_t data_offset = 0;
       lldb::offset_t file_size = 0;
@@ -1273,9 +1274,8 @@ SectionList *Module::GetUnifiedSectionList() {
 
 const Symbol *Module::FindFirstSymbolWithNameAndType(ConstString name,
                                                      SymbolType symbol_type) {
-  LLDB_SCOPED_TIMERF(
-      "Module::FindFirstSymbolWithNameAndType (name = %s, type = %i)",
-      name.AsCString(""), symbol_type);
+  LLDB_SCOPED_TIMERF(Module::FindFirstSymbolWithNameAndType,
+                     "(name = %s, type = %i)", name.AsCString(""), symbol_type);
   if (Symtab *symtab = GetSymtab())
     return symtab->FindFirstSymbolWithNameAndType(
         name, symbol_type, Symtab::eDebugAny, Symtab::eVisibilityAny);
@@ -1301,7 +1301,7 @@ void Module::SymbolIndicesToSymbolContextList(
 
 void Module::FindFunctionSymbols(ConstString name, uint32_t name_type_mask,
                                  SymbolContextList &sc_list) {
-  LLDB_SCOPED_TIMERF("Module::FindSymbolsFunctions (name = %s, mask = 0x%8.8x)",
+  LLDB_SCOPED_TIMERF(Module::FindFunctionSymbols, "(name = %s, mask = 0x%8.8x)",
                      name.AsCString(""), name_type_mask);
   if (Symtab *symtab = GetSymtab())
     symtab->FindFunctionSymbols(name, name_type_mask, sc_list);
@@ -1324,9 +1324,9 @@ void Module::FindSymbolsMatchingRegExAndType(
     SymbolContextList &sc_list, Mangled::NamePreference mangling_preference) {
   // No need to protect this call using m_mutex all other method calls are
   // already thread safe.
-  LLDB_SCOPED_TIMERF(
-      "Module::FindSymbolsMatchingRegExAndType (regex = %s, type = %i)",
-      regex.GetText().str().c_str(), symbol_type);
+  LLDB_SCOPED_TIMERF(Module::FindSymbolsMatchingRegExAndType,
+                     "(regex = %s, type = %i)", regex.GetText().str().c_str(),
+                     symbol_type);
   if (Symtab *symtab = GetSymtab()) {
     std::vector<uint32_t> symbol_indexes;
     symtab->FindAllSymbolsMatchingRexExAndType(

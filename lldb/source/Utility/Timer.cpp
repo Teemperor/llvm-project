@@ -12,7 +12,6 @@
 #include "llvm/Support/Signposts.h"
 
 #include <algorithm>
-#include <map>
 #include <mutex>
 #include <utility>
 #include <vector>
@@ -24,12 +23,32 @@
 
 using namespace lldb_private;
 
+// Defines g_categories, the info of each timer category indexed by its ID.
+#include "lldb/Utility/TimerCategoryInfos.inc"
+
 #define TIMER_INDENT_AMOUNT 2
 
 namespace {
 typedef std::vector<Timer *> TimerStack;
-static std::atomic<Timer::Category *> g_categories;
+
+/// The accumulated times of a single timer category.
+struct CategoryCounters {
+  /// Time spent in this category excluding time spent in nested timers.
+  std::atomic<uint64_t> nanos{0};
+  /// Time spent in this category including time spent in nested timers.
+  std::atomic<uint64_t> nanos_total{0};
+  std::atomic<uint64_t> count{0};
+
+  void Reset() {
+    nanos.store(0, std::memory_order_release);
+    nanos_total.store(0, std::memory_order_release);
+    count.store(0, std::memory_order_release);
+  }
+};
 } // end of anonymous namespace
+
+/// The counters of each timer category indexed by its ID.
+static CategoryCounters g_counters[std::size(g_categories)];
 
 /// Allows llvm::Timer to emit signposts when supported.
 static llvm::ManagedStatic<llvm::SignpostEmitter> Signposts;
@@ -46,20 +65,15 @@ static TimerStack &GetTimerStackForCurrentThread() {
   return g_stack;
 }
 
-Timer::Category::Category(const char *cat) : m_name(cat) {
-  m_nanos.store(0, std::memory_order_release);
-  m_nanos_total.store(0, std::memory_order_release);
-  m_count.store(0, std::memory_order_release);
-  Category *expected = g_categories;
-  do {
-    m_next = expected;
-  } while (!g_categories.compare_exchange_weak(expected, this));
+const TimerCategoryInfo &Timer::GetCategoryInfo(CategoryID id) {
+  return g_categories[static_cast<size_t>(id)];
 }
 
 void Timer::SetQuiet(bool value) { g_quiet = value; }
 
 void Timer::Start(llvm::function_ref<std::string()> start_message_func) {
-  Signposts->startInterval(this, m_category.GetName());
+  const char *name = GetCategoryInfo(m_category).name.data();
+  Signposts->startInterval(this, name);
   TimerStack &stack = GetTimerStackForCurrentThread();
 
   stack.push_back(this);
@@ -68,15 +82,22 @@ void Timer::Start(llvm::function_ref<std::string()> start_message_func) {
 
     // Indent
     ::fprintf(stdout, "%*s", int(stack.size() - 1) * TIMER_INDENT_AMOUNT, "");
-    // Print formatted string
+    // Print the category name followed by the formatted message (if any).
+    ::fprintf(stdout, "%s", name);
     const std::string start_message = start_message_func();
-    ::fprintf(stdout, "%s", start_message.c_str());
+    if (!start_message.empty())
+      ::fprintf(stdout, " %s", start_message.c_str());
     // Newline
     ::fprintf(stdout, "\n");
   }
 }
 
-Timer::Timer(Timer::Category &category, const char *format, ...)
+Timer::Timer(CategoryID category)
+    : m_category(category), m_total_start(std::chrono::steady_clock::now()) {
+  Start([]() { return std::string(); });
+}
+
+Timer::Timer(CategoryID category, const char *format, ...)
     : m_category(category), m_total_start(std::chrono::steady_clock::now()) {
   va_list args;
   va_start(args, format);
@@ -89,7 +110,7 @@ Timer::Timer(Timer::Category &category, const char *format, ...)
   va_end(args);
 }
 
-Timer::Timer(Timer::Category &category, const llvm::formatv_object_base &obj)
+Timer::Timer(CategoryID category, const llvm::formatv_object_base &obj)
     : m_category(category), m_total_start(std::chrono::steady_clock::now()) {
   Start([&]() -> std::string { return obj.str(); });
 }
@@ -101,7 +122,7 @@ Timer::~Timer() {
   auto total_dur = stop_time - m_total_start;
   auto timer_dur = total_dur - m_child_duration;
 
-  Signposts->endInterval(this, m_category.GetName());
+  Signposts->endInterval(this, GetCategoryInfo(m_category).name);
 
   TimerStack &stack = GetTimerStackForCurrentThread();
   if (!g_quiet && stack.size() <= g_display_depth) {
@@ -118,59 +139,32 @@ Timer::~Timer() {
     stack.back()->ChildDuration(total_dur);
 
   // Keep total results for each category so we can dump results.
-  m_category.m_nanos += std::chrono::nanoseconds(timer_dur).count();
-  m_category.m_nanos_total += std::chrono::nanoseconds(total_dur).count();
-  m_category.m_count++;
+  CategoryCounters &counters = g_counters[static_cast<size_t>(m_category)];
+  counters.nanos += std::chrono::nanoseconds(timer_dur).count();
+  counters.nanos_total += std::chrono::nanoseconds(total_dur).count();
+  counters.count++;
 }
 
 void Timer::SetDisplayDepth(uint32_t depth) { g_display_depth = depth; }
 
-/* binary function predicate:
- * - returns whether a person is less than another person
- */
-namespace {
-struct Stats {
-  const char *name;
-  uint64_t nanos;
-  uint64_t nanos_total;
-  uint64_t count;
-};
-} // namespace
-
-static bool CategoryMapIteratorSortCriterion(const Stats &lhs,
-                                             const Stats &rhs) {
-  return lhs.nanos > rhs.nanos;
-}
-
 void Timer::ResetCategoryTimes() {
-  for (Category *i = g_categories; i; i = i->m_next) {
-    i->m_nanos.store(0, std::memory_order_release);
-    i->m_nanos_total.store(0, std::memory_order_release);
-    i->m_count.store(0, std::memory_order_release);
-  }
+  for (CategoryCounters &counters : g_counters)
+    counters.Reset();
 }
 
 void Timer::DumpCategoryTimes(Stream &s) {
-  std::vector<Stats> sorted;
-  for (Category *i = g_categories; i; i = i->m_next) {
-    uint64_t nanos = i->m_nanos.load(std::memory_order_acquire);
-    if (nanos) {
-      uint64_t nanos_total = i->m_nanos_total.load(std::memory_order_acquire);
-      uint64_t count = i->m_count.load(std::memory_order_acquire);
-      Stats stats{i->m_name, nanos, nanos_total, count};
-      sorted.push_back(stats);
-    }
-  }
-  if (sorted.empty())
-    return; // Later code will break without any elements.
-
-  // Sort by time
-  llvm::sort(sorted, CategoryMapIteratorSortCriterion);
-
-  for (const auto &stats : sorted)
+  // The categories are sorted by name.
+  for (size_t i = 0; i < std::size(g_counters); ++i) {
+    const CategoryCounters &counters = g_counters[i];
+    uint64_t count = counters.count.load(std::memory_order_acquire);
+    if (count == 0)
+      continue;
+    uint64_t nanos = counters.nanos.load(std::memory_order_acquire);
+    uint64_t nanos_total = counters.nanos_total.load(std::memory_order_acquire);
     s.Printf("%.9f sec (total: %.3fs; child: %.3fs; count: %" PRIu64
              ") for %s\n",
-             stats.nanos / 1000000000., stats.nanos_total / 1000000000.,
-             (stats.nanos_total - stats.nanos) / 1000000000., stats.count,
-             stats.name);
+             nanos / 1000000000., nanos_total / 1000000000.,
+             (nanos_total - nanos) / 1000000000., count,
+             g_categories[i].name.data());
+  }
 }

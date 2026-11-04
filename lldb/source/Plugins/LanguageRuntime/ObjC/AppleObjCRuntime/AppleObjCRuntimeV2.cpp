@@ -2694,7 +2694,7 @@ lldb::addr_t AppleObjCRuntimeV2::GetSharedCacheBaseAddress() {
 }
 
 void AppleObjCRuntimeV2::UpdateISAToDescriptorMapIfNeeded() {
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(AppleObjCRuntimeV2::UpdateISAToDescriptorMapIfNeeded);
 
   Log *log = GetLog(LLDBLog::Process | LLDBLog::Types);
 

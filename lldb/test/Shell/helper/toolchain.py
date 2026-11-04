@@ -165,6 +165,7 @@ def use_lldb_substitutions(config):
             unresolved="ignore",
         ),
         "lldb-test",
+        "lldb-tblgen",
         "lldb-dap",
         "lldb-mcp",
         ToolSubst(

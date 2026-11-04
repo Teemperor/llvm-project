@@ -66,7 +66,7 @@ DisassemblerSP Disassembler::FindPlugin(const ArchSpec &arch,
                                         const char *flavor, const char *cpu,
                                         const char *features,
                                         const char *plugin_name) {
-  LLDB_SCOPED_TIMERF("Disassembler::FindPlugin (arch = %s, plugin_name = %s)",
+  LLDB_SCOPED_TIMERF(Disassembler::FindPlugin, "(arch = %s, plugin_name = %s)",
                      arch.GetArchitectureName(), plugin_name);
 
   DisassemblerCreateInstance create_callback = nullptr;

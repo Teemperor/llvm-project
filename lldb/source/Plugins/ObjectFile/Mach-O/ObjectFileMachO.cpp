@@ -2116,7 +2116,7 @@ void ObjectFileMachO::ParseSymtab(Symtab &symtab) {
 
   const FileSpec &file = m_file ? m_file : module_sp->GetFileSpec();
   llvm::StringRef file_name = file.GetFilename().nonEmptyOr("<Unknown>");
-  LLDB_SCOPED_TIMERF("ObjectFileMachO::ParseSymtab () module = %s",
+  LLDB_SCOPED_TIMERF(ObjectFileMachO::ParseSymtab, "(module = %s)",
                      file_name.str().c_str());
   LLDB_LOG(log, "Parsing symbol table for {0}", file_name);
   Progress progress("Parsing symbol table", file_name.str());

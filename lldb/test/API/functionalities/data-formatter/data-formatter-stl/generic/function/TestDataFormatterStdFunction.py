@@ -22,7 +22,7 @@ class StdFunctionTestCase(TestBase):
         )
         if not skip_find_function:
             self.expect(
-                "log timers dump", substrs=["lldb_private::CompileUnit::FindFunction"]
+                "log timers dump", substrs=["CompileUnit.FindFunction"]
             )
 
         self.runCmd("log timers reset")
@@ -32,7 +32,7 @@ class StdFunctionTestCase(TestBase):
         self.expect(
             "log timers dump",
             matching=False,
-            substrs=["lldb_private::CompileUnit::FindFunction"],
+            substrs=["CompileUnit.FindFunction"],
         )
 
     def do_test(self):

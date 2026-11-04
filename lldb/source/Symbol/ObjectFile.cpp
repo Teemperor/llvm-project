@@ -51,12 +51,13 @@ ObjectFileSP ObjectFile::FindPlugin(const lldb::ModuleSP &module_sp,
                                     lldb::offset_t file_size,
                                     DataExtractorSP extractor_sp,
                                     lldb::offset_t &data_offset) {
-  LLDB_SCOPED_TIMERF(
-      "ObjectFile::FindPlugin (module = %s, file = %p, file_offset = "
-      "0x%8.8" PRIx64 ", file_size = 0x%8.8" PRIx64 ")",
-      module_sp->GetFileSpec().GetPath().c_str(),
-      static_cast<const void *>(file), static_cast<uint64_t>(file_offset),
-      static_cast<uint64_t>(file_size));
+  LLDB_SCOPED_TIMERF(ObjectFile::FindPlugin,
+                     "(module = %s, file = %p, file_offset = "
+                     "0x%8.8" PRIx64 ", file_size = 0x%8.8" PRIx64 ")",
+                     module_sp->GetFileSpec().GetPath().c_str(),
+                     static_cast<const void *>(file),
+                     static_cast<uint64_t>(file_offset),
+                     static_cast<uint64_t>(file_size));
 
   if (!module_sp)
     return {};
@@ -162,7 +163,8 @@ ObjectFileSP ObjectFile::FindPlugin(const lldb::ModuleSP &module_sp,
   ObjectFileSP object_file_sp;
 
   if (module_sp) {
-    LLDB_SCOPED_TIMERF("ObjectFile::FindPlugin (module = "
+    LLDB_SCOPED_TIMERF(ObjectFile::FindPluginInMemory,
+                       "(module = "
                        "%s, process = %p, header_addr = "
                        "0x%" PRIx64 ")",
                        module_sp->GetFileSpec().GetPath().c_str(),

@@ -80,7 +80,7 @@ llvm::Error SystemInitializerCommon::Initialize() {
   if (error)
     return error;
 
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(SystemInitializerCommon::Initialize);
 
   process_gdb_remote::ProcessGDBRemoteLog::Initialize();
 
@@ -96,7 +96,7 @@ llvm::Error SystemInitializerCommon::Initialize() {
 }
 
 void SystemInitializerCommon::Terminate() {
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(SystemInitializerCommon::Terminate);
 
 #if defined(__linux__) || defined(__FreeBSD__) || defined(__NetBSD__) ||       \
     defined(__OpenBSD__)

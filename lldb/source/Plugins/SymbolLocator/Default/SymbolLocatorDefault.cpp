@@ -76,7 +76,8 @@ std::optional<ModuleSpec> SymbolLocatorDefault::LocateExecutableObjectFile(
   const ArchSpec *arch = module_spec.GetArchitecturePtr();
   const UUID *uuid = module_spec.GetUUIDPtr();
   LLDB_SCOPED_TIMERF(
-      "LocateExecutableObjectFile (file = %s, arch = %s, uuid = %p)",
+      SymbolLocatorDefault::LocateExecutableObjectFile,
+      "(file = %s, arch = %s, uuid = %p)",
       exec_fspec ? exec_fspec.GetFilename().nonEmptyOr("<NULL>").str().c_str()
                  : "<NULL>",
       arch ? arch->GetArchitectureName() : "<NULL>", (const void *)uuid);

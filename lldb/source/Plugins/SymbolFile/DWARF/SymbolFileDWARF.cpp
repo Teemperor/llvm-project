@@ -735,7 +735,7 @@ llvm::DWARFDebugAbbrev *SymbolFileDWARF::DebugAbbrev() {
 
 DWARFDebugInfo &SymbolFileDWARF::DebugInfo() {
   llvm::call_once(m_info_once_flag, [&] {
-    LLDB_SCOPED_TIMER();
+    LLDB_SCOPED_TIMER(SymbolFileDWARF::DebugInfo);
 
     m_info = std::make_unique<DWARFDebugInfo>(*this, m_context);
   });
@@ -1032,7 +1032,7 @@ XcodeSDKAndSysroot SymbolFileDWARF::ParseXcodeSDK(CompileUnit &comp_unit) {
 }
 
 size_t SymbolFileDWARF::ParseFunctions(CompileUnit &comp_unit) {
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(SymbolFileDWARF::ParseFunctions);
   std::lock_guard<std::recursive_mutex> guard(GetModuleMutex());
   DWARFUnit *dwarf_cu = GetDWARFCompileUnit(&comp_unit);
   if (!dwarf_cu)
@@ -2140,8 +2140,8 @@ uint32_t SymbolFileDWARF::ResolveSymbolContext(const Address &so_addr,
                                                SymbolContextItem resolve_scope,
                                                SymbolContext &sc) {
   std::lock_guard<std::recursive_mutex> guard(GetModuleMutex());
-  LLDB_SCOPED_TIMERF("SymbolFileDWARF::"
-                     "ResolveSymbolContext (so_addr = { "
+  LLDB_SCOPED_TIMERF(SymbolFileDWARF::ResolveSymbolContext,
+                     "(so_addr = { "
                      "section = %p, offset = 0x%" PRIx64
                      " }, resolve_scope = 0x%8.8x)",
                      static_cast<void *>(so_addr.GetSection().get()),
@@ -2773,7 +2773,7 @@ void SymbolFileDWARF::FindFunctions(const RegularExpression &regex,
                                     bool include_inlines,
                                     SymbolContextList &sc_list) {
   std::lock_guard<std::recursive_mutex> guard(GetModuleMutex());
-  LLDB_SCOPED_TIMERF("SymbolFileDWARF::FindFunctions (regex = '%s')",
+  LLDB_SCOPED_TIMERF(SymbolFileDWARF::FindFunctionsByRegex, "(regex = '%s')",
                      regex.GetText().str().c_str());
 
   Log *log = GetLog(DWARFLog::Lookups);

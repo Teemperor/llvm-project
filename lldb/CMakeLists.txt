@@ -167,6 +167,11 @@ endif()
 # TableGen
 add_subdirectory(utils/TableGen)
 
+# Timer.h includes the generated timer categories, so every LLDB target has to
+# wait for them to be generated.
+add_subdirectory(include/lldb/Utility)
+list(APPEND LLVM_COMMON_DEPENDS LLDBTimerCategoriesGen)
+
 add_subdirectory(source)
 add_subdirectory(tools)
 add_subdirectory(docs)

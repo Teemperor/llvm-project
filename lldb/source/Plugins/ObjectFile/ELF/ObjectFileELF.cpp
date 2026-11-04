@@ -699,8 +699,8 @@ ModuleSpecList ObjectFileELF::GetModuleSpecifications(
           uint32_t core_notes_crc = 0;
 
           if (!gnu_debuglink_crc) {
-            LLDB_SCOPED_TIMERF("Calculating module crc32 %s with size %" PRIu64
-                               " KiB",
+            LLDB_SCOPED_TIMERF(ObjectFileELF::CalculateCRC32,
+                               "(module = %s, size = %" PRIu64 " KiB)",
                                file.GetFilename().str().c_str(),
                                (length - file_offset) / 1024);
 

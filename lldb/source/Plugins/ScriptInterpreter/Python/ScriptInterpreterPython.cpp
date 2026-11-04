@@ -1487,7 +1487,7 @@ bool ScriptInterpreterPythonImpl::ExecuteOneLine(
 }
 
 llvm::Error ScriptInterpreterPythonImpl::ExecuteInterpreterLoop() {
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(ScriptInterpreterPython::ExecuteInterpreterLoop);
 
   Debugger &debugger = m_debugger;
 
@@ -2224,7 +2224,7 @@ bool ScriptInterpreterPythonImpl::GetScriptedSummary(
     StructuredData::ObjectSP &callee_wrapper_sp,
     const TypeSummaryOptions &options, std::string &retval) {
 
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(ScriptInterpreterPython::GetScriptedSummary);
 
   if (!valobj.get()) {
     retval.assign("<no object>");
@@ -2248,8 +2248,8 @@ bool ScriptInterpreterPythonImpl::GetScriptedSummary(
       {
         TypeSummaryOptionsSP options_sp(new TypeSummaryOptions(options));
 
-        static Timer::Category func_cat("LLDBSwigPythonCallTypeScript");
-        Timer scoped_timer(func_cat, "LLDBSwigPythonCallTypeScript");
+        LLDB_SCOPED_TIMER(
+            ScriptInterpreterPython::LLDBSwigPythonCallTypeScript);
         ret_val = SWIGBridge::LLDBSwigPythonCallTypeScript(
             python_function_name, GetSessionDictionary().get(), valobj,
             &new_callee, options_sp, retval);
@@ -2843,7 +2843,7 @@ ScriptInterpreterPythonImpl::AcquireInterpreterLock() {
 }
 
 llvm::Error ScriptInterpreterPythonImpl::Initialize() {
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(ScriptInterpreterPython::Initialize);
 
   // RAII-based initialization which correctly handles multiple-initialization,
   // version- specific differences among Python 2 and Python 3, and saving and

@@ -132,6 +132,10 @@ if(TARGET lldb-mcp)
   add_lldb_test_dependency(lldb-mcp)
 endif()
 
+if(TARGET lldb-tblgen)
+  add_lldb_test_dependency(lldb-tblgen)
+endif()
+
 if(TARGET liblldb)
   add_lldb_test_dependency(liblldb)
 endif()

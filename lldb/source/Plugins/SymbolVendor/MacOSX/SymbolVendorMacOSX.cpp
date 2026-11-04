@@ -96,9 +96,7 @@ SymbolVendorMacOSX::CreateInstance(const lldb::ModuleSP &module_sp,
   if (!obj_file)
     return NULL;
 
-  static Timer::Category func_cat(LLVM_PRETTY_FUNCTION);
-  Timer scoped_timer(func_cat,
-                     "SymbolVendorMacOSX::CreateInstance (module = %s)",
+  LLDB_SCOPED_TIMERF(SymbolVendorMacOSX::CreateInstance, "(module = %s)",
                      module_sp->GetFileSpec().GetPath().c_str());
   SymbolVendorMacOSX *symbol_vendor = new SymbolVendorMacOSX(module_sp);
   if (symbol_vendor) {
@@ -106,12 +104,8 @@ SymbolVendorMacOSX::CreateInstance(const lldb::ModuleSP &module_sp,
     path[0] = '\0';
 
     // Try and locate the dSYM file on Mac OS X
-    static Timer::Category func_cat2(
-        "SymbolVendorMacOSX::CreateInstance() locate dSYM");
-    Timer scoped_timer2(
-        func_cat2,
-        "SymbolVendorMacOSX::CreateInstance (module = %s) locate dSYM",
-        module_sp->GetFileSpec().GetPath().c_str());
+    LLDB_SCOPED_TIMERF(SymbolVendorMacOSX::LocateDSYM, "(module = %s)",
+                       module_sp->GetFileSpec().GetPath().c_str());
 
     // First check to see if the module has a symbol file in mind already. If
     // it does, then we MUST use that.

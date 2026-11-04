@@ -168,7 +168,7 @@ static UUID GetCoffUUID(llvm::object::COFFObjectFile &coff_obj) {
     // the object itself.
     auto raw_data = coff_obj.getData();
     LLDB_SCOPED_TIMERF(
-        "Calculating module crc32 %s with size %" PRIu64 " KiB",
+        ObjectFilePECOFF::GetCoffUUID, "(module = %s, size = %" PRIu64 " KiB)",
         FileSpec(coff_obj.getFileName()).GetFilename().str().c_str(),
         static_cast<lldb::offset_t>(raw_data.size()) / 1024);
     gnu_debuglink_crc = llvm::crc32(0, llvm::arrayRefFromStringRef(raw_data));

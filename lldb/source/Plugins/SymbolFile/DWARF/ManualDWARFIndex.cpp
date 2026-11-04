@@ -37,7 +37,8 @@ void ManualDWARFIndex::Index() {
 
 void ManualDWARFIndex::IndexImpl() {
   ElapsedTime elapsed(m_index_time);
-  LLDB_SCOPED_TIMERF("%p", static_cast<void *>(m_dwarf));
+  LLDB_SCOPED_TIMERF(ManualDWARFIndex::Index, "(dwarf = %p)",
+                     static_cast<void *>(m_dwarf));
   if (LoadFromCache()) {
     m_dwarf->SetDebugInfoIndexWasLoadedFromCache();
     return;

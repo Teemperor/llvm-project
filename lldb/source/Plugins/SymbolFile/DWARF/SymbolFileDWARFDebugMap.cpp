@@ -1147,7 +1147,7 @@ void SymbolFileDWARFDebugMap::FindFunctions(
     const CompilerDeclContext &parent_decl_ctx, bool include_inlines,
     SymbolContextList &sc_list) {
   std::lock_guard<std::recursive_mutex> guard(GetModuleMutex());
-  LLDB_SCOPED_TIMERF("SymbolFileDWARFDebugMap::FindFunctions (name = %s)",
+  LLDB_SCOPED_TIMERF(SymbolFileDWARFDebugMap::FindFunctions, "(name = %s)",
                      lookup_info.GetLookupName().GetCString());
 
   ForEachSymbolFile("Looking up functions", [&](SymbolFileDWARF &oso_dwarf) {
@@ -1166,8 +1166,8 @@ void SymbolFileDWARFDebugMap::FindFunctions(const RegularExpression &regex,
                                             bool include_inlines,
                                             SymbolContextList &sc_list) {
   std::lock_guard<std::recursive_mutex> guard(GetModuleMutex());
-  LLDB_SCOPED_TIMERF("SymbolFileDWARFDebugMap::FindFunctions (regex = '%s')",
-                     regex.GetText().str().c_str());
+  LLDB_SCOPED_TIMERF(SymbolFileDWARFDebugMap::FindFunctionsByRegex,
+                     "(regex = '%s')", regex.GetText().str().c_str());
 
   ForEachSymbolFile("Looking up functions", [&](SymbolFileDWARF &oso_dwarf) {
     uint32_t sc_idx = sc_list.GetSize();
@@ -1185,7 +1185,7 @@ void SymbolFileDWARFDebugMap::GetTypes(SymbolContextScope *sc_scope,
                                        lldb::TypeClass type_mask,
                                        TypeList &type_list) {
   std::lock_guard<std::recursive_mutex> guard(GetModuleMutex());
-  LLDB_SCOPED_TIMERF("SymbolFileDWARFDebugMap::GetTypes (type_mask = 0x%8.8x)",
+  LLDB_SCOPED_TIMERF(SymbolFileDWARFDebugMap::GetTypes, "(type_mask = 0x%8.8x)",
                      type_mask);
 
   SymbolFileDWARF *oso_dwarf = nullptr;

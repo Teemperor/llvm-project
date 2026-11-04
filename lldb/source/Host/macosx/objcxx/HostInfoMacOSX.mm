@@ -586,7 +586,7 @@ find_cached_path(llvm::StringMap<ErrorOrPath> &cache, std::mutex &mutex,
                  llvm::StringRef key,
                  std::function<llvm::Expected<std::string>(void)> compute) {
   std::lock_guard<std::mutex> guard(mutex);
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(HostInfoMacOSX::find_cached_path);
 
   auto it = cache.find(key);
   if (it != cache.end()) {

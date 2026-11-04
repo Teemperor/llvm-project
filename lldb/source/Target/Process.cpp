@@ -2459,7 +2459,7 @@ size_t Process::ReadCStringFromMemory(addr_t addr, char *dst,
 
 size_t Process::ReadMemoryFromInferior(addr_t addr, void *buf, size_t size,
                                        Status &error) {
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(Process::ReadMemoryFromInferior);
 
   if (ABISP abi_sp = GetABI())
     addr = abi_sp->FixAnyAddress(addr);

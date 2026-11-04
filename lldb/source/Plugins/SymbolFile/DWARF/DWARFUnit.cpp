@@ -226,11 +226,8 @@ void DWARFUnit::ExtractDIEsRWLocked() {
   llvm::sys::ScopedWriter first_die_lock(m_first_die_mutex);
 
   ElapsedTime elapsed(m_dwarf.GetDebugInfoParseTimeRef());
-  LLDB_SCOPED_TIMERF(
-      "%s",
-      llvm::formatv("{0:x16}: DWARFUnit::ExtractDIEsIfNeeded()", GetOffset())
-          .str()
-          .c_str());
+  LLDB_SCOPED_TIMERV(DWARFUnit::ExtractDIEsRWLocked, "(offset = {0:x16})",
+                     GetOffset());
 
   // Set the offset to that of the first DIE and calculate the start of the
   // next compilation unit header.

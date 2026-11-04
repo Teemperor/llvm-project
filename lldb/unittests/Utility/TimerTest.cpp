@@ -8,6 +8,7 @@
 
 #include "lldb/Utility/Timer.h"
 #include "lldb/Utility/StreamString.h"
+#include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/ADT/StringRef.h"
@@ -28,7 +29,7 @@ struct CategoryStats {
 
 /// Finds the line describing \p category in a DumpCategoryTimes() dump and
 /// parses its statistics. A line looks like:
-///   0.105202764 sec (total: 0.132s; child: 0.027s; count: 1) for CAT1
+///   0.105202764 sec (total: 0.132s; child: 0.027s; count: 1) for TimerTest.A
 std::optional<CategoryStats> ParseCategory(llvm::StringRef dump,
                                            llvm::StringRef category) {
   llvm::Regex line_pattern(R"(^([0-9.]+) sec \(total: ([0-9.]+)s; )"
@@ -49,89 +50,140 @@ std::optional<CategoryStats> ParseCategory(llvm::StringRef dump,
   }
   return std::nullopt;
 }
+
+constexpr Timer::CategoryID g_cat_a = timers::TimerTest::A;
+constexpr Timer::CategoryID g_cat_b = timers::TimerTest::B;
 } // namespace
 
 TEST(TimerTest, CategoryTimes) {
   Timer::ResetCategoryTimes();
   {
-    static Timer::Category tcat("CAT1");
-    Timer t(tcat, ".");
+    Timer t(g_cat_a, ".");
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   StreamString ss;
   Timer::DumpCategoryTimes(ss);
-  double seconds;
-  ASSERT_EQ(1, sscanf(ss.GetData(), "%lf sec for CAT1", &seconds));
-  EXPECT_LT(0.001, seconds);
-  EXPECT_GT(0.1, seconds);
+  std::optional<CategoryStats> cat_a =
+      ParseCategory(ss.GetString(), "TimerTest.A");
+  ASSERT_TRUE(cat_a.has_value()) << "String: " << ss.GetData();
+  EXPECT_LT(0.001, cat_a->seconds);
+  EXPECT_GT(0.1, cat_a->seconds);
 }
 
 TEST(TimerTest, CategoryTimesNested) {
   Timer::ResetCategoryTimes();
   {
-    static Timer::Category tcat1("CAT1");
-    Timer t1(tcat1, ".");
+    Timer t1(g_cat_a, ".");
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     // Explicitly testing the same category as above.
-    Timer t2(tcat1, ".");
+    Timer t2(g_cat_a, ".");
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   StreamString ss;
   Timer::DumpCategoryTimes(ss);
-  double seconds;
   // It should only appear once.
-  ASSERT_EQ(ss.GetString().count("CAT1"), 1U);
-  ASSERT_EQ(1, sscanf(ss.GetData(), "%lf sec for CAT1", &seconds));
-  EXPECT_LT(0.002, seconds);
-  EXPECT_GT(0.2, seconds);
+  ASSERT_EQ(ss.GetString().count("TimerTest.A"), 1U);
+  std::optional<CategoryStats> cat_a =
+      ParseCategory(ss.GetString(), "TimerTest.A");
+  ASSERT_TRUE(cat_a.has_value()) << "String: " << ss.GetData();
+  EXPECT_LT(0.002, cat_a->seconds);
+  EXPECT_GT(0.2, cat_a->seconds);
 }
 
 TEST(TimerTest, CategoryTimes2) {
   Timer::ResetCategoryTimes();
   {
-    static Timer::Category tcat1("CAT1");
-    Timer t1(tcat1, ".");
+    Timer t1(g_cat_a, ".");
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    static Timer::Category tcat2("CAT2");
-    Timer t2(tcat2, ".");
+    Timer t2(g_cat_b, ".");
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   StreamString ss;
   Timer::DumpCategoryTimes(ss);
-  std::optional<CategoryStats> cat1 = ParseCategory(ss.GetString(), "CAT1");
-  std::optional<CategoryStats> cat2 = ParseCategory(ss.GetString(), "CAT2");
-  ASSERT_TRUE(cat1.has_value()) << "String: " << ss.GetData();
-  ASSERT_TRUE(cat2.has_value()) << "String: " << ss.GetData();
-  EXPECT_LT(0.01, cat1->seconds);
-  EXPECT_GT(1, cat1->seconds);
-  EXPECT_LT(0.001, cat2->seconds);
-  EXPECT_GT(0.1, cat2->seconds);
+  std::optional<CategoryStats> cat_a =
+      ParseCategory(ss.GetString(), "TimerTest.A");
+  std::optional<CategoryStats> cat_b =
+      ParseCategory(ss.GetString(), "TimerTest.B");
+  ASSERT_TRUE(cat_a.has_value()) << "String: " << ss.GetData();
+  ASSERT_TRUE(cat_b.has_value()) << "String: " << ss.GetData();
+  EXPECT_LT(0.01, cat_a->seconds);
+  EXPECT_GT(1, cat_a->seconds);
+  EXPECT_LT(0.001, cat_b->seconds);
+  EXPECT_GT(0.1, cat_b->seconds);
 }
 
 TEST(TimerTest, CategoryTimesStats) {
   Timer::ResetCategoryTimes();
   {
-    static Timer::Category tcat1("CAT1");
-    Timer t1(tcat1, ".");
+    Timer t1(g_cat_a, ".");
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    static Timer::Category tcat2("CAT2");
     {
-      Timer t2(tcat2, ".");
+      Timer t2(g_cat_b, ".");
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
     {
-      Timer t3(tcat2, ".");
+      Timer t3(g_cat_b, ".");
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
   }
   StreamString ss;
   Timer::DumpCategoryTimes(ss);
-  std::optional<CategoryStats> cat1 = ParseCategory(ss.GetString(), "CAT1");
-  std::optional<CategoryStats> cat2 = ParseCategory(ss.GetString(), "CAT2");
-  ASSERT_TRUE(cat1.has_value()) << "String: " << ss.GetData();
-  ASSERT_TRUE(cat2.has_value()) << "String: " << ss.GetData();
-  EXPECT_NEAR(cat1->total - cat1->child, cat1->seconds, 0.002);
-  EXPECT_EQ(1, cat1->count);
-  EXPECT_NEAR(cat1->child, cat2->seconds, 0.002);
-  EXPECT_EQ(2, cat2->count);
+  std::optional<CategoryStats> cat_a =
+      ParseCategory(ss.GetString(), "TimerTest.A");
+  std::optional<CategoryStats> cat_b =
+      ParseCategory(ss.GetString(), "TimerTest.B");
+  ASSERT_TRUE(cat_a.has_value()) << "String: " << ss.GetData();
+  ASSERT_TRUE(cat_b.has_value()) << "String: " << ss.GetData();
+  EXPECT_NEAR(cat_a->total - cat_a->child, cat_a->seconds, 0.002);
+  EXPECT_EQ(1, cat_a->count);
+  EXPECT_NEAR(cat_a->child, cat_b->seconds, 0.002);
+  EXPECT_EQ(2, cat_b->count);
+}
+
+TEST(TimerTest, DumpSortedByName) {
+  Timer::ResetCategoryTimes();
+  {
+    // Spend more time in TimerTest.B so that sorting by time would put it
+    // first.
+    Timer t(g_cat_b);
+    std::this_thread::sleep_for(std::chrono::milliseconds(20));
+  }
+  {
+    Timer t(g_cat_a);
+  }
+  StreamString ss;
+  Timer::DumpCategoryTimes(ss);
+  size_t pos_a = ss.GetString().find("for TimerTest.A\n");
+  size_t pos_b = ss.GetString().find("for TimerTest.B\n");
+  ASSERT_NE(llvm::StringRef::npos, pos_a) << "String: " << ss.GetData();
+  ASSERT_NE(llvm::StringRef::npos, pos_b) << "String: " << ss.GetData();
+  EXPECT_LT(pos_a, pos_b);
+}
+
+TEST(TimerTest, CategoryInfo) {
+  const TimerCategoryInfo &info = Timer::GetCategoryInfo(g_cat_b);
+  EXPECT_EQ("TimerTest.B", info.name);
+
+  EXPECT_EQ("Module.GetObjectFile",
+            Timer::GetCategoryInfo(timers::Module::GetObjectFile).name);
+}
+
+TEST(TimerTest, ScopedTimer) {
+  Timer::ResetCategoryTimes();
+  {
+    LLDB_SCOPED_TIMER(TimerTest::A);
+  }
+  {
+    LLDB_SCOPED_TIMERF(TimerTest::A, "(%d)", 1);
+  }
+  {
+    LLDB_SCOPED_TIMERV(TimerTest::A, "({0})", 2);
+  }
+
+  StreamString ss;
+  Timer::DumpCategoryTimes(ss);
+  std::optional<CategoryStats> cat_a =
+      ParseCategory(ss.GetString(), "TimerTest.A");
+  ASSERT_TRUE(cat_a.has_value()) << "String: " << ss.GetData();
+  EXPECT_EQ(3, cat_a->count);
 }

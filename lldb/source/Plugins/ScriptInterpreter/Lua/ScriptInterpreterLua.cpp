@@ -214,7 +214,7 @@ bool ScriptInterpreterLua::ExecuteOneLine(llvm::StringRef command,
 }
 
 llvm::Error ScriptInterpreterLua::ExecuteInterpreterLoop() {
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(ScriptInterpreterLua::ExecuteInterpreterLoop);
 
   // At the moment, the only time the debugger does not have an input file
   // handle is when this is called directly from lua, in which case it is

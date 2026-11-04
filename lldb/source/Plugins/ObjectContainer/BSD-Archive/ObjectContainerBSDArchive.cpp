@@ -265,7 +265,8 @@ ObjectContainer *ObjectContainerBSDArchive::CreateInstance(
     ArchiveType archive_type = ObjectContainerBSDArchive::MagicBytesMatch(data);
     if (file && data_sp && archive_type != ArchiveType::Invalid) {
       LLDB_SCOPED_TIMERF(
-          "ObjectContainerBSDArchive::CreateInstance (module = %s, file = "
+          ObjectContainerBSDArchive::CreateInstance,
+          "(module = %s, file = "
           "%p, file_offset = 0x%8.8" PRIx64 ", file_size = 0x%8.8" PRIx64 ")",
           module_sp->GetFileSpec().GetPath().c_str(),
           static_cast<const void *>(file), static_cast<uint64_t>(file_offset),

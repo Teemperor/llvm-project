@@ -284,7 +284,7 @@ bool CommandInterpreter::GetRequireCommandOverwrite() const {
 }
 
 void CommandInterpreter::Initialize() {
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(CommandInterpreter::Initialize);
 
   LoadCommandDictionary();
 
@@ -573,7 +573,7 @@ const char *CommandInterpreter::ProcessEmbeddedScriptCommands(const char *arg) {
   m_command_dict[NAME] = std::make_shared<CLASS>(*this);
 
 void CommandInterpreter::LoadCommandDictionary() {
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(CommandInterpreter::LoadCommandDictionary);
 
   REGISTER_COMMAND_OBJECT("apropos", CommandObjectApropos);
   REGISTER_COMMAND_OBJECT("breakpoint", CommandObjectMultiwordBreakpoint);
@@ -2125,7 +2125,8 @@ bool CommandInterpreter::HandleCommand(const char *command_line,
 
   Log *log = GetLog(LLDBLog::Commands);
   LLDB_LOGF(log, "Processing command: %s", command_line);
-  LLDB_SCOPED_TIMERF("Processing command: %s.", command_line);
+  LLDB_SCOPED_TIMERF(CommandInterpreter::HandleCommand, "(command = '%s')",
+                     command_line);
 
   // Set the command in the CommandReturnObject here so that it's there even if
   // the command is interrupted.

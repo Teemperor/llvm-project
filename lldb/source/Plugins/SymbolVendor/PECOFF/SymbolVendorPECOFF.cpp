@@ -88,7 +88,7 @@ SymbolVendorPECOFF::CreateInstance(const lldb::ModuleSP &module_sp,
   if (!fspec)
     fspec = obj_file->GetDebugLink().value_or(FileSpec());
 
-  LLDB_SCOPED_TIMERF("SymbolVendorPECOFF::CreateInstance (module = %s)",
+  LLDB_SCOPED_TIMERF(SymbolVendorPECOFF::CreateInstance, "(module = %s)",
                      module_sp->GetFileSpec().GetPath().c_str());
 
   ModuleSpec module_spec;

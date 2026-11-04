@@ -86,6 +86,8 @@ add_lldb_library(lldbUtility NO_INTERNAL_DEPENDENCIES
 
   ADDITIONAL_HEADER_DIRS
     ${LLDB_INCLUDE_DIR}/lldb/Utility
+  DEPENDS
+    LLDBTimerCategoryInfosGen
   LINK_COMPONENTS
     BinaryFormat
     Support

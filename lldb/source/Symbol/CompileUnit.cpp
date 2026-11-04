@@ -80,7 +80,7 @@ void CompileUnit::ForeachFunction(
 
 lldb::FunctionSP CompileUnit::FindFunction(
     llvm::function_ref<bool(const FunctionSP &)> matching_lambda) {
-  LLDB_SCOPED_TIMER();
+  LLDB_SCOPED_TIMER(CompileUnit::FindFunction);
 
   lldb::ModuleSP module = CalculateSymbolContextModule();
 
