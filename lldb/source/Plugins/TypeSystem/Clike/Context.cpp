@@ -34,3 +34,10 @@ TypedefType *Context::CreateTypedefType(llvm::StringRef name,
   return Track(std::make_unique<TypedefType>(GetIdentifier(name), scope,
                                              underlying_type));
 }
+
+CVQualifiedType *Context::CreateCVQualifiedType(TypeRef underlying_type,
+                                                bool is_const,
+                                                bool is_volatile) {
+  return Track(std::make_unique<CVQualifiedType>(underlying_type, is_const,
+                                                 is_volatile));
+}
