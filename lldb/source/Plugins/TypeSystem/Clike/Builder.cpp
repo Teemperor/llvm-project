@@ -76,6 +76,27 @@ CompilerType Builder::CreateCVQualifiedType(CompilerType underlying_type,
       m_ts.m_context.CreateCVQualifiedType(*underlying, is_const, is_volatile));
 }
 
+CompilerType Builder::CreateEnumType(const DeclarationContext &decl_context,
+                                     llvm::StringRef name,
+                                     std::optional<uint64_t> byte_size,
+                                     CompilerType underlying_type,
+                                     bool is_scoped,
+                                     std::vector<Enumerator> enumerators,
+                                     Identifier unqualified_name) {
+  // An enum always has an integer type backing it (see EnumType). C says that
+  // type is `int` unless stated otherwise, so default to it here. The DWARF
+  // parser normally picks something better first -- a signed integer of the
+  // enum's recorded width -- and only lands here when there is no width to go
+  // on, or no builtin of that width (see
+  // DWARFASTParserClike::ParseEnum and GetBuiltinTypeForEncodingAndBitSize).
+  std::optional<TypeRef> underlying = ToTypeRef(underlying_type);
+  if (!underlying)
+    underlying = TypeRef(*m_ts.m_context.GetBuiltinType(BuiltinKind::Int));
+  return m_ts.GetCompilerType(m_ts.m_context.CreateEnumType(
+      decl_context, name, byte_size, *underlying, is_scoped,
+      std::move(enumerators), unqualified_name));
+}
+
 clike::Identifier Builder::GetIdentifier(llvm::StringRef name) {
   return m_ts.m_context.GetIdentifier(name);
 }

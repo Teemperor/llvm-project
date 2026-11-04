@@ -17,6 +17,7 @@ using namespace lldb_private::clike;
 char PointerType::ID = 0;
 char TypedefType::ID = 0;
 char CVQualifiedType::ID = 0;
+char EnumType::ID = 0;
 
 std::optional<uint64_t> PointerType::GetByteSize() const {
   // A pointer is the target's pointer width, taken from the Context that owns
@@ -111,4 +112,21 @@ std::string PointerType::GetDisplayName(const DisplayNameOptions &opts) const {
 
 std::string PointerType::GetCanonicalName(bool base_only) const {
   return GetPointeeType()->GetPointeeCanonicalName("*", base_only);
+}
+
+// An unnamed enum (e.g. a function-local `enum { ... } x;`) has no spelling in
+// the debug info. Match clang's TagDecl printing, which renders it as
+// "(unnamed enum)" (see TagDecl::printName).
+static constexpr llvm::StringLiteral g_unnamed_enum_name = "(unnamed enum)";
+
+std::string EnumType::GetDisplayName(const DisplayNameOptions &opts) const {
+  if (!IsUnnamed())
+    return Type::GetDisplayName(opts);
+  return g_unnamed_enum_name.str();
+}
+
+std::string EnumType::GetCanonicalName(bool base_only) const {
+  if (!IsUnnamed())
+    return Type::GetCanonicalName(base_only);
+  return g_unnamed_enum_name.str();
 }

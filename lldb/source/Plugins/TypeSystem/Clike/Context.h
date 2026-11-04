@@ -87,6 +87,15 @@ public:
   CVQualifiedType *CreateCVQualifiedType(TypeRef underlying_type, bool is_const,
                                          bool is_volatile);
 
+  /// Create an enumeration type with the given \p enumerators, declared in
+  /// \p decl_context. \p underlying_type is the integer type backing the enum.
+  EnumType *CreateEnumType(const DeclarationContext &decl_context,
+                           llvm::StringRef name,
+                           std::optional<uint64_t> byte_size,
+                           TypeRef underlying_type, bool is_scoped,
+                           std::vector<Enumerator> enumerators = {},
+                           Identifier unqualified_name = Identifier());
+
   /// Intern a name into this Context's IdentifierMap. All Identifiers used by
   /// types owned by this Context must be created here so that their backing
   /// storage lives exactly as long as the Context (and its types).
