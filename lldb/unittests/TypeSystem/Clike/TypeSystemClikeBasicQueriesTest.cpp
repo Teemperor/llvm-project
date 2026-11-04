@@ -66,3 +66,12 @@ TEST_F(TypeSystemClikeBasicQueriesTest, IsIntegerType) {
       "std::nullptr_t", 8, lldb::eEncodingUint, lldb::eFormatHex);
   EXPECT_FALSE(ts->IsIntegerType(nullptr_t.GetOpaqueQualType(), is_signed));
 }
+
+// IsVoidType identifies the void builtin by spelling, including through
+// typedef sugar, but not other builtins.
+TEST_F(TypeSystemClikeBasicQueriesTest, IsVoidType) {
+  EXPECT_TRUE(GetVoid().IsVoidType());
+  CompilerType alias = builder.CreateTypedefType("MyVoid", GetVoid());
+  EXPECT_TRUE(alias.IsVoidType());
+  EXPECT_FALSE(GetInt().IsVoidType());
+}

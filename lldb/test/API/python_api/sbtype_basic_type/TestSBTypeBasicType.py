@@ -5,6 +5,7 @@ from lldbsuite.test import lldbutil
 
 
 class TestCase(TestBase):
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         """Test that SBType.GetBasicType unwraps typedefs."""
         self.build()
