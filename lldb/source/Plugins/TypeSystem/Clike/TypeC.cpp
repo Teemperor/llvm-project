@@ -26,6 +26,7 @@ char TypedefType::ID = 0;
 char CVQualifiedType::ID = 0;
 char EnumType::ID = 0;
 char FunctionType::ID = 0;
+char ComplexType::ID = 0;
 
 std::optional<uint64_t> ArrayType::GetAlignmentInBits() const {
   if (!m_is_vector)
