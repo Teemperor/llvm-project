@@ -86,6 +86,20 @@ TEST_F(TypeSystemClikeBasicQueriesTest, IsFunctionPointerType) {
   EXPECT_FALSE(GetInt().IsFunctionPointerType());
 }
 
+// A block pointer is a pointer but reports IsBlockPointerType and hands back
+// the equivalent plain function-pointer type; a plain pointer does not.
+TEST_F(TypeSystemClikeBasicQueriesTest, IsBlockPointerType) {
+  CompilerType fn = builder.CreateFunctionType(GetVoid(), {}, false);
+  CompilerType block_ptr = builder.CreateBlockPointerType(fn);
+  CompilerType function_pointer_type;
+  EXPECT_TRUE(ts->IsBlockPointerType(block_ptr.GetOpaqueQualType(),
+                                     &function_pointer_type));
+  EXPECT_TRUE(function_pointer_type.IsFunctionPointerType());
+
+  CompilerType plain_ptr = builder.CreatePointerType(GetInt());
+  EXPECT_FALSE(ts->IsBlockPointerType(plain_ptr.GetOpaqueQualType(), nullptr));
+}
+
 // Signed and unsigned integer builtins report IsIntegerType with the correct
 // signedness; nullptr_t (despite an unsigned encoding) does not.
 TEST_F(TypeSystemClikeBasicQueriesTest, IsIntegerType) {
