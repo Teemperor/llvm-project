@@ -7,6 +7,8 @@
 //===----------------------------------------------------------------------===//
 
 #include "ScratchTypeSystemClike.h"
+#include "lldb/Core/Module.h"
+#include "lldb/Core/ModuleList.h"
 
 #include "Plugins/ExpressionParser/Clang/ClangFunctionCaller.h"
 #include "Plugins/ExpressionParser/Clang/ClangPersistentVariables.h"
@@ -26,9 +28,15 @@ ScratchTypeSystemClike::ScratchTypeSystemClike(Target &target,
     : TypeSystemClike(std::string("scratch TypeSystemClike for ") +
                           target.GetArchitecture().GetArchitectureName(),
                       std::move(opts)),
-      m_target_wp(target.shared_from_this()) {}
+      m_target_wp(target.shared_from_this()) {
+  // See TypeSystemClike::GetScratchInstances: module instances have to be able
+  // to find us before they take any lock.
+  RegisterScratchInstance(this);
+}
 
-ScratchTypeSystemClike::~ScratchTypeSystemClike() = default;
+ScratchTypeSystemClike::~ScratchTypeSystemClike() {
+  UnregisterScratchInstance(this);
+}
 
 llvm::Expected<lldb::TypeSystemSP>
 ScratchTypeSystemClike::Create(Target &target, llvm::Triple triple) {
@@ -37,6 +45,21 @@ ScratchTypeSystemClike::Create(Target &target, llvm::Triple triple) {
   if (!opts)
     return opts.takeError();
   return std::make_shared<ScratchTypeSystemClike>(target, std::move(*opts));
+}
+
+void ScratchTypeSystemClike::AppendLockOrder(
+    llvm::SmallVectorImpl<TypeSystemClike *> &out) const {
+  TypeSystemClike::AppendLockOrder(out);
+  lldb::TargetSP target_sp = m_target_wp.lock();
+  if (!target_sp)
+    return;
+  // Copy the pointers out under the image list's own lock and release it before
+  // returning: GetLockOrder's caller is about to take TypeSystemClike locks,
+  // and holding the module list across that would introduce a second lock order
+  // to reason about.
+  for (const lldb::ModuleSP &module_sp : target_sp->GetImages().Modules())
+    if (module_sp)
+      AppendClikeTypeSystemsOf(*module_sp, out);
 }
 
 UserExpression *ScratchTypeSystemClike::GetUserExpression(

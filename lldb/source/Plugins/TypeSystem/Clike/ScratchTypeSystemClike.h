@@ -77,6 +77,21 @@ public:
 
   PersistentExpressionState *GetPersistentExpressionState() override;
 
+protected:
+  /// The scratch instance holds the types the expression evaluator and the data
+  /// formatters build, and those are routinely assembled *around* types the
+  /// module that parsed them still owns -- a reconstructed `T *` whose pointee
+  /// belongs to a module, an elaborated spelling over a module's typedef (see
+  /// ClangTypeConverter). So rather than try to enumerate which modules those
+  /// are, take the lot: every module in the target, plus whatever the base
+  /// contributes.
+  void
+  AppendLockOrder(llvm::SmallVectorImpl<TypeSystemClike *> &out) const override;
+
+  /// The target's image list grows as libraries are loaded, so unlike a module
+  /// instance the scratch cannot compute its set once.
+  bool HasDynamicLockOrder() const override { return true; }
+
 private:
   lldb::TargetWP m_target_wp;
   /// Persistent variables ($0, $foo, ...) for expressions evaluated in this
