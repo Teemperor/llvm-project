@@ -6,6 +6,7 @@ add_lldb_unittest(TypeSystemClikeUnitTests
   LanguageOptsTest.cpp
   NamedTypeTest.cpp
   ScopedTypeTest.cpp
+  TypeCTest.cpp
   TypeNameTest.cpp
   TypeSystemClikeBasicQueriesTest.cpp
   TypeSystemClikeNameTest.cpp

@@ -22,6 +22,7 @@ class SetReadOnlyWatchpointTestCase(TestBase):
 
     # Intel hardware does not support read-only watchpoints
     @expectedFailureAll(archs=["i386", "x86_64"])
+    @add_test_categories(["typesystem-clike"])
     def test_read_watchpoint_watch_address(self):
         target, process, thread, _ = lldbutil.run_to_line_breakpoint(
             self, lldb.SBFileSpec(self.source), self.line
@@ -60,6 +61,7 @@ class SetReadOnlyWatchpointTestCase(TestBase):
 
     # Intel hardware does not support read-only watchpoints
     @expectedFailureAll(archs=["i386", "x86_64"])
+    @add_test_categories(["typesystem-clike"])
     def test_read_watchpoint_watch_create_by_address(self):
         target, process, thread, _ = lldbutil.run_to_line_breakpoint(
             self, lldb.SBFileSpec(self.source), self.line
