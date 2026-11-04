@@ -117,6 +117,15 @@ void Builder::SetRecordExplicitAlignmentInBits(clike::RecordType &record,
   m_ts.m_context.SetExplicitAlignmentInBits(record, align);
 }
 
+void Builder::SetRecordAnonymousStructOrUnion(clike::RecordType &record) {
+  m_ts.m_context.SetAnonymousStructOrUnion(record);
+}
+
+void Builder::SetRecordAnonymousStructOrUnion(clike::RecordType &record,
+                                              const clike::RecordType &parent) {
+  m_ts.m_context.SetAnonymousStructOrUnion(record, parent);
+}
+
 void Builder::SetRecordArgPassingKind(clike::RecordType &record,
                                       clike::RecordType::ArgPassingKind kind) {
   m_ts.m_context.SetArgPassingKind(record, kind);

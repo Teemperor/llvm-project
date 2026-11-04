@@ -99,3 +99,17 @@ TEST_F(TypeSystemClikeRecordQueriesTest, NoVirtualBaseClasses) {
   CompilerType record = MakeRecordWithField("Foo", "x");
   EXPECT_EQ(ts->GetNumVirtualBaseClasses(record.GetOpaqueQualType()), 0u);
 }
+
+// IsAnonymousType recognizes a record marked as an anonymous struct/union
+// (its members are injected into the enclosing scope), not an ordinary named
+// or unnamed-but-not-anonymous record.
+TEST_F(TypeSystemClikeRecordQueriesTest, IsAnonymousType) {
+  CompilerType record = builder.CreateRecordType("", 4, /*is_union=*/true);
+  auto *r = llvm::cast<RecordType>(
+      static_cast<clike::Type *>(record.GetOpaqueQualType()));
+  builder.SetRecordAnonymousStructOrUnion(*r);
+  EXPECT_TRUE(ts->IsAnonymousType(record.GetOpaqueQualType()));
+
+  CompilerType named = MakeRecordWithField("Named", "x");
+  EXPECT_FALSE(ts->IsAnonymousType(named.GetOpaqueQualType()));
+}

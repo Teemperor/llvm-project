@@ -121,9 +121,14 @@ Type *RecordType::GetHomogeneousAggregateBase(uint32_t &num_fields) const {
 // An unnamed record (e.g. a function-local `struct { ... } x;`) has no
 // spelling in the debug info. Match clang's TagDecl printing, which renders
 // such a type as "(unnamed struct)" / "(unnamed union)" / "(unnamed class)"
-// (see TagDecl::printName).
+// (see TagDecl::printName) -- except an *anonymous* struct/union
+// (IsAnonymousStructOrUnion, e.g. `struct { int x; };` with no member name)
+// prints "(anonymous struct)"/"(anonymous union)" instead, matching clang's
+// TagDecl::printAnonymousTagDecl, which special-cases
+// RecordDecl::isAnonymousStructOrUnion() to say "anonymous" rather than
+// "unnamed".
 std::string RecordType::GetUnnamedName() const {
-  std::string adj = "unnamed";
+  std::string adj = IsAnonymousStructOrUnion() ? "anonymous" : "unnamed";
   if (IsUnion())
     return "(" + adj + " union)";
   if (IsClassKeyword())
@@ -131,14 +136,34 @@ std::string RecordType::GetUnnamedName() const {
   return "(" + adj + " struct)";
 }
 
+std::string RecordType::GetUnnamedScopePrefix() const {
+  // An anonymous struct/union has no name of its own to qualify -- its
+  // DeclContext is therefore useless for recovering its enclosing scope.
+  // Instead it carries a direct pointer to the record it is embedded in
+  // (GetAnonymousParent()); use that record's own (already fully qualified)
+  // display name as the prefix, e.g. "MySock::" for the union in
+  // `struct MySock { union { ... }; };`. This mirrors clang's
+  // NamedDecl::printNestedNameSpecifier, which walks the DeclContext chain
+  // and treats an enclosing RecordDecl as a DeclContext too.
+  if (m_anonymous_parent)
+    return m_anonymous_parent->GetDisplayName(DisplayNameOptions()) + "::";
+  // A function-local unnamed struct has no anonymous parent, and clang
+  // likewise never prefixes it: printNestedNameSpecifier returns early for a
+  // function DeclContext.
+  return "";
+}
+
 std::string RecordType::GetDisplayName(const DisplayNameOptions &opts) const {
   if (!IsUnnamed())
     return Type::GetDisplayName(opts);
-  return GetUnnamedName();
+  return GetUnnamedScopePrefix() + GetUnnamedName();
 }
 
 std::string RecordType::GetCanonicalName(bool base_only) const {
   if (!IsUnnamed())
     return Type::GetCanonicalName(base_only);
-  return GetUnnamedName();
+  // `base_only` asks for the unqualified spelling, so skip the prefix then.
+  if (base_only)
+    return GetUnnamedName();
+  return GetUnnamedScopePrefix() + GetUnnamedName();
 }
