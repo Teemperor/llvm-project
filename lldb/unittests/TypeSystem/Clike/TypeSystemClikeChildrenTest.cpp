@@ -67,6 +67,23 @@ TEST_F(TypeSystemClikeChildrenTest, RecordChildren) {
   EXPECT_FALSE(child->is_base_class);
 }
 
+// An array's children are its elements, named "[N]" with the appropriate
+// offset.
+TEST_F(TypeSystemClikeChildrenTest, ArrayChildren) {
+  CompilerType array = builder.CreateArrayType(GetInt(), 3);
+  auto num_children =
+      ts->GetNumChildren(array.GetOpaqueQualType(), false, nullptr);
+  ASSERT_THAT_EXPECTED(num_children, llvm::Succeeded());
+  EXPECT_EQ(*num_children, 3u);
+
+  auto child =
+      ts->GetChildAtIndex(array.GetOpaqueQualType(), nullptr, 2,
+                          /*transparent_pointers=*/true, true, false, nullptr);
+  ASSERT_THAT_EXPECTED(child, llvm::Succeeded());
+  EXPECT_EQ(child->name, "[2]");
+  EXPECT_EQ(child->byte_offset, 8);
+}
+
 // A pointer to a complete aggregate is transparent when asked (mirroring
 // TypeSystemClang): its children are the pointee's members, not a single
 // deref child.
