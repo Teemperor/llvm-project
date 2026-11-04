@@ -265,6 +265,7 @@ public:
                    CompilerType *element_type, uint64_t *size,
                    bool *is_incomplete) override;
   bool IsAggregateType(lldb::opaque_compiler_type_t type) override;
+  bool IsAnonymousType(lldb::opaque_compiler_type_t type) override;
   bool IsCharType(lldb::opaque_compiler_type_t type) override;
   bool IsCompleteType(lldb::opaque_compiler_type_t type) override;
   bool IsDefined(lldb::opaque_compiler_type_t type) override;
