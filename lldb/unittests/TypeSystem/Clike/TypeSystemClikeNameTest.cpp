@@ -35,3 +35,14 @@ struct TypeSystemClikeNameTest : public testing::Test {
 TEST_F(TypeSystemClikeNameTest, BuiltinName) {
   EXPECT_EQ(GetInt().GetTypeName().GetStringRef(), "int");
 }
+
+// A pointer has no name of its own; it's built from the pointee's name plus
+// the sigil, mirroring C declarator syntax.
+TEST_F(TypeSystemClikeNameTest, PointerNames) {
+  CompilerType ptr = builder.CreatePointerType(GetInt());
+  EXPECT_EQ(ptr.GetTypeName().GetStringRef(), "int *");
+
+  CompilerType ptr_ptr = builder.CreatePointerType(ptr);
+  // No space between two pointer sigils.
+  EXPECT_EQ(ptr_ptr.GetTypeName().GetStringRef(), "int **");
+}

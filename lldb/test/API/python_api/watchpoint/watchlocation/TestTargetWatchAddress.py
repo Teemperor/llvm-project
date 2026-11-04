@@ -27,6 +27,7 @@ class TargetWatchpointCreateByAddressPITestCase(TestBase):
         archs=["x86_64"],
         bugnumber="github.com/llvm/llvm-project/issues/144777",
     )
+    @add_test_categories(["typesystem-clike"])
     def test_watch_create_by_address(self):
         """Exercise SBTarget.WatchpointCreateByAddress() API to set a watchpoint."""
         self.build()
@@ -84,6 +85,7 @@ class TargetWatchpointCreateByAddressPITestCase(TestBase):
         archs=["x86_64"],
         bugnumber="github.com/llvm/llvm-project/issues/144777",
     )
+    @add_test_categories(["typesystem-clike"])
     def test_watch_address(self):
         """Exercise SBTarget.WatchAddress() API to set a watchpoint.
         Same as test_watch_create_by_address, but uses the simpler API.
