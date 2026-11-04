@@ -86,6 +86,7 @@ class AnonymousTestCase(TestBase):
         # interactively at the lldb command prompt.
         self.expect("expression *(type_z *)pz", error=True)
 
+    @add_test_categories(["typesystem-clike"])
     def test_child_by_name(self):
         self.build()
 
@@ -109,6 +110,7 @@ class AnonymousTestCase(TestBase):
         if not error.Success() or value != 0:
             self.fail("failed to get the correct value for element a in n")
 
+    @add_test_categories(["typesystem-clike"])
     def test_nest_flat(self):
         self.build()
         self.common_setup(self.line2)
