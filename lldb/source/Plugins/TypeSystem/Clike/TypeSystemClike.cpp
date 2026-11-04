@@ -8,6 +8,10 @@
 
 #include "TypeSystemClike.h"
 
+#include "lldb/Core/Module.h"
+#include "lldb/Symbol/CompileUnit.h"
+#include "llvm/ADT/DenseSet.h"
+
 #include <optional>
 
 #include "TypeName.h"
@@ -174,6 +178,105 @@ void TypeSystemClike::LockSet::Release() {
 void TypeSystemClike::AppendLockOrder(
     llvm::SmallVectorImpl<TypeSystemClike *> &out) const {
   out.push_back(const_cast<TypeSystemClike *>(this));
+
+  // Fold in every scratch instance's set. A scratch locks all of its target's
+  // modules -- it holds types built around theirs, and reaches into them by
+  // control flow alone on the Objective-C runtime-completion path -- so a
+  // module one of them covers has to lock the same instances the scratch would.
+  // If it locked only itself, that runtime-completion path would then reach
+  // into the scratch and take its locks in the opposite order.
+  //
+  // Pulled from the registry rather than pushed by the scratch, so that only a
+  // module ever holds two instances' m_lock_order_mutex and there is no cycle
+  // between them. For the same reason a scratch does *not* fold in the other
+  // scratches: they belong to unrelated targets, and asking each other for a
+  // lock order would recurse between their m_lock_order_mutex and hang.
+  llvm::SmallVector<TypeSystemClike *, 2> scratches = GetScratchInstances();
+  if (!llvm::is_contained(scratches, this))
+    for (TypeSystemClike *scratch : scratches)
+      for (TypeSystemClike *ts : scratch->GetLockOrder())
+        out.push_back(ts);
+
+  // The Clang modules (`-gmodules` .pcm files) this instance's debug info
+  // imports. Each is a separate lldb Module with its own TypeSystemClike, and a
+  // record here can name a field, base class, typedef target or Objective-C
+  // superclass that one of them owns. The import list is recorded in the DWARF,
+  // so it is available without parsing any type -- which is what lets the set
+  // be complete before the first query, rather than only after one has already
+  // followed such a reference.
+  SymbolFile *sym_file = GetSymbolFile();
+  if (!sym_file)
+    return;
+  llvm::DenseSet<SymbolFile *> visited;
+  const uint32_t num_cus = sym_file->GetNumCompileUnits();
+  for (uint32_t i = 0; i < num_cus; ++i) {
+    CompUnitSP cu = sym_file->GetCompileUnitAtIndex(i);
+    if (!cu)
+      continue;
+    // Walks transitively (a module imported by an imported module is visited
+    // too) and skips symbol files it has already seen.
+    cu->ForEachExternalModule(visited, [&out](Module &module) {
+      AppendOrCreateClikeTypeSystemOf(module, out);
+      return false; // Keep going; we want all of them, not the first.
+    });
+  }
+}
+
+void TypeSystemClike::AppendClikeTypeSystemsOf(
+    Module &module, llvm::SmallVectorImpl<TypeSystemClike *> &out) {
+  // Deliberately only picks up type systems that already exist rather than
+  // asking for one by language: creating a TypeSystemClike for every module a
+  // query might touch would be a large, mostly wasted cost, and a module that
+  // has never been asked for a type has none of ours to lock.
+  module.ForEachTypeSystem([&out](lldb::TypeSystemSP ts_sp) {
+    if (auto *clike = llvm::dyn_cast_or_null<TypeSystemClike>(ts_sp.get()))
+      out.push_back(clike);
+    return true; // Keep iterating.
+  });
+}
+
+/// The live scratch instances. A handful at most (one per target), so a plain
+/// vector under a mutex is enough.
+static std::mutex &GetScratchRegistryMutex() {
+  static std::mutex mutex;
+  return mutex;
+}
+static llvm::SmallVector<TypeSystemClike *, 2> &GetScratchRegistry() {
+  static llvm::SmallVector<TypeSystemClike *, 2> registry;
+  return registry;
+}
+
+void TypeSystemClike::RegisterScratchInstance(TypeSystemClike *scratch) {
+  std::lock_guard<std::mutex> guard(GetScratchRegistryMutex());
+  GetScratchRegistry().push_back(scratch);
+}
+
+void TypeSystemClike::UnregisterScratchInstance(TypeSystemClike *scratch) {
+  std::lock_guard<std::mutex> guard(GetScratchRegistryMutex());
+  llvm::erase(GetScratchRegistry(), scratch);
+}
+
+llvm::SmallVector<TypeSystemClike *, 2> TypeSystemClike::GetScratchInstances() {
+  std::lock_guard<std::mutex> guard(GetScratchRegistryMutex());
+  return GetScratchRegistry();
+}
+
+void TypeSystemClike::AppendOrCreateClikeTypeSystemOf(
+    Module &module, llvm::SmallVectorImpl<TypeSystemClike *> &out) {
+  const size_t before = out.size();
+  AppendClikeTypeSystemsOf(module, out);
+  if (out.size() != before)
+    return;
+  // TypeSystemClang::CreateInstance is what hands out a TypeSystemClike for a
+  // module when the setting is on, keyed on the C++ language entry.
+  llvm::Expected<lldb::TypeSystemSP> ts_or =
+      module.GetTypeSystemForLanguage(lldb::eLanguageTypeC_plus_plus);
+  if (!ts_or) {
+    llvm::consumeError(ts_or.takeError());
+    return;
+  }
+  if (auto *clike = llvm::dyn_cast_or_null<TypeSystemClike>(ts_or->get()))
+    out.push_back(clike);
 }
 
 llvm::SmallVector<TypeSystemClike *, 4> TypeSystemClike::GetLockOrder() const {
