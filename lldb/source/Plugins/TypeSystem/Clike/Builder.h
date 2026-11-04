@@ -104,6 +104,8 @@ public:
                      llvm::ArrayRef<CompilerType> param_types, bool is_variadic,
                      bool use_void_for_empty_params = false,
                      llvm::ArrayRef<llvm::StringRef> param_names = {});
+  /// Create a `_Complex` type over \p element_type.
+  CompilerType CreateComplexType(CompilerType element_type);
   /// Intern a name into the Context so it can be used for a type or record
   /// member. All Identifiers must be created this way.
   Identifier GetIdentifier(llvm::StringRef name);
