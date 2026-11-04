@@ -69,6 +69,9 @@ public:
   /// Create a pointer to \p pointee_type (an empty CompilerType denotes a
   /// `void *`).
   CompilerType CreatePointerType(CompilerType pointee_type);
+  /// Create an Apple "blocks" pointer (`int (^)(int)`) over \p pointee_type
+  /// (a FunctionType).
+  CompilerType CreateBlockPointerType(CompilerType pointee_type);
   /// Create a typedef named \p name aliasing \p underlying_type, declared in
   /// \p scope.
   CompilerType CreateTypedefType(llvm::StringRef name,
