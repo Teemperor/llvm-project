@@ -69,6 +69,11 @@ public:
     return builtin_types.MatchByName(name);
   }
 
+  /// Create a pointer type pointing to \p pointee_type. A `void *` points at
+  /// the `void` builtin (see TypeRef), not at "nothing". Its byte size is the
+  /// target's pointer size.
+  PointerType *CreatePointerType(TypeRef pointee_type);
+
   /// Create a typedef named \p name aliasing \p underlying_type, declared in
   /// \p scope.
   TypedefType *CreateTypedefType(llvm::StringRef name, TypeRef underlying_type,
@@ -94,6 +99,11 @@ private:
   }
 
   std::vector<std::unique_ptr<Type>> m_types;
+  /// Uniquing map for pointer types, keyed by (pointee type, is-block), so that
+  /// two independently-formed `T *` are the same instance (needed for type
+  /// equality) and a plain `T *` stays distinct from a block `T (^)`. See
+  /// CreatePointerType / CreateBlockPointerType.
+  std::map<std::pair<Type *, bool>, PointerType *> m_pointer_map;
   /// Target/language configuration (triple, builtin sizes, float semantics).
   LanguageOpts m_opts;
   IdentifierMap identifiers;

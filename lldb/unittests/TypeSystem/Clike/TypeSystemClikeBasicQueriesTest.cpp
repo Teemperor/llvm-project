@@ -76,6 +76,15 @@ TEST_F(TypeSystemClikeBasicQueriesTest, IsIntegerType) {
   EXPECT_FALSE(ts->IsIntegerType(nullptr_t.GetOpaqueQualType(), is_signed));
 }
 
+// IsPointerType reports the pointee type through the out-parameter.
+TEST_F(TypeSystemClikeBasicQueriesTest, IsPointerType) {
+  CompilerType ptr = builder.CreatePointerType(GetInt());
+  CompilerType pointee;
+  EXPECT_TRUE(ts->IsPointerType(ptr.GetOpaqueQualType(), &pointee));
+  EXPECT_EQ(pointee.GetOpaqueQualType(), GetInt().GetOpaqueQualType());
+  EXPECT_FALSE(ts->IsPointerType(GetInt().GetOpaqueQualType(), nullptr));
+}
+
 // IsVoidType identifies the void builtin by spelling, including through
 // typedef sugar, but not other builtins.
 TEST_F(TypeSystemClikeBasicQueriesTest, IsVoidType) {

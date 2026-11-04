@@ -28,6 +28,20 @@ BuiltinType *Context::GetBuiltinType(llvm::StringRef name,
       builtin_types.GetAlignmentInBits(encoding, byte_size), encoding, format));
 }
 
+PointerType *Context::CreatePointerType(TypeRef pointee_type) {
+  // Unique pointer types by (pointee, is-block) so that two
+  // independently-formed `T *` (e.g. a variable's type and
+  // `SBType::GetPointerType()`) are the same instance and thus compare equal
+  // (SBType/CompilerType equality is identity of the opaque type). This mirrors
+  // clang, whose ASTContext uniques pointer types.
+  auto key = std::make_pair(&pointee_type.Get(), /*is_block=*/false);
+  if (auto it = m_pointer_map.find(key); it != m_pointer_map.end())
+    return it->second;
+  PointerType *result = Track(std::make_unique<PointerType>(pointee_type));
+  m_pointer_map[key] = result;
+  return result;
+}
+
 TypedefType *Context::CreateTypedefType(llvm::StringRef name,
                                         TypeRef underlying_type,
                                         DeclScope scope) {

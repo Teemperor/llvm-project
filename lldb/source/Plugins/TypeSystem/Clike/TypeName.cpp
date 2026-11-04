@@ -27,6 +27,18 @@ static std::string BuildDisplayNameImpl(clike::Type *t,
   using namespace clike;
   if (!t)
     return "";
+  // Composite types have no name of their own; build them from their parts.
+  if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
+    clike::Type *pointee = ptr->GetPointeeType();
+    // `void *` needs no special case: its pointee is the `void` builtin, whose
+    // name is "void".
+    std::string pointee_name =
+        BuildDisplayNameImpl(pointee, keep_inline_namespaces);
+    // Clang omits the space between a pointer sigil and a following '*' (e.g.
+    // "int **", "void **"), but keeps it after a plain type name ("int *").
+    const bool tight = !pointee_name.empty() && pointee_name.back() == '*';
+    return pointee_name + (tight ? "*" : " *");
+  }
   if (auto *cv = llvm::dyn_cast<CVQualifiedType>(t)) {
     std::string qualifier;
     if (cv->IsConst())
@@ -35,6 +47,19 @@ static std::string BuildDisplayNameImpl(clike::Type *t,
       qualifier += qualifier.empty() ? "volatile" : " volatile";
     std::string underlying =
         BuildDisplayNameImpl(cv->GetUnderlyingType(), keep_inline_namespaces);
+    // A cv-qualifier on a pointer itself is a declarator suffix (`T *const`),
+    // not a prefix (`const T *`, which would instead qualify the pointee) --
+    // matching the PtrAuthType case below and clang's own type printer. This
+    // only applies to the pointer directly under this qualifier: a qualified
+    // pointee (`const T *const`) has already rendered its own leading `const`
+    // as part of `underlying` (via the pointee's own CVQualifiedType), so no
+    // double-prefixing happens here.
+    if (llvm::isa<PointerType>(cv->GetUnderlyingType())) {
+      // No space between the `*` and the qualifier (`T *const`), matching
+      // clang's declarator-suffix spelling.
+      const bool tight = !underlying.empty() && underlying.back() == '*';
+      return underlying + (tight ? "" : " ") + qualifier;
+    }
     return qualifier + (qualifier.empty() ? "" : " ") + underlying;
   }
 
@@ -61,6 +86,15 @@ std::string clike::BuildDisplayName(Type *t, bool keep_inline_namespaces) {
 std::string clike::BuildCanonicalName(Type *t, bool base_only) {
   if (!t)
     return std::string();
+  // Pointers have no name of their own either; build "<pointee> *".
+  if (auto *ptr = llvm::dyn_cast<PointerType>(t)) {
+    Type *pointee = ptr->GetPointeeType();
+    std::string pointee_name = BuildCanonicalName(pointee, base_only);
+    // Clang omits the space before '*' when the pointee already ends in a
+    // pointer sigil ("void **"), so keep the two tight.
+    const bool tight = !pointee_name.empty() && pointee_name.back() == '*';
+    return pointee_name + (tight ? "*" : " *");
+  }
   // cv-qualified types render as "const"/"volatile" prefixing the unqualified
   // name. Matching TypeSystemClang's GetTypeName: the cv-qualifiers are only
   // spelled for types whose name is printed from the QualType (builtins,

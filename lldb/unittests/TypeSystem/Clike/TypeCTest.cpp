@@ -30,6 +30,34 @@ struct TypeCTest : public testing::Test {
 };
 } // namespace
 
+// A pointer takes the target's pointer width from the Context that owns it,
+// rather than storing a size of its own -- so even `void *` has a size.
+TEST_F(TypeCTest, PointerSizeComesFromContext) {
+  PointerType *ptr = context.CreatePointerType(TypeRef(*Int()));
+  EXPECT_EQ(ptr->GetPointeeType(), Int());
+  EXPECT_TRUE(ptr->IsPointer());
+  EXPECT_FALSE(ptr->IsBlockPointer());
+  EXPECT_EQ(ptr->GetByteSize(),
+            std::optional<uint64_t>(context.GetPointerSize()));
+  EXPECT_EQ(ptr->GetByteSize(), std::optional<uint64_t>(8));
+  // Pointer-aligned, i.e. its own size.
+  EXPECT_EQ(ptr->GetAlignmentInBits(), std::optional<uint64_t>(64));
+
+  PointerType *void_ptr = context.CreatePointerType(TypeRef(*Void()));
+  EXPECT_EQ(void_ptr->GetByteSize(), std::optional<uint64_t>(8));
+}
+
+// A pointer on a 32-bit target is 4 bytes: the width really does follow the
+// Context's target rather than being hardcoded.
+TEST_F(TypeCTest, PointerSizeFollowsTarget) {
+  Context context32{
+      llvm::cantFail(LanguageOpts::Create(llvm::Triple("i386-pc-linux-gnu")))};
+  PointerType *ptr = context32.CreatePointerType(
+      TypeRef(*context32.GetBuiltinType(BuiltinKind::Int)));
+  EXPECT_EQ(ptr->GetByteSize(), std::optional<uint64_t>(4));
+  EXPECT_EQ(ptr->GetAlignmentInBits(), std::optional<uint64_t>(32));
+}
+
 // A typedef is sugar: it reports its own name and type class but forwards
 // layout to what it aliases, and desugars through to the canonical type.
 TEST_F(TypeCTest, Typedef) {
