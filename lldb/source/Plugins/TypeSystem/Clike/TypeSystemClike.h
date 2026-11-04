@@ -472,6 +472,15 @@ private:
 
   bool IsPromotableIntegerTypeImpl(const clike::Type *type);
 
+  llvm::Expected<uint32_t> GetNumChildrenImpl(clike::Type *type,
+                                              bool omit_empty_base_classes,
+                                              const ExecutionContext *exe_ctx);
+
+  llvm::Expected<ChildTypeInfo>
+  GetChildAtIndexImpl(clike::Type *type, ExecutionContext *exe_ctx, size_t idx,
+                      bool transparent_pointers, bool omit_empty_base_classes,
+                      bool ignore_array_bounds, ValueObject *valobj);
+
   /// Recursive worker for GetFullyUnqualifiedType: strip top-level
   /// cv-qualifiers and recurse through pointer/array pointees so the whole
   /// type is cv-unqualified (see the definition for details).
