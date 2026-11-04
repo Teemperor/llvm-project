@@ -62,3 +62,13 @@ TEST_F(ContextTest, UnscopedTypeIsInGlobalScope) {
   BuiltinType *type = context.GetBuiltinType(BuiltinKind::Int);
   EXPECT_EQ(&type->GetDeclContext(), &context.GetGlobalScope());
 }
+
+// `void *` is a pointer to the `void` builtin, not a pointer to nothing: a
+// TypeRef always names a type.
+TEST_F(ContextTest, VoidPointer) {
+  BuiltinType *void_type = context.GetBuiltinType(BuiltinKind::Void);
+  PointerType *p = context.CreatePointerType(TypeRef(*void_type));
+  EXPECT_EQ(p->GetPointeeType(), void_type);
+  EXPECT_TRUE(p->GetPointeeType()->IsVoid());
+  EXPECT_EQ(p->GetByteSize(), 8u);
+}
