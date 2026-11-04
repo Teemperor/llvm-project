@@ -131,6 +131,7 @@ private:
   ParseUnspecifiedType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParseStructureType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  lldb::TypeSP ParseArrayType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
   ParsePointerType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP ParseTypedef(const lldb_private::plugin::dwarf::DWARFDIE &die);
