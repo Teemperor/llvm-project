@@ -22,6 +22,7 @@ using namespace lldb_private::clike;
 char StructType::ID = 0;
 char ArrayType::ID = 0;
 char PointerType::ID = 0;
+char BlockPointerType::ID = 0;
 char TypedefType::ID = 0;
 char CVQualifiedType::ID = 0;
 char EnumType::ID = 0;
@@ -237,4 +238,13 @@ FunctionType::GetPointeeDisplayName(llvm::StringRef sigil,
 std::string FunctionType::GetPointeeCanonicalName(llvm::StringRef sigil,
                                                   bool base_only) const {
   return GetPointeeDisplayName(sigil, DisplayNameOptions());
+}
+
+std::string
+BlockPointerType::GetDisplayName(const DisplayNameOptions &opts) const {
+  return GetPointeeType()->GetPointeeDisplayName("^", opts);
+}
+
+std::string BlockPointerType::GetCanonicalName(bool base_only) const {
+  return GetPointeeType()->GetPointeeCanonicalName("^", base_only);
 }
