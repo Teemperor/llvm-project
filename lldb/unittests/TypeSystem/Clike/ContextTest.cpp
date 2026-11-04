@@ -55,3 +55,13 @@ TEST_F(ContextTest, GlobalScope) {
   EXPECT_TRUE(llvm::isa<GlobalScope>(global));
   EXPECT_EQ(global.GetParent(), nullptr);
 }
+
+// `void *` is a pointer to the `void` builtin, not a pointer to nothing: a
+// TypeRef always names a type.
+TEST_F(ContextTest, VoidPointer) {
+  BuiltinType *void_type = context.GetBuiltinType(BuiltinKind::Void);
+  PointerType *p = context.CreatePointerType(TypeRef(*void_type));
+  EXPECT_EQ(p->GetPointeeType(), void_type);
+  EXPECT_TRUE(p->GetPointeeType()->IsVoid());
+  EXPECT_EQ(p->GetByteSize(), 8u);
+}
