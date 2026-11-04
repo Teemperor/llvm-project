@@ -46,11 +46,30 @@ public:
   /// DW_AT_type, so the parser uses this to fill in the underlying type of a
   /// cv-qualified or typedef'd `void` (e.g. the pointee of a `const void *`).
   CompilerType GetVoidType();
+  /// Create a typedef named \p name aliasing \p underlying_type, declared in
+  /// \p scope.
+  CompilerType CreateTypedefType(llvm::StringRef name,
+                                 CompilerType underlying_type,
+                                 DeclScope scope = {});
   /// Intern a name into the Context so it can be used for a type or record
   /// member. All Identifiers must be created this way.
   Identifier GetIdentifier(llvm::StringRef name);
 
 private:
+  /// Wrap a CompilerType into a TypeRef naming the Type it refers to. An empty
+  /// CompilerType, or one belonging to another kind of type system, has no node
+  /// to name and so yields std::nullopt; the caller decides what that means for
+  /// the reference it was about to store (usually: don't build the type at
+  /// all).
+  ///
+  /// The type need not be one this Builder's Context owns -- a reference is
+  /// free to name a type another Context created, since the node itself records
+  /// who owns it (see Type::GetOwningContext).
+  std::optional<TypeRef> ToTypeRef(const CompilerType &type);
+  /// Wrap a Type (e.g. one the DWARF parser resolved) into a TypeRef. Null
+  /// yields std::nullopt.
+  std::optional<TypeRef> ToTypeRef(Type *type) const;
+
   TypeSystemClike &m_ts;
 };
 

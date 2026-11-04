@@ -17,6 +17,7 @@
 
 #include "Plugins/TypeSystem/Clike/Builder.h"
 #include "Plugins/TypeSystem/Clike/Type.h"
+#include "Plugins/TypeSystem/Clike/TypeC.h"
 #include "Plugins/TypeSystem/Clike/TypeSystemClike.h"
 
 #include "lldb/Core/Declaration.h"
@@ -37,6 +38,7 @@
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/DebugInfo/DWARF/DWARFTypePrinter.h"
 
 #include <algorithm>
 #include <vector>
@@ -249,6 +251,61 @@ std::string DWARFASTParserClike::GetDIEClassTemplateParams(DWARFDIE die) {
   return {};
 }
 
+/// Emit the "Scope::" prefix for the DIE \p die by walking its ancestors,
+/// mirroring llvm::DWARFTypePrinter::appendScopes but SKIPPING DW_TAG_module
+/// scopes. In -gmodules debug info, types defined in a PCH/module are nested
+/// under a DW_TAG_module scope (named e.g. "pch.h"); that scope is a debug-info
+/// container, not a C++ decl context, so it must not appear in the type name
+/// (otherwise "IntContainer" would print as "pch.h::IntContainer"). This
+/// matches DWARFASTParserClang, which likewise ignores module scopes for
+/// naming.
+static void
+AppendScopesSkippingModules(llvm::DWARFTypePrinter<DWARFDIE> &printer,
+                            llvm::raw_ostream &os, DWARFDIE die) {
+  if (!die)
+    return;
+  switch (die.Tag()) {
+  case DW_TAG_compile_unit:
+  case DW_TAG_type_unit:
+  case DW_TAG_skeleton_unit:
+  case DW_TAG_subprogram:
+  case DW_TAG_lexical_block:
+    return;
+  case DW_TAG_module:
+    // Skip the module container entirely: don't emit it and continue up to its
+    // parent so any real enclosing scopes are still printed.
+    AppendScopesSkippingModules(printer, os, die.GetParent());
+    return;
+  default:
+    break;
+  }
+  AppendScopesSkippingModules(printer, os, die.GetParent());
+  printer.appendUnqualifiedName(die);
+  os << "::";
+}
+
+/// The fully-qualified name of a named type DIE, including enclosing namespace
+/// and class scopes (e.g. "std::__1::vector<int, std::__1::allocator<int> >")
+/// and reconstructed template arguments. Producing the scoped spelling is what
+/// lets type-name-based data formatters (such as libc++'s container summaries)
+/// match our types.
+static std::string GetDIEQualifiedName(const DWARFDIE &die) {
+  // A DIE with no DW_AT_name is an unnamed type (e.g. a function-local unnamed
+  // struct/union/enum). llvm::DWARFTypePrinter::appendQualifiedName would emit
+  // a bogus bare tag keyword (e.g. "structure ") for it, so return an empty
+  // name and let the type system supply an "(unnamed ...)" display name.
+  if (!die.GetName())
+    return std::string();
+  std::string name;
+  llvm::raw_string_ostream os(name);
+  llvm::DWARFTypePrinter<DWARFDIE> printer(os);
+  // Reimplement appendQualifiedName here so we can skip DW_TAG_module scopes
+  // (see AppendScopesSkippingModules); the upstream printer would include them.
+  AppendScopesSkippingModules(printer, os, die.GetParent());
+  printer.appendUnqualifiedName(die);
+  return name;
+}
+
 ConstString
 DWARFASTParserClike::ConstructDemangledNameFromDWARF(const DWARFDIE &die) {
   // TypeSystemClike must not touch clang decl contexts, so (unlike
@@ -256,9 +313,9 @@ DWARFASTParserClike::ConstructDemangledNameFromDWARF(const DWARFDIE &die) {
   // qualified function name followed by its parameter type spellings and any
   // cv-qualifier on the object parameter.
   // Use the DWARF decl context's qualified name (mirroring
-  // DWARFASTParserClang): it prefixes top-level names with "::" (e.g.
-  // "::foo"), which is what the demangled function name is expected to
-  // carry.
+  // DWARFASTParserClang) rather than GetDIEQualifiedName: the former prefixes
+  // top-level names with "::" (e.g. "::foo"), which is what the demangled
+  // function name is expected to carry.
   StreamString sstr;
   sstr << die.GetDWARFDeclContext().GetQualifiedName();
 
@@ -314,6 +371,50 @@ DWARFASTParserClike::ConstructDemangledNameFromDWARF(const DWARFDIE &die) {
   return ConstString(sstr.GetString());
 }
 
+/// The unqualified spelling of a named type DIE, including any reconstructed
+/// template arguments (e.g. "FwdTemplateClass<int>"). This mirrors
+/// GetDIEQualifiedName but omits the enclosing namespace/class scopes, since
+/// TypeSystemClike stores the scope separately (see clike::DeclScope) and
+/// rebuilds the qualified display name itself.
+///
+/// For a non-template type, or a type whose DW_AT_name already carries the
+/// "<...>" template arguments, this yields the same string as the bare
+/// DW_AT_name; it only differs for a template specialization whose DW_AT_name
+/// is just the template's base name (e.g. a forward-declared
+/// `FwdTemplateClass<int>`, whose declaration DIE is named "FwdTemplateClass"
+/// with separate DW_TAG_template_*_parameter children).
+static std::string GetDIEUnqualifiedName(const DWARFDIE &die) {
+  // A DIE with no DW_AT_name is an unnamed type (e.g. a lambda closure or a
+  // function-local unnamed struct/union/enum). llvm::DWARFTypePrinter would
+  // emit a bogus bare tag keyword (e.g. "class ") for it -- mirrors the same
+  // guard in GetDIEQualifiedName. Let the type system supply an
+  // "(unnamed ...)" display name instead.
+  if (!die.GetName())
+    return std::string();
+
+  // If the DW_AT_name already carries the template arguments, use it verbatim
+  // so we don't reconstruct and duplicate them.
+  const char *name = die.GetName();
+  if (llvm::StringRef(name).contains('<'))
+    return name;
+
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  llvm::DWARFTypePrinter<DWARFDIE>(os).appendUnqualifiedName(die);
+  return result;
+}
+
+/// The namespace the type \p die describes is declared in and its unqualified
+/// DW_AT_name spelling, so TypeSystemClike can rebuild the display name while
+/// hiding inline namespaces.
+static clike::DeclScope GetTypeDeclScope(const DWARFDIE &die,
+                                         clike::Builder &builder) {
+  clike::Identifier unqualified_name;
+  if (die.GetName())
+    unqualified_name = builder.GetIdentifier(GetDIEUnqualifiedName(die));
+  return clike::DeclScope(/*decl_context=*/nullptr, unqualified_name);
+}
+
 CompilerDeclContext
 DWARFASTParserClike::GetDeclContextForUIDFromDWARF(const DWARFDIE &die) {
   return CompilerDeclContext();
@@ -322,6 +423,40 @@ DWARFASTParserClike::GetDeclContextForUIDFromDWARF(const DWARFDIE &die) {
 CompilerDeclContext
 DWARFASTParserClike::GetDeclContextContainingUIDFromDWARF(const DWARFDIE &die) {
   return CompilerDeclContext();
+}
+
+TypeSP DWARFASTParserClike::ParseTypedef(const DWARFDIE &die) {
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+  ConstString name(GetDIEQualifiedName(die));
+
+  // Resolve the aliased type. A typedef can alias an incomplete type, so use
+  // its forward-declared CompilerType.
+  DWARFDIE underlying_die = die.GetAttributeValueAsReferenceDIE(DW_AT_type);
+  CompilerType underlying_type;
+  if (underlying_die) {
+    Type *underlying = die.ResolveTypeUID(underlying_die);
+    if (!underlying)
+      return nullptr;
+    underlying_type = underlying->GetForwardCompilerType();
+  }
+
+  CompilerType typedef_type;
+  {
+    clike::Builder ts(m_ts);
+    // A missing DW_AT_type means the aliased type is `void`.
+    if (!underlying_type)
+      underlying_type = ts.GetVoidType();
+    typedef_type = ts.CreateTypedefType(name.GetStringRef(), underlying_type,
+                                        GetTypeDeclScope(die, ts));
+  }
+
+  std::optional<uint64_t> byte_size =
+      llvm::expectedToOptional(typedef_type.GetByteSize(nullptr));
+
+  Declaration decl = GetDIEDeclaration(die);
+  return dwarf->MakeType(die.GetID(), name, byte_size, /*context=*/nullptr,
+                         underlying_die.GetID(), Type::eEncodingIsUID, decl,
+                         typedef_type, Type::ResolveState::Full);
 }
 
 /// The oldest DWARF version TypeSystemClike knows how to read. See
@@ -378,6 +513,10 @@ TypeSP DWARFASTParserClike::ParseTypeFromDWARF(const SymbolContext &sc,
   switch (die.Tag()) {
   case DW_TAG_base_type:
     type_sp = ParseBaseType(die);
+    break;
+  case DW_TAG_typedef:
+  case DW_TAG_template_alias:
+    type_sp = ParseTypedef(die);
     break;
   case DW_TAG_unspecified_type:
     type_sp = ParseUnspecifiedType(die);
