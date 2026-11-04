@@ -91,6 +91,12 @@ PtrAuthType *Context::CreatePtrAuthType(TypeRef underlying_type, unsigned key,
       PtrAuthQualifier{key, addr_discriminated, extra_discriminator}));
 }
 
+ElaboratedType *Context::CreateElaboratedType(llvm::StringRef spelling,
+                                              TypeRef underlying_type) {
+  return Track(std::make_unique<ElaboratedType>(underlying_type,
+                                                GetIdentifier(spelling)));
+}
+
 EnumType *Context::CreateEnumType(llvm::StringRef name,
                                   std::optional<uint64_t> byte_size,
                                   TypeRef underlying_type, bool is_scoped,
