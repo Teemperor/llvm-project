@@ -46,3 +46,41 @@ TEST_F(TypeSystemClikeNameTest, PointerNames) {
   // No space between two pointer sigils.
   EXPECT_EQ(ptr_ptr.GetTypeName().GetStringRef(), "int **");
 }
+
+// A cv-qualified builtin spells its qualifiers as a prefix; a cv-qualified
+// record/enum/typedef drops them (their name comes from the decl, matching
+// TypeSystemClang).
+TEST_F(TypeSystemClikeNameTest, CVQualifiedNames) {
+  CompilerType const_int =
+      builder.CreateCVQualifiedType(GetInt(), /*is_const=*/true,
+                                    /*is_volatile=*/false);
+  EXPECT_EQ(const_int.GetTypeName().GetStringRef(), "const int");
+
+  CompilerType volatile_int =
+      builder.CreateCVQualifiedType(GetInt(), false, true);
+  EXPECT_EQ(volatile_int.GetTypeName().GetStringRef(), "volatile int");
+
+  CompilerType record = builder.CreateRecordType("Foo", 4);
+  CompilerType const_record =
+      builder.CreateCVQualifiedType(record, true, false);
+  EXPECT_EQ(const_record.GetTypeName().GetStringRef(), "Foo");
+}
+
+// A named leaf type (record, typedef) reports its stored spelling verbatim.
+TEST_F(TypeSystemClikeNameTest, NamedLeafTypes) {
+  CompilerType record = builder.CreateRecordType("MyStruct", 4);
+  EXPECT_EQ(record.GetTypeName().GetStringRef(), "MyStruct");
+
+  CompilerType alias = builder.CreateTypedefType("MyAlias", GetInt());
+  EXPECT_EQ(alias.GetTypeName().GetStringRef(), "MyAlias");
+}
+
+// An unnamed struct/class/union prints as "(unnamed struct)" etc, matching
+// clang's anonymous-tag spelling.
+TEST_F(TypeSystemClikeNameTest, UnnamedRecordName) {
+  CompilerType anon_struct = builder.CreateRecordType("", 4);
+  EXPECT_EQ(anon_struct.GetTypeName().GetStringRef(), "(unnamed struct)");
+
+  CompilerType anon_union = builder.CreateRecordType("", 4, /*is_union=*/true);
+  EXPECT_EQ(anon_union.GetTypeName().GetStringRef(), "(unnamed union)");
+}
