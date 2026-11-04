@@ -344,23 +344,33 @@ bool TypeSystemClike::IsFloatingPointType(opaque_compiler_type_t type) {
   return t && t->GetEncoding() == eEncodingIEEE754;
 }
 
-bool TypeSystemClike::IsFunctionType(lldb::opaque_compiler_type_t type) {
-  return false;
+bool TypeSystemClike::IsFunctionType(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  return t && Desugar(t.get())->IsFunction();
 }
 
-size_t TypeSystemClike::GetNumberOfFunctionArguments(
-    lldb::opaque_compiler_type_t type) {
-  return 0;
+size_t
+TypeSystemClike::GetNumberOfFunctionArguments(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  if (!t)
+    return 0;
+  return Desugar(t.get())->GetNumParameters();
 }
 
 CompilerType
-TypeSystemClike::GetFunctionArgumentAtIndex(lldb::opaque_compiler_type_t type,
+TypeSystemClike::GetFunctionArgumentAtIndex(opaque_compiler_type_t type,
                                             const size_t index) {
-  return CompilerType();
+  SharedLockedType t = GetTypeForRead(type);
+  if (!t)
+    return CompilerType();
+  return GetCompilerType(Desugar(t.get())->GetParameterAtIndex(index));
 }
 
-bool TypeSystemClike::IsFunctionPointerType(lldb::opaque_compiler_type_t type) {
-  return false;
+bool TypeSystemClike::IsFunctionPointerType(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  if (!t)
+    return false;
+  return Desugar(t.get())->IsFunctionPointer();
 }
 
 bool TypeSystemClike::IsMemberFunctionPointerType(opaque_compiler_type_t type) {
@@ -724,19 +734,28 @@ void TypeSystemClike::ForEachEnumerator(
   }
 }
 
-int TypeSystemClike::GetFunctionArgumentCount(
-    lldb::opaque_compiler_type_t type) {
-  return 0;
-}
-
-CompilerType TypeSystemClike::GetFunctionArgumentTypeAtIndex(
-    lldb::opaque_compiler_type_t type, size_t idx) {
-  return CompilerType();
+int TypeSystemClike::GetFunctionArgumentCount(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  if (!t)
+    return -1;
+  const clike::Type *fn = Desugar(t.get());
+  if (!fn->IsFunction())
+    return -1;
+  return static_cast<int>(fn->GetNumParameters());
 }
 
 CompilerType
-TypeSystemClike::GetFunctionReturnType(lldb::opaque_compiler_type_t type) {
-  return CompilerType();
+TypeSystemClike::GetFunctionArgumentTypeAtIndex(opaque_compiler_type_t type,
+                                                size_t idx) {
+  return GetFunctionArgumentAtIndex(type, idx);
+}
+
+CompilerType
+TypeSystemClike::GetFunctionReturnType(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  if (!t)
+    return CompilerType();
+  return GetCompilerType(Desugar(t.get())->GetReturnType());
 }
 
 size_t TypeSystemClike::GetNumMemberFunctions(opaque_compiler_type_t type) {
@@ -821,6 +840,13 @@ TypeSystemClike::GetBitSize(opaque_compiler_type_t type,
   const clike::Type *t = Desugar(tt.get());
   if (std::optional<uint64_t> byte_size = t->GetByteSize())
     return *byte_size * 8;
+  // Function types have no storage of their own. Matching TypeSystemClang
+  // (clang models function types with a type size of 0), report a bit size of
+  // 0 rather than an error. This keeps the dereferenced-value child of a
+  // function pointer/reference from surfacing a size error (or a spurious byte
+  // read) as its summary -- a zero-sized value simply has no value string.
+  if (t->IsFunction())
+    return 0;
   return llvm::createStringError("TypeSystemClike::GetBitSize: unknown size");
 }
 
@@ -1646,6 +1672,20 @@ TypeSystemClike::GetBasicTypeFromASTAssumingWriteLocked(BasicType basic_type) {
   if (!kind)
     return CompilerType();
   return GetCompilerType(m_context.GetBuiltinType(*kind));
+}
+
+CompilerType TypeSystemClike::CreateGenericFunctionPrototype() {
+  // An unprototyped `void ()` function type, used by ValueObjectVTable to give
+  // a vtable slot that doesn't resolve to a known function a displayable
+  // (hex address + description) function-pointer type. Mirrors
+  // TypeSystemClang::CreateGenericFunctionPrototype's
+  // ast.getFunctionNoProtoType(ast.VoidTy, ...): a variadic function with no
+  // declared parameters is the closest match to "no prototype" in this
+  // parameter-list-based model (there is no separate K&R/no-prototype bit).
+  auto write_lock = LockForWrite();
+  clike::Builder builder(*this);
+  return builder.CreateFunctionType(builder.GetVoidType(), {},
+                                    /*is_variadic=*/true);
 }
 
 CompilerType

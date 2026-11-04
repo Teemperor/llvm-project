@@ -108,6 +108,17 @@ public:
                            std::vector<Enumerator> enumerators = {},
                            DeclScope scope = {});
 
+  /// Create a function type with the given return and parameter types.
+  /// \p param_names holds the parameters' declared names (it may be shorter
+  /// than \p params, leaving the rest unnamed). \p use_void_for_empty_params
+  /// controls how an empty, non-variadic parameter list is later rendered --
+  /// see FunctionType::UseVoidForEmptyParams.
+  FunctionType *CreateFunctionType(TypeRef return_type,
+                                   llvm::ArrayRef<TypeRef> params,
+                                   bool is_variadic,
+                                   bool use_void_for_empty_params = false,
+                                   llvm::ArrayRef<Identifier> param_names = {});
+
   /// Structural mutation of already-created record types. These are the gated
   /// entry points for the mutations that happen during lazy completion; the
   /// corresponding Type methods are private and befriend this class.

@@ -44,6 +44,14 @@ std::string BuildCanonicalName(Type *t, bool base_only);
 /// (`int (*)(const char *)`), which have no "raw DWARF name" to preserve.
 std::string BuildDisplayName(Type *t, bool keep_inline_namespaces = false);
 
+/// Render a function signature in C declarator form, placing \p decl (e.g. ""
+/// for a plain function, "(*)" for a function pointer, "(^)" for a block
+/// pointer) between the return type and the parameter list:
+/// `int (*)(const char *)`. \p fn must be a function type (see
+/// Type::IsFunction).
+std::string BuildFunctionName(Type *fn, llvm::StringRef decl,
+                              bool keep_inline_namespaces = false);
+
 } // namespace clike
 } // namespace lldb_private
 

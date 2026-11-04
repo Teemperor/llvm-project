@@ -199,6 +199,15 @@ TEST_F(TypeCTest, PointerDynamicTypeCandidate) {
   EXPECT_EQ(record_ptr->GetDynamicTypeCandidate(kBoth, complete), nullptr);
 }
 
+// A pointer's function-pointer-ness is seen through sugar on the pointee.
+TEST_F(TypeCTest, FunctionPointerThroughSugar) {
+  FunctionType *fn =
+      context.CreateFunctionType(TypeRef(*Int()), {}, /*is_variadic=*/false);
+  TypedefType *alias = context.CreateTypedefType("fn_t", TypeRef(*fn));
+  PointerType *ptr = context.CreatePointerType(TypeRef(*alias));
+  EXPECT_TRUE(ptr->IsFunctionPointer());
+}
+
 // A typedef is sugar: it reports its own name and type class but forwards
 // layout to what it aliases, and desugars through to the canonical type.
 TEST_F(TypeCTest, Typedef) {
@@ -283,6 +292,36 @@ TEST_F(TypeCTest, Enum) {
   EXPECT_TRUE(colors->IsScopedEnumeration());
   // A scoped enum doesn't promote implicitly.
   EXPECT_FALSE(colors->IsPromotableInteger());
+}
+
+// A function type carries its return type, parameters and variadic-ness, and
+// has no size of its own.
+TEST_F(TypeCTest, Function) {
+  FunctionType *fn =
+      context.CreateFunctionType(TypeRef(*Int()), {}, /*is_variadic=*/false);
+  EXPECT_TRUE(fn->IsFunction());
+  EXPECT_EQ(fn->GetReturnType(), Int());
+  EXPECT_FALSE(fn->IsVariadic());
+  EXPECT_EQ(fn->GetNumParameters(), 0u);
+  EXPECT_FALSE(fn->GetByteSize().has_value());
+  EXPECT_EQ(fn->GetTypeClass(), lldb::eTypeClassFunction);
+
+  Type *void_ptr = context.CreatePointerType(TypeRef(*Void()));
+  FunctionType *with_params = context.CreateFunctionType(
+      TypeRef(*Int()), {TypeRef(*Int()), TypeRef(*void_ptr)},
+      /*is_variadic=*/false, /*use_void_for_empty_params=*/false,
+      {context.GetIdentifier("x")});
+  EXPECT_EQ(with_params->GetNumParameters(), 2u);
+  EXPECT_EQ(with_params->GetParameterAtIndex(0), Int());
+  EXPECT_EQ(with_params->GetParameterAtIndex(1), void_ptr);
+  EXPECT_EQ(with_params->GetParameterAtIndex(2), nullptr);
+  // Names not given are empty.
+  EXPECT_EQ(with_params->GetParameterNameAtIndex(0), "x");
+  EXPECT_EQ(with_params->GetParameterNameAtIndex(1), "");
+
+  FunctionType *variadic =
+      context.CreateFunctionType(TypeRef(*Int()), {}, /*is_variadic=*/true);
+  EXPECT_TRUE(variadic->IsVariadic());
 }
 
 // An HFA is a record whose direct fields are all the same floating-point type;
