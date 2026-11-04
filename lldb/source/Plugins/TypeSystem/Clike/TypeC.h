@@ -30,11 +30,24 @@
 #include "ByteSizedType.h"
 #include "Identifier.h"
 #include "NamedType.h"
+#include "RecordType.h"
 #include "SugarType.h"
 #include "Type.h"
 
 namespace lldb_private {
 namespace clike {
+
+/// A C struct/union type.
+class StructType : public llvm::RTTIExtends<StructType, RecordType> {
+public:
+  using RTTIExtends::RTTIExtends;
+
+  static char ID;
+
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassStruct;
+  }
+};
 
 /// A simple pointer type.
 class PointerType : public llvm::RTTIExtends<PointerType, Type> {
