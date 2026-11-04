@@ -10,15 +10,35 @@
 
 #include "Context.h"
 
+#include "llvm/Support/FormatVariadic.h"
+#include "llvm/Support/MathExtras.h"
+
+#include <algorithm>
+
 using namespace lldb_private::clike;
 
 // Storage for the LLVM RTTI discriminators. The addresses (not the values) are
 // what identify each class, so the initializer is irrelevant.
 char StructType::ID = 0;
+char ArrayType::ID = 0;
 char PointerType::ID = 0;
 char TypedefType::ID = 0;
 char CVQualifiedType::ID = 0;
 char EnumType::ID = 0;
+
+std::optional<uint64_t> ArrayType::GetAlignmentInBits() const {
+  if (!m_is_vector)
+    return m_element_type.Get().GetAlignmentInBits();
+  std::optional<uint64_t> byte_size = GetByteSize();
+  if (!byte_size)
+    return std::nullopt;
+  uint64_t alignment =
+      std::max<uint64_t>(llvm::PowerOf2Ceil(*byte_size * 8), 8);
+  if (uint64_t max_alignment =
+          GetOwningContext().GetLanguageOpts().GetMaxVectorAlignInBits())
+    alignment = std::min(alignment, max_alignment);
+  return alignment;
+}
 
 std::optional<uint64_t> PointerType::GetByteSize() const {
   // A pointer is the target's pointer width, taken from the Context that owns
@@ -130,4 +150,40 @@ std::string EnumType::GetCanonicalName(bool base_only) const {
   if (!IsUnnamed())
     return Type::GetCanonicalName(base_only);
   return g_unnamed_enum_name.str();
+}
+
+std::string ArrayType::BuildName(
+    llvm::function_ref<std::string(const Type &)> element_name) const {
+  // A vector type (DW_AT_GNU_vector) is spelled like clang's
+  // `<element> __attribute__((ext_vector_type(N)))` rather than as an array
+  // (`<element>[N]`), so vector formatters match and array/char-array
+  // formatters don't (matching TypeSystemClang's type name for vectors).
+  if (m_is_vector)
+    return llvm::formatv("{0} __attribute__((ext_vector_type({1})))",
+                         element_name(*GetElementType()),
+                         GetNumElements().value_or(0))
+        .str();
+  // For a multidimensional C array the DWARF/type nesting goes
+  // outermost-dimension first (`T[2][3]` == array-of-2 of array-of-3 of T),
+  // but the element name must be printed innermost-last. Peel the whole
+  // array chain collecting dimensions left-to-right, then append them after
+  // the innermost element's name so the brackets keep their source order.
+  std::string dims;
+  const Type *cur = this;
+  while (const Type *element = cur->GetArrayElementType()) {
+    if (std::optional<uint64_t> n = cur->GetNumElements())
+      dims += llvm::formatv("[{0}]", *n).str();
+    else
+      dims += "[]";
+    cur = element;
+  }
+  return element_name(*cur) + dims;
+}
+
+std::string ArrayType::GetDisplayName(const DisplayNameOptions &opts) const {
+  return BuildName([&](const Type &t) { return t.GetDisplayName(opts); });
+}
+
+std::string ArrayType::GetCanonicalName(bool base_only) const {
+  return BuildName([&](const Type &t) { return t.GetCanonicalName(base_only); });
 }
