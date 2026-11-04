@@ -78,6 +78,10 @@ public:
                                  llvm::StringRef name, TypeRef underlying_type,
                                  Identifier unqualified_name = Identifier());
 
+  /// Create a cv-qualified version of \p underlying_type.
+  CVQualifiedType *CreateCVQualifiedType(TypeRef underlying_type, bool is_const,
+                                         bool is_volatile);
+
   /// Intern a name into this Context's IdentifierMap. All Identifiers used by
   /// types owned by this Context must be created here so that their backing
   /// storage lives exactly as long as the Context (and its types).
