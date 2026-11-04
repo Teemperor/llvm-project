@@ -34,6 +34,12 @@ public:
   Identifier GetName() const override { return m_name; }
   Identifier GetUnqualifiedName() const override { return m_unqualified_name; }
 
+  /// True if this type has no name at all, e.g. an unnamed
+  /// `enum { ... } x;`.
+  bool IsUnnamed() const {
+    return m_name.GetName().empty() && m_unqualified_name.GetName().empty();
+  }
+
 private:
   Identifier m_name;
   Identifier m_unqualified_name;
