@@ -30,6 +30,7 @@ class TargetAPITestCase(TestBase):
     #
     # It does not segfaults now.  But for dwarf, the variable value is None if
     # the inferior process does not exist yet.  The radar has been updated.
+    @add_test_categories(["typesystem-clike"])
     def test_find_global_variables(self):
         """Exercise SBTarget.FindGlobalVariables() API."""
         d = {"EXE": "b.out"}
