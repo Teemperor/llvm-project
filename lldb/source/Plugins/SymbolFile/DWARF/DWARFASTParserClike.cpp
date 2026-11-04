@@ -562,7 +562,87 @@ DWARFASTParserClike::GetDeclContextContainingUIDFromDWARF(const DWARFDIE &die) {
   return CompilerDeclContext(&m_ts, const_cast<clike::Namespace *>(ns));
 }
 
+/// Return the DW_TAG_module DIE enclosing \p die (the top-most one), or an
+/// invalid DIE if \p die is not scoped inside a Clang module. Mirrors
+/// DWARFASTParserClang's GetContainingClangModuleDIE.
+static DWARFDIE GetContainingClangModuleDIE(const DWARFDIE &die) {
+  DWARFDIE top_module_die;
+  for (DWARFDIE parent = die.GetParent(); parent; parent = parent.GetParent()) {
+    const dw_tag_t tag = parent.Tag();
+    if (tag == DW_TAG_module)
+      top_module_die = parent;
+    else if (tag == DW_TAG_compile_unit || tag == DW_TAG_partial_unit)
+      break;
+  }
+  return top_module_die;
+}
+
+/// If \p die is a forward declaration nested inside a DW_TAG_module (a
+/// -gmodules/PCH container), find the complete definition of the type in the
+/// external module/PCH DWARF and return the (already parsed, complete) type for
+/// it. Returns null if \p die is not a module forward declaration or no
+/// definition can be found. Mirrors
+/// DWARFASTParserClang::ParseTypeFromClangModule.
+TypeSP DWARFASTParserClike::FindClangModuleDefinitionType(const DWARFDIE &die) {
+  DWARFDIE module_die = GetContainingClangModuleDIE(die);
+  if (!module_die)
+    return TypeSP();
+
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+  if (!dwarf)
+    return TypeSP();
+
+  const char *module_name = module_die.GetName();
+  if (!module_name)
+    return TypeSP();
+
+  // The complete definition lives in the .pcm/.pch DWARF referenced by this
+  // module. Look it up there (and in the modules it imports) by decl context.
+  ModuleSP clang_module_sp = dwarf->GetExternalModule(ConstString(module_name));
+  if (!clang_module_sp)
+    return TypeSP();
+
+  std::vector<CompilerContext> die_context = die.GetDeclContext();
+  TypeQuery query(die_context, TypeQueryOptions::e_module_search |
+                                   TypeQueryOptions::e_find_one);
+  query.AddLanguage(SymbolFileDWARF::GetLanguageFamily(*die.GetCU()));
+
+  TypeResults results;
+  clang_module_sp->FindTypes(query, results);
+  TypeSP pcm_type_sp = results.GetTypeMap().FirstType();
+  if (!pcm_type_sp) {
+    // Also search modules imported by this symbol file (the definition may be
+    // in a transitively imported module).
+    results.AlreadySearched(dwarf);
+    if (CompileUnit *cu = die.GetCU()->GetLLDBCompUnit())
+      dwarf->ForEachExternalModule(
+          *cu, results.GetSearchedSymbolFiles(), [&](Module &module) {
+            module.FindTypes(query, results);
+            pcm_type_sp = results.GetTypeMap().FirstType();
+            return (bool)pcm_type_sp;
+          });
+  }
+
+  if (!pcm_type_sp)
+    return TypeSP();
+
+  // Reuse the same TypeSP for this DIE so callers see the complete definition.
+  // (Its members/bases are parsed lazily from the module's own DWARF.)
+  dwarf->GetDIEToType()[die.GetDIE()] = pcm_type_sp.get();
+  return pcm_type_sp;
+}
+
 TypeSP DWARFASTParserClike::ParseStructureType(const DWARFDIE &die) {
+  // A record that is only forward-declared inside a DW_TAG_module (a
+  // -gmodules/PCH debug-info container) has its complete definition in the
+  // separate module/PCH DWARF. Find that definition and use it, so the record
+  // is completable on the frame-variable / value-object path too (the
+  // expression evaluator finds the cross-module definition separately). This
+  // mirrors DWARFASTParserClang::ParseTypeFromClangModule.
+  if (die.GetAttributeValueAsUnsigned(DW_AT_declaration, 0))
+    if (TypeSP module_def = FindClangModuleDefinitionType(die))
+      return module_def;
+
   SymbolFileDWARF *dwarf = die.GetDWARF();
 
   // Record the fully-qualified, template-argument-bearing spelling of the type
