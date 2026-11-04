@@ -16,6 +16,7 @@
 
 #include "BuiltinTypes.h"
 #include "LanguageOpts.h"
+#include "Namespace.h"
 #include "Type.h"
 #include "TypeC.h"
 
@@ -177,6 +178,12 @@ public:
   }
   /// @}
 
+  /// Intern a namespace. Namespaces are deduplicated by (parent, name, inline),
+  /// so a given namespace maps to a single stable Namespace instance owned by
+  /// this Context. \p parent is null for a top-level namespace.
+  const Namespace *GetNamespace(Identifier name, const Namespace *parent,
+                                bool is_inline);
+
   /// Intern a name into this Context's IdentifierMap. All Identifiers used by
   /// types owned by this Context must be created here so that their backing
   /// storage lives exactly as long as the Context (and its types).
@@ -220,6 +227,11 @@ private:
   }
 
   std::vector<std::unique_ptr<Type>> m_types;
+  /// Interned namespaces, owned for the Context's lifetime, plus a dedup map
+  /// keyed by (parent, interned-name pointer, is_inline).
+  std::vector<std::unique_ptr<Namespace>> m_namespaces;
+  std::map<std::tuple<const Namespace *, const void *, bool>, const Namespace *>
+      m_namespace_map;
   /// Uniquing map for pointer types, keyed by (pointee type, is-block), so that
   /// two independently-formed `T *` are the same instance (needed for type
   /// equality) and a plain `T *` stays distinct from a block `T (^)`. See

@@ -9,6 +9,7 @@
 #include "TypeName.h"
 
 #include "BuiltinTypes.h"
+#include "Namespace.h"
 #include "Type.h"
 #include "TypeC.h"
 
@@ -19,6 +20,60 @@ namespace lldb_private {
 using namespace lldb_private::clike;
 
 namespace {
+
+// Append the namespace qualification for `ns` (outermost first), skipping
+// inline namespaces so that e.g. `std::__1` prints as `std::`, and anonymous
+// namespaces so that a type in one prints unqualified (e.g. `Bar`, matching
+// clang, which elides its `(anonymous namespace)` scope).
+static void AppendNamespacePrefix(const clike::Namespace *ns,
+                                  std::string &out) {
+  if (!ns)
+    return;
+  AppendNamespacePrefix(ns->GetParent(), out);
+  if (!ns->IsInline() && !ns->IsAnonymous()) {
+    out += ns->GetName().GetName().str();
+    out += "::";
+  }
+}
+
+// Like AppendNamespacePrefix, but for the fully-qualified (non-display) name:
+// keeps inline namespaces (e.g. `std::__1::`), matching the raw DWARF
+// spelling that data formatters key on.
+static void AppendQualifiedNamespacePrefix(const clike::Namespace *ns,
+                                           std::string &out) {
+  if (!ns)
+    return;
+  AppendQualifiedNamespacePrefix(ns->GetParent(), out);
+  if (!ns->IsAnonymous()) {
+    out += ns->GetName().GetName().str();
+    out += "::";
+  }
+}
+
+// Like AppendNamespacePrefix, but for an *unnamed* tag type, which has no name
+// of its own to make an elided anonymous namespace unambiguous. Clang's printer
+// elides `(anonymous namespace)` when qualifying a *named* entity (nothing else
+// identifies the entity within its TU, so the extra scope is noise) but keeps
+// the literal "(anonymous namespace)" marker when qualifying an unnamed one
+// printed as e.g. "(unnamed class)" -- otherwise the qualification would be
+// dropped entirely.
+// `keep_inline_namespaces` has the same meaning as for
+// AppendNamespacePrefix/AppendQualifiedNamespacePrefix.
+static void AppendUnnamedTagNamespacePrefix(const clike::Namespace *ns,
+                                            std::string &out,
+                                            bool keep_inline_namespaces) {
+  if (!ns)
+    return;
+  AppendUnnamedTagNamespacePrefix(ns->GetParent(), out, keep_inline_namespaces);
+  if (ns->IsInline() && !keep_inline_namespaces)
+    return;
+  if (ns->IsAnonymous())
+    out += "(anonymous namespace)::";
+  else {
+    out += ns->GetName().GetName().str();
+    out += "::";
+  }
+}
 
 // An unnamed record/enum (e.g. a function-local `struct { ... } x;`) has no
 // spelling in the debug info. Match clang's TagDecl printing, which renders
@@ -222,12 +277,21 @@ static std::string BuildDisplayNameImpl(clike::Type *t,
     if (std::string unnamed = BuildUnnamedTagName(t); !unnamed.empty()) {
       std::string result;
       AppendAnonymousParentPrefix(t, result);
+      if (result.empty())
+        AppendUnnamedTagNamespacePrefix(t->GetDeclContext(), result,
+                                        keep_inline_namespaces);
       return result + unnamed;
     }
     return t->GetName().GetName().str();
   }
 
-  return unqualified.str();
+  std::string result;
+  if (keep_inline_namespaces)
+    AppendQualifiedNamespacePrefix(t->GetDeclContext(), result);
+  else
+    AppendNamespacePrefix(t->GetDeclContext(), result);
+  result += unqualified.str();
+  return result;
 }
 
 } // namespace
@@ -365,8 +429,12 @@ std::string clike::BuildCanonicalName(Type *t, bool base_only) {
   // in that case.
   if (std::string unnamed = BuildUnnamedTagName(t); !unnamed.empty()) {
     std::string result;
-    if (!base_only)
+    if (!base_only) {
       AppendAnonymousParentPrefix(t, result);
+      if (result.empty())
+        AppendUnnamedTagNamespacePrefix(t->GetDeclContext(), result,
+                                        /*keep_inline_namespaces=*/true);
+    }
     return result + unnamed;
   }
   return t->GetName().GetName().str();
