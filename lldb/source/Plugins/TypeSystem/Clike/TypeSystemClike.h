@@ -11,12 +11,21 @@
 
 #include "lldb/Symbol/CompilerType.h"
 #include "lldb/Symbol/TypeSystem.h"
+#include "lldb/Utility/Locked.h"
+#include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
+#include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/Support/RWMutex.h"
 #include "llvm/TargetParser/Triple.h"
 
 #include "Builder.h"
 #include "Context.h"
 
 #include <memory>
+#include <mutex>
+#include <shared_mutex>
 
 namespace lldb_private {
 
@@ -38,11 +47,172 @@ public:
 
   /// Wrap one of our own Type nodes into a CompilerType owned by this system.
   CompilerType GetCompilerType(clike::Type *type);
+  /// A CompilerType's opaque pointer isn't itself const-tracked -- constness
+  /// here is only a lock-scope safety net inside this class's own query
+  /// methods (see the locking note below), not a property of the Type graph.
+  /// Wrapping a `const Type *` obtained from a read lock is safe: it neither
+  /// mutates the pointee now nor grants the caller a way to later, since any
+  /// subsequent mutation still has to go through a public TypeSystemClike
+  /// method, which takes its own lock.
+  CompilerType GetCompilerType(const clike::Type *type) {
+    return GetCompilerType(const_cast<clike::Type *>(type));
+  }
 
-  /// Recover the Type node backing a CompilerType created by this system.
+  /// Recover the Type node backing a CompilerType created by this system,
+  /// WITHOUT taking this instance's lock. This is intentionally unlocked: it
+  /// exists for callers that are either (a) not part of this class's own
+  /// query API (the expression-parser plugins and clike::Builder,
+  /// which run under their own, separate single-threading guarantees -- see
+  /// the class-level locking note below), or (b) already holding this
+  /// instance's lock themselves. New code inside TypeSystemClike.cpp must NOT
+  /// call this directly -- use GetTypeForRead/GetTypeForWrite instead, so the
+  /// lock can never be forgotten.
   static clike::Type *GetClikeType(lldb::opaque_compiler_type_t type) {
     return static_cast<clike::Type *>(type);
   }
+
+  /// Locking. TypeSystemClike protects its Type/Context state with a single
+  /// reader/writer lock -- but a query is not confined to one instance. A type
+  /// may reference a type another instance owns (a `TypeRef` names a node, and
+  /// the node records its owner -- see clike::Type::
+  /// GetOwningContext), and every query method walks such references freely:
+  /// through a pointee, an element, a base class, a field, a template
+  /// argument. Two things create those references:
+  ///
+  ///   - `-gmodules` debug info, where each `.pcm` is its own Module with its
+  ///     own TypeSystemClike: a record in one module has a field, base class,
+  ///     typedef target or Objective-C superclass owned by another.
+  ///   - the expression evaluator and data formatters, which build types in
+  ///     the target's *scratch* instance around types the module that parsed
+  ///     them still owns (see ClangTypeConverter).
+  ///
+  /// So a query has to hold the lock of every instance it might reach, and it
+  /// has to take them all up front: acquiring them one at a time as the walk
+  /// arrives would let two queries over overlapping sets each end up holding
+  /// what the other is waiting for. GetLockOrder() answers which instances
+  /// those are (see there), and LockSet takes them in ascending instance
+  /// address -- one global order, which is what makes any two sets safe to
+  /// acquire however they overlap.
+  ///
+  /// GetTypeForWrite/GetTypeForRead below are the ONLY sanctioned way for a
+  /// query method to turn an opaque_compiler_type_t into a Type* -- the
+  /// returned RAII object bundles the locks together with the pointer so they
+  /// can't be dropped while the pointer is still in use, and a read lock only
+  /// ever hands out a `const Type *`, so it is impossible to mutate through it
+  /// (mutation happens only through clike::Builder, which requires
+  /// a non-const Type* / TypeSystemClike&).
+  ///
+  /// The locks are intentionally non-recursive (see llvm::sys::RWMutex): every
+  /// public method that needs them takes them exactly once, at its own entry
+  /// point, and delegates to a private "*Impl" (or, for the completion family,
+  /// "*AssumingWriteLocked") method that assumes they are already held and
+  /// never re-locks -- including when it recurses onto a *different* Type*
+  /// reachable from the first, whether that type belongs to this instance or
+  /// to another one in the set. That extends to calling *another*
+  /// TypeSystemClike: an entry point there would try to re-take a lock this
+  /// thread already holds, so those calls go to the non-locking entry points
+  /// too.
+  ///
+  /// @{
+
+  /// A lock held on a whole set of TypeSystemClike instances at once, taken in
+  /// ascending instance address so that overlapping sets can never deadlock.
+  /// Released in reverse order.
+  class LockSet {
+  public:
+    LockSet() = default;
+    /// Locks every instance in \p ordered, which MUST already be sorted by
+    /// ascending address and free of duplicates (GetLockOrder guarantees
+    /// both). \p exclusive selects a writer or a reader lock; the same choice
+    /// applies to every instance in the set.
+    LockSet(llvm::ArrayRef<TypeSystemClike *> ordered, bool exclusive);
+    ~LockSet() { Release(); }
+
+    LockSet(LockSet &&other)
+        : m_locked(std::move(other.m_locked)), m_exclusive(other.m_exclusive) {
+      other.m_locked.clear();
+    }
+    LockSet &operator=(LockSet &&other) {
+      if (this != &other) {
+        Release();
+        m_locked = std::move(other.m_locked);
+        m_exclusive = other.m_exclusive;
+        other.m_locked.clear();
+      }
+      return *this;
+    }
+    LockSet(const LockSet &) = delete;
+    LockSet &operator=(const LockSet &) = delete;
+
+    /// Whether this lock covers \p ts. Used to assert that a query never
+    /// reaches an instance it did not lock -- the check that would otherwise
+    /// only show up as a rare data race.
+    bool Covers(const TypeSystemClike *ts) const {
+      return llvm::is_contained(m_locked, ts);
+    }
+
+  private:
+    void Release();
+
+    /// The instances actually locked, in acquisition (ascending address)
+    /// order. Almost always exactly one, so this stays on the stack.
+    llvm::SmallVector<TypeSystemClike *, 4> m_locked;
+    bool m_exclusive = false;
+  };
+
+  /// A pointer borrowed under a LockSet: the lock lives exactly as long as the
+  /// borrow. Move-only -- a borrow is always confined to the one query method
+  /// that took it.
+  template <typename PtrT> class LockedIn {
+  public:
+    LockedIn() = default;
+    LockedIn(LockSet locks, PtrT ptr) : m_locks(std::move(locks)), m_ptr(ptr) {}
+
+    LockedIn(LockedIn &&) = default;
+    LockedIn &operator=(LockedIn &&) = default;
+    LockedIn(const LockedIn &) = delete;
+    LockedIn &operator=(const LockedIn &) = delete;
+
+    PtrT operator->() const { return m_ptr; }
+    decltype(auto) operator*() const { return *m_ptr; }
+    PtrT get() const { return m_ptr; }
+    explicit operator bool() const { return m_ptr != nullptr; }
+
+    /// The locks held for this borrow, for asserting coverage as the query
+    /// walks onto types owned by other instances.
+    const LockSet &GetLocks() const { return m_locks; }
+
+  private:
+    LockSet m_locks;
+    PtrT m_ptr = nullptr;
+  };
+
+  using LockedType = LockedIn<clike::Type *>;
+  using SharedLockedType = LockedIn<const clike::Type *>;
+
+  /// The ONLY sanctioned way to get a mutable Type* out of an opaque compiler
+  /// type. Do not let the raw pointer outlive the returned LockedType.
+  LockedType GetTypeForWrite(lldb::opaque_compiler_type_t type) {
+    return LockedType(LockSet(GetLockOrder(), /*exclusive=*/true),
+                      GetClikeType(type));
+  }
+  /// The ONLY sanctioned way to get a read-only Type* out of an opaque
+  /// compiler type. The pointer is `const`, so it cannot be used to mutate.
+  SharedLockedType GetTypeForRead(lldb::opaque_compiler_type_t type) const {
+    return SharedLockedType(LockSet(GetLockOrder(), /*exclusive=*/false),
+                            GetClikeType(type));
+  }
+
+  /// The instances a query rooted at this one may touch, sorted by ascending
+  /// address and deduplicated -- i.e. exactly the set LockSet must acquire,
+  /// already in the global lock order. Always includes `this`.
+  ///
+  /// This has to be knowable *before* any lock is taken, so it is derived from
+  /// structure that is fixed up front rather than from references observed so
+  /// far: a query that is the first to create a cross-instance reference would
+  /// otherwise walk into an instance it never locked. See ComputeLockOrder.
+  llvm::SmallVector<TypeSystemClike *, 4> GetLockOrder() const;
+  /// @}
 
   /// The target triple this type system was created for (used e.g. to build a
   /// throwaway Clang AST for ABI/vtable-layout queries).
@@ -256,9 +426,39 @@ public:
 private:
   friend class clike::Builder;
 
-  /// Completes the record \p type desugars to from the debug info, if it
-  /// isn't complete yet, and returns the desugared type.
-  clike::Type *CompleteTypeImpl(clike::Type *type);
+  /// Acquire the locks (see GetLockOrder) without an associated Type* yet, for
+  /// methods that allocate/complete a *new* node rather than starting from an
+  /// existing opaque_compiler_type_t (e.g. GetPointerDiffType,
+  /// GetBasicTypeFromAST, CreateGenericFunctionPrototype).
+  [[nodiscard]] LockSet LockForWrite() {
+    return LockSet(GetLockOrder(), /*exclusive=*/true);
+  }
+  [[nodiscard]] LockSet LockForRead() const {
+    return LockSet(GetLockOrder(), /*exclusive=*/false);
+  }
+
+  /// Completion, assuming the write lock is already held by the caller (see
+  /// the locking note above GetTypeForWrite/GetTypeForRead). The public
+  /// GetCompleteType is a thin locking wrapper around this; so are the other
+  /// TypeSystemClike.cpp methods that lazily complete a type before reading
+  /// its fields.
+  clike::Type *CompleteTypeAssumingWriteLocked(clike::Type *type);
+
+  /// GetBasicTypeFromAST, assuming the write lock is already held. Used by
+  /// query methods that already hold the lock themselves (e.g.
+  /// GetPromotedIntegerType).
+  CompilerType
+  GetBasicTypeFromASTAssumingWriteLocked(lldb::BasicType basic_type);
+
+  /// GetTypeName, assuming the write lock is already held. Used by
+  /// DumpTypeDescription, which needs a type's name for several of its own
+  /// Type* nodes while already holding the lock for the whole dump.
+  ConstString GetTypeNameAssumingWriteLocked(clike::Type *t, bool BaseOnly);
+
+  /// GetDisplayTypeName, assuming the write lock is already held. Used by
+  /// GetChildCompilerTypeAtIndexImpl to name an incomplete pointee in an
+  /// error message while already holding the lock.
+  ConstString GetDisplayTypeNameAssumingWriteLocked(clike::Type *t);
 
   bool IsIntegerTypeImpl(const clike::Type *type, bool &is_signed);
 
@@ -267,6 +467,34 @@ private:
   std::string m_display_name;
   llvm::Triple m_triple;
   clike::Context m_context;
+
+  /// Protects m_context (and thus every Type it owns). See the locking note
+  /// above GetTypeForWrite/GetTypeForRead.
+  mutable llvm::sys::RWMutex m_mutex;
+
+protected:
+  /// Populate \p out with the instances a query rooted here may reach, in any
+  /// order and possibly with duplicates -- GetLockOrder sorts and dedups.
+  /// Must not take any TypeSystemClike lock: it runs before they are acquired.
+  /// Called with m_lock_order_mutex held.
+  ///
+  /// The base implementation contributes this instance.
+  virtual void
+  AppendLockOrder(llvm::SmallVectorImpl<TypeSystemClike *> &out) const;
+
+  /// Whether AppendLockOrder can return a different set over time, in which
+  /// case GetLockOrder must recompute on every call instead of caching.
+  virtual bool HasDynamicLockOrder() const { return false; }
+
+private:
+  /// GetLockOrder's cache, used only when !HasDynamicLockOrder().
+  mutable llvm::SmallVector<TypeSystemClike *, 4> m_lock_order;
+  mutable bool m_lock_order_valid = false;
+
+  /// Guards m_lock_order only. Separate from m_mutex, and never held while any
+  /// m_mutex is: the lock order has to be readable before the locks it
+  /// describes are taken.
+  mutable std::mutex m_lock_order_mutex;
 };
 
 } // namespace lldb_private
