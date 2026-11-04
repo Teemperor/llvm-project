@@ -52,6 +52,12 @@ public:
            this->GetUnqualifiedName().GetName().empty();
   }
 
+protected:
+  /// The scope the type is declared in, or null for the global scope.
+  const DeclarationContext *GetDeclContextOrNull() const {
+    return m_decl_context;
+  }
+
 private:
   Identifier m_qualified_name;
   const DeclarationContext *m_decl_context = nullptr;
