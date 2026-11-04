@@ -53,6 +53,35 @@ public:
   Type *GetTypedefedType() const override { return GetUnderlyingType(); }
 };
 
+/// A `const`- and/or `volatile`-qualified type. Transparent like all sugar; it
+/// only records which qualifiers apply so they can be reported and rendered in
+/// the type name.
+class CVQualifiedType : public llvm::RTTIExtends<CVQualifiedType, SugarType> {
+public:
+  static char ID;
+
+  CVQualifiedType(TypeRef underlying_type, bool is_const, bool is_volatile)
+      : RTTIExtends(underlying_type), m_is_const(is_const),
+        m_is_volatile(is_volatile) {}
+
+  bool IsConst() const override { return m_is_const; }
+  bool IsVolatile() const { return m_is_volatile; }
+
+  Type *StripCVQualifiers() override {
+    return GetUnderlyingType()->StripCVQualifiers();
+  }
+  // DWARF nests one qualifier per DIE, so `const volatile T` is two stacked
+  // CVQualifiedType nodes: OR in whatever the rest of the chain reports.
+  unsigned GetCVRQualifiers() const override {
+    return (m_is_const ? 0x1 : 0) | (m_is_volatile ? 0x4 : 0) |
+           GetUnderlyingType()->GetCVRQualifiers();
+  }
+
+private:
+  bool m_is_const;
+  bool m_is_volatile;
+};
+
 } // namespace clike
 } // namespace lldb_private
 

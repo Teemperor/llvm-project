@@ -42,3 +42,39 @@ TEST_F(TypeCTest, Typedef) {
   EXPECT_EQ(alias->GetTypedefedType(), Int());
   EXPECT_TRUE(llvm::isa<SugarType>(static_cast<Type *>(alias)));
 }
+
+// A cv-qualified type is sugar that records which qualifiers apply, and the
+// CVR mask collapses a whole chain of them.
+TEST_F(TypeCTest, CVQualified) {
+  CVQualifiedType *c =
+      context.CreateCVQualifiedType(TypeRef(*Int()), /*is_const=*/true,
+                                    /*is_volatile=*/false);
+  EXPECT_TRUE(c->IsConst());
+  EXPECT_FALSE(c->IsVolatile());
+  EXPECT_EQ(c->Desugar(), Int());
+  EXPECT_EQ(c->GetByteSize(), Int()->GetByteSize());
+  EXPECT_EQ(c->GetCVRQualifiers(), 0x1u);
+
+  // `const volatile int` through a chain of two qualifiers.
+  CVQualifiedType *cv =
+      context.CreateCVQualifiedType(TypeRef(*c), /*is_const=*/false,
+                                    /*is_volatile=*/true);
+  EXPECT_EQ(cv->GetCVRQualifiers(), 0x1u | 0x4u);
+  EXPECT_EQ(cv->Desugar(), Int());
+  EXPECT_EQ(cv->StripCVQualifiers(), Int());
+  // IsConst only looks at the outermost qualifier.
+  EXPECT_FALSE(cv->IsConst());
+
+  // A non-qualified type carries no qualifiers.
+  EXPECT_EQ(Int()->GetCVRQualifiers(), 0u);
+
+  // Only cv-sugar at the top counts: a typedef stops both the mask and the
+  // stripping.
+  TypedefType *alias = context.CreateTypedefType("cint", TypeRef(*c));
+  EXPECT_EQ(alias->GetCVRQualifiers(), 0u);
+  CVQualifiedType *v_alias =
+      context.CreateCVQualifiedType(TypeRef(*alias), /*is_const=*/false,
+                                    /*is_volatile=*/true);
+  EXPECT_EQ(v_alias->GetCVRQualifiers(), 0x4u);
+  EXPECT_EQ(v_alias->StripCVQualifiers(), alias);
+}

@@ -41,6 +41,15 @@ TEST_F(TypeSystemClikeBasicQueriesTest, IsCharType) {
   EXPECT_FALSE(GetInt().IsCharType());
 }
 
+// A cv-qualified char (e.g. the pointee of `const char *`) is still
+// recognized as a char type: IsCharType desugars.
+TEST_F(TypeSystemClikeBasicQueriesTest, IsCharTypeThroughSugar) {
+  CompilerType const_char =
+      builder.CreateCVQualifiedType(GetChar(), /*is_const=*/true,
+                                    /*is_volatile=*/false);
+  EXPECT_TRUE(const_char.IsCharType());
+}
+
 // A floating point builtin reports IsFloatingPointType; an integer builtin
 // does not.
 TEST_F(TypeSystemClikeBasicQueriesTest, IsFloatingPointType) {
