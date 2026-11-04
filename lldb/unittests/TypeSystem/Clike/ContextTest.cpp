@@ -9,6 +9,7 @@
 #include "Plugins/TypeSystem/Clike/Context.h"
 #include "Plugins/TypeSystem/Clike/LanguageOpts.h"
 #include "Plugins/TypeSystem/Clike/Type.h"
+#include "Plugins/TypeSystem/Clike/TypeC.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
