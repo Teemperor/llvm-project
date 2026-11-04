@@ -12,6 +12,7 @@ class targetCommandTestCase(TestBase):
     @skipIfDarwinEmbedded  # needs x86_64
     @skipIf(debug_info="gmodules")  # not relevant
     @skipIf(compiler="clang", compiler_version=["<", "7.0"])
+    @add_test_categories(["typesystem-clike"])
     def testTargetVarExpr(self):
         self.build()
         lldbutil.run_to_name_breakpoint(self, "main")
