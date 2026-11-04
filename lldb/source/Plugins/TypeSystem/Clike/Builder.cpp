@@ -141,6 +141,13 @@ Builder::CreateFunctionType(CompilerType return_type,
       use_void_for_empty_params, names));
 }
 
+CompilerType Builder::CreateComplexType(CompilerType element_type) {
+  std::optional<TypeRef> element = ToTypeRef(element_type);
+  if (!element)
+    return CompilerType();
+  return m_ts.GetCompilerType(m_ts.m_context.CreateComplexType(*element));
+}
+
 clike::Identifier Builder::GetIdentifier(llvm::StringRef name) {
   return m_ts.m_context.GetIdentifier(name);
 }
