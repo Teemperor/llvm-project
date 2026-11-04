@@ -8,6 +8,7 @@ from lldbsuite.test import lldbutil
 
 class TestSBModuleFindTypes(TestBase):
     @expectedFailureAll(debug_info=["pdb"], bugnumber="llvm.org/pr149498")
+    @add_test_categories(["typesystem-clike"])
     def test_lookup_in_template_scopes(self):
         self.build()
         spec = lldb.SBModuleSpec()
