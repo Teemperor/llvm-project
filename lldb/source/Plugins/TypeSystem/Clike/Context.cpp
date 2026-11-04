@@ -102,3 +102,7 @@ Context::CreateFunctionType(TypeRef return_type, llvm::ArrayRef<TypeRef> params,
       std::vector<Identifier>(param_names.begin(), param_names.end()),
       is_variadic, use_void_for_empty_params));
 }
+
+ComplexType *Context::CreateComplexType(TypeRef element_type) {
+  return Track(std::make_unique<ComplexType>(element_type));
+}
