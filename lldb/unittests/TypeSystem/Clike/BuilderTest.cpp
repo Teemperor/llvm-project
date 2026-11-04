@@ -123,6 +123,32 @@ TEST_F(BuilderTest, AbsentTypesResolveToRealOnes) {
   EXPECT_EQ(opaque_enum->GetEncoding(), lldb::eEncodingSint);
 }
 
+// A function type always has a return type: nothing-returned is `void`. A
+// parameter, by contrast, has no such fallback, so CreateFunctionType reports
+// that it could not model one rather than silently shortening the signature.
+TEST_F(BuilderTest, FunctionReturnFallsBackToVoidButParametersDoNot) {
+  Builder builder(*ts);
+  CompilerType fn_type =
+      builder.CreateFunctionType(CompilerType(), {}, /*is_variadic=*/false);
+  auto *fn = static_cast<clike::Type *>(fn_type.GetOpaqueQualType());
+  EXPECT_TRUE(IsVoid(fn->GetReturnType()));
+  EXPECT_EQ(fn->GetNumParameters(), 0u);
+
+  CompilerType int_type = builder.GetBuiltinType("int", 4, lldb::eEncodingSint,
+                                                 lldb::eFormatDecimal);
+  EXPECT_FALSE(builder.CreateFunctionType(CompilerType(),
+                                          {int_type, CompilerType()},
+                                          /*is_variadic=*/false));
+
+  CompilerType with_param = builder.CreateFunctionType(
+      CompilerType(), {int_type}, /*is_variadic=*/false,
+      /*use_void_for_empty_params=*/false, {"x"});
+  auto *with_param_fn = llvm::cast<FunctionType>(
+      static_cast<clike::Type *>(with_param.GetOpaqueQualType()));
+  EXPECT_EQ(with_param_fn->GetNumParameters(), 1u);
+  EXPECT_EQ(with_param_fn->GetParameterNameAtIndex(0), "x");
+}
+
 // Two Builder-created pointers to the same pointee (through the same
 // TypeSystemClike) are the same instance, since pointer types are uniqued at
 // the Context level.
