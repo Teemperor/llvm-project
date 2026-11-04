@@ -113,6 +113,15 @@ CompilerType Builder::CreatePtrAuthType(CompilerType underlying_type,
       *underlying, key, addr_discriminated, extra_discriminator));
 }
 
+CompilerType Builder::CreateElaboratedType(llvm::StringRef spelling,
+                                           CompilerType underlying_type) {
+  std::optional<TypeRef> underlying = ToTypeRef(underlying_type);
+  if (!underlying)
+    return CompilerType();
+  return m_ts.GetCompilerType(
+      m_ts.m_context.CreateElaboratedType(spelling, *underlying));
+}
+
 CompilerType Builder::CreateEnumType(const DeclarationContext &decl_context,
                                      llvm::StringRef name,
                                      std::optional<uint64_t> byte_size,
