@@ -941,6 +941,16 @@ TypeSystemClike::GetNumVirtualBaseClasses(opaque_compiler_type_t type) {
   return 0;
 }
 
+bool TypeSystemClike::IsAnonymousType(opaque_compiler_type_t type) {
+  SharedLockedType t = GetTypeForRead(type);
+  if (!t)
+    return false;
+  // An anonymous struct/union (an unnamed record embedded as an unnamed member
+  // of its parent) is marked as such by the DWARF parser. Look through sugar,
+  // matching TypeSystemClang's RemoveWrappingTypes.
+  return Desugar(t.get())->IsAnonymousStructOrUnion();
+}
+
 CompilerType TypeSystemClike::GetDirectBaseClassAtIndex(
     opaque_compiler_type_t type, size_t idx, uint32_t *bit_offset_ptr) {
   return CompilerType();
@@ -1152,6 +1162,15 @@ size_t TypeSystemClike::GetIndexOfChildMemberWithNameImpl(
     if (field_name == name) {
       child_indexes.push_back(i);
       return child_indexes.size();
+    }
+    if (field_name.empty()) {
+      std::vector<uint32_t> save_indices = child_indexes;
+      child_indexes.push_back(i);
+      if (GetIndexOfChildMemberWithNameImpl(&field->GetType().Get(), name,
+                                            omit_empty_base_classes,
+                                            child_indexes))
+        return child_indexes.size();
+      child_indexes = std::move(save_indices);
     }
   }
   return 0;
