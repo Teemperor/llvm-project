@@ -159,3 +159,19 @@ TEST_F(BuilderTest, PointerTypesUniquedThroughBuilder) {
   CompilerType p2 = builder.CreatePointerType(record);
   EXPECT_EQ(p1.GetOpaqueQualType(), p2.GetOpaqueQualType());
 }
+
+// The declaration context and unqualified name a named type is created with
+// record the namespace and unqualified spelling used to build its (possibly
+// namespace-qualified) display name.
+TEST_F(BuilderTest, DeclContextAndUnqualifiedName) {
+  Builder builder(*ts);
+  const Namespace *ns =
+      builder.GetNamespace("std", nullptr, /*is_inline=*/false);
+  CompilerType record = builder.CreateRecordType(
+      "std::string", 32, /*is_union=*/false, /*is_class_keyword=*/false, ns,
+      builder.GetIdentifier("string"));
+
+  auto *t = static_cast<clike::Type *>(record.GetOpaqueQualType());
+  EXPECT_EQ(&t->GetDeclContext(t->GetOwningContext()), ns);
+  EXPECT_EQ(t->GetUnqualifiedName().GetName(), "string");
+}

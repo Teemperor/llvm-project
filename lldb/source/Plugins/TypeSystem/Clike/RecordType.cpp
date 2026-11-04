@@ -8,6 +8,8 @@
 
 #include "RecordType.h"
 
+#include "TypeName.h"
+
 #include <algorithm>
 
 using namespace lldb_private::clike;
@@ -136,34 +138,44 @@ std::string RecordType::GetUnnamedName() const {
   return "(" + adj + " struct)";
 }
 
-std::string RecordType::GetUnnamedScopePrefix() const {
+std::string
+RecordType::GetUnnamedScopePrefix(bool keep_inline_namespaces) const {
   // An anonymous struct/union has no name of its own to qualify -- its
-  // DeclContext is therefore useless for recovering its enclosing scope.
-  // Instead it carries a direct pointer to the record it is embedded in
+  // DeclContext (which only models enclosing *namespaces*, never enclosing
+  // classes) is therefore useless for recovering its enclosing scope. Instead
+  // it carries a direct pointer to the record it is embedded in
   // (GetAnonymousParent()); use that record's own (already fully qualified)
   // display name as the prefix, e.g. "MySock::" for the union in
   // `struct MySock { union { ... }; };`. This mirrors clang's
   // NamedDecl::printNestedNameSpecifier, which walks the DeclContext chain
-  // and treats an enclosing RecordDecl as a DeclContext too.
+  // and, unlike this model, treats an enclosing RecordDecl as a DeclContext
+  // too.
   if (m_anonymous_parent)
     return m_anonymous_parent->GetDisplayName(DisplayNameOptions()) + "::";
-  // A function-local unnamed struct has no anonymous parent, and clang
-  // likewise never prefixes it: printNestedNameSpecifier returns early for a
-  // function DeclContext.
-  return "";
+  // Otherwise (e.g. a lambda closure type, which has no DW_AT_name but does
+  // have a DeclContext) qualify by the enclosing namespace chain instead, same
+  // as a named type -- this is what makes a lambda defined in an anonymous
+  // namespace print as "(anonymous namespace)::(unnamed class)". A
+  // function-local unnamed struct has neither, and clang likewise never
+  // prefixes it: printNestedNameSpecifier returns early for a function
+  // DeclContext.
+  return BuildUnnamedTagScopePrefix(*this, keep_inline_namespaces);
 }
 
 std::string RecordType::GetDisplayName(const DisplayNameOptions &opts) const {
   if (!IsUnnamed())
     return Type::GetDisplayName(opts);
-  return GetUnnamedScopePrefix() + GetUnnamedName();
+  return GetUnnamedScopePrefix(opts.keep_inline_namespaces) + GetUnnamedName();
 }
 
 std::string RecordType::GetCanonicalName(bool base_only) const {
   if (!IsUnnamed())
     return Type::GetCanonicalName(base_only);
   // `base_only` asks for the unqualified spelling, so skip the prefix then.
+  // Otherwise keep inline namespaces, matching the raw-spelling convention of
+  // the canonical name.
   if (base_only)
     return GetUnnamedName();
-  return GetUnnamedScopePrefix() + GetUnnamedName();
+  return GetUnnamedScopePrefix(/*keep_inline_namespaces=*/true) +
+         GetUnnamedName();
 }
