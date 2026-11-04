@@ -15,6 +15,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace lldb_private {
 
@@ -45,6 +46,31 @@ public:
     return ClassID == &ID || TypeSystemClike::isA(ClassID);
   }
   static bool classof(const TypeSystem *ts) { return ts->isA(&ID); }
+
+protected:
+  /// The scratch instance holds the types the expression evaluator and the data
+  /// formatters build, and those are routinely assembled *around* types the
+  /// module that parsed them still owns -- a reconstructed `T *` whose pointee
+  /// belongs to a module, an elaborated spelling over a module's typedef (see
+  /// ClangTypeConverter). So rather than try to enumerate which modules those
+  /// are, take the lot: every module in the target, plus whatever the base
+  /// contributes.
+  void
+  AppendLockOrder(llvm::SmallVectorImpl<TypeSystemClike *> &out) const override;
+
+  /// The target's image list grows as libraries are loaded, and an image can
+  /// join it with a TypeSystemClike that already exists (a module shared with
+  /// another target, or kept alive by the shared module cache), which the
+  /// global lock-order epoch would not notice. So compare the images against
+  /// the snapshot AppendLockOrder took, and bump the epoch when they differ:
+  /// module instances fold this set into theirs.
+  bool IsLockOrderStale() const override;
+
+private:
+  lldb::TargetWP m_target_wp;
+  /// The target's images as of the last AppendLockOrder. Guarded by
+  /// m_lock_order_mutex (only touched from AppendLockOrder/IsLockOrderStale).
+  mutable std::vector<Module *> m_lock_order_images;
 };
 
 } // namespace lldb_private
