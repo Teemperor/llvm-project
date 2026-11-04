@@ -160,7 +160,7 @@ class TestCase(TestBase):
             substrs=["a = 0x0000000cbbbbaaaa", "b = 0x0000000dffffeee"],
         )
 
-    @add_test_categories(["pyapi"])
+    @add_test_categories(["pyapi", "typesystem-clike"])
     # BitFields exhibit crashes in record layout on Windows
     # (http://llvm.org/pr21800)
     @skipIfWindows
