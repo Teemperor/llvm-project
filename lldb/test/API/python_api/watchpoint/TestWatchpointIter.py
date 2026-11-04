@@ -25,6 +25,7 @@ class WatchpointIteratorTestCase(TestBase):
         # Find the line number to break inside main().
         self.line = line_number(self.source, "// Set break point at this line.")
 
+    @add_test_categories(["typesystem-clike"])
     def test_watch_iter(self):
         """Exercise SBTarget.watchpoint_iter() API to iterate on the available watchpoints."""
         self.build()
