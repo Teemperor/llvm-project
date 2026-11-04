@@ -299,6 +299,7 @@ class CommandInterpreterAPICase(TestBase):
             "version",
         )
 
+    @add_test_categories(["typesystem-clike"])
     def test_handle_command_with_execution_context_override(self):
         """Test that HandleCommand with an override context works correctly and does not bypass non-dummy targets."""
         self.build()
