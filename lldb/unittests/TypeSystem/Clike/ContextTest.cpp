@@ -173,6 +173,19 @@ TEST_F(ContextTest, TypedefInheritsByteSize) {
   EXPECT_EQ(td->GetUnderlyingType(), record);
 }
 
+// An array's byte size is element size times element count, when both are
+// known; an array of unknown bound has no byte size of its own.
+TEST_F(ContextTest, ArrayByteSizeComputed) {
+  BuiltinType *elem = context.GetBuiltinType("int", 4, lldb::eEncodingSint,
+                                             lldb::eFormatDecimal);
+  ArrayType *bounded =
+      context.CreateArrayType(TypeRef(*elem), /*num_elements=*/10);
+  EXPECT_EQ(bounded->GetByteSize(), 40u);
+
+  ArrayType *unbounded = context.CreateArrayType(TypeRef(*elem), std::nullopt);
+  EXPECT_FALSE(unbounded->GetByteSize().has_value());
+}
+
 // Every type records the Context that created it, including the canonical
 // builtins (which KnownBuiltinTypes, not Track, creates).
 TEST_F(ContextTest, TypesKnowTheirOwningContext) {
