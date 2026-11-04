@@ -34,6 +34,13 @@ struct TypeSystemClikeBasicQueriesTest : public testing::Test {
 };
 } // namespace
 
+// A record is an aggregate type, a builtin is not.
+TEST_F(TypeSystemClikeBasicQueriesTest, IsAggregateType) {
+  CompilerType record = builder.CreateRecordType("Foo", 4);
+  EXPECT_TRUE(record.IsAggregateType());
+  EXPECT_FALSE(GetInt().IsAggregateType());
+}
+
 // IsCharType recognizes the narrow char builtins by format+size, but not int
 // (which shares the signed-integer encoding).
 TEST_F(TypeSystemClikeBasicQueriesTest, IsCharType) {
@@ -101,6 +108,13 @@ TEST_F(TypeSystemClikeBasicQueriesTest, IsPointerType) {
   EXPECT_TRUE(ts->IsPointerType(ptr.GetOpaqueQualType(), &pointee));
   EXPECT_EQ(pointee.GetOpaqueQualType(), GetInt().GetOpaqueQualType());
   EXPECT_FALSE(ts->IsPointerType(GetInt().GetOpaqueQualType(), nullptr));
+}
+
+// A builtin int is a scalar type; a record is not.
+TEST_F(TypeSystemClikeBasicQueriesTest, IsScalarType) {
+  EXPECT_TRUE(GetInt().IsScalarType());
+  CompilerType record = builder.CreateRecordType("Foo", 4);
+  EXPECT_FALSE(record.IsScalarType());
 }
 
 // IsVoidType identifies the void builtin by spelling, including through

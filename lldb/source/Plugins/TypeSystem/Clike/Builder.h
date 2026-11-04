@@ -30,7 +30,10 @@ namespace clike {
 /// Not thread safe, and it does not make itself so: every mutation path into a
 /// TypeSystemClike today runs single-threaded, either because the caller
 /// already holds the Module mutex (the DWARF parser) or because it is only
-/// reached from the driver thread.
+/// reached from the driver thread. \ref DWARFASTParserClike's
+/// kMemberResolutionPolicy is the one place that is *shaped* like concurrent
+/// work, and it deliberately runs its futures deferred (i.e. inline) -- see the
+/// comment there. Serialization has to come back if that ever changes.
 class Builder {
 public:
   explicit Builder(TypeSystemClike &ts);
@@ -46,6 +49,14 @@ public:
   /// DW_AT_type, so the parser uses this to fill in the underlying type of a
   /// cv-qualified or typedef'd `void` (e.g. the pointee of a `const void *`).
   CompilerType GetVoidType();
+  /// Create a record type declared in \p scope (see DeclScope, whose
+  /// Identifier must come from GetIdentifier). Its members are added during
+  /// completion.
+  CompilerType CreateRecordType(llvm::StringRef name,
+                                std::optional<uint64_t> byte_size,
+                                bool is_union = false,
+                                bool is_class_keyword = false,
+                                DeclScope scope = {});
   /// Create a pointer to \p pointee_type (an empty CompilerType denotes a
   /// `void *`).
   CompilerType CreatePointerType(CompilerType pointee_type);
@@ -67,6 +78,23 @@ public:
   /// Intern a name into the Context so it can be used for a type or record
   /// member. All Identifiers must be created this way.
   Identifier GetIdentifier(llvm::StringRef name);
+
+  // Structural completion of a record type.
+  void SetRecordComplete(RecordType &record);
+  /// Record the size of \p record, created from a forward declaration (which
+  /// carries no size), from the definition it is completed against.
+  void SetRecordByteSize(RecordType &record, uint64_t byte_size);
+  /// Record an alignment for \p record that the debug info specified
+  /// explicitly (see RecordType::GetExplicitAlignmentInBits).
+  void SetRecordExplicitAlignmentInBits(RecordType &record, uint64_t align);
+  /// Record how \p record is passed/returned by value (from DWARF's
+  /// DW_AT_calling_convention); see RecordType::ArgPassingKind.
+  void SetRecordArgPassingKind(RecordType &record,
+                               RecordType::ArgPassingKind kind);
+  void AddField(RecordType &record, Identifier name, Type *type,
+                uint64_t byte_offset, uint32_t bitfield_bit_size = 0,
+                uint32_t bitfield_bit_offset = 0);
+  void AddNestedType(RecordType &record, Identifier name, Type *type);
 
 private:
   /// Wrap a CompilerType into a TypeRef naming the Type it refers to. An empty

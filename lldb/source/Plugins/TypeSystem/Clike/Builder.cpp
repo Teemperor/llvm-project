@@ -45,6 +45,14 @@ CompilerType Builder::GetVoidType() {
       m_ts.m_context.GetBuiltinType(clike::BuiltinKind::Void));
 }
 
+CompilerType Builder::CreateRecordType(llvm::StringRef name,
+                                       std::optional<uint64_t> byte_size,
+                                       bool is_union, bool is_class_keyword,
+                                       DeclScope scope) {
+  return m_ts.GetCompilerType(m_ts.m_context.CreateRecordType(
+      name, byte_size, is_union, is_class_keyword, scope));
+}
+
 CompilerType Builder::CreatePointerType(CompilerType pointee_type) {
   // No pointee means `void *` -- DWARF spells that as a DW_TAG_pointer_type
   // with no DW_AT_type.
@@ -94,4 +102,37 @@ Builder::CreateEnumType(llvm::StringRef name, std::optional<uint64_t> byte_size,
 
 clike::Identifier Builder::GetIdentifier(llvm::StringRef name) {
   return m_ts.m_context.GetIdentifier(name);
+}
+
+void Builder::SetRecordComplete(clike::RecordType &record) {
+  m_ts.m_context.SetComplete(record);
+}
+
+void Builder::SetRecordByteSize(clike::RecordType &record, uint64_t byte_size) {
+  m_ts.m_context.SetByteSize(record, byte_size);
+}
+
+void Builder::SetRecordExplicitAlignmentInBits(clike::RecordType &record,
+                                               uint64_t align) {
+  m_ts.m_context.SetExplicitAlignmentInBits(record, align);
+}
+
+void Builder::SetRecordArgPassingKind(clike::RecordType &record,
+                                      clike::RecordType::ArgPassingKind kind) {
+  m_ts.m_context.SetArgPassingKind(record, kind);
+}
+
+void Builder::AddField(clike::RecordType &record, clike::Identifier name,
+                       clike::Type *type, uint64_t byte_offset,
+                       uint32_t bitfield_bit_size,
+                       uint32_t bitfield_bit_offset) {
+  if (std::optional<TypeRef> field_type = ToTypeRef(type))
+    m_ts.m_context.AddField(record, name, *field_type, byte_offset,
+                            bitfield_bit_size, bitfield_bit_offset);
+}
+
+void Builder::AddNestedType(clike::RecordType &record, clike::Identifier name,
+                            clike::Type *type) {
+  if (std::optional<TypeRef> nested = ToTypeRef(type))
+    m_ts.m_context.AddNestedType(record, name, *nested);
 }
