@@ -27,6 +27,7 @@ char TypedefType::ID = 0;
 char CVQualifiedType::ID = 0;
 char EnumType::ID = 0;
 char FunctionType::ID = 0;
+char ComplexType::ID = 0;
 
 std::optional<uint64_t> ArrayType::GetAlignmentInBits() const {
   if (!m_is_vector)
@@ -247,4 +248,13 @@ BlockPointerType::GetDisplayName(const DisplayNameOptions &opts) const {
 
 std::string BlockPointerType::GetCanonicalName(bool base_only) const {
   return GetPointeeType()->GetPointeeCanonicalName("^", base_only);
+}
+
+std::string ComplexType::GetDisplayName(const DisplayNameOptions &opts) const {
+  return "_Complex " + GetElementType()->GetDisplayName(opts);
+}
+
+std::string ComplexType::GetCanonicalName(bool base_only) const {
+  // The canonical name of a complex type is its display name.
+  return GetDisplayName(DisplayNameOptions());
 }
