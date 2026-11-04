@@ -49,6 +49,7 @@ class ProcessAPITestCase(TestBase):
         self.assertFalse(process.IsValid())
         self.assertFalse(process.IsLiveDebugSession())
 
+    @add_test_categories(["typesystem-clike"])
     def test_read_memory(self):
         """Test Python SBProcess.ReadMemory() API."""
         self.build()
@@ -137,6 +138,7 @@ class ProcessAPITestCase(TestBase):
                 "Result from SBProcess.ReadUnsignedFromMemory() does not match our expected output"
             )
 
+    @add_test_categories(["typesystem-clike"])
     def test_write_memory(self):
         """Test Python SBProcess.WriteMemory() API."""
         self.build()

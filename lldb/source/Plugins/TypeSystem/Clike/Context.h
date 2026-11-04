@@ -83,6 +83,14 @@ public:
                                const DeclarationContext *decl_context = nullptr,
                                Identifier unqualified_name = Identifier());
 
+  /// Create an array type of \p num_elements elements of \p element_type.
+  /// \p num_elements is std::nullopt for an array of unknown bound. See
+  /// ArrayType for \p is_vector and \p die_uid.
+  ArrayType *CreateArrayType(TypeRef element_type,
+                             std::optional<uint64_t> num_elements,
+                             bool is_vector = false,
+                             uint64_t die_uid = UINT64_MAX);
+
   /// Create a pointer type pointing to \p pointee_type. A `void *` points at
   /// the `void` builtin (see TypeRef), not at "nothing". Its byte size is the
   /// target's pointer size.
