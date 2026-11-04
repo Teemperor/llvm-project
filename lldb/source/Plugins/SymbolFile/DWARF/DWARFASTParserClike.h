@@ -130,6 +130,8 @@ private:
   lldb::TypeSP
   ParseUnspecifiedType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
+  ParseStructureType(const lldb_private::plugin::dwarf::DWARFDIE &die);
+  lldb::TypeSP
   ParsePointerType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP ParseTypedef(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP
@@ -137,6 +139,15 @@ private:
   lldb::TypeSP
   ParseAtomicType(const lldb_private::plugin::dwarf::DWARFDIE &die);
   lldb::TypeSP ParseEnum(const lldb_private::plugin::dwarf::DWARFDIE &die);
+
+  /// Resolve a DWARF type reference to its TypeSystemClike node. This is the
+  /// unit of work spread across threads while completing a record: it may run
+  /// on a worker, so it serializes its access to the shared type system through
+  /// TypeSystemClike's lock. Returns nullptr if the reference can't be
+  /// resolved.
+  lldb_private::clike::Type *ResolveReferencedType(
+      const lldb_private::plugin::dwarf::DWARFDIE &referencing_die,
+      const lldb_private::plugin::dwarf::DWARFDIE &type_die);
 
   lldb_private::TypeSystemClike &m_ts;
 };
