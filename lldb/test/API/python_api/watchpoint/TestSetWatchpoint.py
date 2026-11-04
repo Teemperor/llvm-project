@@ -22,6 +22,7 @@ class SetWatchpointAPITestCase(TestBase):
 
     # Read-write watchpoints not supported on SystemZ
     @expectedFailureAll(archs=["s390x"])
+    @add_test_categories(["typesystem-clike"])
     def test_watch_val(self):
         """Test watchpoint on a SBValue not backed by a variable yields an expression watchpoint."""
         self._test_watch_val(variable_watchpoint=False)
