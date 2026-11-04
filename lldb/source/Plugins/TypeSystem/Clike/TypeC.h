@@ -27,6 +27,7 @@
 
 #include "lldb/lldb-enumerations.h"
 
+#include "ByteSizedType.h"
 #include "Identifier.h"
 #include "NamedType.h"
 #include "SugarType.h"
@@ -144,6 +145,74 @@ public:
 private:
   bool m_is_const;
   bool m_is_volatile;
+};
+
+/// A C/C++ enumeration type. It has an underlying integer type and a set of
+/// named constants; scoped enums (`enum class`) are distinguished so their
+/// enumerators are not treated as being in the enclosing scope.
+class EnumType
+    : public llvm::RTTIExtends<EnumType, NamedType<ByteSizedType<Type>>> {
+public:
+  static char ID;
+
+  EnumType(Identifier name, DeclScope scope, std::optional<uint64_t> byte_size,
+           TypeRef underlying_type, bool is_scoped,
+           std::vector<Enumerator> enumerators)
+      : RTTIExtends(name, scope, byte_size), m_underlying_type(underlying_type),
+        m_is_scoped(is_scoped), m_enumerators(std::move(enumerators)) {}
+
+  /// The integer type backing this enum. Never null: debug info that records
+  /// no base type gets the `int` C would have chosen (see
+  /// Builder::CreateEnumType).
+  Type *GetUnderlyingType() const { return &m_underlying_type.Get(); }
+  Type *GetEnumerationIntegerType() const override {
+    return GetUnderlyingType();
+  }
+
+  bool IsScoped() const { return m_is_scoped; }
+  bool IsScopedEnumeration() const override { return IsScoped(); }
+
+  /// True when the underlying integer type is signed.
+  bool IsSigned() const {
+    return m_underlying_type.Get().GetEncoding() == lldb::eEncodingSint;
+  }
+
+  llvm::ArrayRef<Enumerator> GetEnumerators() const override {
+    return m_enumerators;
+  }
+
+  bool IsInteger() const override {
+    lldb::Encoding encoding = GetEncoding();
+    return encoding == lldb::eEncodingSint || encoding == lldb::eEncodingUint;
+  }
+  // Unscoped enumerations promote like the integer types; scoped ones don't
+  // convert implicitly at all.
+  bool IsPromotableInteger() const override { return !IsScoped(); }
+
+  std::optional<uint64_t> GetAlignmentInBits() const override {
+    return m_underlying_type.Get().GetAlignmentInBits();
+  }
+  lldb::Encoding GetEncoding() const override {
+    return m_underlying_type.Get().GetEncoding();
+  }
+  lldb::Format GetFormat() const override { return lldb::eFormatEnum; }
+  lldb::TypeClass GetTypeClass() const override {
+    return lldb::eTypeClassEnumeration;
+  }
+  uint32_t GetTypeInfo() const override {
+    // Note: TypeSystemClang deliberately does NOT set eTypeIsScalar (or
+    // eTypeIsInteger/eTypeIsSigned) here, even though an enum is a scalar in
+    // the C++ sense. DIL's cast-verification logic (and other callers) check
+    // IsScalarType() before IsEnumerationType(), so setting eTypeIsScalar
+    // would misroute enums into the scalar-cast branch instead of the
+    // enumeration-cast branch. Match TypeSystemClang's flags exactly.
+    return lldb::eTypeIsEnumeration | lldb::eTypeHasValue;
+  }
+
+private:
+  TypeRef m_underlying_type;
+  bool m_is_scoped;
+  std::vector<Enumerator> m_enumerators;
 };
 
 } // namespace clike
