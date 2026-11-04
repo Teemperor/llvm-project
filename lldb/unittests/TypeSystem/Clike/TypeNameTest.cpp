@@ -10,6 +10,7 @@
 #include "Plugins/TypeSystem/Clike/Context.h"
 #include "Plugins/TypeSystem/Clike/LanguageOpts.h"
 #include "Plugins/TypeSystem/Clike/Type.h"
+#include "Plugins/TypeSystem/Clike/TypeC.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
@@ -40,4 +41,11 @@ TEST_F(TypeNameTest, Builtin) {
   EXPECT_EQ(Canonical(Int()), "int");
   EXPECT_EQ(Canonical(Void()), "void");
   EXPECT_EQ(Display(Int()), "int");
+}
+
+// A typedef reports its own name rather than what it aliases.
+TEST_F(TypeNameTest, Typedef) {
+  TypedefType *alias = context.CreateTypedefType("my_int", TypeRef(*Int()));
+  EXPECT_EQ(Canonical(alias), "my_int");
+  EXPECT_EQ(Display(alias), "my_int");
 }
