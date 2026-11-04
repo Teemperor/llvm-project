@@ -43,6 +43,38 @@ TEST_F(TypeNameTest, Builtin) {
   EXPECT_EQ(Display(Int()), "int");
 }
 
+// A pointer is spelled in C declarator form, and pointer-to-pointer nests
+// without inserting spaces between the stars.
+TEST_F(TypeNameTest, Pointer) {
+  PointerType *int_ptr = context.CreatePointerType(TypeRef(*Int()));
+  EXPECT_EQ(Canonical(int_ptr), "int *");
+
+  PointerType *int_ptr_ptr = context.CreatePointerType(TypeRef(*int_ptr));
+  EXPECT_EQ(Canonical(int_ptr_ptr), "int **");
+
+  EXPECT_EQ(Canonical(context.CreatePointerType(TypeRef(*Void()))), "void *");
+}
+
+// A qualifier is spelled before the type it applies to, and `const char *`
+// keeps the qualifier on the pointee rather than on the pointer.
+TEST_F(TypeNameTest, CVQualified) {
+  CVQualifiedType *const_int =
+      context.CreateCVQualifiedType(TypeRef(*Int()), /*is_const=*/true,
+                                    /*is_volatile=*/false);
+  EXPECT_EQ(Canonical(const_int), "const int");
+
+  CVQualifiedType *const_char =
+      context.CreateCVQualifiedType(TypeRef(*Char()), /*is_const=*/true,
+                                    /*is_volatile=*/false);
+  EXPECT_EQ(Canonical(context.CreatePointerType(TypeRef(*const_char))),
+            "const char *");
+
+  CVQualifiedType *volatile_int =
+      context.CreateCVQualifiedType(TypeRef(*Int()), /*is_const=*/false,
+                                    /*is_volatile=*/true);
+  EXPECT_EQ(Canonical(volatile_int), "volatile int");
+}
+
 // A typedef reports its own name rather than what it aliases.
 TEST_F(TypeNameTest, Typedef) {
   TypedefType *alias = context.CreateTypedefType("my_int", TypeRef(*Int()));

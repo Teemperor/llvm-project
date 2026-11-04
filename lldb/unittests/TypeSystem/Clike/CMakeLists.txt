@@ -8,6 +8,7 @@ add_lldb_unittest(TypeSystemClikeUnitTests
   TypeCTest.cpp
   TypeNameTest.cpp
   TypeSystemClikeBasicQueriesTest.cpp
+  TypeSystemClikeChildrenTest.cpp
   TypeSystemClikeNameTest.cpp
   TypeTest.cpp
 
