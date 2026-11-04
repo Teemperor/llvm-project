@@ -85,6 +85,10 @@ public:
   CompilerType CreatePtrAuthType(CompilerType underlying_type, unsigned key,
                                  bool addr_discriminated,
                                  unsigned extra_discriminator);
+  /// Create display sugar preserving the source \p spelling (e.g. `::Struct`)
+  /// over \p underlying_type. Transparent apart from the display name.
+  CompilerType CreateElaboratedType(llvm::StringRef spelling,
+                                    CompilerType underlying_type);
   /// Create an enumeration type with the given \p enumerators (whose names
   /// must come from GetIdentifier), declared in \p scope.
   CompilerType CreateEnumType(llvm::StringRef name,
