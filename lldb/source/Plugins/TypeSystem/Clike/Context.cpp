@@ -13,6 +13,26 @@
 using namespace lldb_private;
 using namespace lldb_private::clike;
 
+const Namespace *Context::GetNamespace(Identifier name, const Namespace *parent,
+                                       bool is_inline) {
+  // Deduplicate by (parent, name, is_inline). This compares the name's
+  // characters: the data pointer of an interned name doesn't identify it, as
+  // an empty name (an anonymous namespace) occupies no storage and so can
+  // share its data pointer with the next name interned after it.
+  auto key = std::make_tuple(parent, name.GetName(), is_inline);
+  auto it = m_namespace_map.find(key);
+  if (it != m_namespace_map.end())
+    return it->second;
+
+  // Namespace's constructor is private; Context is a friend, so construct it
+  // directly here rather than via make_unique.
+  m_namespaces.emplace_back(
+      std::unique_ptr<Namespace>(new Namespace(name, parent, is_inline)));
+  const Namespace *ns = m_namespaces.back().get();
+  m_namespace_map.emplace(key, ns);
+  return ns;
+}
+
 BuiltinType *Context::GetBuiltinType(llvm::StringRef name,
                                      std::optional<uint64_t> byte_size,
                                      lldb::Encoding encoding,
