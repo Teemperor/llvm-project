@@ -18,6 +18,7 @@
 #include "DeclarationContext.h"
 #include "LanguageOpts.h"
 #include "Type.h"
+#include "TypeC.h"
 
 #include "llvm/Support/Casting.h"
 
@@ -70,6 +71,12 @@ public:
   BuiltinType *GetBuiltinTypeByName(llvm::StringRef name) {
     return builtin_types.MatchByName(name);
   }
+
+  /// Create a typedef named \p name aliasing \p underlying_type, declared in
+  /// \p decl_context.
+  TypedefType *CreateTypedefType(const DeclarationContext &decl_context,
+                                 llvm::StringRef name, TypeRef underlying_type,
+                                 Identifier unqualified_name = Identifier());
 
   /// Intern a name into this Context's IdentifierMap. All Identifiers used by
   /// types owned by this Context must be created here so that their backing
