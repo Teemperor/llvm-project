@@ -150,7 +150,7 @@ private:
   /// The name of an unnamed record, e.g. "(unnamed struct)".
   std::string GetUnnamedName() const;
   /// The enclosing scopes of an unnamed record as a prefix of its name.
-  std::string GetUnnamedScopePrefix() const;
+  std::string GetUnnamedScopePrefix(bool keep_inline_namespaces) const;
 
   // Only Context can modify records.
   friend class Context;
