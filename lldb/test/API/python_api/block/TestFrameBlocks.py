@@ -11,6 +11,7 @@ from lldbsuite.test import lldbutil
 @skipIfTargetDoesNotSupportSharedLibraries()
 class FrameBlocksTestCase(TestBase):
     @skipIfWindows
+    @add_test_categories(["typesystem-clike"])
     def test_block_equality(self):
         """Exercise SBBlock equality checks across frames and functions in different dylibs."""
         self.build()

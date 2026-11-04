@@ -494,6 +494,7 @@ class TargetAPITestCase(TestBase):
         self.assertTrue(target3.IsValid())
 
     @skipIfWindows
+    @add_test_categories(["typesystem-clike"])
     def test_is_loaded(self):
         """Exercise SBTarget.IsLoaded(SBModule&) API."""
         d = {"EXE": "b.out"}
