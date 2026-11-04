@@ -73,6 +73,15 @@ static void AppendAnonymousParentPrefix(clike::Type *t, std::string &out) {
   out += "::";
 }
 
+// Render an ARMv8.3 pointer-auth qualifier as `__ptrauth(key,addr_disc,extra)`,
+// matching clang's TypePrinter / TypeSystemClang spelling.
+static std::string BuildPtrAuthQualifier(const clike::PtrAuthType *pa) {
+  return llvm::formatv("__ptrauth({0},{1},{2})", pa->GetKey(),
+                       pa->IsAddressDiscriminated() ? 1 : 0,
+                       pa->GetExtraDiscriminator())
+      .str();
+}
+
 // Render a function signature in C declarator form, placing `decl` (e.g. "" for
 // a plain function, "(*)" for a function pointer, "(^)" for a block pointer)
 // between the return type and the parameter list: `int (*)(const char *)`.
@@ -183,6 +192,17 @@ static std::string BuildDisplayNameImpl(clike::Type *t,
       return underlying + (tight ? "" : " ") + qualifier;
     }
     return qualifier + (qualifier.empty() ? "" : " ") + underlying;
+  }
+  if (auto *pa = llvm::dyn_cast<PtrAuthType>(t)) {
+    std::string underlying =
+        BuildDisplayNameImpl(pa->GetUnderlyingType(), keep_inline_namespaces);
+    std::string qualifier = BuildPtrAuthQualifier(pa);
+    // Clang spells the qualifier as a declarator suffix on a pointer
+    // (`int *__ptrauth(...)`) but as a prefix otherwise (`__ptrauth(...)
+    // intp`).
+    if (llvm::isa<PointerType>(pa->GetUnderlyingType()))
+      return underlying + qualifier;
+    return qualifier + " " + underlying;
   }
 
   // Named leaf type (record/typedef/enum/builtin). Builtins carry no
@@ -301,6 +321,16 @@ std::string clike::BuildCanonicalName(Type *t, bool base_only) {
       result += "volatile ";
     result += underlying_name;
     return result;
+  }
+  if (auto *pa = llvm::dyn_cast<PtrAuthType>(t)) {
+    std::string underlying =
+        BuildCanonicalName(pa->GetUnderlyingType(), base_only);
+    std::string qualifier = BuildPtrAuthQualifier(pa);
+    // Suffix on a pointer (`int *__ptrauth(...)`), prefix otherwise
+    // (`__ptrauth(...) intp`), matching clang's spelling.
+    if (llvm::isa<PointerType>(pa->GetUnderlyingType()))
+      return underlying + qualifier;
+    return qualifier + " " + underlying;
   }
   // Named leaf type (record/typedef/enum/builtin). `base_only` asks for the
   // unqualified spelling (no enclosing scopes), matching clang's

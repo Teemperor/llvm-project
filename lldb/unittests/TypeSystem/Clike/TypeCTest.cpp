@@ -275,6 +275,29 @@ TEST_F(TypeCTest, CVQualified) {
   EXPECT_EQ(v_alias->StripCVQualifiers(), alias);
 }
 
+// A `__ptrauth` qualifier is reported through any sugar wrapped around it, but
+// not through a pointer (it qualifies the pointer, not its pointee).
+TEST_F(TypeCTest, PtrAuth) {
+  PointerType *ptr = context.CreatePointerType(TypeRef(*Int()));
+  PtrAuthType *signed_ptr = context.CreatePtrAuthType(
+      TypeRef(*ptr), /*key=*/2, /*addr_discriminated=*/true,
+      /*extra_discriminator=*/42);
+  EXPECT_EQ(signed_ptr->GetKey(), 2u);
+  EXPECT_TRUE(signed_ptr->IsAddressDiscriminated());
+  EXPECT_EQ(signed_ptr->GetExtraDiscriminator(), 42u);
+
+  TypedefType *alias = context.CreateTypedefType("sp", TypeRef(*signed_ptr));
+  std::optional<PtrAuthQualifier> q = alias->GetPtrAuthQualifier();
+  ASSERT_TRUE(q.has_value());
+  EXPECT_EQ(q->GetKey(), 2u);
+  EXPECT_TRUE(q->IsAddressDiscriminated());
+  EXPECT_EQ(q->GetExtraDiscriminator(), 42u);
+
+  EXPECT_FALSE(ptr->GetPtrAuthQualifier().has_value());
+  PointerType *to_signed = context.CreatePointerType(TypeRef(*signed_ptr));
+  EXPECT_FALSE(to_signed->GetPtrAuthQualifier().has_value());
+}
+
 // An enum has an underlying integer type it takes its encoding from, and the
 // enumerators it was created with.
 TEST_F(TypeCTest, Enum) {
