@@ -246,21 +246,100 @@ CompilerType TypeSystemClike::GetTypeForDecl(void *opaque_decl) {
   return CompilerType();
 }
 
+/// The name of the declaration context \p ctx as it appears in a qualified
+/// name (empty for an anonymous namespace).
+static llvm::StringRef GetDeclContextName(const clike::DeclarationContext &ctx) {
+  if (const auto *ns = llvm::dyn_cast<clike::Namespace>(&ctx))
+    return ns->GetName().GetName();
+  if (const auto *record = llvm::dyn_cast<clike::RecordType>(&ctx))
+    return record->GetUnqualifiedName().GetName();
+  return {};
+}
+
 ConstString TypeSystemClike::DeclContextGetName(void *opaque_decl_ctx) {
-  return ConstString();
+  // A TypeSystemClike CompilerDeclContext wraps a clike::DeclarationContext
+  // (the global namespace is a null opaque pointer, which is never a valid
+  // CompilerDeclContext).
+  if (!opaque_decl_ctx)
+    return ConstString();
+  auto read_lock = LockForRead();
+  return ConstString(GetDeclContextName(*GetDeclarationContext(opaque_decl_ctx)));
 }
 
 ConstString
 TypeSystemClike::DeclContextGetScopeQualifiedName(void *opaque_decl_ctx) {
-  return ConstString();
+  if (!opaque_decl_ctx)
+    return ConstString();
+  auto read_lock = LockForRead();
+  // Build "A::B::C" from the declaration context chain, skipping the
+  // (transparent) inline namespaces so the spelling matches the source.
+  llvm::SmallVector<llvm::StringRef, 4> parts;
+  for (const clike::DeclarationContext *cur =
+           GetDeclarationContext(opaque_decl_ctx);
+       cur; cur = cur->GetParent()) {
+    if (const auto *ns = llvm::dyn_cast<clike::Namespace>(cur);
+        ns && ns->IsInline())
+      continue;
+    parts.push_back(GetDeclContextName(*cur));
+  }
+  std::string qualified;
+  for (llvm::StringRef part : llvm::reverse(parts)) {
+    if (!qualified.empty())
+      qualified += "::";
+    qualified += part.str();
+  }
+  return ConstString(qualified);
 }
 
 bool TypeSystemClike::DeclContextIsClassMethod(void *opaque_decl_ctx) {
   return false;
 }
 
+std::vector<lldb_private::CompilerContext>
+TypeSystemClike::DeclContextGetCompilerContext(void *opaque_decl_ctx) {
+  // Build the CompilerContext chain (outermost scope first) so a
+  // namespace-scoped type query (TypeQuery(decl_ctx, name)) can match a type's
+  // DWARF lookup context. Inline namespaces stay in the chain (they are
+  // transparent for name printing but the DWARF context lists them too);
+  // ContextMatches handles anonymous namespaces optionally.
+  auto read_lock = LockForRead();
+  std::vector<lldb_private::CompilerContext> context;
+  for (const clike::DeclarationContext *cur =
+           GetDeclarationContext(opaque_decl_ctx);
+       cur; cur = cur->GetParent()) {
+    CompilerContextKind kind = CompilerContextKind::Namespace;
+    if (const auto *record = llvm::dyn_cast<clike::RecordType>(cur))
+      kind = record->IsUnion() ? CompilerContextKind::Union
+                               : CompilerContextKind::ClassOrStruct;
+    context.push_back({kind, ConstString(GetDeclContextName(*cur))});
+  }
+  std::reverse(context.begin(), context.end());
+  return context;
+}
+
 bool TypeSystemClike::DeclContextIsContainedInLookup(
     void *opaque_decl_ctx, void *other_opaque_decl_ctx) {
+  // Declaration contexts are unique per Context (namespaces are interned,
+  // records are types), so identity is pointer equality.
+  // The lookup of a namespace also transparently contains any inline namespace
+  // nested (transitively through inline namespaces) inside it, so walk `other`
+  // up through its inline-namespace parents looking for a match.
+  auto read_lock = LockForRead();
+  const clike::DeclarationContext *self = GetDeclarationContext(opaque_decl_ctx);
+  for (const clike::DeclarationContext *cur =
+           GetDeclarationContext(other_opaque_decl_ctx);
+       cur; cur = cur->GetParent()) {
+    if (cur == self)
+      return true;
+    // Keep ascending while we are inside a transparent namespace: members of an
+    // inline namespace (and of an unnamed namespace, which is implicitly a
+    // using-directive into its parent) are visible in the enclosing scope. A
+    // named, non-inline namespace (or any other scope) is a distinct lookup
+    // scope, so stop there.
+    const auto *ns = llvm::dyn_cast<clike::Namespace>(cur);
+    if (!ns || (!ns->IsInline() && !ns->IsAnonymous()))
+      break;
+  }
   return false;
 }
 
