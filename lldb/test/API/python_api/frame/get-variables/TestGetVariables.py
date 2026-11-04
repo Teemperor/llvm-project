@@ -37,6 +37,7 @@ class TestGetVariables(TestBase):
             % (description, copy_names, actual_names),
         )
 
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         self.build()
 
