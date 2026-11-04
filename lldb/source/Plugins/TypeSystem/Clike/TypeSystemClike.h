@@ -320,6 +320,8 @@ public:
   // Creating related types
   CompilerType GetArrayElementType(lldb::opaque_compiler_type_t type,
                                    ExecutionContextScope *exe_scope) override;
+  CompilerType GetArrayType(lldb::opaque_compiler_type_t type,
+                            uint64_t size) override;
   CompilerType GetCanonicalType(lldb::opaque_compiler_type_t type) override;
   CompilerType
   GetEnumerationIntegerType(lldb::opaque_compiler_type_t type) override;
@@ -488,6 +490,9 @@ private:
   /// Helper for DumpTypeDescription; assumes the write lock is already held.
   void AppendMemberDeclAssumingWriteLocked(Stream &s, clike::Type *field_type,
                                            llvm::StringRef name);
+
+  bool IsArrayTypeImpl(const clike::Type *type, CompilerType *element_type,
+                       uint64_t *size, bool *is_incomplete);
 
   bool IsIntegerTypeImpl(const clike::Type *type, bool &is_signed);
 
