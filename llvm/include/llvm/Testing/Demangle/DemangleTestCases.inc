@@ -29997,6 +29997,11 @@
 // Cast target types must be printed in full.
 {"_Z1fIXscA_iLi0EEEvv", "void f<static_cast<int []>(0)>()"},
 
+// A function template in a local name whose signature refers to its own
+// template parameters.
+{"_ZZ1fvE1gIiEvT_", "void f()::g<int>(int)"},
+{"_ZZ1fiENK3$_0clIiEEDaT_", "auto f(int)::$_0::operator()<int>(int) const"},
+
 // C++20 class type non-type template parameters:
 {"_Z1fIXtl1BLPi0ELi1EEEEvv", "void f<B{(int*)0, 1}>()"},
 {"_Z1fIXtl1BLPi32EEEEvv", "void f<B{(int*)32}>()"},
