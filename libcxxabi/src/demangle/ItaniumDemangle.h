@@ -2818,21 +2818,29 @@ template <typename Derived, typename Alloc> struct AbstractManglingParser {
     AbstractManglingParser *Parser;
     decltype(TemplateParams) OldParams;
     decltype(OuterTemplateParams) OldOuterParams;
+    bool OldInExpression;
+    bool Enabled;
     bool Restore;
 
   public:
-    SaveTemplateParams(AbstractManglingParser *TheParser, bool Restore = true)
-        : Parser(TheParser), Restore(Restore) {
+    SaveTemplateParams(AbstractManglingParser *TheParser, bool Restore = true,
+                       bool Enabled = true)
+        : Parser(TheParser), Enabled(Enabled), Restore(Restore) {
+      if (!Enabled)
+        return;
       OldParams = std::move(Parser->TemplateParams);
       OldOuterParams = std::move(Parser->OuterTemplateParams);
+      OldInExpression = Parser->InExpression;
       Parser->TemplateParams.clear();
       Parser->OuterTemplateParams.clear();
+      Parser->InExpression = false;
     }
     ~SaveTemplateParams() {
-      if (!Restore)
+      if (!Enabled || !Restore)
         return;
       Parser->TemplateParams = std::move(OldParams);
       Parser->OuterTemplateParams = std::move(OldOuterParams);
+      Parser->InExpression = OldInExpression;
     }
   };
 
@@ -2844,6 +2852,9 @@ template <typename Derived, typename Alloc> struct AbstractManglingParser {
   bool PermitForwardTemplateReferences = false;
   bool HasIncompleteTemplateParameterTracking = false;
   size_t ParsingLambdaParamsAtLevel = (size_t)-1;
+  // Whether we're parsing an expression. Expressions in the signature of a
+  // template can contain lambdas that are nested in that template.
+  bool InExpression = false;
 
   unsigned NumSyntheticTemplateParameters[3] = {};
 
@@ -2861,6 +2872,7 @@ template <typename Derived, typename Alloc> struct AbstractManglingParser {
     Subs.clear();
     TemplateParams.clear();
     ParsingLambdaParamsAtLevel = (size_t)-1;
+    InExpression = false;
     TryToParseTemplateArgs = true;
     PermitForwardTemplateReferences = false;
     for (unsigned int & NumSyntheticTemplateParameter : NumSyntheticTemplateParameters)
@@ -3296,6 +3308,14 @@ AbstractManglingParser<Derived, Alloc>::parseUnnamedTypeName(NameState *State) {
     return make<UnnamedTypeName>(Count);
   }
   if (consumeIf("Ul")) {
+    // The template parameters in a <lambda-sig> are numbered relative to the
+    // template parameters that enclose the lambda. Unless this is part of an
+    // expression, the template parameters we know about here (e.g. those of
+    // the template whose arguments we're currently parsing) are unrelated to
+    // the lambda.
+    SaveTemplateParams SaveTemplateParamsScope(
+        this, /*Restore=*/true,
+        /*Enabled=*/State == nullptr && !InExpression);
     ScopedOverride<size_t> SwapParams(ParsingLambdaParamsAtLevel,
                                       TemplateParams.size());
     ScopedTemplateParamList LambdaTemplateParams(this);
@@ -4841,6 +4861,7 @@ template <typename Derived, typename Alloc>
 Node *AbstractManglingParser<Derived, Alloc>::parseExprPrimary() {
   if (!consumeIf('L'))
     return nullptr;
+  ScopedOverride<bool> SaveInExpression(InExpression, true);
   switch (look()) {
   case 'w':
     ++First;
@@ -5220,6 +5241,7 @@ Node *AbstractManglingParser<Derived, Alloc>::parseRequiresExpr() {
 //              ::= <expr-primary>
 template <typename Derived, typename Alloc>
 Node *AbstractManglingParser<Derived, Alloc>::parseExpr() {
+  ScopedOverride<bool> SaveInExpression(InExpression, true);
   bool Global = consumeIf("gs");
 
   const auto *Op = parseOperatorEncoding();

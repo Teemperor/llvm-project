@@ -30002,6 +30002,11 @@
 {"_ZZ1fvE1gIiEvT_", "void f()::g<int>(int)"},
 {"_ZZ1fiENK3$_0clIiEEDaT_", "auto f(int)::$_0::operator()<int>(int) const"},
 
+// The template parameters of a closure type's <lambda-sig> are unrelated to
+// the template that the closure type is used in.
+{"_Z1fIN1xUlRT_E_EEvv", "void f<x::'lambda'(auto&)>()"},
+{"_Z1fIiEvN7handlerMUlRT_E_E", "void f<int>(handler::'lambda'(auto&))"},
+
 // C++20 class type non-type template parameters:
 {"_Z1fIXtl1BLPi0ELi1EEEEvv", "void f<B{(int*)0, 1}>()"},
 {"_Z1fIXtl1BLPi32EEEEvv", "void f<B{(int*)32}>()"},
