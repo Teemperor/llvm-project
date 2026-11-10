@@ -2868,6 +2868,8 @@ template <typename Derived, typename Alloc> struct AbstractManglingParser {
         return;
       OldParams = std::move(Parser->TemplateParams);
       OldOuterParams = std::move(Parser->OuterTemplateParams);
+      if (!OldParams.empty() && OldParams[0] == &Parser->OuterTemplateParams)
+        OldParams[0] = &OldOuterParams;
       OldInExpression = Parser->InExpression;
       OldTemplateParamsGen = Parser->TemplateParamsGen;
       OldNumTemplateParamRefs = Parser->NumTemplateParamRefs;
@@ -2879,13 +2881,28 @@ template <typename Derived, typename Alloc> struct AbstractManglingParser {
     ~SaveTemplateParams() {
       if (!Enabled || !Restore)
         return;
+      if (!OldParams.empty() && OldParams[0] == &OldOuterParams)
+        OldParams[0] = &Parser->OuterTemplateParams;
       Parser->TemplateParams = std::move(OldParams);
       Parser->OuterTemplateParams = std::move(OldOuterParams);
       Parser->InExpression = OldInExpression;
       Parser->TemplateParamsGen = OldTemplateParamsGen;
       Parser->NumTemplateParamRefs = OldNumTemplateParamRefs;
     }
+
+    // Swap the current template parameters with the saved ones.
+    void swap() {
+      decltype(TemplateParams) Tmp = std::move(Parser->TemplateParams);
+      Parser->TemplateParams = std::move(OldParams);
+      OldParams = std::move(Tmp);
+      std::swap(Parser->TemplateParamsGen, OldTemplateParamsGen);
+      std::swap(Parser->NumTemplateParamRefs, OldNumTemplateParamRefs);
+    }
   };
+
+  // The template parameters of the context enclosing the <encoding> that is
+  // being parsed.
+  SaveTemplateParams *EncodingTemplateParams = nullptr;
 
   // Set of unresolved forward <template-param> references. These can occur in a
   // conversion operator's type, and are resolved in the enclosing <encoding>.
@@ -5816,6 +5833,8 @@ Node *AbstractManglingParser<Derived, Alloc>::parseEncoding(bool ParseParams) {
   // The template parameters of an encoding are unrelated to those of the
   // enclosing context.
   SaveTemplateParams SaveTemplateParamsScope(this);
+  ScopedOverride<SaveTemplateParams *> SaveEncodingTemplateParams(
+      EncodingTemplateParams, &SaveTemplateParamsScope);
 
   if (look() == 'G' || look() == 'T')
     return getDerived().parseSpecialName();
@@ -6353,13 +6372,49 @@ AbstractManglingParser<Derived, Alloc>::parseTemplateArgs(bool TagTemplates) {
     newTemplateParamsGen();
   }
 
+  class SwapEncodingTemplateParams {
+    SaveTemplateParams *Params;
+
+  public:
+    SwapEncodingTemplateParams(SaveTemplateParams *Params) : Params(Params) {
+      if (Params)
+        Params->swap();
+    }
+    ~SwapEncodingTemplateParams() {
+      if (Params)
+        Params->swap();
+    }
+  };
+
   size_t ArgsBegin = Names.size();
   Node *Requires = nullptr;
   while (!consumeIf('E')) {
     if (TagTemplates) {
-      Node *Arg = getDerived().parseTemplateArg();
+      // A <template-param-decl> declares a template parameter of the template
+      // whose arguments we're parsing, and can refer to its previous template
+      // parameters.
+      Node *Param = nullptr;
+      if (look() == 'T' && getDerived().isTemplateParamDecl()) {
+        Param = getDerived().parseTemplateParamDecl(nullptr);
+        if (Param == nullptr)
+          return nullptr;
+      }
+      Node *Arg;
+      {
+        // The <template-param>s in a template argument of the name of an
+        // <encoding> refer to the template arguments of the encoding's
+        // enclosing context, e.g., the T_ in borrowed_range<T_> in
+        //   _ZN1AIiE1fIiEEvDTL_Z14borrowed_rangeIT_EEE
+        SwapEncodingTemplateParams SwapParams(EncodingTemplateParams);
+        Arg = getDerived().parseTemplateArg();
+      }
       if (Arg == nullptr)
         return nullptr;
+      if (Param != nullptr) {
+        Arg = make<TemplateParamQualifiedArg>(Param, Arg);
+        if (Arg == nullptr)
+          return nullptr;
+      }
       Names.push_back(Arg);
       Node *TableEntry = Arg;
       if (Arg->getKind() == Node::KTemplateParamQualifiedArg) {

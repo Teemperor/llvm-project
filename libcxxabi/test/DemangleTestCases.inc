@@ -30016,6 +30016,11 @@
 {"_ZN1xMUlRT_E_clIiEEDaS1_", "auto x::'lambda'(auto&)::operator()<int>(int&)"},
 {"_Z4takeIZ1gIiEvT_EUlS1_iE_EvS1_", "void take<void g<int>(int)::'lambda'(auto, int)>(void g<int>(int)::'lambda'(auto, int))"},
 
+// Template parameters in the template arguments of an <encoding>'s name refer
+// to the enclosing context.
+{"_Z1fIiEv1XIXL_Z1bIT_EEEE", "void f<int>(X<b<int>>)"},
+{"_Z1fIiEv1XIXadL_Z1gIT_EvS2_EEE", "void f<int>(X<&void g<int>(int)>)"},
+
 // C++20 class type non-type template parameters:
 {"_Z1fIXtl1BLPi0ELi1EEEEvv", "void f<B{(int*)0, 1}>()"},
 {"_Z1fIXtl1BLPi32EEEEvv", "void f<B{(int*)32}>()"},
