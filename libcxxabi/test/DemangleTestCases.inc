@@ -29910,7 +29910,7 @@
 {"_ZGRDC1x1yE_", "reference temporary for [x, y]"},
 {"_ZGR1bIvE2_", "reference temporary for b<void>"},
 
-{"_ZZ18test_assign_throwsI20small_throws_on_copyLb0EEvvENKUlRNSt3__13anyEOT_E_clIRS0_EEDaS3_S5_", "auto void test_assign_throws<small_throws_on_copy, false>()::'lambda'(std::__1::any&, auto&&)::operator()<small_throws_on_copy&>(std::__1::any&, auto&&) const"},
+{"_ZZ18test_assign_throwsI20small_throws_on_copyLb0EEvvENKUlRNSt3__13anyEOT_E_clIRS0_EEDaS3_S5_", "auto void test_assign_throws<small_throws_on_copy, false>()::'lambda'(std::__1::any&, auto&&)::operator()<small_throws_on_copy&>(std::__1::any&, small_throws_on_copy&) const"},
 
 // enable_if attributes:
 {"_Z1fUa9enable_ifIXLi1EEEv", "f() [enable_if:1]"},
@@ -29981,12 +29981,11 @@
 // FIXME: Consider special-casing the call operator of a lambda and
 // producing something like
 //   "auto inline_func()::'lambda'<int, int>(int, int) const"
-{"_ZZ11inline_funcvENKUlTyTyT_T0_E_clIiiEEDaS_S0_", "auto inline_func()::'lambda'<typename $T, typename $T0>($T, $T0)::operator()<int, int>($T, $T0) const"},
-{"_ZZ11inline_funcvENKUlTyTyT_T1_T0_E_clIiiiEEDaS_S0_S1_", "auto inline_func()::'lambda'<typename $T, typename $T0>($T, auto, $T0)::operator()<int, int, int>($T, auto, $T0) const"},
+{"_ZZ11inline_funcvENKUlTyTyT_T0_E_clIiiEEDaS_S0_", "auto inline_func()::'lambda'<typename $T, typename $T0>($T, $T0)::operator()<int, int>(int, int) const"},
+{"_ZZ11inline_funcvENKUlTyTyT_T1_T0_E_clIiiiEEDaS_S0_S1_", "auto inline_func()::'lambda'<typename $T, typename $T0>($T, auto, $T0)::operator()<int, int, int>(int, int, int) const"},
 {"_ZN1XIZ1fIiEvOT_EUlOT_DpT0_E_EclIJEEEvDpT_", "void X<void f<int>(int&&)::'lambda'(auto&&, auto...)>::operator()<>()"},
-// FIXME: This is wrong, should demangle to the same as the previous entry.
 // See https://github.com/itanium-cxx-abi/cxx-abi/issues/106.
-{"_ZN1XIZ1fIiEvOT_EUlS2_DpT0_E_EclIJEEEvDpT_", "void X<void f<int>(int&&)::'lambda'(int&&, auto...)>::operator()<>()"},
+{"_ZN1XIZ1fIiEvOT_EUlS2_DpT0_E_EclIJEEEvDpT_", "void X<void f<int>(int&&)::'lambda'(auto&&, auto...)>::operator()<>()"},
 {"_ZZZZN6abcdef9abcdefghi29abcdefabcdefabcdefabcefabcdef27xxxxxxxxxxxxxxxxxxxxxxxxxxxEN4absl8DurationERKNSt3__u12basic_stringIcNS4_11char_traitsIcEENS4_9allocatorIcEEEEPNS1_19yyyyyyyyyyyyyyyyyyyEENK3$_5clEvENKUlvE_clEvE6zzzzzz", "abcdef::abcdefghi::abcdefabcdefabcdefabcefabcdef::xxxxxxxxxxxxxxxxxxxxxxxxxxx(absl::Duration, std::__u::basic_string<char, std::__u::char_traits<char>, std::__u::allocator<char>> const&, abcdef::abcdefghi::abcdefabcdefabcdefabcefabcdef::yyyyyyyyyyyyyyyyyyy*)::$_5::operator()() const::'lambda'()::operator()() const::zzzzzz"},
 // See https://github.com/itanium-cxx-abi/cxx-abi/issues/165.
 {"_ZN1C1fIiEEvDTtlNS_UlT_TL0__E_EEE", "void C::f<int>(decltype(C::'lambda'(int, auto){}))"},
@@ -30006,6 +30005,12 @@
 // the template that the closure type is used in.
 {"_Z1fIN1xUlRT_E_EEvv", "void f<x::'lambda'(auto&)>()"},
 {"_Z1fIiEvN7handlerMUlRT_E_E", "void f<int>(handler::'lambda'(auto&))"},
+
+// Template parameters in a substitution refer to the template arguments of the
+// context the substitution is used in.
+{"_Z5visitIZ1gIiEvT_E1XEvRS1_", "void visit<void g<int>(int)::X>(void g<int>(int)::X&)"},
+{"_ZN1xMUlRT_E_clIiEEDaS1_", "auto x::'lambda'(auto&)::operator()<int>(int&)"},
+{"_Z4takeIZ1gIiEvT_EUlS1_iE_EvS1_", "void take<void g<int>(int)::'lambda'(auto, int)>(void g<int>(int)::'lambda'(auto, int))"},
 
 // C++20 class type non-type template parameters:
 {"_Z1fIXtl1BLPi0ELi1EEEEvv", "void f<B{(int*)0, 1}>()"},
@@ -30047,11 +30052,9 @@
 // isn't valid C++ syntax to initialize an array of char.
 {"_Z1fIXtl5HellotlA5_cLc72ELc101ELc108ELc108ELc111EEEEEvv", "void f<Hello{\"Hello\"}>()"},
 
-// FIXME: This is wrong; the S2_ backref should expand to OT_ and then to
-// "double&&". But we can't cope with a substitution that represents a
-// different type the node it is a substitute for.
+// The S2_ backref expands to OT_ and then to "double&&".
 // See https://github.com/itanium-cxx-abi/cxx-abi/issues/106.
-{"_Z1h1XIJZ1fIiEDaOT_E1AZ1gIdEDaS2_E1BEE", "h(X<auto f<int>(int&&)::A, auto g<double>(int&&)::B>)"},
+{"_Z1h1XIJZ1fIiEDaOT_E1AZ1gIdEDaS2_E1BEE", "h(X<auto f<int>(int&&)::A, auto g<double>(double&&)::B>)"},
 
 {"_Z1fIL4Enumn1EEvv", "void f<(Enum)-1>()"},
 
@@ -30145,10 +30148,10 @@
 {"_ZN5test51qINS_1BEEEvv", "void test5::q<test5::B>()"},
 {"_ZN5test61fITk1CiEEvT_", "void test6::f<int>(int)"},
 {"_ZN5test61gIiTk1DIT_EiEEvT0_", "void test6::g<int, int>(int)"},
-{"_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E_clIiiEEDaS3_Q1CIDtfp_EE", "auto void test7::f<int>()::'lambda'<typename $T> requires C<T> && C<TL0_> (auto)::operator()<int, int>(auto) const requires C<decltype(fp)>"},
-{"_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E0_clIiiEEDaS3_Qaa1CIDtfp_EELb1E", "auto void test7::f<int>()::'lambda0'<typename $T> requires C<T> && C<TL0_> (auto)::operator()<int, int>(auto) const requires C<decltype(fp)> && true"},
-{"_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E1_clIiiEEDaS3_Q1CIDtfp_EE", "auto void test7::f<int>()::'lambda1'<typename $T> requires C<T> && C<TL0_> (auto)::operator()<int, int>(auto) const requires C<decltype(fp)>"},
-{"_ZZN5test71fIiEEvvENKUlTyT0_E_clIiiEEDaS1_", "auto void test7::f<int>()::'lambda'<typename $T>(auto)::operator()<int, int>(auto) const"},
+{"_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E_clIiiEEDaS3_Q1CIDtfp_EE", "auto void test7::f<int>()::'lambda'<typename $T> requires C<T> && C<TL0_> (auto)::operator()<int, int>(int) const requires C<decltype(fp)>"},
+{"_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E0_clIiiEEDaS3_Qaa1CIDtfp_EELb1E", "auto void test7::f<int>()::'lambda0'<typename $T> requires C<T> && C<TL0_> (auto)::operator()<int, int>(int) const requires C<decltype(fp)> && true"},
+{"_ZZN5test71fIiEEvvENKUlTyQaa1CIT_E1CITL0__ET0_E1_clIiiEEDaS3_Q1CIDtfp_EE", "auto void test7::f<int>()::'lambda1'<typename $T> requires C<T> && C<TL0_> (auto)::operator()<int, int>(int) const requires C<decltype(fp)>"},
+{"_ZZN5test71fIiEEvvENKUlTyT0_E_clIiiEEDaS1_", "auto void test7::f<int>()::'lambda'<typename $T>(auto)::operator()<int, int>(int) const"},
 {"_ZN3FooIiE6methodITk4TrueIT_EiEEvS3_", "void Foo<int>::method<int>(T)"},
 
 // C++20 requires expressions, see https://github.com/itanium-cxx-abi/cxx-abi/issues/24.

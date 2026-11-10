@@ -2774,10 +2774,42 @@ template <typename Derived, typename Alloc> struct AbstractManglingParser {
   // the AST. Once the parser is finished, names.size() == 1.
   PODSmallVector<Node *, 32> Names;
 
+  // An entry in the substitution table.
+  struct Substitution {
+    Node *N;
+    // Template parameters in a substitution are resolved in the context the
+    // substitution is used in. If N is a <type> that refers to template
+    // parameters, these fields describe the mangled type and the template
+    // parameter context it was parsed in, so that it can be parsed again when
+    // it's used in a different context (see getSubstitution). Begin is null
+    // for all other entries.
+    const char *Begin;
+    const char *End;
+    // The size of the substitution table when the type was parsed.
+    size_t SubsBegin;
+    unsigned TemplateParamsGen;
+    // The most recent result of parsing the type again and the template
+    // parameter context it belongs to.
+    unsigned ReparsedGen;
+    Node *Reparsed;
+  };
+
   // Substitution table. Itanium supports name substitutions as a means of
   // compression. The string "S42_" refers to the 44nd entry (base-36) in this
   // table.
-  PODSmallVector<Node *, 32> Subs;
+  PODSmallVector<Substitution, 32> Subs;
+
+  // Identifies the current template parameter context, i.e., the state of
+  // TemplateParams. Two template parameters parsed with the same generation
+  // refer to the same template argument.
+  unsigned TemplateParamsGen = 0;
+  unsigned LastTemplateParamsGen = 0;
+  void newTemplateParamsGen() { TemplateParamsGen = ++LastTemplateParamsGen; }
+
+  // The number of template parameters that have been resolved in the current
+  // template parameter context. Used to find the <type>s that depend on the
+  // context.
+  unsigned NumTemplateParamRefs = 0;
 
   // A list of template argument values corresponding to a template parameter
   // list.
@@ -2786,18 +2818,22 @@ template <typename Derived, typename Alloc> struct AbstractManglingParser {
   class ScopedTemplateParamList {
     AbstractManglingParser *Parser;
     size_t OldNumTemplateParamLists;
+    unsigned OldTemplateParamsGen;
     TemplateParamList Params;
 
   public:
     ScopedTemplateParamList(AbstractManglingParser *TheParser)
         : Parser(TheParser),
-          OldNumTemplateParamLists(TheParser->TemplateParams.size()) {
+          OldNumTemplateParamLists(TheParser->TemplateParams.size()),
+          OldTemplateParamsGen(TheParser->TemplateParamsGen) {
       Parser->TemplateParams.push_back(&Params);
+      Parser->newTemplateParamsGen();
     }
     ~ScopedTemplateParamList() {
       DEMANGLE_ASSERT(Parser->TemplateParams.size() >= OldNumTemplateParamLists,
                       "");
       Parser->TemplateParams.shrinkToSize(OldNumTemplateParamLists);
+      Parser->TemplateParamsGen = OldTemplateParamsGen;
     }
     TemplateParamList *params() { return &Params; }
   };
@@ -2819,6 +2855,8 @@ template <typename Derived, typename Alloc> struct AbstractManglingParser {
     decltype(TemplateParams) OldParams;
     decltype(OuterTemplateParams) OldOuterParams;
     bool OldInExpression;
+    unsigned OldTemplateParamsGen;
+    unsigned OldNumTemplateParamRefs;
     bool Enabled;
     bool Restore;
 
@@ -2831,9 +2869,12 @@ template <typename Derived, typename Alloc> struct AbstractManglingParser {
       OldParams = std::move(Parser->TemplateParams);
       OldOuterParams = std::move(Parser->OuterTemplateParams);
       OldInExpression = Parser->InExpression;
+      OldTemplateParamsGen = Parser->TemplateParamsGen;
+      OldNumTemplateParamRefs = Parser->NumTemplateParamRefs;
       Parser->TemplateParams.clear();
       Parser->OuterTemplateParams.clear();
       Parser->InExpression = false;
+      Parser->newTemplateParamsGen();
     }
     ~SaveTemplateParams() {
       if (!Enabled || !Restore)
@@ -2841,6 +2882,8 @@ template <typename Derived, typename Alloc> struct AbstractManglingParser {
       Parser->TemplateParams = std::move(OldParams);
       Parser->OuterTemplateParams = std::move(OldOuterParams);
       Parser->InExpression = OldInExpression;
+      Parser->TemplateParamsGen = OldTemplateParamsGen;
+      Parser->NumTemplateParamRefs = OldNumTemplateParamRefs;
     }
   };
 
@@ -2871,6 +2914,9 @@ template <typename Derived, typename Alloc> struct AbstractManglingParser {
     Names.clear();
     Subs.clear();
     TemplateParams.clear();
+    TemplateParamsGen = 0;
+    LastTemplateParamsGen = 0;
+    NumTemplateParamRefs = 0;
     ParsingLambdaParamsAtLevel = (size_t)-1;
     InExpression = false;
     TryToParseTemplateArgs = true;
@@ -2933,6 +2979,30 @@ template <typename Derived, typename Alloc> struct AbstractManglingParser {
 
   bool parseSeqId(size_t *Out);
   Node *parseSubstitution();
+  Node *getSubstitution(size_t Index);
+  Node *reparseSubstitution(size_t Index);
+
+  void addSubstitution(Node *N) {
+    Subs.push_back({N, nullptr, nullptr, 0, 0, 0, nullptr});
+  }
+
+  // The state at the beginning of a substitutable <type>.
+  struct TypeStart {
+    const char *Begin;
+    size_t SubsBegin;
+    unsigned TemplateParamsGen;
+    unsigned NumTemplateParamRefs;
+  };
+  TypeStart getTypeStart() const {
+    return {First, Subs.size(), TemplateParamsGen, NumTemplateParamRefs};
+  }
+  // Add the <type> N that started at Start to the substitution table.
+  void addTypeSubstitution(Node *N, const TypeStart &Start) {
+    if (NumTemplateParamRefs == Start.NumTemplateParamRefs)
+      return addSubstitution(N);
+    Subs.push_back({N, Start.Begin, First, Start.SubsBegin,
+                    Start.TemplateParamsGen, 0, nullptr});
+  }
   Node *parseTemplateParam();
   Node *parseTemplateParamDecl(TemplateParamList *Params);
   Node *parseTemplateArgs(bool TagTemplates = false);
@@ -3117,7 +3187,7 @@ Node *AbstractManglingParser<Derived, Alloc>::parseName(NameState *State) {
     //        ::= <unscoped-template-name> <template-args>
     if (!IsSubst)
       // An unscoped-template-name is substitutable.
-      Subs.push_back(Result);
+      addSubstitution(Result);
     Node *TA = getDerived().parseTemplateArgs(State != nullptr);
     if (TA == nullptr)
       return nullptr;
@@ -3280,7 +3350,7 @@ bool AbstractManglingParser<Derived, Alloc>::parseModuleNameOpt(
       return true;
     Module =
         static_cast<ModuleName *>(make<ModuleName>(Module, Sub, IsPartition));
-    Subs.push_back(Module);
+    addSubstitution(Module);
   }
 
   return false;
@@ -3298,8 +3368,10 @@ Node *
 AbstractManglingParser<Derived, Alloc>::parseUnnamedTypeName(NameState *State) {
   // <template-params> refer to the innermost <template-args>. Clear out any
   // outer args that we may have inserted into TemplateParams.
-  if (State != nullptr)
+  if (State != nullptr) {
     TemplateParams.clear();
+    newTemplateParamsGen();
+  }
 
   if (consumeIf("Ut")) {
     std::string_view Count = parseNumber();
@@ -3737,7 +3809,7 @@ AbstractManglingParser<Derived, Alloc>::parseNestedName(NameState *State) {
 
     if (SoFar == nullptr)
       return nullptr;
-    Subs.push_back(SoFar);
+    addSubstitution(SoFar);
 
     // No longer used.
     // <data-member-prefix> := <member source-name> [<template-args>] M
@@ -3785,18 +3857,19 @@ Node *AbstractManglingParser<Derived, Alloc>::parseDestructorName() {
 //                   ::= <substitution>
 template <typename Derived, typename Alloc>
 Node *AbstractManglingParser<Derived, Alloc>::parseUnresolvedType() {
+  TypeStart Start = getTypeStart();
   if (look() == 'T') {
     Node *TP = getDerived().parseTemplateParam();
     if (TP == nullptr)
       return nullptr;
-    Subs.push_back(TP);
+    addTypeSubstitution(TP, Start);
     return TP;
   }
   if (look() == 'D') {
     Node *DT = getDerived().parseDecltype();
     if (DT == nullptr)
       return nullptr;
-    Subs.push_back(DT);
+    addTypeSubstitution(DT, Start);
     return DT;
   }
   return getDerived().parseSubstitution();
@@ -4251,6 +4324,7 @@ Node *AbstractManglingParser<Derived, Alloc>::parseQualifiedType() {
 template <typename Derived, typename Alloc>
 Node *AbstractManglingParser<Derived, Alloc>::parseType() {
   Node *Result = nullptr;
+  TypeStart Start = getTypeStart();
 
   switch (look()) {
   //             ::= <qualified-type>
@@ -4640,7 +4714,7 @@ Node *AbstractManglingParser<Derived, Alloc>::parseType() {
     // parse them, take the second production.
 
     if (TryToParseTemplateArgs && look() == 'I') {
-      Subs.push_back(Result);
+      addTypeSubstitution(Result, Start);
       Node *TA = getDerived().parseTemplateArgs();
       if (TA == nullptr)
         return nullptr;
@@ -4713,7 +4787,7 @@ Node *AbstractManglingParser<Derived, Alloc>::parseType() {
 
       if (look() == 'I' && (!IsSubst || TryToParseTemplateArgs)) {
         if (!IsSubst)
-          Subs.push_back(Result);
+          addSubstitution(Result);
         Node *TA = getDerived().parseTemplateArgs();
         if (TA == nullptr)
           return nullptr;
@@ -4738,7 +4812,7 @@ Node *AbstractManglingParser<Derived, Alloc>::parseType() {
   // <builtin-type>s and <substitution>s have already bailed out, because they
   // don't get substitutions.
   if (Result != nullptr)
-    Subs.push_back(Result);
+    addTypeSubstitution(Result, Start);
   return Result;
 }
 
@@ -5946,7 +6020,7 @@ Node *AbstractManglingParser<Derived, Alloc>::parseSubstitution() {
     // substitutable component.
     Node *WithTags = getDerived().parseAbiTags(SpecialSub);
     if (WithTags != SpecialSub) {
-      Subs.push_back(WithTags);
+      addSubstitution(WithTags);
       SpecialSub = WithTags;
     }
     return SpecialSub;
@@ -5956,7 +6030,7 @@ Node *AbstractManglingParser<Derived, Alloc>::parseSubstitution() {
   if (consumeIf('_')) {
     if (Subs.empty())
       return nullptr;
-    return Subs[0];
+    return getSubstitution(0);
   }
 
   //                ::= S <seq-id> _
@@ -5966,7 +6040,78 @@ Node *AbstractManglingParser<Derived, Alloc>::parseSubstitution() {
   ++Index;
   if (!consumeIf('_') || Index >= Subs.size())
     return nullptr;
-  return Subs[Index];
+  return getSubstitution(Index);
+}
+
+template <typename Derived, typename Alloc>
+Node *AbstractManglingParser<Derived, Alloc>::getSubstitution(size_t Index) {
+  const Substitution &S = Subs[Index];
+  if (S.Begin == nullptr)
+    return S.N;
+
+  // Whatever refers to this substitution depends on the template parameter
+  // context as well.
+  ++NumTemplateParamRefs;
+  if (S.TemplateParamsGen == TemplateParamsGen ||
+      HasIncompleteTemplateParameterTracking)
+    return S.N;
+  if (S.Reparsed != nullptr && S.ReparsedGen == TemplateParamsGen)
+    return S.Reparsed;
+
+  // The substitution was parsed in a different template parameter context, so
+  // its template parameters might refer to different template arguments here.
+  // For example, in
+  //
+  //   _Z5visitIZ1gIiEvT_E1XEvRS1_
+  //
+  // S1_ is the T_ in the signature of g<int>, but refers to the template
+  // argument of visit: void visit<void g<int>(int)::X>(void g<int>(int)::X&).
+  Node *N = reparseSubstitution(Index);
+  if (N == nullptr)
+    return Subs[Index].N;
+  Subs[Index].Reparsed = N;
+  Subs[Index].ReparsedGen = TemplateParamsGen;
+  return N;
+}
+
+// Parse the <type> of the substitution with the given index again in the
+// current template parameter context.
+template <typename Derived, typename Alloc>
+Node *
+AbstractManglingParser<Derived, Alloc>::reparseSubstitution(size_t Index) {
+  Substitution S = Subs[Index];
+
+  // Substitutions in the type refer to the substitution table as it was when
+  // the type was parsed, so temporarily remove all later entries.
+  PODSmallVector<Substitution, 8> LaterSubs;
+  for (size_t I = S.SubsBegin; I < Subs.size(); ++I)
+    LaterSubs.push_back(Subs[I]);
+  Subs.shrinkToSize(S.SubsBegin);
+  size_t NamesSize = Names.size();
+  size_t ForwardTemplateRefsSize = ForwardTemplateRefs.size();
+
+  const char *OldFirst = First;
+  const char *OldLast = Last;
+  First = S.Begin;
+  Last = S.End;
+  Node *N;
+  {
+    // Any <template-args> following the type are outside of [Begin, End).
+    ScopedOverride<bool> SaveTemplate(TryToParseTemplateArgs, true);
+    N = getDerived().parseType();
+  }
+  if (First != Last)
+    N = nullptr;
+  First = OldFirst;
+  Last = OldLast;
+
+  Names.shrinkToSize(NamesSize);
+  if (N == nullptr)
+    ForwardTemplateRefs.shrinkToSize(ForwardTemplateRefsSize);
+  Subs.shrinkToSize(S.SubsBegin);
+  for (size_t I = 0; I < LaterSubs.size(); ++I)
+    Subs.push_back(LaterSubs[I]);
+  return N;
 }
 
 // <template-param> ::= T_    # first template parameter
@@ -6004,6 +6149,8 @@ Node *AbstractManglingParser<Derived, Alloc>::parseTemplateParam() {
   if (HasIncompleteTemplateParameterTracking) {
     return make<NameType>(std::string_view(Begin, First - 1 - Begin));
   }
+
+  ++NumTemplateParamRefs;
 
   // If we're in a context where this <template-param> refers to a
   // <template-arg> further ahead in the mangled name (currently just conversion
@@ -6191,6 +6338,7 @@ AbstractManglingParser<Derived, Alloc>::parseTemplateArgs(bool TagTemplates) {
     TemplateParams.clear();
     TemplateParams.push_back(&OuterTemplateParams);
     OuterTemplateParams.clear();
+    newTemplateParamsGen();
   }
 
   size_t ArgsBegin = Names.size();
