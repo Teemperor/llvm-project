@@ -17,7 +17,11 @@
 namespace lldb_private {
 namespace clike {
 
-/// Represents a named type in a declaration context.
+/// Represents a named type: its qualified and unqualified names.
+///
+/// The enclosing namespace is not stored here; see ScopedType for the kinds
+/// that can be declared in a namespace. Only the unqualified name is taken from
+/// \p scope.
 template <typename Base> class NamedType : public Base {
 public:
   /// \p name The qualified name.
@@ -26,11 +30,9 @@ public:
   template <typename... Args>
   NamedType(Identifier name, DeclScope scope, Args &&...args)
       : Base(std::forward<Args>(args)...), m_name(name),
-        m_unqualified_name(scope.GetUnqualifiedName()),
-        m_decl_context(scope.GetDeclContext()) {}
+        m_unqualified_name(scope.GetUnqualifiedName()) {}
 
   Identifier GetName() const override { return m_name; }
-  const Namespace *GetDeclContext() const override { return m_decl_context; }
   Identifier GetUnqualifiedName() const override { return m_unqualified_name; }
 
   /// True if this type has no name at all, e.g. an unnamed
@@ -42,7 +44,6 @@ public:
 private:
   Identifier m_name;
   Identifier m_unqualified_name;
-  const Namespace *m_decl_context = nullptr;
 };
 
 } // namespace clike

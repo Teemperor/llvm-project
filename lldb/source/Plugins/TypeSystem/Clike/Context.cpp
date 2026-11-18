@@ -64,12 +64,18 @@ RecordType *Context::CreateRecordType(llvm::StringRef name,
   if (is_cpp_class)
     return Track(std::make_unique<ClassType>(
         GetIdentifier(name), scope, byte_size, is_union, is_class_keyword));
+  // StructType doesn't store a DeclContext (see ScopedType); a C record can't
+  // be declared in a namespace.
+  assert(!scope.GetDeclContext() && "C struct with a namespace DeclContext");
   return Track(std::make_unique<StructType>(
       GetIdentifier(name), scope, byte_size, is_union, is_class_keyword));
 }
 
 ObjCInterfaceType *Context::CreateObjCInterfaceType(
     llvm::StringRef name, std::optional<uint64_t> byte_size, DeclScope scope) {
+  // ObjCInterfaceType doesn't store a DeclContext (see ScopedType); an
+  // Objective-C interface can't be declared in a namespace.
+  assert(!scope.GetDeclContext() && "ObjC interface with a namespace context");
   return Track(std::make_unique<ObjCInterfaceType>(GetIdentifier(name), scope,
                                                    byte_size));
 }

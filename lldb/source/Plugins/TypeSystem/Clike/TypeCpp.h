@@ -27,6 +27,7 @@
 
 #include "Identifier.h"
 #include "RecordType.h"
+#include "ScopedType.h"
 #include "Type.h"
 
 namespace lldb_private {
@@ -138,8 +139,8 @@ struct MemberFunction {
 };
 
 /// A C++ class type. In addition to the data members every record has, it can
-/// carry direct base classes.
-class ClassType : public llvm::RTTIExtends<ClassType, RecordType> {
+/// carry direct base classes, and it can be declared inside a namespace.
+class ClassType : public llvm::RTTIExtends<ClassType, ScopedType<RecordType>> {
 public:
   static char ID;
 

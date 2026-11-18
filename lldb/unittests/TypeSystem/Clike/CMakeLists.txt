@@ -13,6 +13,7 @@ add_lldb_unittest(TypeSystemClikeUnitTests
   NamespaceTest.cpp
   ObjCMethodSignatureTest.cpp
   RecordTypeTest.cpp
+  ScopedTypeTest.cpp
   SugarTypeTest.cpp
   TypeCTest.cpp
   TypeCppTest.cpp

@@ -30,6 +30,7 @@
 #include "ByteSizedType.h"
 #include "Identifier.h"
 #include "NamedType.h"
+#include "ScopedType.h"
 #include "RecordType.h"
 #include "SugarType.h"
 #include "Type.h"
@@ -37,7 +38,8 @@
 namespace lldb_private {
 namespace clike {
 
-/// A C struct/union type.
+/// A C struct/union type. C has no namespaces, so unlike ClassType it does not
+/// store a DeclContext (it is always the global namespace).
 class StructType : public llvm::RTTIExtends<StructType, RecordType> {
 public:
   using RTTIExtends::RTTIExtends;
@@ -230,7 +232,7 @@ public:
 /// A typedef/using alias. It carries its own (alias) name but otherwise behaves
 /// like the type it aliases.
 class TypedefType
-    : public llvm::RTTIExtends<TypedefType, NamedType<SugarType>> {
+    : public llvm::RTTIExtends<TypedefType, ScopedType<NamedType<SugarType>>> {
 public:
   using RTTIExtends::RTTIExtends;
 
@@ -361,7 +363,8 @@ private:
 /// named constants; scoped enums (`enum class`) are distinguished so their
 /// enumerators are not treated as being in the enclosing scope.
 class EnumType
-    : public llvm::RTTIExtends<EnumType, NamedType<ByteSizedType<Type>>> {
+    : public llvm::RTTIExtends<EnumType,
+                                ScopedType<NamedType<ByteSizedType<Type>>>> {
 public:
   static char ID;
 
