@@ -27,6 +27,7 @@ class SBSaveCoreOptionsAPICase(TestBase):
     def get_basic_process_different_pid(self):
         return self.get_process_from_yaml(self.basic_minidump_different_pid)
 
+    @add_test_categories(["typesystem-clike"])
     def test_plugin_name_assignment(self):
         """Test assignment ensuring valid plugin names only."""
         options = lldb.SBSaveCoreOptions()
@@ -43,11 +44,13 @@ class SBSaveCoreOptionsAPICase(TestBase):
         self.assertTrue(error.Success())
         self.assertEqual(options.GetPluginName(), None)
 
+    @add_test_categories(["typesystem-clike"])
     def test_default_corestyle_behavior(self):
         """Test that the default core style is unspecified."""
         options = lldb.SBSaveCoreOptions()
         self.assertEqual(options.GetStyle(), lldb.eSaveCoreUnspecified)
 
+    @add_test_categories(["typesystem-clike"])
     def test_adding_and_removing_thread(self):
         """Test adding and removing a thread from save core options."""
         self.assertTrue(self.dbg)
@@ -62,6 +65,7 @@ class SBSaveCoreOptionsAPICase(TestBase):
         removed_success = options.RemoveThread(thread)
         self.assertFalse(removed_success)
 
+    @add_test_categories(["typesystem-clike"])
     def test_adding_thread_different_process(self):
         """Test adding and removing a thread from save core options."""
         options = lldb.SBSaveCoreOptions()
@@ -82,6 +86,7 @@ class SBSaveCoreOptionsAPICase(TestBase):
         error = options.AddThread(thread)
         self.assertTrue(error.Success())
 
+    @add_test_categories(["typesystem-clike"])
     def test_removing_and_adding_insertion_order(self):
         """Test insertion order is maintained when removing and adding threads."""
         options = lldb.SBSaveCoreOptions()
@@ -123,6 +128,7 @@ class SBSaveCoreOptionsAPICase(TestBase):
         with self.assertRaises(TypeError):
             thread_collection["invalid"]
 
+    @add_test_categories(["typesystem-clike"])
     def test_get_current_size_in_bytes(self):
         """
         Tests that ensures GetCurrentSizeInBytes properly returns an error without a process,
@@ -153,6 +159,7 @@ class SBSaveCoreOptionsAPICase(TestBase):
         expected_size = memory_range.GetRegionEnd() - memory_range.GetRegionBase()
         self.assertEqual(total, expected_size)
 
+    @add_test_categories(["typesystem-clike"])
     def test_get_total_in_bytes_missing_requirements(self):
         """
         Tests the matrix of error responses that GetCurrentSizeInBytes
@@ -183,6 +190,7 @@ class SBSaveCoreOptionsAPICase(TestBase):
         total = options.GetCurrentSizeInBytes(error)
         self.assertTrue(error.Fail(), error.GetCString())
 
+    @add_test_categories(["typesystem-clike"])
     def test_get_memory_regions_to_save(self):
         """
         Tests the matrix of responses for GetMemoryRegionsToSave

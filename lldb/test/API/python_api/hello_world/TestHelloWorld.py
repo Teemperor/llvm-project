@@ -27,6 +27,7 @@ class HelloWorldTestCase(TestBase):
         TestBase.tearDown(self)
 
     @skipIfiOSSimulator
+    @add_test_categories(["typesystem-clike"])
     def test_with_process_launch_api(self):
         """Create target, breakpoint, launch a process, and then kill it."""
         # Get the full path to our executable to be attached/debugged.
@@ -59,6 +60,7 @@ class HelloWorldTestCase(TestBase):
     @expectedFailureAll(oslist=["windows"], archs=["aarch64"])
     @skipIfiOSSimulator
     @requireNotWasm("attaching requires launching the inferior as a host process")
+    @add_test_categories(["typesystem-clike"])
     def test_with_attach_to_process_with_id_api(self):
         """Create target, spawn a process, and attach to it with process id."""
         exe = "%s_%d" % (self.testMethodName, os.getpid())
@@ -92,6 +94,7 @@ class HelloWorldTestCase(TestBase):
     @skipIfiOSSimulator
     @skipIfAsan  # FIXME: Hangs indefinitely.
     @requireNotWasm("attaching requires launching the inferior as a host process")
+    @add_test_categories(["typesystem-clike"])
     def test_with_attach_to_process_with_name_api(self):
         """Create target, spawn a process, and attach to it with process name."""
         exe = "%s_%d" % (self.testMethodName, os.getpid())

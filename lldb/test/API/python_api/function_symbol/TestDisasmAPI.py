@@ -20,6 +20,7 @@ class DisasmAPITestCase(TestBase):
             "main.c", "// Find the line number for breakpoint 2 here."
         )
 
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         """Exercise getting SBAddress objects, disassembly, and SBAddress APIs."""
         self.build()

@@ -12,6 +12,7 @@ from lldbsuite.test import lldbutil
 class SBLineEntryTestCase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
     def test_synthetic_line_entry(self):
         """Test that synthetic LineEntry objects (created via SBAPI) can be
         valid without a valid address range and can be set in SBSymbolContext."""
@@ -56,6 +57,7 @@ class SBLineEntryTestCase(TestBase):
         self.assertEqual(retrieved_line_entry.GetColumn(), 10)
         self.assertEqual(retrieved_line_entry.GetFileSpec().GetFilename(), "test.cpp")
 
+    @add_test_categories(["typesystem-clike"])
     def test_line_entry_validity_without_address(self):
         """Test that line entries created via SBAPI are valid without addresses."""
 
@@ -81,6 +83,7 @@ class SBLineEntryTestCase(TestBase):
         self.assertFalse(line_entry.GetStartAddress().IsValid())
         self.assertFalse(line_entry.GetEndAddress().IsValid())
 
+    @add_test_categories(["typesystem-clike"])
     def test_line_entry_column(self):
         """Test setting and getting column information on synthetic line entries."""
 
@@ -97,6 +100,7 @@ class SBLineEntryTestCase(TestBase):
         # Verify line entry is still valid.
         self.assertTrue(line_entry.IsValid())
 
+    @add_test_categories(["typesystem-clike"])
     def test_non_synthetic_line_entry_requires_line_number(self):
         """Test that non-synthetic line entries with addresses still require a line number to be valid."""
 
@@ -119,6 +123,7 @@ class SBLineEntryTestCase(TestBase):
             line_entry.IsValid(), "Line entry should be valid with line number"
         )
 
+    @add_test_categories(["typesystem-clike"])
     def test_symbol_context_with_synthetic_line_entry(self):
         """Test that SBSymbolContext correctly stores and retrieves synthetic line entries."""
 

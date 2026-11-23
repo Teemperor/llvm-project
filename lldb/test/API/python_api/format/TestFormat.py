@@ -8,6 +8,7 @@ from lldbsuite.test.lldbtest import *
 
 
 class FormatAPITestCase(TestBase):
+    @add_test_categories(["typesystem-clike"])
     def test_format(self):
         format = lldb.SBFormat()
         self.assertFalse(format)
