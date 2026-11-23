@@ -20,6 +20,7 @@ class AttachCancelTestCase(TestBase):
         hostoslist=["windows", "linux"],
         bugnumber="https://github.com/llvm/llvm-project/issues/115618",
     )
+    @add_test_categories(["typesystem-clike"])
     def test_scripted_implementation(self):
         """Test that cancelling a stuck "attach waitfor" works."""
         # First make an empty target for the attach:

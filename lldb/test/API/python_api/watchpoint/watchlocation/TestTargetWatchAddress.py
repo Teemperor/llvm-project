@@ -146,6 +146,7 @@ class TargetWatchpointCreateByAddressPITestCase(TestBase):
         archs=["x86_64"],
         bugnumber="github.com/llvm/llvm-project/issues/142196",
     )
+    @add_test_categories(["typesystem-clike"])
     def test_watch_address_with_invalid_watch_size(self):
         """Exercise SBTarget.WatchpointCreateByAddress() API but pass an invalid watch_size."""
         self.build()

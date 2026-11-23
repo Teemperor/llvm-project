@@ -9,6 +9,7 @@ class CommandOverrideCallback(TestBase):
         TestBase.setUp(self)
         self.line = line_number("main.c", "Hello world.")
 
+    @add_test_categories(["typesystem-clike"])
     def test_command_override_callback(self):
         self.build()
         exe = self.getBuildArtifact("a.out")

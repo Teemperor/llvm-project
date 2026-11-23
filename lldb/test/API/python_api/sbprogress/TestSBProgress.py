@@ -1,10 +1,12 @@
 """Test the SBProgress API."""
 
 import lldb
+from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 
 
 class SBProgressTestCase(TestBase):
+    @add_test_categories(["typesystem-clike"])
     def test_with_external_bit_set(self):
         """Test SBProgress can handle null events."""
 
@@ -37,6 +39,7 @@ class SBProgressTestCase(TestBase):
         event.GetDescription(stream)
         self.assertIn("Step 3", stream.GetData())
 
+    @add_test_categories(["typesystem-clike"])
     def test_progress_finalize_non_deterministic_progress(self):
         """Test SBProgress finalize sends the progressEnd event"""
 
@@ -51,6 +54,7 @@ class SBProgressTestCase(TestBase):
         event.GetDescription(stream)
         self.assertIn("type = end", stream.GetData())
 
+    @add_test_categories(["typesystem-clike"])
     def test_progress_finalize_deterministic_progress(self):
         """Test SBProgress finalize sends the progressEnd event"""
 
@@ -67,6 +71,7 @@ class SBProgressTestCase(TestBase):
         # sent in the end message.
         self.assertIn("type = end", stream.GetData())
 
+    @add_test_categories(["typesystem-clike"])
     def test_progress_with_syntax(self) -> None:
         """Test SBProgress works with Python's with syntax"""
         listener = lldb.SBListener("Test listener")

@@ -24,6 +24,7 @@ class SBModuleAPICase(TestBase):
             os.kill(self.background_pid, signal.SIGKILL)
 
     @skipIfRemote
+    @add_test_categories(["typesystem-clike"])
     def test_GetObjectName(self):
         """Test the SBModule::GetObjectName() method"""
         self.build()
@@ -74,6 +75,7 @@ class SBModuleAPICase(TestBase):
 
     @skipUnlessDarwin
     @skipIfRemote
+    @add_test_categories(["typesystem-clike"])
     def test_module_is_file_backed(self):
         """Test the SBModule::IsFileBacked() method"""
         self.build()
@@ -117,6 +119,7 @@ class SBModuleAPICase(TestBase):
         )
 
     @skipIfRemote
+    @add_test_categories(["typesystem-clike"])
     def test_module_spec_list_indexing(self):
         """Test that SBModuleSpecList supports Pythonic indexing."""
         self.build()

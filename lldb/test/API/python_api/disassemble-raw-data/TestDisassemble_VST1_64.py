@@ -14,6 +14,7 @@ from lldbsuite.test import lldbutil
 class Disassemble_VST1_64(TestBase):
     @no_debug_info_test
     @skipIfLLVMTargetMissing("ARM")
+    @add_test_categories(["typesystem-clike"])
     def test_disassemble_invalid_vst_1_64_raw_data(self):
         """Test disassembling invalid vst1.64 raw bytes with the API."""
         # Create a target from the debugger.
