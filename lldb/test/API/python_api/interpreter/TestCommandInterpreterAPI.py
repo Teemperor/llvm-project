@@ -76,6 +76,7 @@ class CommandInterpreterAPICase(TestBase):
         if self.TraceOn():
             lldbutil.print_stacktraces(process)
 
+    @add_test_categories(["typesystem-clike"])
     def test_command_output(self):
         """Test command output handling."""
         ci = self.dbg.GetCommandInterpreter()
@@ -204,6 +205,7 @@ class CommandInterpreterAPICase(TestBase):
         self.assertIn("modules", statistics_dump)
         self.assertIn("targets", statistics_dump)
 
+    @add_test_categories(["typesystem-clike"])
     def test_save_transcript_setting_default(self):
         ci = self.dbg.GetCommandInterpreter()
         self.assertTrue(ci, VALID_COMMAND_INTERPRETER)
@@ -214,6 +216,7 @@ class CommandInterpreterAPICase(TestBase):
             "interpreter.save-transcript (boolean) = false\n",
         )
 
+    @add_test_categories(["typesystem-clike"])
     def test_save_transcript_setting_off(self):
         ci = self.dbg.GetCommandInterpreter()
         self.assertTrue(ci, VALID_COMMAND_INTERPRETER)
@@ -226,6 +229,7 @@ class CommandInterpreterAPICase(TestBase):
         transcript = self.getTranscriptAsPythonObject(ci)
         self.assertEqual(transcript, [])
 
+    @add_test_categories(["typesystem-clike"])
     def test_save_transcript_setting_on(self):
         ci = self.dbg.GetCommandInterpreter()
         self.assertTrue(ci, VALID_COMMAND_INTERPRETER)
@@ -239,6 +243,7 @@ class CommandInterpreterAPICase(TestBase):
         self.assertEqual(len(transcript), 1)
         self.assertEqual(transcript[0]["command"], "version")
 
+    @add_test_categories(["typesystem-clike"])
     def test_get_transcript_returns_copy(self):
         """
         Test that the returned structured data is *at least* a shallow copy.

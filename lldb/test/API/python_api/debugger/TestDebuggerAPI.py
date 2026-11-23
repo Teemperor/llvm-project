@@ -14,6 +14,7 @@ class DebuggerAPITestCase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
     SHARED_BUILD_TESTCASE = False
 
+    @add_test_categories(["typesystem-clike"])
     def test_debugger_api_boundary_condition(self):
         """Exercise SBDebugger APIs with boundary conditions."""
         self.dbg.HandleCommand(None)
@@ -36,12 +37,14 @@ class DebuggerAPITestCase(TestBase):
         fresh_dbg = lldb.SBDebugger()
         self.assertEqual(len(fresh_dbg), 0)
 
+    @add_test_categories(["typesystem-clike"])
     def test_debugger_delete_invalid_target(self):
         """SBDebugger.DeleteTarget() should not crash LLDB given and invalid target."""
         target = lldb.SBTarget()
         self.assertFalse(target.IsValid())
         self.dbg.DeleteTarget(target)
 
+    @add_test_categories(["typesystem-clike"])
     def test_terminal_dimensions(self):
         """Test the SBDebugger terminal width/height accessors and the combined
         SetTerminalDimensions() setter."""
@@ -61,6 +64,7 @@ class DebuggerAPITestCase(TestBase):
         self.assertEqual(self.dbg.GetTerminalWidth(), 99)
         self.assertEqual(self.dbg.GetTerminalHeight(), 31)
 
+    @add_test_categories(["typesystem-clike"])
     def test_debugger_internal_variables(self):
         """Ensure that SBDebugger reachs the same instance of properties
         regardless CommandInterpreter's context initialization"""
@@ -118,6 +122,7 @@ class DebuggerAPITestCase(TestBase):
         remote=True,
         bugnumber="github.com/llvm/llvm-project/issues/92419",
     )
+    @add_test_categories(["typesystem-clike"])
     def test_CreateTarget_platform(self):
         exe = self.getBuildArtifact("a.out")
         self.yaml2obj("elf.yaml", exe)
@@ -143,6 +148,7 @@ class DebuggerAPITestCase(TestBase):
         platform3 = target3.GetPlatform()
         self.assertIsNone(platform3.GetWorkingDirectory())
 
+    @add_test_categories(["typesystem-clike"])
     def test_CreateTarget_arch(self):
         exe = self.getBuildArtifact("a.out")
         if lldbplatformutil.getHostPlatform() == "linux":
@@ -175,6 +181,7 @@ class DebuggerAPITestCase(TestBase):
             platform2.GetWorkingDirectory(),
         )
 
+    @add_test_categories(["typesystem-clike"])
     def test_SetDestroyCallback(self):
         destroy_dbg_id = None
 
@@ -189,6 +196,7 @@ class DebuggerAPITestCase(TestBase):
         self.dbg.Destroy(self.dbg)
         self.assertEqual(destroy_dbg_id, original_dbg_id)
 
+    @add_test_categories(["typesystem-clike"])
     def test_AddDestroyCallback(self):
         original_dbg_id = self.dbg.GetID()
         called = []
@@ -213,6 +221,7 @@ class DebuggerAPITestCase(TestBase):
             ('bar', original_dbg_id),
         ])
 
+    @add_test_categories(["typesystem-clike"])
     def test_RemoveDestroyCallback(self):
         original_dbg_id = self.dbg.GetID()
         called = []
@@ -237,6 +246,7 @@ class DebuggerAPITestCase(TestBase):
         # Should only call `bar()`
         self.assertEqual(called, [('bar', original_dbg_id)])
 
+    @add_test_categories(["typesystem-clike"])
     def test_RemoveDestroyCallback_invalid_token(self):
         original_dbg_id = self.dbg.GetID()
         magic_token_that_should_not_exist = 32413
@@ -256,6 +266,7 @@ class DebuggerAPITestCase(TestBase):
         # Should call `foo()`
         self.assertEqual(called, [('foo', original_dbg_id)])
 
+    @add_test_categories(["typesystem-clike"])
     def test_HandleDestroyCallback(self):
         """
         Validates:
@@ -310,6 +321,7 @@ class DebuggerAPITestCase(TestBase):
             ('foo called', original_dbg_id), # foo should be called
         ])
 
+    @add_test_categories(["typesystem-clike"])
     def test_version(self):
         instance_str = self.dbg.GetVersionString()
         class_str = lldb.SBDebugger.GetVersionString()
@@ -318,6 +330,7 @@ class DebuggerAPITestCase(TestBase):
         self.assertEqual(instance_str, class_str)
         self.assertEqual(class_str, property_str)
 
+    @add_test_categories(["typesystem-clike"])
     def test_find_target_with_unique_id(self):
         """Test SBDebugger.FindTargetByGloballyUniqueID() functionality."""
 
@@ -345,6 +358,7 @@ class DebuggerAPITestCase(TestBase):
         )
         self.assertEqual(found_target.GetGloballyUniqueID(), unique_id)
 
+    @add_test_categories(["typesystem-clike"])
     def test_target_unique_id_uniqueness(self):
         """Test that Target.GetGloballyUniqueID() returns unique values across multiple targets."""
 
@@ -376,6 +390,7 @@ class DebuggerAPITestCase(TestBase):
             self.assertTrue(found.IsValid())
             self.assertEqual(found.GetGloballyUniqueID(), unique_id)
 
+    @add_test_categories(["typesystem-clike"])
     def test_target_unique_id_uniqueness_after_deletion(self):
         """Test finding targets have unique ID after target deletion."""
         # Create two targets
@@ -423,6 +438,7 @@ class DebuggerAPITestCase(TestBase):
         )
         self.assertTrue(found_target3.IsValid())
 
+    @add_test_categories(["typesystem-clike"])
     def test_target_globally_unique_id_across_debuggers(self):
         """Test that target IDs are globally unique across multiple debuggers."""
         self.build()

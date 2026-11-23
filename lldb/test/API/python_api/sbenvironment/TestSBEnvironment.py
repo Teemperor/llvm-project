@@ -28,11 +28,13 @@ class SBEnvironmentAPICase(TestBase):
             self.assertIn(name + "=" + value, entries)
 
     @skipIfRemote  # Remote environment not supported.
+    @add_test_categories(["typesystem-clike"])
     def test_platform_environment(self):
         env = self.dbg.GetSelectedPlatform().GetEnvironment()
         # We assume at least PATH is set
         self.assertNotEqual(env.Get("PATH"), None)
 
+    @add_test_categories(["typesystem-clike"])
     def test_launch_info(self):
         target = self.dbg.CreateTarget("")
         launch_info = target.GetLaunchInfo()
@@ -63,6 +65,7 @@ class SBEnvironmentAPICase(TestBase):
         self.assertEqualEntries(launch_info.GetEnvironment(), ["BAR=foo", "X=y"])
 
     @skipIfRemote  # Remote environment not supported.
+    @add_test_categories(["typesystem-clike"])
     def test_target_environment(self):
         env = self.dbg.GetSelectedTarget().GetEnvironment()
         # There is no target, so env should be empty
@@ -79,6 +82,7 @@ class SBEnvironmentAPICase(TestBase):
         env.PutEntry("PATH=#" + path)
         self.assertEqual(target.GetEnvironment().Get("PATH"), path)
 
+    @add_test_categories(["typesystem-clike"])
     def test_creating_and_modifying_environment(self):
         env = lldb.SBEnvironment()
 
