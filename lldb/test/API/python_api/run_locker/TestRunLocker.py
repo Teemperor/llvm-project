@@ -20,6 +20,7 @@ class TestRunLocker(TestBase):
         self.main_source_file = lldb.SBFileSpec("main.c")
 
     @expectedFailureAll(oslist=["windows"])
+    @add_test_categories(["typesystem-clike"])
     def test_run_locker(self):
         """Test that the run locker is set correctly as we're running"""
         self.build()

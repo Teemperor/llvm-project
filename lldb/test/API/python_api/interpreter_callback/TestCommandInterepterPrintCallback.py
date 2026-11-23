@@ -14,6 +14,7 @@ class CommandInterepterPrintCallbackTest(TestBase):
             opts = lldb.SBCommandInterpreterRunOptions()
             self.dbg.RunCommandInterpreter(True, False, opts, 0, False, False)
 
+    @add_test_categories(["typesystem-clike"])
     def test_command_interpreter_print_callback(self):
         """Test the command interpreter print callback."""
         self.build()

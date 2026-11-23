@@ -12,6 +12,7 @@ from lldbsuite.test import lldbutil
 class DisassembleRawDataTestCase(TestBase):
     @no_debug_info_test
     @skipIfRemote
+    @add_test_categories(["typesystem-clike"])
     def test_disassemble_raw_data(self):
         """Test disassembling raw bytes with the API."""
         # Create a target from the debugger.

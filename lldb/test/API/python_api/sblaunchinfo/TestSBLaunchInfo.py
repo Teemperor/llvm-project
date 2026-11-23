@@ -3,6 +3,7 @@ Test SBLaunchInfo
 """
 
 
+from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 
 
@@ -18,6 +19,7 @@ def lookup(info, key):
 class TestSBLaunchInfo(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
     def test_environment_getset(self):
         info = lldb.SBLaunchInfo(None)
         info.SetEnvironmentEntries(["FOO=BAR"], False)
