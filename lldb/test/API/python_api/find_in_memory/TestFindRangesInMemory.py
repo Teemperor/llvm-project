@@ -120,6 +120,7 @@ class FindRangesInMemoryTestCase(TestBase):
         self.assertFailure(error)
         self.assertEqual(matches.GetSize(), 0)
 
+    @add_test_categories(["typesystem-clike"])
     def test_find_ranges_in_memory_invalid_range(self):
         """Make sure the alignment 0 is failing"""
         self.assertTrue(self.process, PROCESS_IS_VALID)
@@ -140,6 +141,7 @@ class FindRangesInMemoryTestCase(TestBase):
         self.assertIn("unable to resolve any ranges", str(error))
         self.assertEqual(matches.GetSize(), 0)
 
+    @add_test_categories(["typesystem-clike"])
     def test_find_ranges_in_memory_empty_ranges(self):
         """Make sure the empty ranges is failing"""
         self.assertTrue(self.process, PROCESS_IS_VALID)

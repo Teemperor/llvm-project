@@ -17,6 +17,7 @@ class SymbolContextAPITestCase(TestBase):
             "main.c", '// Find the line number of function "c" here.'
         )
 
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         """Exercise SBSymbolContext API extensively."""
         self.build()

@@ -3,6 +3,7 @@ Test SBAddressRange APIs.
 """
 
 import lldb
+from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 
 
@@ -36,11 +37,13 @@ class AddressRangeTestCase(TestBase):
         self.assertTrue(self.addr2.IsValid())
         self.assertTrue(self.addr3.IsValid())
 
+    @add_test_categories(["typesystem-clike"])
     def test_address_range_default(self):
         """Testing default constructor."""
         empty_range = lldb.SBAddressRange()
         self.assertEqual(empty_range.IsValid(), False)
 
+    @add_test_categories(["typesystem-clike"])
     def test_address_range_construction(self):
         """Make sure the construction and getters work."""
         range = lldb.SBAddressRange(self.addr1, 8)
@@ -48,6 +51,7 @@ class AddressRangeTestCase(TestBase):
         self.assertEqual(range.GetBaseAddress(), self.addr1)
         self.assertEqual(range.GetByteSize(), 8)
 
+    @add_test_categories(["typesystem-clike"])
     def test_address_range_clear(self):
         """Make sure the clear method works."""
         range = lldb.SBAddressRange(self.addr1, 8)
@@ -58,6 +62,7 @@ class AddressRangeTestCase(TestBase):
         range.Clear()
         self.assertEqual(range.IsValid(), False)
 
+    @add_test_categories(["typesystem-clike"])
     def test_function(self):
         """Make sure the range works in SBFunction APIs."""
 
@@ -78,6 +83,7 @@ class AddressRangeTestCase(TestBase):
             func.GetStartAddress().GetOffset(),
         )
 
+    @add_test_categories(["typesystem-clike"])
     def test_block(self):
         """Make sure the range works in SBBlock APIs."""
         loc = self.bp1.GetLocationAtIndex(0)
@@ -98,6 +104,7 @@ class AddressRangeTestCase(TestBase):
             block.GetRangeStartAddress(0).GetOffset(),
         )
 
+    @add_test_categories(["typesystem-clike"])
     def test_address_range_list(self):
         """Make sure the SBAddressRangeList works by adding and getting ranges."""
         range1 = lldb.SBAddressRange(self.addr1, 8)
@@ -137,6 +144,7 @@ class AddressRangeTestCase(TestBase):
         range_list.Clear()
         self.assertEqual(range_list.GetSize(), 0)
 
+    @add_test_categories(["typesystem-clike"])
     def test_address_range_list_len(self):
         """Make sure the len() operator works."""
         range = lldb.SBAddressRange(self.addr1, 8)
@@ -147,6 +155,7 @@ class AddressRangeTestCase(TestBase):
         range_list.Append(range)
         self.assertEqual(len(range_list), 1)
 
+    @add_test_categories(["typesystem-clike"])
     def test_address_range_list_iterator(self):
         """Make sure the SBAddressRangeList iterator works."""
         range1 = lldb.SBAddressRange(self.addr1, 8)
@@ -163,11 +172,13 @@ class AddressRangeTestCase(TestBase):
         for range in range_list:
             self.assertTrue(range.IsValid())
 
+    @add_test_categories(["typesystem-clike"])
     def test_address_range_print_invalid(self):
         """Make sure the SBAddressRange can be printed when invalid."""
         range = lldb.SBAddressRange()
         self.assertEqual(str(range), "[0xffffffffffffffff-0xffffffffffffffff)")
 
+    @add_test_categories(["typesystem-clike"])
     def test_address_range_print_resolved(self):
         """Make sure the SBAddressRange can be printed when resolved."""
         lldb.target = self.target
@@ -194,6 +205,7 @@ class AddressRangeTestCase(TestBase):
         self.assertRegex(result.GetOutput(), r"^\[0x[0-9a-f]+\-0x[0-9a-f]+\)")
         process.Kill()
 
+    @add_test_categories(["typesystem-clike"])
     def test_address_range_print_no_section_resolved(self):
         """Make sure the SBAddressRange can be printed with no secion."""
         lldb.target = self.target
@@ -218,6 +230,7 @@ class AddressRangeTestCase(TestBase):
         self.assertRegex(range_str, r"^\[0x[0-9a-f]+\-0x[0-9a-f]+\)$")
         process.Kill()
 
+    @add_test_categories(["typesystem-clike"])
     def test_address_range_print_not_resolved(self):
         """Make sure the SBAddressRange can be printed when not resolved."""
         range = lldb.SBAddressRange(self.addr1, 8)
@@ -225,6 +238,7 @@ class AddressRangeTestCase(TestBase):
         # a.out[0x1000-0x2000] // Without target
         self.assertRegex(range_str, r"^a.out\[0x[0-9a-f]+\-0x[0-9a-f]+\)$")
 
+    @add_test_categories(["typesystem-clike"])
     def test_address_range_list_print(self):
         """Make sure the SBAddressRangeList can be printed."""
         range1 = lldb.SBAddressRange(self.addr1, 8)
@@ -245,6 +259,7 @@ class AddressRangeTestCase(TestBase):
         self.assertGreater(range_list_str.count(","), 1)
         self.assertTrue(range_list_str.endswith("]"))
 
+    @add_test_categories(["typesystem-clike"])
     def test_address_range_list_indexing(self):
         """Make sure the SBAddressRangeList can be printed."""
         range1 = lldb.SBAddressRange(self.addr1, 8)

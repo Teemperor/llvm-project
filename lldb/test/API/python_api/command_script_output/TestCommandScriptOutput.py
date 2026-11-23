@@ -10,6 +10,7 @@ from lldbsuite.test.lldbtest import *
 class CommandScriptOutputTestCase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
     def test_script_command_stdout_stderr(self):
         """Test that HandleCommand captures stdout and stderr from script commands."""
         ci = self.dbg.GetCommandInterpreter()

@@ -46,6 +46,7 @@ class TestCase(TestBase):
         return True
 
     @skipIf(compiler="clang", compiler_version=["<", "9.0"])
+    @add_test_categories(["typesystem-clike"])
     def test_regcall(self):
         if not self.build_and_run("regcall.c"):
             return
@@ -59,6 +60,7 @@ class TestCase(TestBase):
         self.expect_expr("func(1, 2, 3, 4)", result_type="int", result_value="10")
 
     @skipIf(compiler="clang", compiler_version=["<", "9.0"])
+    @add_test_categories(["typesystem-clike"])
     def test_stdcall(self):
         if not self.build_and_run("stdcall.c"):
             return
@@ -70,18 +72,21 @@ class TestCase(TestBase):
         triple=re.compile("^(x86|i386)"),
         oslist=["freebsd"], bugnumber="github.com/llvm/llvm-project/issues/56084"
     )
+    @add_test_categories(["typesystem-clike"])
     def test_vectorcall(self):
         if not self.build_and_run("vectorcall.c"):
             return
         self.expect_expr("func(1.0)", result_type="int", result_value="1")
 
     @skipIf(compiler="clang", compiler_version=["<", "9.0"])
+    @add_test_categories(["typesystem-clike"])
     def test_fastcall(self):
         if not self.build_and_run("fastcall.c"):
             return
         self.expect_expr("func(1, 2, 3, 4)", result_type="int", result_value="10")
 
     @skipIf(compiler="clang", compiler_version=["<", "9.0"])
+    @add_test_categories(["typesystem-clike"])
     def test_pascal(self):
         if not self.build_and_run("pascal.c"):
             return
