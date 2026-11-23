@@ -11,6 +11,7 @@ from lldbsuite.test import lldbutil
 class CompileUnitAPITestCase(TestBase):
     SHARED_BUILD_TESTCASE = False
 
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         """Exercise some SBCompileUnit APIs."""
         self.build()
@@ -73,16 +74,19 @@ class CompileUnitAPITestCase(TestBase):
         return main_cu
 
     @expectedFailureAll(debug_info=["pdb"], bugnumber="llvm.org/pr149498")
+    @add_test_categories(["typesystem-clike"])
     def test_is_optimized(self):
         """A compile unit built with optimization reports it."""
         self.build(dictionary={"CFLAGS_EXTRAS": "-O1"})
         self.assertTrue(self.find_main_compile_unit().GetIsOptimized())
 
+    @add_test_categories(["typesystem-clike"])
     def test_is_not_optimized(self):
         """A compile unit built without optimization reports it."""
         self.build()
         self.assertFalse(self.find_main_compile_unit().GetIsOptimized())
 
+    @add_test_categories(["typesystem-clike"])
     def test_id_is_unique_per_module(self):
         self.build()
         target = self.dbg.CreateTarget(self.getBuildArtifact("a.out"))

@@ -21,6 +21,7 @@ class TestExprPathRegisters(TestBase):
         reg_expr_path = stream.GetData()
         self.assertEqual(reg_expr_path, f"${reg_name}")
 
+    @add_test_categories(["typesystem-clike"])
     def test_float_registers(self):
         """Verify the expression path of the registers is valid."""
         self.build()
@@ -51,6 +52,7 @@ class TestExprPathRegisters(TestBase):
                 self.verify_register_path(reg_value)
 
     @requireNotWasm("wasm exposes no registers")
+    @add_test_categories(["typesystem-clike"])
     def test_all_registers(self):
         """Test all the registers that is avaiable on the machine"""
         self.build()

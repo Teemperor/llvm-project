@@ -84,6 +84,7 @@ class LocateModuleCallbackTestCase(TestBase):
         sc_list = module.FindFunctions(MODULE_HIDDEN_FUNCTION, lldb.eSymbolTypeCode)
         self.assertEqual(0 if symbol_kind == SYMBOL_STRIPPED else 1, sc_list.GetSize())
 
+    @add_test_categories(["typesystem-clike"])
     def test_set_non_callable(self):
         # The callback should be callable.
         non_callable = "a"
@@ -91,6 +92,7 @@ class LocateModuleCallbackTestCase(TestBase):
         with self.assertRaises(TypeError, msg="Need a callable object or None!"):
             self.platform.SetLocateModuleCallback(non_callable)
 
+    @add_test_categories(["typesystem-clike"])
     def test_set_wrong_args(self):
         # The callback should accept 3 argument.
         def test_args2(a, b):
@@ -99,6 +101,7 @@ class LocateModuleCallbackTestCase(TestBase):
         with self.assertRaises(TypeError, msg="Expected 3 argument callable object"):
             self.platform.SetLocateModuleCallback(test_args2)
 
+    @add_test_categories(["typesystem-clike"])
     def test_default(self):
         # The default behavior is to locate the module with LLDB implementation
         # and AddModule should fail.
@@ -110,6 +113,7 @@ class LocateModuleCallbackTestCase(TestBase):
 
         self.assertFalse(module)
 
+    @add_test_categories(["typesystem-clike"])
     def test_set_none(self):
         # SetLocateModuleCallback should succeed to clear the callback with None.
         # and AddModule should fail.
@@ -123,6 +127,7 @@ class LocateModuleCallbackTestCase(TestBase):
 
         self.assertFalse(module)
 
+    @add_test_categories(["typesystem-clike"])
     def test_return_error(self):
         # The callback fails, AddModule should fail.
         def test_locate_module(
@@ -145,6 +150,7 @@ class LocateModuleCallbackTestCase(TestBase):
 
         self.assertFalse(module)
 
+    @add_test_categories(["typesystem-clike"])
     def test_return_no_files(self):
         # The callback succeeds but not return any files, AddModule should fail.
         def test_locate_module(
@@ -167,6 +173,7 @@ class LocateModuleCallbackTestCase(TestBase):
 
         self.assertFalse(module)
 
+    @add_test_categories(["typesystem-clike"])
     def test_return_non_existent_module(self):
         # The callback returns non-existent module file, AddModule should fail.
         def test_locate_module(
@@ -193,6 +200,7 @@ class LocateModuleCallbackTestCase(TestBase):
 
         self.assertFalse(module)
 
+    @add_test_categories(["typesystem-clike"])
     def test_return_module_with_non_existent_symbol(self):
         # The callback returns a module and non-existent symbol file,
         # AddModule should fail.
@@ -223,6 +231,7 @@ class LocateModuleCallbackTestCase(TestBase):
 
         self.assertFalse(module)
 
+    @add_test_categories(["typesystem-clike"])
     def test_return_non_existent_symbol(self):
         # The callback returns non-existent symbol file, AddModule should fail.
         def test_locate_module(
@@ -249,6 +258,7 @@ class LocateModuleCallbackTestCase(TestBase):
 
         self.assertFalse(module)
 
+    @add_test_categories(["typesystem-clike"])
     def test_return_module(self):
         # The callback returns the module file, AddModule should succeed.
         def test_locate_module(
@@ -277,6 +287,7 @@ class LocateModuleCallbackTestCase(TestBase):
             module=module, symbol_file=MODULE_FILE, symbol_kind=SYMBOL_STRIPPED
         )
 
+    @add_test_categories(["typesystem-clike"])
     def test_return_module_with_symbol(self):
         # The callback returns the module file and the symbol file,
         # AddModule should succeed.
@@ -309,6 +320,7 @@ class LocateModuleCallbackTestCase(TestBase):
             module=module, symbol_file=SYMBOL_FILE, symbol_kind=SYMBOL_UNSTRIPPED
         )
 
+    @add_test_categories(["typesystem-clike"])
     def test_return_module_with_breakpad_symbol(self):
         # The callback returns the module file and the breakpad symbol file,
         # AddModule should succeed.
