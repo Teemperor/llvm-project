@@ -1,8 +1,10 @@
 import lldbsuite.test.lldbutil as lldbutil
+from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 
 
 class TestCase(TestBase):
+    @add_test_categories(["typesystem-clike"])
     def test_functions_having_dlang_mangling_prefix(self):
         """
         Ensure C functions with a '_D' prefix alone are not mistakenly treated

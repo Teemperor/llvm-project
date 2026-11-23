@@ -11,6 +11,7 @@ import os
 
 class TestAbsoluteSymbol(TestBase):
     @no_debug_info_test
+    @add_test_categories(["typesystem-clike"])
     def test_absolute_symbol(self):
         """
         Load an ELF file that contains two symbols:

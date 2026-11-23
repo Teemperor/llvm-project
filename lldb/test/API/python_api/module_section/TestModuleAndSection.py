@@ -12,6 +12,7 @@ from lldbsuite.test.lldbutil import symbol_type_to_str
 class ModuleAndSectionAPIsTestCase(TestBase):
     SHARED_BUILD_TESTCASE = False
 
+    @add_test_categories(["typesystem-clike"])
     def test_module_and_section(self):
         """Test module and section APIs."""
         self.build()
@@ -57,6 +58,7 @@ class ModuleAndSectionAPIsTestCase(TestBase):
                             + "symbol type: %s" % symbol_type_to_str(sym.GetType())
                         )
 
+    @add_test_categories(["typesystem-clike"])
     def test_module_and_section_boundary_condition(self):
         """Test module and section APIs by passing None when it expects a Python string."""
         self.build()
@@ -97,6 +99,7 @@ class ModuleAndSectionAPIsTestCase(TestBase):
         if sec1:
             sec1.FindSubSection(None)
 
+    @add_test_categories(["typesystem-clike"])
     def test_module_compile_unit_iter(self):
         """Test module's compile unit iterator APIs."""
         self.build()
@@ -124,6 +127,7 @@ class ModuleAndSectionAPIsTestCase(TestBase):
         for cu in exe_module.compile_unit_iter():
             print(cu)
 
+    @add_test_categories(["typesystem-clike"])
     def test_find_compile_units(self):
         """Exercise SBModule.FindCompileUnits() API."""
         d = {"EXE": "b.out"}

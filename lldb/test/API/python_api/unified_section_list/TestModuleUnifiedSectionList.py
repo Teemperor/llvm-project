@@ -53,6 +53,7 @@ class ModuleUnifiedSectionList(TestBase):
         self.assertTrue(debug_info_section.IsValid())
         self.assertGreater(debug_info_section.file_size, 0)
 
+    @add_test_categories(["typesystem-clike"])
     def test_unified_section_list_overwrite_larger_section(self):
         """
         Test the merging of an ELF file with another ELF File where all the new sections are bigger, validating we
@@ -112,6 +113,7 @@ class ModuleUnifiedSectionList(TestBase):
         self.assertTrue(error.Success())
         self.assertEqual(comment_content_after_merge, bytes.fromhex("BAADF00D"))
 
+    @add_test_categories(["typesystem-clike"])
     def test_unified_section_list_overwrite_smaller_section(self):
         """
         Test the merging of an ELF file with another ELF File where all the existing sections are bigger, validating we don't
@@ -174,6 +176,7 @@ class ModuleUnifiedSectionList(TestBase):
         self.assertTrue(error.Success())
         self.assertEqual(comment_content_after_merge, bytes.fromhex("BAADF00D"))
 
+    @add_test_categories(["typesystem-clike"])
     def test_unified_section_list_overwrite_mixed_merge(self):
         """
         Test the merging of an ELF file with another ELF File where the lhs has a larger .comment section
@@ -234,6 +237,7 @@ class ModuleUnifiedSectionList(TestBase):
         self.assertTrue(error.Success())
         self.assertEqual(comment_content_after_merge, bytes.fromhex("BAADF00DF00DBAAD"))
 
+    @add_test_categories(["typesystem-clike"])
     def test_unified_section_list_overwrite_equal_size(self):
         """
         Test the merging of an ELF file with an ELF file with sections of the same size with different values

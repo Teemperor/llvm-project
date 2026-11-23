@@ -9,21 +9,25 @@ from lldbsuite.test import lldbutil
 
 
 class FrameListAPITestCase(TestBase):
+    @add_test_categories(["typesystem-clike"])
     def test_frame_list_api(self):
         """Test SBThread.GetFrames() returns a valid SBFrameList."""
         self.build()
         self.frame_list_api()
 
+    @add_test_categories(["typesystem-clike"])
     def test_frame_list_iterator(self):
         """Test SBFrameList iterator functionality."""
         self.build()
         self.frame_list_iterator()
 
+    @add_test_categories(["typesystem-clike"])
     def test_frame_list_indexing(self):
         """Test SBFrameList indexing and length."""
         self.build()
         self.frame_list_indexing()
 
+    @add_test_categories(["typesystem-clike"])
     def test_frame_list_get_thread(self):
         """Test SBFrameList.GetThread() returns correct thread."""
         self.build()

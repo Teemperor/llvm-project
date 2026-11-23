@@ -3,6 +3,7 @@
 from typing import List
 
 import lldb
+from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 
 
@@ -16,6 +17,7 @@ def make_list(items: List[str]):
 class SBStringListAPICase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
     def test_repr(self):
         # Empty list.
         strings = lldb.SBStringList()
@@ -27,6 +29,7 @@ class SBStringListAPICase(TestBase):
         strings = make_list(["foo", "bar", "baz"])
         self.assertEqual(repr(strings), "['foo', 'bar', 'baz']")
 
+    @add_test_categories(["typesystem-clike"])
     def test_getitem_positive_index(self):
         strings = make_list(["foo", "bar", "baz"])
         self.assertEqual(strings[0], "foo")
@@ -44,6 +47,7 @@ class SBStringListAPICase(TestBase):
         with self.assertRaises(IndexError):
             strings[100]
 
+    @add_test_categories(["typesystem-clike"])
     def test_getitem_wrong_type(self):
         strings = make_list(["foo", "bar"])
         with self.assertRaises(TypeError):
@@ -51,6 +55,7 @@ class SBStringListAPICase(TestBase):
         with self.assertRaises(TypeError):
             strings[1.5]
 
+    @add_test_categories(["typesystem-clike"])
     def test_getitem_slice(self):
         strings = make_list(["a", "b", "c", "d", "e"])
         self.assertEqual(strings[1:4], ["b", "c", "d"])

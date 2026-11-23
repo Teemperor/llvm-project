@@ -31,6 +31,7 @@ class ProcessIOTestCase(TestBase):
     @skipIfWindows  # stdio manipulation unsupported on Windows
     @expectedFlakeyLinux(bugnumber="llvm.org/pr26437")
     @skipIfDarwinEmbedded  # I/O redirection like this is not supported on remote iOS devices yet <rdar://problem/54581135>
+    @add_test_categories(["typesystem-clike"])
     def test_stdin_by_api(self):
         """Exercise SBProcess.PutSTDIN()."""
         self.setup_test()
@@ -42,6 +43,7 @@ class ProcessIOTestCase(TestBase):
 
     @skipIfWindows  # stdio manipulation unsupported on Windows
     @expectedFlakeyLinux(bugnumber="llvm.org/pr26437")
+    @add_test_categories(["typesystem-clike"])
     def test_stdin_redirection(self):
         """Exercise SBLaunchInfo::AddOpenFileAction() for STDIN without specifying STDOUT or STDERR."""
         self.setup_test()
@@ -55,6 +57,7 @@ class ProcessIOTestCase(TestBase):
     @skipIfWindows  # stdio manipulation unsupported on Windows
     @expectedFlakeyLinux(bugnumber="llvm.org/pr26437")
     @skipIfDarwinEmbedded  # debugserver can't create/write files on the device
+    @add_test_categories(["typesystem-clike"])
     def test_stdout_redirection(self):
         """Exercise SBLaunchInfo::AddOpenFileAction() for STDOUT without specifying STDIN or STDERR."""
         self.setup_test()
@@ -69,6 +72,7 @@ class ProcessIOTestCase(TestBase):
     @skipIfWindows  # stdio manipulation unsupported on Windows
     @expectedFlakeyLinux(bugnumber="llvm.org/pr26437")
     @skipIfDarwinEmbedded  # debugserver can't create/write files on the device
+    @add_test_categories(["typesystem-clike"])
     def test_stderr_redirection(self):
         """Exercise SBLaunchInfo::AddOpenFileAction() for STDERR without specifying STDIN or STDOUT."""
         self.setup_test()
@@ -83,6 +87,7 @@ class ProcessIOTestCase(TestBase):
     @skipIfWindows  # stdio manipulation unsupported on Windows
     @expectedFlakeyLinux(bugnumber="llvm.org/pr26437")
     @skipIfDarwinEmbedded  # debugserver can't create/write files on the device
+    @add_test_categories(["typesystem-clike"])
     def test_stdout_stderr_redirection(self):
         """Exercise SBLaunchInfo::AddOpenFileAction() for STDOUT and STDERR without redirecting STDIN."""
         self.setup_test()
@@ -98,6 +103,7 @@ class ProcessIOTestCase(TestBase):
     @skipIfWindows  # stdio manipulation unsupported on Windows
     @expectedFlakeyLinux(bugnumber="llvm.org/pr26437")
     @skipIfDarwinEmbedded  # debugserver can't create/write files on the device
+    @add_test_categories(["typesystem-clike"])
     def test_stdout_stderr_redirection_to_existing_files(self):
         """Exercise SBLaunchInfo::AddOpenFileAction() for STDOUT and STDERR redirect to output files already exist."""
         self.setup_test()

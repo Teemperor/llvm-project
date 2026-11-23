@@ -96,6 +96,7 @@ class FindInMemoryTestCase(TestBase):
         self.assertFailure(error)
         self.assertEqual(addr, lldb.LLDB_INVALID_ADDRESS)
 
+    @add_test_categories(["typesystem-clike"])
     def test_find_in_memory_invalid_address_range(self):
         """Make sure invalid address range is failing"""
         self.assertTrue(self.process, PROCESS_IS_VALID)
@@ -155,6 +156,7 @@ class FindInMemoryTestCase(TestBase):
         self.assertSuccess(error)
         self.assertEqual(addr, lldb.LLDB_INVALID_ADDRESS)
 
+    @add_test_categories(["typesystem-clike"])
     def test_memory_info_list_iterable(self):
         """Make sure the SBMemoryRegionInfoList is iterable and each yielded object is unique"""
         self.assertTrue(self.process, PROCESS_IS_VALID)
