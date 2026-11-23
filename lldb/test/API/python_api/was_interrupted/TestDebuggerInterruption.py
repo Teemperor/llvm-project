@@ -4,6 +4,7 @@ Test SBDebugger.InterruptRequested and SBCommandInterpreter.WasInterrupted.
 
 import lldb
 import lldbsuite.test.lldbutil as lldbutil
+from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 import threading
 import os
@@ -241,12 +242,15 @@ class TestDebuggerInterruption(TestBase):
         result_output = self.result.GetOutput()
         self.check_result(False)
 
+    @add_test_categories(["typesystem-clike"])
     def test_debugger_interrupt_use_dbg(self):
         self.debugger_interrupt_test(True)
 
+    @add_test_categories(["typesystem-clike"])
     def test_debugger_interrupt_use_interp(self):
         self.debugger_interrupt_test(False)
 
+    @add_test_categories(["typesystem-clike"])
     def test_interp_doesnt_interrupt_debugger(self):
         """Test that interpreter interruption does not interrupt a command
         running directly through HandleCommand.
@@ -312,12 +316,15 @@ class TestDebuggerInterruption(TestBase):
 
         self.check_result_output(False)
 
+    @add_test_categories(["typesystem-clike"])
     def test_interruptible_command_check_dbg(self):
         self.interruptible_command_test(True)
 
+    @add_test_categories(["typesystem-clike"])
     def test_interruptible_command_check_interp(self):
         self.interruptible_command_test(False)
 
+    @add_test_categories(["typesystem-clike"])
     def test_debugger_doesnt_interrupt_command(self):
         """Test that debugger interruption doesn't interrupt a command
         running in the RunCommandInterpreter loop."""

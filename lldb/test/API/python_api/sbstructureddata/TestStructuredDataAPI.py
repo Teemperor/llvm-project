@@ -13,6 +13,7 @@ import json
 class TestStructuredDataAPI(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         self.structured_data_api_test()
 
@@ -369,6 +370,7 @@ class TestStructuredDataAPI(TestBase):
         if output != "arr":
             self.fail("wrong output: " + str(output))
 
+    @add_test_categories(["typesystem-clike"])
     def test_round_trip_scalars(self):
         for original in (0, 11, -1, 0.0, 4.5, -0.25):
             constructor = type(original)
@@ -377,24 +379,28 @@ class TestStructuredDataAPI(TestBase):
             round_tripped = constructor(data)
             self.assertEqual(round_tripped, original)
 
+    @add_test_categories(["typesystem-clike"])
     def test_dynamic(self):
         for original in (0, 11, -1, 0.0, 4.5, -0.25, "", "dirk", True, False):
             data = lldb.SBStructuredData()
             data.SetFromJSON(json.dumps(original))
             self.assertEqual(data.dynamic, original)
 
+    @add_test_categories(["typesystem-clike"])
     def test_round_trip_int(self):
         for original in (0, 11, -1):
             data = lldb.SBStructuredData()
             data.SetFromJSON(json.dumps(original))
             self.assertEqual(int(data), int(original))
 
+    @add_test_categories(["typesystem-clike"])
     def test_round_trip_float(self):
         for original in (0, 11, -1, 0.0, 4.5, -0.25):
             data = lldb.SBStructuredData()
             data.SetFromJSON(json.dumps(original))
             self.assertEqual(float(data), float(original))
 
+    @add_test_categories(["typesystem-clike"])
     def test_iterate_array(self):
         array = [0, 1, 2]
         data = lldb.SBStructuredData()
@@ -402,6 +408,7 @@ class TestStructuredDataAPI(TestBase):
         for value in data:
             self.assertEqual(value, array.pop(0))
 
+    @add_test_categories(["typesystem-clike"])
     def test_iterate_dictionary(self):
         dictionary = {"0": 0, "1": 1, "2": 2}
         keys = set(dictionary.keys())
@@ -411,6 +418,7 @@ class TestStructuredDataAPI(TestBase):
             self.assertIn(key, keys)
             keys.remove(key)
 
+    @add_test_categories(["typesystem-clike"])
     def test_getitem_array(self):
         array = [1, 2, 3]
         data = lldb.SBStructuredData()
@@ -418,6 +426,7 @@ class TestStructuredDataAPI(TestBase):
         for i in range(len(array)):
             self.assertEqual(data[i], array[i])
 
+    @add_test_categories(["typesystem-clike"])
     def test_getitem_dictionary(self):
         dictionary = {"one": 1, "two": 2, "three": 3}
         data = lldb.SBStructuredData()

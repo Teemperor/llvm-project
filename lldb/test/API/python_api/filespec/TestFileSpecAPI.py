@@ -10,6 +10,7 @@ from lldbsuite.test.lldbtest import *
 class FileSpecAPITestCase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
     def test_filespec_eq(self):
         """Test SBFileSpec equality comparisons."""
         empty = lldb.SBFileSpec()
@@ -20,6 +21,7 @@ class FileSpecAPITestCase(TestBase):
         self.assertTrue(not empty)
         self.assertFalse(empty is None)
 
+    @add_test_categories(["typesystem-clike"])
     def test_filespec_eq_path(self):
         """Test SBFileSpec equality with non-empty path strings."""
         spec = lldb.SBFileSpec("/a/b")
@@ -28,6 +30,7 @@ class FileSpecAPITestCase(TestBase):
         self.assertFalse(spec != "/a/b")
         self.assertTrue(spec != "/a/c")
 
+    @add_test_categories(["typesystem-clike"])
     def test_filespec_eq_other_type(self):
         """Test SBFileSpec equality with unsupported types returns False."""
         spec = lldb.SBFileSpec()

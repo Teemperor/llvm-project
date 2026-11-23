@@ -16,6 +16,7 @@ from lldbsuite.test import lldbutil
 @skipIf(archs=["arm$"])
 class TestUnnamedSymbolLookup(TestBase):
     @expectedFailureAll(archs=["arm64e"])
+    @add_test_categories(["typesystem-clike"])
     def test_unnamed_symbol_lookup(self):
         """Test looking up unnamed symbol synthetic name"""
         self.build()
