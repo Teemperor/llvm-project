@@ -38,6 +38,7 @@ class TargetAPITestCase(TestBase):
         self.setTearDownCleanup(dictionary=d)
         self.find_global_variables("b.out")
 
+    @add_test_categories(["typesystem-clike"])
     def test_find_compile_units(self):
         """Exercise SBTarget.FindCompileUnits() API."""
         d = {"EXE": "b.out"}
@@ -48,6 +49,7 @@ class TargetAPITestCase(TestBase):
     @expectedFailureAll(
         bugnumber="llvm.org/pr149498", oslist=["windows"], debug_info="pdb"
     )
+    @add_test_categories(["typesystem-clike"])
     def test_find_functions(self):
         """Exercise SBTarget.FindFunctions() API."""
         d = {"EXE": "b.out"}
@@ -55,16 +57,19 @@ class TargetAPITestCase(TestBase):
         self.setTearDownCleanup(dictionary=d)
         self.find_functions("b.out")
 
+    @add_test_categories(["typesystem-clike"])
     def test_get_description(self):
         """Exercise SBTarget.GetDescription() API."""
         self.build()
         self.get_description()
 
+    @add_test_categories(["typesystem-clike"])
     def test_resolve_symbol_context_with_address(self):
         """Exercise SBTarget.ResolveSymbolContextForAddress() API."""
         self.build()
         self.resolve_symbol_context_with_address()
 
+    @add_test_categories(["typesystem-clike"])
     def test_get_platform(self):
         d = {"EXE": "b.out"}
         self.build(dictionary=d)
@@ -73,6 +78,7 @@ class TargetAPITestCase(TestBase):
         platform = target.platform
         self.assertTrue(platform, VALID_PLATFORM)
 
+    @add_test_categories(["typesystem-clike"])
     def test_resolve_file_address(self):
         d = {"EXE": "b.out"}
         self.build(dictionary=d)
@@ -95,6 +101,7 @@ class TargetAPITestCase(TestBase):
         self.assertIsNotNone(data_section2)
         self.assertEqual(data_section.name, data_section2.name)
 
+    @add_test_categories(["typesystem-clike"])
     def test_get_arch_name(self):
         d = {"EXE": "b.out"}
         self.build(dictionary=d)
@@ -114,6 +121,7 @@ class TargetAPITestCase(TestBase):
         )
 
     @skipIfWasm  # there is no ABI plugin for Wasm to name
+    @add_test_categories(["typesystem-clike"])
     def test_get_ABIName(self):
         d = {"EXE": "b.out"}
         self.build(dictionary=d)
@@ -137,6 +145,7 @@ class TargetAPITestCase(TestBase):
         )
 
     @skipIfWasm  # zero is a valid address in a Wasm linear memory, so a read of it succeeds
+    @add_test_categories(["typesystem-clike"])
     def test_read_memory(self):
         d = {"EXE": "b.out"}
         self.build(dictionary=d)
@@ -168,6 +177,7 @@ class TargetAPITestCase(TestBase):
     @skipIfRemote  # stdio manipulation unsupported on remote iOS devices<rdar://problem/54581135>
     @skipIf(oslist=["linux"], archs=["arm$", "aarch64"])
     @no_debug_info_test
+    @add_test_categories(["typesystem-clike"])
     def test_launch_simple(self):
         d = {"EXE": "b.out"}
         self.build(dictionary=d)
@@ -333,6 +343,7 @@ class TargetAPITestCase(TestBase):
 
     @skipIfRemote
     @no_debug_info_test
+    @add_test_categories(["typesystem-clike"])
     def test_launch_new_process_and_redirect_stdout(self):
         """Exercise SBTarget.Launch() API with redirected stdout."""
         self.build()
@@ -468,6 +479,7 @@ class TargetAPITestCase(TestBase):
 
     @skipIfRemote
     @skipIfWasm  # the default architecture is the host's, which no Wasm module matches
+    @add_test_categories(["typesystem-clike"])
     def test_default_arch(self):
         """Test the other two target create methods using LLDB_ARCH_DEFAULT."""
         self.build()
@@ -509,12 +521,14 @@ class TargetAPITestCase(TestBase):
             )
 
     @no_debug_info_test
+    @add_test_categories(["typesystem-clike"])
     def test_setting_selected_target_with_invalid_target(self):
         """Make sure we don't crash when trying to select invalid target."""
         target = lldb.SBTarget()
         self.dbg.SetSelectedTarget(target)
 
     @no_debug_info_test
+    @add_test_categories(["typesystem-clike"])
     def test_get_api_mutex(self):
         """Make sure we can lock and unlock the API mutex from Python."""
         target = self.dbg.GetDummyTarget()
@@ -528,6 +542,7 @@ class TargetAPITestCase(TestBase):
         mutex.unlock()
 
     @no_debug_info_test
+    @add_test_categories(["typesystem-clike"])
     def test_get_api_mutex_with_statement(self):
         """Make sure we can lock and unlock the API mutex using a with-statement from Python."""
         target = self.dbg.GetDummyTarget()

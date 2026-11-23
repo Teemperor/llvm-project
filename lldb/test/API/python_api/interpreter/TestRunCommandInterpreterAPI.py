@@ -80,6 +80,7 @@ class CommandRunInterpreterAPICase(TestBase):
 
         return (n_errors, quit_requested, has_crashed, result_string)
 
+    @add_test_categories(["typesystem-clike"])
     def test_run_session_with_error_and_quit(self):
         """Run non-existing and quit command returns appropriate values"""
 
@@ -90,6 +91,7 @@ class CommandRunInterpreterAPICase(TestBase):
         self.assertTrue(quit_requested)
         self.assertFalse(has_crashed)
 
+    @add_test_categories(["typesystem-clike"])
     def test_allow_repeat(self):
         """Try auto-repeat of process launch - the command will fail and
         the auto-repeat will fail because of no auto-repeat."""
@@ -111,6 +113,7 @@ class CommandRunInterpreterAPICase(TestBase):
 class SBCommandInterpreterRunOptionsCase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
     def test_command_interpreter_run_options(self):
         """Test SBCommandInterpreterRunOptions default values, getters & setters"""
 

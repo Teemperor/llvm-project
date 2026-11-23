@@ -11,12 +11,14 @@ import lldb
 from lldbsuite.test.decorators import *
 from lldbsuite.test import lldbutil
 """
+from lldbsuite.test.decorators import *
 from lldbsuite.test.lldbtest import *
 
 
 class SwigVersionTestCase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         self.assertTrue(getattr(lldb, "swig_version"))
         self.assertIsInstance(lldb.swig_version, tuple)

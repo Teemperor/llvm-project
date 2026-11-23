@@ -21,6 +21,7 @@ class AddressMasksTestCase(TestBase):
         self.runCmd("settings set target.process.highmem-virtual-addressable-bits 0")
 
     @skipIf(archs=["arm$"])  # 32-bit arm ABI hardcodes Code mask, is 32-bit
+    @add_test_categories(["typesystem-clike"])
     def test_address_masks(self):
         self.build()
         (target, process, t, bp) = lldbutil.run_to_source_breakpoint(
@@ -82,6 +83,7 @@ class AddressMasksTestCase(TestBase):
     # page tables are set up.
     @skipIf(archs=no_match(["arm64", "arm64e", "aarch64"]))
     @skipIf(archs=["arm$"])  # 32-bit arm ABI hardcodes Code mask, is 32-bit
+    @add_test_categories(["typesystem-clike"])
     def test_address_masks_target_supports_highmem_tests(self):
         self.build()
         (target, process, t, bp) = lldbutil.run_to_source_breakpoint(
@@ -112,6 +114,7 @@ class AddressMasksTestCase(TestBase):
         self.reset_all_masks(process)
 
     @skipIf(archs=no_match(["arm64", "arm64e", "aarch64"]))
+    @add_test_categories(["typesystem-clike"])
     def test_changing_mask_invalidates_stack_frames(self):
         self.build()
         (target, process, thread, bp) = lldbutil.run_to_source_breakpoint(

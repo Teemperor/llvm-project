@@ -15,6 +15,7 @@ class SBPlatformAPICase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
     @skipIfRemote  # Remote environment not supported.
+    @add_test_categories(["typesystem-clike"])
     def test_run(self):
         self.build()
         plat = lldb.SBPlatform.GetHostPlatform()
@@ -29,6 +30,7 @@ class SBPlatformAPICase(TestBase):
         self.assertSuccess(plat.Run(cmd))
         self.assertIn("MY_TEST_ENV_VAR=SBPlatformAPICase.test_run", cmd.GetOutput())
 
+    @add_test_categories(["typesystem-clike"])
     def test_SetSDKRoot(self):
         plat = lldb.SBPlatform("remote-linux")  # arbitrary choice
         self.assertTrue(plat)
@@ -36,6 +38,7 @@ class SBPlatformAPICase(TestBase):
         self.dbg.SetSelectedPlatform(plat)
         self.expect("platform status", substrs=["Sysroot:", self.getBuildDir()])
 
+    @add_test_categories(["typesystem-clike"])
     def test_SetCurrentPlatform_floating(self):
         # floating platforms cannot be referenced by name until they are
         # associated with a debugger
@@ -46,6 +49,7 @@ class SBPlatformAPICase(TestBase):
         self.assertEqual(dbg_platform.GetName(), "remote-netbsd")
         self.assertIsNone(dbg_platform.GetWorkingDirectory())
 
+    @add_test_categories(["typesystem-clike"])
     def test_SetCurrentPlatform_associated(self):
         # associated platforms are found by name-based lookup
         floating_platform = lldb.SBPlatform("remote-netbsd")

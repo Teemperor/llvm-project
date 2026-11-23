@@ -14,6 +14,7 @@ from lldbsuite.test.lldbutil import state_type_to_str
 class SignalsAPITestCase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
     def test_ignore_signal(self):
         """Test Python SBUnixSignals.Suppress/Stop/Notify() API."""
         self.build()

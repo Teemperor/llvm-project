@@ -10,6 +10,7 @@ from lldbsuite.test import lldbutil
 class SBFrameFindValueTestCase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
     def test_formatters_api(self):
         """Test that SBFrame::FindValue finds things but does not duplicate the entire variables list"""
         self.build()

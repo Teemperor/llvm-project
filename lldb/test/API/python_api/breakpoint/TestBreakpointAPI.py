@@ -11,6 +11,7 @@ from lldbsuite.test import lldbutil
 class BreakpointAPITestCase(TestBase):
     NO_DEBUG_INFO_TESTCASE = True
 
+    @add_test_categories(["typesystem-clike"])
     def test_breakpoint_is_valid(self):
         """Make sure that if an SBBreakpoint gets deleted its IsValid returns false."""
         self.build()
@@ -38,6 +39,7 @@ class BreakpointAPITestCase(TestBase):
         # Finally make sure the original breakpoint is no longer valid.
         self.assertTrue(not breakpoint, "Breakpoint we deleted is no longer valid.")
 
+    @add_test_categories(["typesystem-clike"])
     def test_target_delete(self):
         """Make sure that if an SBTarget gets deleted the associated
         Breakpoint's IsValid returns false."""
