@@ -19,6 +19,7 @@ class GetBaseNameTestCase(TestBase):
         oslist=["windows"],
         bugnumber="https://github.com/llvm/llvm-project/issues/156861",
     )
+    @add_test_categories(["typesystem-clike"])
     def test(self):
         """Test SBFunction.GetBaseName() and SBSymbol.GetBaseName()"""
         self.build()

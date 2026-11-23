@@ -11,6 +11,7 @@ from lldbsuite.test import lldbutil
 
 class TestNameLookup(TestBase):
     @expectedFailureAll(oslist=["windows"], bugnumber="llvm.org/pr21765")
+    @add_test_categories(["typesystem-clike"])
     def test_target(self):
         """Exercise SBTarget.FindFunctions() with various name masks.
 

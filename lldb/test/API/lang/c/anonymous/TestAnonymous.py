@@ -75,6 +75,7 @@ class AnonymousTestCase(TestBase):
         )
 
     @requireExpressionEvaluation
+    @add_test_categories(["typesystem-clike"])
     def test_expr_null(self):
         self.build()
         self.common_setup(self.line2)

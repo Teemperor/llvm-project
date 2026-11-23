@@ -281,6 +281,7 @@ class ValueAPITestCase(TestBase):
         )
 
     @no_debug_info_test
+    @add_test_categories(["typesystem-clike"])
     def test_register(self):
         """
         Test SBValue APIs when the values are backed by registers.
