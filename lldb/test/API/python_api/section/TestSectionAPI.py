@@ -11,6 +11,7 @@ from lldbsuite.test import lldbutil
 class SectionAPITestCase(TestBase):
     @no_debug_info_test
     @skipIfXmlSupportMissing
+    @add_test_categories(["typesystem-clike"])
     def test_get_alignment(self):
         exe = self.getBuildArtifact("aligned.out")
         self.yaml2obj("aligned.yaml", exe)
@@ -25,6 +26,7 @@ class SectionAPITestCase(TestBase):
     @no_debug_info_test
     @skipIfXmlSupportMissing
     @skipIfZLIBSupportMissing
+    @add_test_categories(["typesystem-clike"])
     def test_compressed_section_data(self):
         exe = self.getBuildArtifact("compressed-sections.out")
         self.yaml2obj("compressed-sections.yaml", exe)

@@ -20,6 +20,7 @@ class TargetArchFromModule(TestBase):
     )
     @requireDarwin
     @skipIfRemote
+    @add_test_categories(["typesystem-clike"])
     def test_target_arch_init(self):
         self.build()
         aout_exe = self.getBuildArtifact("a.out")

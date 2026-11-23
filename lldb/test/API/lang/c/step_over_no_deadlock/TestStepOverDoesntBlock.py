@@ -10,6 +10,7 @@ from lldbsuite.test import lldbutil
 
 @requireThreadSupport
 class StepOverDoesntDeadlockTestCase(TestBase):
+    @add_test_categories(["typesystem-clike"])
     def test_step_over(self):
         """Test that when step over steps over a function it lets other threads run."""
         self.build()

@@ -15,6 +15,7 @@ class FrameUtilsTestCase(TestBase):
         # Find the line number to break inside main().
         self.line = line_number("main.c", "// Find the line number here.")
 
+    @add_test_categories(["typesystem-clike"])
     def test_frame_utils(self):
         """Test utility functions for the frame object."""
         self.build()

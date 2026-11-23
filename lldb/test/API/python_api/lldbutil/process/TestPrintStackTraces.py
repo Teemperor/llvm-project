@@ -10,6 +10,7 @@ from lldbsuite.test import lldbutil
 
 
 class ThreadsStackTracesTestCase(TestBase):
+    @add_test_categories(["typesystem-clike"])
     def test_stack_traces(self):
         """Test SBprocess and SBThread APIs with printing of the stack traces."""
         self.build()

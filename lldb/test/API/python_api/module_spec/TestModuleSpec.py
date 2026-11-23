@@ -8,6 +8,7 @@ from lldbsuite.test.lldbtest import *
 
 
 class ModuleSpecAPIsTestCase(TestBase):
+    @add_test_categories(["typesystem-clike"])
     def test_object_offset_and_size(self):
         module_spec = lldb.SBModuleSpec()
         self.assertEqual(module_spec.GetObjectOffset(), 0)

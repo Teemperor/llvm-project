@@ -18,6 +18,7 @@ class ProcessAPITestCase(TestBase):
             "main.cpp", "// Set break point at this line and check variable 'my_char'."
         )
 
+    @add_test_categories(["typesystem-clike"])
     def test_scripted_implementation(self):
         self.build()
         exe = self.getBuildArtifact("a.out")
@@ -29,6 +30,7 @@ class ProcessAPITestCase(TestBase):
         self.assertTrue(process, PROCESS_IS_VALID)
         self.assertEqual(process.GetScriptedImplementation(), None)
 
+    @add_test_categories(["typesystem-clike"])
     def test_is_live_debug_session(self):
         """Test that a launched process reports as a live debug session."""
         self.build()
@@ -40,6 +42,7 @@ class ProcessAPITestCase(TestBase):
         self.assertTrue(process, PROCESS_IS_VALID)
         self.assertTrue(process.IsLiveDebugSession())
 
+    @add_test_categories(["typesystem-clike"])
     def test_is_live_debug_session_invalid_process(self):
         """Test that an invalid process is not reported as a live session."""
         process = lldb.SBProcess()
@@ -206,6 +209,7 @@ class ProcessAPITestCase(TestBase):
 
         self.assertEqual(cstring, message)
 
+    @add_test_categories(["typesystem-clike"])
     def test_access_my_int(self):
         """Test access 'my_int' using Python SBProcess.GetByteOrder() and other APIs."""
         self.build()
@@ -292,6 +296,7 @@ class ProcessAPITestCase(TestBase):
             for i in content:
                 print("byte:", i)
 
+    @add_test_categories(["typesystem-clike"])
     def test_remote_launch(self):
         """Test SBProcess.RemoteLaunch() API with a process not in eStateConnected, and it should fail."""
         self.build()
@@ -316,6 +321,7 @@ class ProcessAPITestCase(TestBase):
             "RemoteLaunch() should fail for process state != eStateConnected",
         )
 
+    @add_test_categories(["typesystem-clike"])
     def test_get_num_supported_hardware_watchpoints(self):
         """Test SBProcess.GetNumSupportedHardwareWatchpoints() API with a process."""
         self.build()
@@ -334,6 +340,7 @@ class ProcessAPITestCase(TestBase):
     @no_debug_info_test
     @skipIfRemote
     @skipIfWasm  # the Wasm platform cannot look a process up by its id
+    @add_test_categories(["typesystem-clike"])
     def test_get_process_info(self):
         """Test SBProcess::GetProcessInfo() API with a locally launched process."""
         self.build()
@@ -424,6 +431,7 @@ class ProcessAPITestCase(TestBase):
 
     @expectedFailureWindows  # Not yet implemented.
     @skipIfWasm  # the Wasm platform cannot look a process up by its id
+    @add_test_categories(["typesystem-clike"])
     def test_get_process_info_arguments(self):
         """Test SBProcessInfo Arguments returns the correct values."""
         self.build()
