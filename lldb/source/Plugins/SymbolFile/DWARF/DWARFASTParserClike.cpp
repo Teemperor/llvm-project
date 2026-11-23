@@ -10,6 +10,7 @@
 
 #include "DWARFASTParser.h"
 #include "DWARFDIE.h"
+#include "DWARFDeclContext.h"
 #include "DWARFDefines.h"
 #include "DWARFUnit.h"
 #include "SymbolFileDWARF.h"
@@ -19,7 +20,9 @@
 #include "Plugins/TypeSystem/Clike/TypeSystemClike.h"
 
 #include "lldb/Core/Declaration.h"
+#include "lldb/Core/Mangled.h"
 #include "lldb/Core/Module.h"
+#include "lldb/Expression/DWARFExpressionList.h"
 #include "lldb/Expression/Expression.h"
 #include "lldb/Symbol/CompileUnit.h"
 #include "lldb/Symbol/CompilerDeclContext.h"
@@ -28,12 +31,15 @@
 #include "lldb/Symbol/ObjectFile.h"
 #include "lldb/Symbol/Type.h"
 #include "lldb/Symbol/TypeMap.h"
+#include "lldb/Target/Language.h"
+#include "lldb/Utility/StreamString.h"
 
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/SmallVector.h"
 
 #include <algorithm>
+#include <vector>
 
 using namespace lldb;
 using namespace lldb_private;
@@ -47,8 +53,64 @@ DWARFASTParserClike::~DWARFASTParserClike() = default;
 
 Function *DWARFASTParserClike::ParseFunctionFromDWARF(
     CompileUnit &comp_unit, const DWARFDIE &die, AddressRanges func_ranges) {
-  // Functions aren't parsed yet.
-  return nullptr;
+  if (die.Tag() != DW_TAG_subprogram)
+    return nullptr;
+
+  if (!IsSupportedDWARFVersion(die))
+    return nullptr;
+
+  llvm::DWARFAddressRangesVector unused_func_ranges;
+  const char *name = nullptr;
+  const char *mangled = nullptr;
+  std::optional<int> decl_file, decl_line, decl_column;
+  std::optional<int> call_file, call_line, call_column;
+  DWARFExpressionList frame_base;
+
+  if (!die.GetDIENamesAndRanges(name, mangled, unused_func_ranges, decl_file,
+                                decl_line, decl_column, call_file, call_line,
+                                call_column, &frame_base))
+    return nullptr;
+
+  Mangled func_name;
+  if (mangled && name &&
+      Mangled::GetManglingScheme(mangled) == Mangled::eManglingSchemeNone) {
+    // The linkage name is present but is not actually a mangled name. Display
+    // the source name (DW_AT_name) and keep the linkage name as the symbol so
+    // lookups by either name still resolve.
+    func_name.SetDemangledName(ConstString(name));
+    func_name.SetMangledName(ConstString(mangled));
+  } else if (mangled) {
+    func_name.SetValue(ConstString(mangled));
+  } else if ((die.GetParent().Tag() == DW_TAG_compile_unit ||
+              die.GetParent().Tag() == DW_TAG_partial_unit) &&
+             Language::LanguageIsCPlusPlus(
+                 SymbolFileDWARF::GetLanguage(*die.GetCU())) &&
+             !Language::LanguageIsObjC(
+                 SymbolFileDWARF::GetLanguage(*die.GetCU())) &&
+             name && strcmp(name, "main") != 0) {
+    // No mangled name in the DWARF: synthesize the demangled name from the decl
+    // context (skipping `main`, which is never mangled), and keep DW_AT_name as
+    // the symbol so a lookup by that name still resolves.
+    func_name.SetDemangledName(ConstructDemangledNameFromDWARF(die));
+    func_name.SetMangledName(ConstString(name));
+  } else if (name) {
+    func_name.SetValue(ConstString(name));
+  }
+
+  SymbolFileDWARF *dwarf = die.GetDWARF();
+  // Supply the type _only_ if it has already been parsed.
+  Type *func_type = dwarf->GetDIEToType().lookup(die.GetDIE());
+  const user_id_t func_user_id = die.GetID();
+  Address func_addr = func_ranges[0].GetBaseAddress();
+
+  auto func_sp = std::make_shared<Function>(
+      &comp_unit, func_user_id, func_user_id, func_name, func_type,
+      std::move(func_addr), std::move(func_ranges));
+
+  if (frame_base.IsValid())
+    func_sp->GetFrameBaseExpression() = frame_base;
+  comp_unit.AddFunction(func_sp);
+  return func_sp.get();
 }
 
 /// Map a DWARF DW_AT_encoding value to an lldb::Encoding.
@@ -189,8 +251,67 @@ std::string DWARFASTParserClike::GetDIEClassTemplateParams(DWARFDIE die) {
 
 ConstString
 DWARFASTParserClike::ConstructDemangledNameFromDWARF(const DWARFDIE &die) {
-  // Functions aren't parsed yet.
-  return ConstString();
+  // TypeSystemClike must not touch clang decl contexts, so (unlike
+  // DWARFASTParserClang) build the demangled name straight from DWARF: the
+  // qualified function name followed by its parameter type spellings and any
+  // cv-qualifier on the object parameter.
+  // Use the DWARF decl context's qualified name (mirroring
+  // DWARFASTParserClang): it prefixes top-level names with "::" (e.g.
+  // "::foo"), which is what the demangled function name is expected to
+  // carry.
+  StreamString sstr;
+  sstr << die.GetDWARFDeclContext().GetQualifiedName();
+
+  bool is_variadic = false;
+  bool is_const = false;
+  std::vector<std::string> param_types;
+  for (DWARFDIE child : die.children()) {
+    switch (child.Tag()) {
+    case DW_TAG_formal_parameter: {
+      DWARFDIE param_type_die =
+          child.GetAttributeValueAsReferenceDIE(DW_AT_type);
+      // The artificial `this` parameter isn't part of the printed signature,
+      // but a `const` method has a `this` whose pointee is const-qualified.
+      if (child.GetAttributeValueAsUnsigned(DW_AT_artificial, 0)) {
+        if (Type *this_type = die.ResolveTypeUID(param_type_die)) {
+          CompilerType pointee =
+              this_type->GetForwardCompilerType().GetPointeeType();
+          if (pointee.GetTypeQualifiers() & 0x1)
+            is_const = true;
+        }
+        break;
+      }
+      std::string type_name;
+      if (Type *param_type = die.ResolveTypeUID(param_type_die))
+        type_name =
+            param_type->GetForwardCompilerType().GetTypeName().GetString();
+      param_types.push_back(std::move(type_name));
+      break;
+    }
+    case DW_TAG_unspecified_parameters:
+      is_variadic = true;
+      break;
+    default:
+      break;
+    }
+  }
+
+  sstr << "(";
+  for (size_t i = 0; i < param_types.size(); ++i) {
+    if (i > 0)
+      sstr << ", ";
+    sstr << param_types[i];
+  }
+  if (is_variadic) {
+    if (!param_types.empty())
+      sstr << ", ";
+    sstr << "...";
+  }
+  sstr << ")";
+  if (is_const)
+    sstr << " const";
+
+  return ConstString(sstr.GetString());
 }
 
 CompilerDeclContext
