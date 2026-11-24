@@ -34,12 +34,14 @@ public:
       : NamedType<Base>(scope.GetUnqualifiedName(),
                         std::forward<Args>(args)...),
         m_qualified_name(qualified_name),
-        m_decl_context(scope.GetDeclContext()) {}
+        m_decl_context(scope.GetDeclContext()),
+        m_unnamed_scope(scope.GetUnnamedScope()) {}
 
   Identifier GetName() const override { return m_qualified_name; }
   const DeclarationContext *GetDeclContext() const override {
     return m_decl_context;
   }
+  Identifier GetUnnamedScope() const override { return m_unnamed_scope; }
 
   /// True if this type has no name at all, e.g. an unnamed
   /// `enum { ... } x;`.
@@ -51,6 +53,7 @@ public:
 private:
   Identifier m_qualified_name;
   const DeclarationContext *m_decl_context = nullptr;
+  Identifier m_unnamed_scope;
 };
 
 } // namespace clike
