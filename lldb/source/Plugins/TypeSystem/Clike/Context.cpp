@@ -33,6 +33,30 @@ const Namespace *Context::GetNamespace(Identifier name, const Namespace *parent,
   return ns;
 }
 
+const FunctionScope *
+Context::GetFunctionScope(Identifier name, const DeclarationContext *parent) {
+  // Like GetNamespace, this compares the name's characters.
+  auto key = std::make_pair(parent, name.GetName());
+  auto it = m_function_scope_map.find(key);
+  if (it != m_function_scope_map.end())
+    return it->second;
+
+  m_function_scopes.emplace_back(
+      std::unique_ptr<FunctionScope>(new FunctionScope(name, parent)));
+  const FunctionScope *scope = m_function_scopes.back().get();
+  m_function_scope_map.emplace(key, scope);
+  return scope;
+}
+
+const Decl *Context::GetOrCreateDecl(Decl::Payload payload) {
+  if (auto it = m_decl_map.find(payload); it != m_decl_map.end())
+    return it->second;
+  m_decls.push_back(std::make_unique<Decl>(Decl{payload}));
+  const Decl *result = m_decls.back().get();
+  m_decl_map[payload] = result;
+  return result;
+}
+
 BuiltinType *Context::GetBuiltinType(llvm::StringRef name,
                                      std::optional<uint64_t> byte_size,
                                      lldb::Encoding encoding,
@@ -51,8 +75,13 @@ BuiltinType *Context::GetBuiltinType(llvm::StringRef name,
 RecordType *Context::CreateRecordType(const DeclarationContext &decl_context,
                                       llvm::StringRef name,
                                       std::optional<uint64_t> byte_size,
-                                      bool is_union, bool is_class_keyword,
+                                      bool is_cpp_class, bool is_union,
+                                      bool is_class_keyword,
                                       Identifier unqualified_name) {
+  if (is_cpp_class)
+    return Track(std::make_unique<ClassType>(GetIdentifier(name), decl_context,
+                                             unqualified_name, byte_size,
+                                             is_union, is_class_keyword));
   return Track(std::make_unique<StructType>(GetIdentifier(name), decl_context,
                                             unqualified_name, byte_size,
                                             is_union, is_class_keyword));
@@ -96,6 +125,25 @@ BlockPointerType *Context::CreateBlockPointerType(TypeRef pointee_type) {
       Track(std::make_unique<BlockPointerType>(pointee_type));
   m_pointer_map[key] = result;
   return result;
+}
+
+ReferenceType *Context::CreateReferenceType(TypeRef pointee_type,
+                                            bool is_rvalue) {
+  return Track(std::make_unique<ReferenceType>(
+      pointee_type, is_rvalue, m_opts.GetBuiltinSizes().pointer_size));
+}
+
+MemberPointerType *Context::CreateMemberPointerType(TypeRef pointee_type,
+                                                    TypeRef containing_type) {
+  // Itanium ABI: a pointer to a non-static member function is two pointers
+  // wide (the function pointer, or vtable-offset-tagged equivalent, plus the
+  // `this` adjustment); a pointer to a non-static data member is one pointer
+  // wide (the byte offset of the member).
+  uint64_t pointer_size = m_opts.GetBuiltinSizes().pointer_size;
+  uint64_t byte_size =
+      pointee_type.Get().IsFunction() ? 2 * pointer_size : pointer_size;
+  return Track(std::make_unique<MemberPointerType>(pointee_type,
+                                                   containing_type, byte_size));
 }
 
 TypedefType *Context::CreateTypedefType(const DeclarationContext &decl_context,
