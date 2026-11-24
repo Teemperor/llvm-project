@@ -140,25 +140,14 @@ std::string RecordType::GetUnnamedName() const {
 
 std::string
 RecordType::GetUnnamedScopePrefix(bool keep_inline_namespaces) const {
-  // An anonymous struct/union has no name of its own to qualify -- its
-  // DeclContext (which only models enclosing *namespaces*, never enclosing
-  // classes) is therefore useless for recovering its enclosing scope. Instead
-  // it carries a direct pointer to the record it is embedded in
-  // (GetAnonymousParent()); use that record's own (already fully qualified)
-  // display name as the prefix, e.g. "MySock::" for the union in
-  // `struct MySock { union { ... }; };`. This mirrors clang's
-  // NamedDecl::printNestedNameSpecifier, which walks the DeclContext chain
-  // and, unlike this model, treats an enclosing RecordDecl as a DeclContext
-  // too.
-  if (m_anonymous_parent)
-    return m_anonymous_parent->GetDisplayName(DisplayNameOptions()) + "::";
-  // Otherwise (e.g. a lambda closure type, which has no DW_AT_name but does
-  // have a DeclContext) qualify by the enclosing namespace chain instead, same
-  // as a named type -- this is what makes a lambda defined in an anonymous
-  // namespace print as "(anonymous namespace)::(unnamed class)". A
-  // function-local unnamed struct has neither, and clang likewise never
-  // prefixes it: printNestedNameSpecifier returns early for a function
-  // DeclContext.
+  // An unnamed record has no name of its own to qualify, so it is qualified
+  // by the scopes of its declaration context chain: e.g. "MySock::"
+  // for the union in `struct MySock { union { ... }; };`, or the enclosing
+  // namespaces of a lambda closure type (which has no DW_AT_name), which is
+  // what makes a lambda defined in an anonymous namespace print as
+  // "(anonymous namespace)::(unnamed class)". A function-local unnamed struct
+  // has no scope, as clang's printNestedNameSpecifier returns early for a
+  // function DeclContext.
   return BuildUnnamedTagScopePrefix(*this, keep_inline_namespaces);
 }
 
