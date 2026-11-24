@@ -126,6 +126,14 @@ public:
   /// Every builtin with an integer encoding except `std::nullptr_t`.
   bool IsInteger() const override;
 
+  /// The DWARF producer's DW_AT_name suffixes a non-`int` integral template
+  /// argument to disambiguate its type (`Foo<1L>`, `Foo<1U>`), which clang's
+  /// printer never does (`Foo<1>`) because the type is already known from
+  /// context.
+  bool HasDivergentTemplateArgSpelling() const override {
+    return m_kind != BuiltinKind::Int;
+  }
+
 private:
   /// Zero if unknown.
   uint32_t m_alignment_in_bits;
