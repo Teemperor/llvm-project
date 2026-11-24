@@ -19,5 +19,4 @@ TEST(NamedTypeTest, StoresName) {
   EXPECT_EQ(type.GetName().GetName(), "Foo");
   // A NamedType has no scope, so the unqualified name is the same as the name.
   EXPECT_EQ(type.GetUnqualifiedName().GetName(), "Foo");
-  EXPECT_EQ(type.GetDeclContext(), nullptr);
 }

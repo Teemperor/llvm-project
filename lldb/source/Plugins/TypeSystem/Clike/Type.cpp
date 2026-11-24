@@ -7,11 +7,16 @@
 //===----------------------------------------------------------------------===//
 
 #include "Type.h"
+#include "Context.h"
 
 using namespace lldb_private::clike;
 
 // LLVM RTTI.
 char Type::ID = 0;
+
+const DeclarationContext &Type::GetDeclContext() const {
+  return GetOwningContext().GetGlobalScope();
+}
 
 bool Type::HasFields(llvm::function_ref<void(Type *)> complete) {
   Type *t = Desugar();
