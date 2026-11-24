@@ -54,3 +54,10 @@ TEST_F(ContextTest, GlobalScope) {
   EXPECT_TRUE(llvm::isa<GlobalScope>(global));
   EXPECT_EQ(global.GetParent(), nullptr);
 }
+
+// A type without a scope of its own (e.g. a builtin) is declared in the global
+// scope of the Context that owns it.
+TEST_F(ContextTest, UnscopedTypeIsInGlobalScope) {
+  BuiltinType *type = context.GetBuiltinType(BuiltinKind::Int);
+  EXPECT_EQ(&type->GetDeclContext(), &context.GetGlobalScope());
+}
