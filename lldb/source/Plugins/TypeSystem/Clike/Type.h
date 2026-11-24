@@ -33,7 +33,7 @@ namespace lldb_private {
 namespace clike {
 
 class Context;
-class Namespace;
+class DeclarationContext;
 class Type;
 
 struct TemplateArgument;
@@ -198,25 +198,26 @@ private:
   unsigned m_extra_discriminator;
 };
 
-/// The enclosing namespace and unqualified name of a named type.
+/// The declaration context and unqualified name of a named type.
 ///
-/// A default-constructed DeclScope represents the global namespace.
+/// A default-constructed DeclScope represents the global scope.
 class DeclScope {
 public:
   DeclScope() = default;
   /// \p unqualified_name must be interned in the IdentifierMap of the Context
   /// that owns the type.
-  DeclScope(const Namespace *decl_context, Identifier unqualified_name)
+  DeclScope(const DeclarationContext *decl_context, Identifier unqualified_name)
       : m_decl_context(decl_context), m_unqualified_name(unqualified_name) {}
 
-  /// The enclosing namespace, or null for the global namespace.
-  const Namespace *GetDeclContext() const { return m_decl_context; }
+  /// The innermost scope the type is declared in, or null for the global
+  /// scope.
+  const DeclarationContext *GetDeclContext() const { return m_decl_context; }
 
   /// The unqualified name, or an empty identifier if unknown.
   Identifier GetUnqualifiedName() const { return m_unqualified_name; }
 
 private:
-  const Namespace *m_decl_context = nullptr;
+  const DeclarationContext *m_decl_context = nullptr;
   Identifier m_unqualified_name;
 };
 
@@ -243,9 +244,10 @@ public:
   /// The type's qualified name.
   virtual Identifier GetName() const { return Identifier(); }
 
-  /// The namespace this type is declared in. Null for the global namespace and
-  /// for types without a declaration (e.g., pointers).
-  virtual const Namespace *GetDeclContext() const { return nullptr; }
+  /// The innermost scope this type is declared in (e.g. the record `Outer`
+  /// for `ns::Outer::Inner`). Null for the global scope and for types without
+  /// a declaration (e.g., pointers).
+  virtual const DeclarationContext *GetDeclContext() const { return nullptr; }
 
   /// The name of this type without namespace qualifiers (e.g., `string` or
   /// `vector<int, std::allocator<int>>`).
