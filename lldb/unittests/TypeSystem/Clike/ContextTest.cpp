@@ -46,3 +46,11 @@ TEST_F(ContextTest, GetBuiltinTypeBespokeFallback) {
   EXPECT_EQ(bespoke->GetName().GetName(), "unusual_int_type");
   EXPECT_FALSE(bespoke->GetBuiltinKind().has_value());
 }
+
+// The global scope is a declaration context without a parent.
+TEST_F(ContextTest, GlobalScope) {
+  const DeclarationContext &global = context.GetGlobalScope();
+  EXPECT_EQ(global.GetKind(), DeclarationContext::Kind::Global);
+  EXPECT_TRUE(llvm::isa<GlobalScope>(global));
+  EXPECT_EQ(global.GetParent(), nullptr);
+}
