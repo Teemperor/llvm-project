@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "BuiltinTypes.h"
+#include "DeclarationContext.h"
 #include "LanguageOpts.h"
 #include "Type.h"
 
@@ -38,6 +39,10 @@ public:
   }
 
   const LanguageOpts &GetLanguageOpts() const { return m_opts; }
+
+  /// The declaration context of all declarations that are not nested in a
+  /// namespace, record or function.
+  const DeclarationContext &GetGlobalScope() const { return m_global_scope; }
 
   /// The target's pointer width in bytes (from the triple). Used to size
   /// pointer/reference types, which don't store a size of their own.
@@ -88,6 +93,8 @@ private:
   /// This contains builtin types of C/C++/Objective-C such as
   /// int, long, etc.
   KnownBuiltinTypes builtin_types;
+  /// The global scope (see GetGlobalScope).
+  GlobalScope m_global_scope;
 };
 
 } // namespace clike
