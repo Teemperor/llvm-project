@@ -7,10 +7,14 @@
 //===----------------------------------------------------------------------===//
 
 #include "Plugins/TypeSystem/Clike/Type.h"
+#include "Plugins/TypeSystem/Clike/Context.h"
 #include "Plugins/TypeSystem/Clike/Identifier.h"
+#include "Plugins/TypeSystem/Clike/LanguageOpts.h"
 
 #include "llvm/ADT/APInt.h"
 #include "llvm/Support/Casting.h"
+#include "llvm/Support/Error.h"
+#include "llvm/TargetParser/Triple.h"
 
 #include "gtest/gtest.h"
 
@@ -19,6 +23,8 @@ using namespace lldb_private::clike;
 namespace {
 struct TypeTest : public testing::Test {
   IdentifierMap ids;
+  Context context{llvm::cantFail(
+      LanguageOpts::Create(llvm::Triple("x86_64-pc-linux-gnu")))};
 };
 } // namespace
 
@@ -28,7 +34,7 @@ TEST_F(TypeTest, BaseTypeDefaults) {
   Type type;
   EXPECT_TRUE(type.GetName().GetName().empty());
   EXPECT_TRUE(type.GetUnqualifiedName().GetName().empty());
-  EXPECT_EQ(type.GetDeclContext(), nullptr);
+  EXPECT_EQ(&type.GetDeclContext(context), &context.GetGlobalScope());
   EXPECT_FALSE(type.GetByteSize().has_value());
   EXPECT_FALSE(type.GetAlignmentInBits().has_value());
   EXPECT_FALSE(type.IsAggregate());
