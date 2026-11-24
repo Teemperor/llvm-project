@@ -194,6 +194,12 @@ public:
 
   std::string GetDisplayName(const DisplayNameOptions &opts) const override;
   std::string GetCanonicalName(bool base_only) const override;
+  /// A pointer-typed non-type template argument (e.g. `&temp1.member`) has no
+  /// integral value to print; clang falls back to printing the argument's
+  /// type name.
+  std::string
+  GetTemplateArgValueName(uint64_t value,
+                          const DisplayNameOptions &opts) const override;
 
 private:
   TypeRef m_pointee_type;
@@ -418,6 +424,13 @@ public:
   std::string GetDisplayName(const DisplayNameOptions &opts) const override;
   std::string GetCanonicalName(bool base_only) const override;
   bool SpellsCVQualifiersInCanonicalName() const override { return false; }
+  std::string
+  GetTemplateArgValueName(uint64_t value,
+                          const DisplayNameOptions &opts) const override;
+  /// The DWARF producer renders an enum-typed argument in the cast form
+  /// `Foo<(EnumType)0>`, clang prints the enumerator spelling
+  /// `Foo<EnumType::Member>`.
+  bool HasDivergentTemplateArgSpelling() const override { return true; }
 
 private:
   TypeRef m_underlying_type;
@@ -546,8 +559,9 @@ public:
   }
 
   /// Renders this function signature in C declarator form, placing \p decl
-  /// (e.g. "" for a plain function, "(*)" for a function pointer) between the
-  /// return type and the parameter list: `int (*)(const char *)`.
+  /// (e.g. "" for a plain function, "(*)" for a function pointer, "(&)" for a
+  /// reference) between the return type and the parameter list:
+  /// `int (*)(const char *)`.
   std::string GetDeclaratorName(llvm::StringRef decl,
                                 bool keep_inline_namespaces) const;
 

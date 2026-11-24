@@ -56,6 +56,8 @@ LLVM_ENABLE_BITMASK_ENUMS_IN_NAMESPACE();
 
 /// \see Type::GetDisplayName
 struct DisplayNameOptions {
+  /// Drop defaulted template arguments.
+  bool hide_default_args = true;
   /// Keep inline namespaces (e.g. `std::__1::`) rather than hiding them.
   bool keep_inline_namespaces = false;
 };
@@ -248,12 +250,12 @@ public:
   /// BuildCanonicalName in TypeName.h, the entry point).
   virtual std::string GetCanonicalName(bool base_only) const;
 
-  /// The display name of a pointer to this type, where \p sigil is the
-  /// pointer declarator (e.g. `*`).
+  /// The display name of a pointer or reference to this type, where \p sigil
+  /// is the pointer/reference declarator (e.g. `*` or `&&`).
   virtual std::string GetPointeeDisplayName(llvm::StringRef sigil,
                                             const DisplayNameOptions &opts) const;
 
-  /// The canonical name of a pointer to this type (see
+  /// The canonical name of a pointer or reference to this type (see
   /// GetPointeeDisplayName).
   virtual std::string GetPointeeCanonicalName(llvm::StringRef sigil,
                                               bool base_only) const;
@@ -261,10 +263,30 @@ public:
   /// Whether the canonical name of a cv-qualified version of this type spells
   /// the cv-qualifiers. Matching TypeSystemClang's GetTypeName, they are only
   /// spelled for types whose name is printed from the QualType (builtins,
-  /// pointers, ...). For a tag type (record/enum) or a typedef the name is
-  /// taken from the underlying decl, which carries no qualifiers, so
+  /// pointers, references, ...). For a tag type (record/enum) or a typedef the
+  /// name is taken from the underlying decl, which carries no qualifiers, so
   /// `const Enum` prints as `Enum` (while `const int` stays `const int`).
   virtual bool SpellsCVQualifiersInCanonicalName() const { return true; }
+
+  /// The display name of a non-type template argument of this type with the
+  /// raw value bits \p value, mirroring clang's TemplateArgument::print. The
+  /// default prints the numeric value (a `char`-family value as a character
+  /// literal, a `bool` as true/false and a floating-point value in scientific
+  /// form).
+  virtual std::string
+  GetTemplateArgValueName(uint64_t value, const DisplayNameOptions &opts) const;
+
+  /// True if the DWARF producer spells a non-type template argument of this
+  /// type differently than clang's TemplateArgument::print does, so that the
+  /// name of an instantiation with such an argument has to be reconstructed
+  /// from the modeled template arguments (see
+  /// NeedsTemplateNameReconstruction).
+  virtual bool HasDivergentTemplateArgSpelling() const { return false; }
+
+  /// True if this is a class-template instantiation whose name needs to be
+  /// reconstructed from the modeled template arguments rather than taken
+  /// verbatim from the DWARF producer's spelling of the instantiation name.
+  virtual bool NeedsTemplateNameReconstruction() const { return false; }
 
   /// The size of this type in bytes, or std::nullopt if unknown (e.g., for an
   /// incomplete record or a function type).

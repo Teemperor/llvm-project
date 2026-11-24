@@ -47,11 +47,12 @@ CompilerType Builder::GetVoidType() {
 
 CompilerType Builder::CreateRecordType(llvm::StringRef name,
                                        std::optional<uint64_t> byte_size,
-                                       bool is_union, bool is_class_keyword,
+                                       bool is_cpp_class, bool is_union,
+                                       bool is_class_keyword,
                                        const DeclarationContext *decl_context,
                                        Identifier unqualified_name) {
   return m_ts.GetCompilerType(m_ts.m_context.CreateRecordType(
-      name, byte_size, is_union, is_class_keyword, decl_context,
+      name, byte_size, is_cpp_class, is_union, is_class_keyword, decl_context,
       unqualified_name));
 }
 
@@ -85,6 +86,27 @@ CompilerType Builder::CreateBlockPointerType(CompilerType pointee_type) {
   // practice its pointee is always the block's function type.
   return m_ts.GetCompilerType(
       m_ts.m_context.CreateBlockPointerType(ToTypeRefOrVoid(pointee_type)));
+}
+
+CompilerType Builder::CreateReferenceType(CompilerType pointee_type,
+                                          bool is_rvalue) {
+  // Unlike a pointer, a reference always refers to a concrete type; there is
+  // no `void &` to fall back on.
+  std::optional<TypeRef> pointee = ToTypeRef(pointee_type);
+  if (!pointee)
+    return CompilerType();
+  return m_ts.GetCompilerType(
+      m_ts.m_context.CreateReferenceType(*pointee, is_rvalue));
+}
+
+CompilerType Builder::CreateMemberPointerType(CompilerType pointee_type,
+                                              CompilerType containing_type) {
+  std::optional<TypeRef> pointee = ToTypeRef(pointee_type);
+  std::optional<TypeRef> containing = ToTypeRef(containing_type);
+  if (!pointee || !containing)
+    return CompilerType();
+  return m_ts.GetCompilerType(
+      m_ts.m_context.CreateMemberPointerType(*pointee, *containing));
 }
 
 CompilerType Builder::CreateTypedefType(llvm::StringRef name,
@@ -182,6 +204,44 @@ CompilerType Builder::CreateComplexType(CompilerType element_type) {
   return m_ts.GetCompilerType(m_ts.m_context.CreateComplexType(*element));
 }
 
+void Builder::AddMemberFunction(clike::ClassType &record, llvm::StringRef name,
+                                CompilerType function_type,
+                                llvm::StringRef asm_label,
+                                llvm::StringRef mangled_name, bool is_static,
+                                bool is_const, bool is_volatile,
+                                bool is_virtual, RefQualifier ref_qualifier,
+                                MemberFunctionKind kind) {
+  // A method whose signature couldn't be modeled can't be called or displayed,
+  // so drop it rather than record one with no type.
+  std::optional<TypeRef> type = ToTypeRef(function_type);
+  if (!type)
+    return;
+  clike::MemberFunction method(*type);
+  method.name = GetIdentifier(name);
+  method.asm_label = GetIdentifier(asm_label);
+  method.mangled_name = GetIdentifier(mangled_name);
+  method.is_static = is_static;
+  method.is_const = is_const;
+  method.is_volatile = is_volatile;
+  method.is_virtual = is_virtual;
+  method.ref_qualifier = ref_qualifier;
+  method.kind = kind;
+  m_ts.m_context.AddMemberFunction(record, method);
+}
+
+void Builder::AddStaticDataMember(clike::ClassType &record,
+                                  llvm::StringRef name, clike::Type *type,
+                                  llvm::StringRef mangled_name,
+                                  std::optional<uint64_t> const_value) {
+  std::optional<TypeRef> member_type = ToTypeRef(type);
+  if (!member_type)
+    return;
+  m_ts.m_context.AddStaticDataMember(
+      record,
+      clike::StaticDataMember{GetIdentifier(name), *member_type,
+                              GetIdentifier(mangled_name), const_value});
+}
+
 clike::Identifier Builder::GetIdentifier(llvm::StringRef name) {
   return m_ts.m_context.GetIdentifier(name);
 }
@@ -199,13 +259,12 @@ void Builder::SetRecordExplicitAlignmentInBits(clike::RecordType &record,
   m_ts.m_context.SetExplicitAlignmentInBits(record, align);
 }
 
-void Builder::SetRecordAnonymousStructOrUnion(clike::RecordType &record) {
-  m_ts.m_context.SetAnonymousStructOrUnion(record);
+void Builder::SetRecordTemplateInstantiation(clike::ClassType &record) {
+  m_ts.m_context.SetTemplateInstantiation(record);
 }
 
-void Builder::SetRecordAnonymousStructOrUnion(clike::RecordType &record,
-                                              const clike::RecordType &parent) {
-  m_ts.m_context.SetAnonymousStructOrUnion(record, parent);
+void Builder::SetRecordAnonymousStructOrUnion(clike::RecordType &record) {
+  m_ts.m_context.SetAnonymousStructOrUnion(record);
 }
 
 void Builder::SetRecordArgPassingKind(clike::RecordType &record,
@@ -226,6 +285,18 @@ void Builder::AddField(clike::RecordType &record, clike::Identifier name,
                             bitfield_bit_size, bitfield_bit_offset);
 }
 
+void Builder::AddBaseClass(clike::ClassType &record, clike::Type *type,
+                           uint64_t byte_offset, bool is_virtual,
+                           std::optional<uint64_t> vbase_offset_offset) {
+  if (std::optional<TypeRef> base = ToTypeRef(type))
+    m_ts.m_context.AddBaseClass(record, *base, byte_offset, is_virtual,
+                                vbase_offset_offset);
+}
+
+void Builder::SetRecordPolymorphic(clike::ClassType &record) {
+  m_ts.m_context.SetPolymorphic(record);
+}
+
 void Builder::SetObjCSuperClass(clike::ObjCInterfaceType &record,
                                 clike::Type *superclass) {
   if (std::optional<TypeRef> super = ToTypeRef(superclass))
@@ -237,8 +308,8 @@ void Builder::AddObjCMethod(clike::ObjCInterfaceType &record,
                             llvm::StringRef asm_label, bool is_class_method,
                             bool is_variadic, bool is_direct,
                             bool returns_instancetype) {
-  // A method with no modeled signature can't be sent, so drop it instead of
-  // recording an untyped one.
+  // As for a C++ member function: a method with no modeled signature can't be
+  // sent, so drop it instead of recording an untyped one.
   std::optional<TypeRef> type = ToTypeRef(function_type);
   if (!type)
     return;
@@ -252,10 +323,44 @@ void Builder::AddObjCMethod(clike::ObjCInterfaceType &record,
   m_ts.m_context.AddObjCMethod(record, std::move(method));
 }
 
+void Builder::AddTemplateArgument(clike::ClassType &record,
+                                  lldb::TemplateArgumentKind kind,
+                                  clike::Type *type, uint64_t integral_value,
+                                  bool is_default) {
+  clike::TemplateArgument arg;
+  arg.kind = kind;
+  arg.type = ToTypeRef(type);
+  // DWARF encodes a `void` type argument (e.g. `coroutine_handle<void>`) by
+  // omitting DW_AT_type on the DW_TAG_template_type_parameter DIE. Spell it as
+  // the `void` builtin, so that "no type" stays reserved for the one argument
+  // kind that really has none (a template-template argument).
+  if (!arg.type && kind == lldb::eTemplateArgumentKindType)
+    arg.type = TypeRef(*m_ts.m_context.GetBuiltinType(BuiltinKind::Void));
+  arg.integral_value = integral_value;
+  arg.is_default = is_default;
+  m_ts.m_context.AddTemplateArgument(record, arg);
+}
+
+void Builder::AddTemplateTemplateArgument(clike::ClassType &record,
+                                          llvm::StringRef name,
+                                          bool is_default) {
+  clike::TemplateArgument arg;
+  arg.kind = lldb::eTemplateArgumentKindTemplate;
+  arg.name = GetIdentifier(name);
+  arg.is_default = is_default;
+  m_ts.m_context.AddTemplateArgument(record, arg);
+}
+
 const clike::Namespace *Builder::GetNamespace(llvm::StringRef name,
                                               const clike::Namespace *parent,
                                               bool is_inline) {
   return m_ts.m_context.GetNamespace(GetIdentifier(name), parent, is_inline);
+}
+
+const clike::FunctionScope *
+Builder::GetFunctionScope(llvm::StringRef name,
+                          const clike::DeclarationContext *parent) {
+  return m_ts.m_context.GetFunctionScope(GetIdentifier(name), parent);
 }
 
 void Builder::AddNestedType(clike::RecordType &record, clike::Identifier name,
