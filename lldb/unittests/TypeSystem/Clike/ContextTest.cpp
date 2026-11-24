@@ -10,6 +10,7 @@
 #include "Plugins/TypeSystem/Clike/LanguageOpts.h"
 #include "Plugins/TypeSystem/Clike/Type.h"
 #include "Plugins/TypeSystem/Clike/TypeC.h"
+#include "Plugins/TypeSystem/Clike/TypeCpp.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
@@ -26,12 +27,15 @@ struct ContextTest : public testing::Test {
 };
 } // namespace
 
-// A record is created as a StructType and starts out incomplete.
+// A plain (non-C++) record is created as a StructType, not a ClassType, and
+// starts out incomplete.
 TEST_F(ContextTest, CreateStructRecord) {
-  RecordType *r = context.CreateRecordType(context.GetGlobalScope(), "Foo",
-                                           /*byte_size=*/4);
+  RecordType *r =
+      context.CreateRecordType(context.GetGlobalScope(), "Foo", /*byte_size=*/4,
+                               /*is_cpp_class=*/false);
   ASSERT_NE(r, nullptr);
   EXPECT_TRUE(llvm::isa<StructType>(r));
+  EXPECT_FALSE(llvm::isa<ClassType>(r));
   EXPECT_EQ(r->GetName().GetName(), "Foo");
   EXPECT_EQ(&r->GetDeclContext(), &context.GetGlobalScope());
   EXPECT_EQ(r->GetByteSize(), 4u);
@@ -39,11 +43,21 @@ TEST_F(ContextTest, CreateStructRecord) {
   EXPECT_FALSE(r->IsUnion());
 }
 
+// A C++ record is created as a ClassType (which can carry base classes), even
+// though it is also still a RecordType.
+TEST_F(ContextTest, CreateClassRecord) {
+  RecordType *r = context.CreateRecordType(context.GetGlobalScope(), "Foo",
+                                           /*byte_size=*/8,
+                                           /*is_cpp_class=*/true);
+  EXPECT_TRUE(llvm::isa<ClassType>(r));
+  EXPECT_TRUE(llvm::isa<RecordType>(r));
+}
+
 // The is_union flag is threaded through to the created record.
 TEST_F(ContextTest, CreateUnionRecord) {
-  RecordType *r =
-      context.CreateRecordType(context.GetGlobalScope(), "U", /*byte_size=*/4,
-                               /*is_union=*/true);
+  RecordType *r = context.CreateRecordType(
+      context.GetGlobalScope(), "U", /*byte_size=*/4, /*is_cpp_class=*/false,
+      /*is_union=*/true);
   EXPECT_TRUE(r->IsUnion());
 }
 
@@ -51,14 +65,50 @@ TEST_F(ContextTest, CreateUnionRecord) {
 TEST_F(ContextTest, CreateRecordWithDeclContext) {
   const Namespace *ns =
       context.GetNamespace(context.GetIdentifier("std"), nullptr, false);
-  RecordType *r =
-      context.CreateRecordType(*ns, "std::string", /*byte_size=*/32,
-                               /*is_union=*/false, /*is_class_keyword=*/true,
-                               context.GetIdentifier("string"));
+  RecordType *r = context.CreateRecordType(
+      *ns, "std::string", /*byte_size=*/32, /*is_cpp_class=*/true,
+      /*is_union=*/false, /*is_class_keyword=*/true,
+      context.GetIdentifier("string"));
   EXPECT_EQ(r->GetName().GetName(), "std::string");
   EXPECT_EQ(&r->GetDeclContext(), ns);
   EXPECT_EQ(r->GetUnqualifiedName().GetName(), "string");
   EXPECT_TRUE(r->IsClassKeyword());
+}
+
+// A type nested in a record is declared in the record, and the enclosing
+// namespace of the type is found by looking through the record.
+TEST_F(ContextTest, CreateRecordNestedInRecord) {
+  const Namespace *ns =
+      context.GetNamespace(context.GetIdentifier("ns"), nullptr, false);
+  RecordType *outer = context.CreateRecordType(
+      *ns, "ns::Outer", /*byte_size=*/4, /*is_cpp_class=*/true,
+      /*is_union=*/false, /*is_class_keyword=*/false,
+      context.GetIdentifier("Outer"));
+  RecordType *inner = context.CreateRecordType(
+      *outer, "ns::Outer::Inner", /*byte_size=*/4, /*is_cpp_class=*/true,
+      /*is_union=*/false, /*is_class_keyword=*/false,
+      context.GetIdentifier("Inner"));
+  EXPECT_EQ(&inner->GetDeclContext(), outer);
+  EXPECT_EQ(outer->GetParent(), ns);
+  EXPECT_EQ(GetEnclosingNamespace(&inner->GetDeclContext()), ns);
+}
+
+// Function scopes are interned by (parent, name) and report both.
+TEST_F(ContextTest, FunctionScope) {
+  const Namespace *ns =
+      context.GetNamespace(context.GetIdentifier("ns"), nullptr, false);
+  const FunctionScope *f =
+      context.GetFunctionScope(context.GetIdentifier("f(int)"), ns);
+  ASSERT_NE(f, nullptr);
+  EXPECT_EQ(f->GetKind(), DeclarationContext::Kind::Function);
+  EXPECT_EQ(f->GetName().GetName(), "f(int)");
+  EXPECT_EQ(f->GetParent(), ns);
+  EXPECT_EQ(GetEnclosingNamespace(f), ns);
+
+  EXPECT_EQ(context.GetFunctionScope(context.GetIdentifier("f(int)"), ns), f);
+  EXPECT_NE(context.GetFunctionScope(context.GetIdentifier("f(int)"), nullptr),
+            f);
+  EXPECT_NE(context.GetFunctionScope(context.GetIdentifier("g()"), ns), f);
 }
 
 // A record created from a forward declaration learns its size (and any
@@ -66,7 +116,8 @@ TEST_F(ContextTest, CreateRecordWithDeclContext) {
 // the size dynamically, so it picks up the size learned later.
 TEST_F(ContextTest, RecordLearnsSizeOnCompletion) {
   RecordType *r = context.CreateRecordType(context.GetGlobalScope(), "Fwd",
-                                           /*byte_size=*/std::nullopt);
+                                           /*byte_size=*/std::nullopt,
+                                           /*is_cpp_class=*/false);
   TypedefType *td = context.CreateTypedefType(context.GetGlobalScope(),
                                               "FwdAlias", TypeRef(*r));
   EXPECT_FALSE(td->GetByteSize().has_value());
@@ -79,7 +130,8 @@ TEST_F(ContextTest, RecordLearnsSizeOnCompletion) {
 // of the members.
 TEST_F(ContextTest, ExplicitAlignmentWins) {
   RecordType *r = context.CreateRecordType(context.GetGlobalScope(), "Aligned",
-                                           /*byte_size=*/8);
+                                           /*byte_size=*/8,
+                                           /*is_cpp_class=*/false);
   context.SetExplicitAlignmentInBits(*r, 1024);
   EXPECT_EQ(r->GetExplicitAlignmentInBits(), std::optional<uint64_t>(1024));
   EXPECT_EQ(r->GetAlignmentInBits(), std::optional<uint64_t>(1024));
@@ -88,7 +140,8 @@ TEST_F(ContextTest, ExplicitAlignmentWins) {
 // An explicitly-recorded zero alignment is ignored, not reported.
 TEST_F(ContextTest, ExplicitZeroAlignmentIgnored) {
   RecordType *r = context.CreateRecordType(
-      context.GetGlobalScope(), "Unaligned", /*byte_size=*/std::nullopt);
+      context.GetGlobalScope(), "Unaligned", /*byte_size=*/std::nullopt,
+      /*is_cpp_class=*/false);
   context.SetExplicitAlignmentInBits(*r, 0);
   EXPECT_FALSE(r->GetAlignmentInBits().has_value());
 }
@@ -102,7 +155,8 @@ TEST_F(ContextTest, RecordAlignmentFromMembers) {
   Type *ld = context.GetBuiltinType(BuiltinKind::LongDouble);
 
   RecordType *r =
-      context.CreateRecordType(context.GetGlobalScope(), "R", /*byte_size=*/32);
+      context.CreateRecordType(context.GetGlobalScope(), "R", /*byte_size=*/32,
+                               /*is_cpp_class=*/false);
   EXPECT_FALSE(r->GetAlignmentInBits().has_value());
   context.AddField(*r, context.GetIdentifier("c"), TypeRef(*c), 0);
   context.AddField(*r, context.GetIdentifier("ld"), TypeRef(*ld), 16);
@@ -110,7 +164,8 @@ TEST_F(ContextTest, RecordAlignmentFromMembers) {
   EXPECT_EQ(r->GetAlignmentInBits(), 128u);
 
   RecordType *bits = context.CreateRecordType(context.GetGlobalScope(), "Bits",
-                                              /*byte_size=*/2);
+                                              /*byte_size=*/2,
+                                              /*is_cpp_class=*/false);
   context.AddField(*bits, context.GetIdentifier("c"), TypeRef(*c), 0);
   context.AddField(*bits, context.GetIdentifier(""), TypeRef(*i), 0,
                    /*bitfield_bit_size=*/3, /*bitfield_bit_offset=*/8);
@@ -121,9 +176,38 @@ TEST_F(ContextTest, RecordAlignmentFromMembers) {
   EXPECT_EQ(bits->GetAlignmentInBits(), 8u);
 
   RecordType *empty = context.CreateRecordType(context.GetGlobalScope(),
-                                               "Empty", /*byte_size=*/1);
+                                               "Empty", /*byte_size=*/1,
+                                               /*is_cpp_class=*/false);
   context.SetComplete(*empty);
   EXPECT_EQ(empty->GetAlignmentInBits(), 8u);
+}
+
+// A C++ class is also at least aligned like its base classes and, if it is
+// polymorphic, like its vtable pointer.
+TEST_F(ContextTest, ClassAlignment) {
+  Type *c = context.GetBuiltinType(BuiltinKind::Char);
+  Type *ld = context.GetBuiltinType(BuiltinKind::LongDouble);
+
+  auto *base = llvm::cast<ClassType>(context.CreateRecordType(
+      context.GetGlobalScope(), "Base", /*byte_size=*/16,
+      /*is_cpp_class=*/true));
+  context.AddField(*base, context.GetIdentifier("ld"), TypeRef(*ld), 0);
+  context.SetComplete(*base);
+  auto *derived = llvm::cast<ClassType>(context.CreateRecordType(
+      context.GetGlobalScope(), "Derived", /*byte_size=*/32,
+      /*is_cpp_class=*/true));
+  context.AddBaseClass(*derived, TypeRef(*base), 0);
+  context.AddField(*derived, context.GetIdentifier("c"), TypeRef(*c), 16);
+  context.SetComplete(*derived);
+  EXPECT_EQ(derived->GetAlignmentInBits(), 128u);
+
+  auto *dynamic = llvm::cast<ClassType>(context.CreateRecordType(
+      context.GetGlobalScope(), "Dynamic", /*byte_size=*/16,
+      /*is_cpp_class=*/true));
+  context.AddField(*dynamic, context.GetIdentifier("c"), TypeRef(*c), 8);
+  context.SetPolymorphic(*dynamic);
+  context.SetComplete(*dynamic);
+  EXPECT_EQ(dynamic->GetAlignmentInBits(), 64u);
 }
 
 // A record whose members aren't at a multiple of their alignment, or whose
@@ -133,14 +217,16 @@ TEST_F(ContextTest, PackedRecordAlignment) {
   Type *i = context.GetBuiltinType(BuiltinKind::Int);
 
   RecordType *misaligned =
-      context.CreateRecordType(context.GetGlobalScope(), "M", /*byte_size=*/5);
+      context.CreateRecordType(context.GetGlobalScope(), "M", /*byte_size=*/5,
+                               /*is_cpp_class=*/false);
   context.AddField(*misaligned, context.GetIdentifier("c"), TypeRef(*c), 0);
   context.AddField(*misaligned, context.GetIdentifier("i"), TypeRef(*i), 1);
   context.SetComplete(*misaligned);
   EXPECT_EQ(misaligned->GetAlignmentInBits(), 8u);
 
   RecordType *short_size =
-      context.CreateRecordType(context.GetGlobalScope(), "S", /*byte_size=*/5);
+      context.CreateRecordType(context.GetGlobalScope(), "S", /*byte_size=*/5,
+                               /*is_cpp_class=*/false);
   context.AddField(*short_size, context.GetIdentifier("i"), TypeRef(*i), 0);
   context.AddField(*short_size, context.GetIdentifier("c"), TypeRef(*c), 4);
   context.SetComplete(*short_size);
@@ -187,7 +273,8 @@ TEST_F(ContextTest, UnscopedTypeIsInGlobalScope) {
 // Pointer types are uniqued by (pointee, is_block): forming the same pointer
 // twice returns the identical instance.
 TEST_F(ContextTest, PointerTypesAreUniqued) {
-  Type *record = context.CreateRecordType(context.GetGlobalScope(), "Foo", 4);
+  Type *record =
+      context.CreateRecordType(context.GetGlobalScope(), "Foo", 4, false);
   PointerType *p1 = context.CreatePointerType(TypeRef(*record));
   PointerType *p2 = context.CreatePointerType(TypeRef(*record));
   EXPECT_EQ(p1, p2);
@@ -198,7 +285,8 @@ TEST_F(ContextTest, PointerTypesAreUniqued) {
 // A block pointer and a plain pointer to the same pointee are distinct types
 // (the block pointer is a separate BlockPointerType kind).
 TEST_F(ContextTest, BlockPointerDistinctFromPlainPointer) {
-  Type *record = context.CreateRecordType(context.GetGlobalScope(), "Foo", 4);
+  Type *record =
+      context.CreateRecordType(context.GetGlobalScope(), "Foo", 4, false);
   PointerType *plain = context.CreatePointerType(TypeRef(*record));
   BlockPointerType *block = context.CreateBlockPointerType(TypeRef(*record));
   EXPECT_NE(static_cast<Type *>(plain), static_cast<Type *>(block));
@@ -220,7 +308,8 @@ TEST_F(ContextTest, VoidPointer) {
 
 // A typedef inherits the byte size of the type it aliases.
 TEST_F(ContextTest, TypedefInheritsByteSize) {
-  Type *record = context.CreateRecordType(context.GetGlobalScope(), "Foo", 16);
+  Type *record =
+      context.CreateRecordType(context.GetGlobalScope(), "Foo", 16, false);
   TypedefType *td = context.CreateTypedefType(context.GetGlobalScope(),
                                               "FooAlias", TypeRef(*record));
   EXPECT_EQ(td->GetByteSize(), 16u);
@@ -251,7 +340,8 @@ TEST_F(ContextTest, ComplexByteSizeIsDoubleElement) {
 // Every type records the Context that created it, including the canonical
 // builtins (which KnownBuiltinTypes, not Track, creates).
 TEST_F(ContextTest, TypesKnowTheirOwningContext) {
-  Type *record = context.CreateRecordType(context.GetGlobalScope(), "Foo", 4);
+  Type *record = context.CreateRecordType(context.GetGlobalScope(), "Foo", 4,
+                                          /*is_cpp_class=*/false);
   EXPECT_EQ(&record->GetOwningContext(), &context);
   Type *pointer = context.CreatePointerType(TypeRef(*record));
   EXPECT_EQ(&pointer->GetOwningContext(), &context);
@@ -266,7 +356,8 @@ TEST_F(ContextTest, ReferenceToAnotherContextsTypeIsDirect) {
   Context other{llvm::cantFail(
       LanguageOpts::Create(llvm::Triple("x86_64-pc-linux-gnu")))};
   Type *foreign_record =
-      other.CreateRecordType(other.GetGlobalScope(), "Foo", 4);
+      other.CreateRecordType(other.GetGlobalScope(), "Foo", 4,
+                             /*is_cpp_class=*/false);
   EXPECT_EQ(&foreign_record->GetOwningContext(), &other);
 
   // A pointer created here points straight at it -- no wrapper node, and the
@@ -286,14 +377,37 @@ TEST_F(ContextTest, ReferenceToAnotherContextsTypeIsDirect) {
   EXPECT_EQ(context.CreatePointerType(TypeRef(*foreign_record)), ptr);
 }
 
+// GetOrCreateDecl deduplicates by payload: the same payload pointer always
+// maps to the same Decl, and a different payload -- whether a different
+// object of the same alternative (StaticDataMember/MemberFunction) or an
+// object of the other alternative -- maps to a distinct one.
+TEST_F(ContextTest, DeclInterning) {
+  BuiltinType *void_type = context.GetBuiltinType(BuiltinKind::Void);
+  FunctionType *fn = context.CreateFunctionType(TypeRef(*void_type), {},
+                                                /*is_variadic=*/false);
+  MemberFunction payload_a{TypeRef(*fn)};
+  MemberFunction payload_b{TypeRef(*fn)};
+  const Decl *d1 = context.GetOrCreateDecl(&payload_a);
+  const Decl *d2 = context.GetOrCreateDecl(&payload_a);
+  EXPECT_EQ(d1, d2);
+
+  const Decl *d3 = context.GetOrCreateDecl(&payload_b);
+  EXPECT_NE(d1, d3);
+
+  StaticDataMember payload_c{Identifier(), TypeRef(*void_type), Identifier(),
+                             std::nullopt};
+  const Decl *d4 = context.GetOrCreateDecl(&payload_c);
+  EXPECT_NE(d1, d4);
+}
+
 // ForEachRecordType visits every RecordType owned by the Context (in creation
 // order), but not non-record types.
 TEST_F(ContextTest, ForEachRecordTypeVisitsRecordsOnly) {
   RecordType *r1 =
-      context.CreateRecordType(context.GetGlobalScope(), "First", 4);
+      context.CreateRecordType(context.GetGlobalScope(), "First", 4, false);
   context.GetBuiltinType("int", 4, lldb::eEncodingSint, lldb::eFormatDecimal);
   RecordType *r2 =
-      context.CreateRecordType(context.GetGlobalScope(), "Second", 8);
+      context.CreateRecordType(context.GetGlobalScope(), "Second", 8, true);
 
   std::vector<RecordType *> seen;
   context.ForEachRecordType([&](RecordType *r) { seen.push_back(r); });
