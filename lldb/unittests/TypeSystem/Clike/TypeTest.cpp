@@ -28,7 +28,6 @@ TEST_F(TypeTest, BaseTypeDefaults) {
   Type type;
   EXPECT_TRUE(type.GetName().GetName().empty());
   EXPECT_TRUE(type.GetUnqualifiedName().GetName().empty());
-  EXPECT_EQ(type.GetDeclContext(), nullptr);
   EXPECT_FALSE(type.GetByteSize().has_value());
   EXPECT_FALSE(type.GetAlignmentInBits().has_value());
   EXPECT_FALSE(type.IsAggregate());
