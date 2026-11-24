@@ -11,6 +11,7 @@
 #include "Plugins/TypeSystem/Clike/LanguageOpts.h"
 #include "Plugins/TypeSystem/Clike/Type.h"
 #include "Plugins/TypeSystem/Clike/TypeC.h"
+#include "Plugins/TypeSystem/Clike/TypeCpp.h"
 
 #include "llvm/Support/Casting.h"
 #include "llvm/Support/Error.h"
@@ -29,11 +30,11 @@ struct TypeNameTest : public testing::Test {
   Type *Char() { return context.GetBuiltinType(BuiltinKind::Char); }
   Type *Void() { return context.GetBuiltinType(BuiltinKind::Void); }
 
-  RecordType *Record(llvm::StringRef name,
+  RecordType *Record(llvm::StringRef name, bool is_cpp_class = false,
                      const DeclarationContext *decl_context = nullptr,
                      Identifier unqualified_name = Identifier()) {
     RecordType *record = context.CreateRecordType(
-        name, /*byte_size=*/8, /*is_union=*/false,
+        name, /*byte_size=*/8, is_cpp_class, /*is_union=*/false,
         /*is_class_keyword=*/false, decl_context, unqualified_name);
     context.SetComplete(*record);
     return record;
@@ -56,7 +57,7 @@ TEST_F(TypeNameTest, Builtin) {
 // A record renders with the name the debug info recorded.
 TEST_F(TypeNameTest, Record) {
   EXPECT_EQ(Canonical(Record("MyStruct")), "MyStruct");
-  EXPECT_EQ(Display(Record("MyStruct")), "MyStruct");
+  EXPECT_EQ(Display(Record("MyClass", /*is_cpp_class=*/true)), "MyClass");
 }
 
 // A pointer is spelled in C declarator form, and pointer-to-pointer nests
@@ -69,6 +70,16 @@ TEST_F(TypeNameTest, Pointer) {
   EXPECT_EQ(Canonical(int_ptr_ptr), "int **");
 
   EXPECT_EQ(Canonical(context.CreatePointerType(TypeRef(*Void()))), "void *");
+}
+
+// An lvalue reference renders with one `&`, an rvalue one with two.
+TEST_F(TypeNameTest, Reference) {
+  EXPECT_EQ(Canonical(context.CreateReferenceType(TypeRef(*Int()),
+                                                  /*is_rvalue=*/false)),
+            "int &");
+  EXPECT_EQ(Canonical(context.CreateReferenceType(TypeRef(*Int()),
+                                                  /*is_rvalue=*/true)),
+            "int &&");
 }
 
 // A qualifier is spelled before the type it applies to, and `const char *`
@@ -117,7 +128,8 @@ TEST_F(TypeNameTest, Enum) {
 TEST_F(TypeNameTest, NamespaceQualified) {
   const Namespace *ns = context.GetNamespace(context.GetIdentifier("ns"),
                                              nullptr, /*is_inline=*/false);
-  RecordType *record = Record("ns::Foo", ns, context.GetIdentifier("Foo"));
+  RecordType *record = Record("ns::Foo", /*is_cpp_class=*/true, ns,
+                              context.GetIdentifier("Foo"));
 
   EXPECT_EQ(BuildCanonicalName(record, /*base_only=*/false), "ns::Foo");
   EXPECT_EQ(BuildCanonicalName(record, /*base_only=*/true), "Foo");
@@ -131,13 +143,94 @@ TEST_F(TypeNameTest, InlineNamespaceHiddenInDisplayName) {
   const Namespace *inline_ns = context.GetNamespace(
       context.GetIdentifier("__1"), std_ns, /*is_inline=*/true);
 
-  RecordType *record =
-      Record("std::__1::string", inline_ns, context.GetIdentifier("string"));
+  RecordType *record = Record("std::__1::string", /*is_cpp_class=*/true,
+                              inline_ns, context.GetIdentifier("string"));
 
   EXPECT_EQ(Display(record), "std::string");
   // Keeping inline namespaces spells the full scope.
-  EXPECT_EQ(BuildDisplayName(record, /*keep_inline_namespaces=*/true),
+  EXPECT_EQ(BuildDisplayName(record, /*hide_default_args=*/true,
+                             /*keep_inline_namespaces=*/true),
             "std::__1::string");
+}
+
+// A type nested in a record hides the inline namespaces enclosing the record
+// in its display name.
+TEST_F(TypeNameTest, NestedInRecordInInlineNamespace) {
+  const Namespace *std_ns = context.GetNamespace(context.GetIdentifier("std"),
+                                                 nullptr, /*is_inline=*/false);
+  const Namespace *inline_ns = context.GetNamespace(
+      context.GetIdentifier("__1"), std_ns, /*is_inline=*/true);
+  RecordType *outer = Record("std::__1::Outer", /*is_cpp_class=*/true,
+                             inline_ns, context.GetIdentifier("Outer"));
+  RecordType *inner = Record("std::__1::Outer::Inner", /*is_cpp_class=*/true,
+                             outer, context.GetIdentifier("Inner"));
+
+  EXPECT_EQ(Display(inner), "std::Outer::Inner");
+  EXPECT_EQ(BuildDisplayName(inner, /*hide_default_args=*/true,
+                             /*keep_inline_namespaces=*/true),
+            "std::__1::Outer::Inner");
+}
+
+// A type declared directly in a function has no scopes in its name, but a type
+// nested in a function-local class is qualified by the function (whose
+// enclosing inline namespaces are hidden).
+TEST_F(TypeNameTest, FunctionLocalTypes) {
+  const Namespace *std_ns = context.GetNamespace(context.GetIdentifier("std"),
+                                                 nullptr, /*is_inline=*/false);
+  const Namespace *inline_ns = context.GetNamespace(
+      context.GetIdentifier("__1"), std_ns, /*is_inline=*/true);
+  const FunctionScope *func =
+      context.GetFunctionScope(context.GetIdentifier("func()"), inline_ns);
+  RecordType *local = Record("Local", /*is_cpp_class=*/true, func,
+                             context.GetIdentifier("Local"));
+  RecordType *nested =
+      Record("std::__1::func()::Local::Nested", /*is_cpp_class=*/true, local,
+             context.GetIdentifier("Nested"));
+
+  EXPECT_EQ(Display(local), "Local");
+  EXPECT_EQ(Display(nested), "std::func()::Local::Nested");
+}
+
+// An unnamed type is qualified by the scopes of its declaration context chain.
+// Unlike for a named type, an anonymous namespace is kept as
+// "(anonymous namespace)", and a type declared directly in a function has no
+// scopes at all.
+TEST_F(TypeNameTest, UnnamedTypeScopes) {
+  const Namespace *std_ns = context.GetNamespace(context.GetIdentifier("std"),
+                                                 nullptr, /*is_inline=*/false);
+  const Namespace *inline_ns = context.GetNamespace(
+      context.GetIdentifier("__1"), std_ns, /*is_inline=*/true);
+  const Namespace *anon_ns =
+      context.GetNamespace(context.GetIdentifier(""), nullptr,
+                           /*is_inline=*/false);
+  auto unnamed = [&](const DeclarationContext *ctx, bool is_union = false) {
+    RecordType *record = context.CreateRecordType(
+        "", /*byte_size=*/8, /*is_cpp_class=*/true, is_union,
+        /*is_class_keyword=*/false, ctx, Identifier());
+    context.SetComplete(*record);
+    return record;
+  };
+
+  RecordType *outer = Record("(anonymous namespace)::Outer<int>",
+                             /*is_cpp_class=*/true, anon_ns,
+                             context.GetIdentifier("Outer<int>"));
+  RecordType *in_outer = unnamed(outer);
+  EXPECT_EQ(Display(in_outer), "(anonymous namespace)::Outer<int>::"
+                               "(unnamed struct)");
+  // An unnamed type nested in an unnamed type.
+  EXPECT_EQ(Display(unnamed(in_outer, /*is_union=*/true)),
+            "(anonymous namespace)::Outer<int>::(unnamed struct)::"
+            "(unnamed union)");
+
+  const FunctionScope *func =
+      context.GetFunctionScope(context.GetIdentifier("func(int)"), inline_ns);
+  EXPECT_EQ(Display(unnamed(func)), "(unnamed struct)");
+  RecordType *local = Record("Local", /*is_cpp_class=*/true, func,
+                             context.GetIdentifier("Local"));
+  RecordType *in_local = unnamed(local);
+  EXPECT_EQ(Display(in_local), "std::func(int)::Local::(unnamed struct)");
+  EXPECT_EQ(Canonical(in_local),
+            "std::__1::func(int)::Local::(unnamed struct)");
 }
 
 // A function type renders in C declarator form, and BuildFunctionName places
@@ -153,7 +246,7 @@ TEST_F(TypeNameTest, FunctionDeclarator) {
 
   EXPECT_EQ(BuildFunctionName(fn, ""), "int (const char *)");
   EXPECT_EQ(BuildFunctionName(fn, "(*)"), "int (*)(const char *)");
-  EXPECT_EQ(BuildFunctionName(fn, "(^)"), "int (^)(const char *)");
+  EXPECT_EQ(BuildFunctionName(fn, "(&)"), "int (&)(const char *)");
 }
 
 // A variadic function's parameter list ends in `...`; an empty one renders as
@@ -180,4 +273,49 @@ TEST_F(TypeNameTest, FunctionPointerName) {
       TypeRef(*Int()), {TypeRef(*Int())}, /*is_variadic=*/false);
   PointerType *fn_ptr = context.CreatePointerType(TypeRef(*fn));
   EXPECT_EQ(Canonical(fn_ptr), "int (*)(int)");
+}
+
+// A defaulted template argument is kept in the canonical name and dropped from
+// the display name.
+TEST_F(TypeNameTest, DefaultedTemplateArgumentHiddenInDisplayName) {
+  ClassType *record = llvm::cast<ClassType>(context.CreateRecordType(
+      "Vec<int, Alloc<int> >", /*byte_size=*/8, /*is_cpp_class=*/true,
+      /*is_union=*/false, /*is_class_keyword=*/false, nullptr,
+      context.GetIdentifier("Vec")));
+  context.SetComplete(*record);
+  context.SetTemplateInstantiation(*record);
+
+  TemplateArgument arg;
+  arg.kind = lldb::eTemplateArgumentKindType;
+  arg.type = TypeRef(*Int());
+  context.AddTemplateArgument(*record, arg);
+
+  TemplateArgument defaulted;
+  defaulted.kind = lldb::eTemplateArgumentKindType;
+  defaulted.type = TypeRef(*Record("Alloc<int>", /*is_cpp_class=*/true));
+  defaulted.is_default = true;
+  context.AddTemplateArgument(*record, defaulted);
+
+  // The canonical name is the raw DWARF spelling, defaults and all.
+  EXPECT_EQ(Canonical(record), "Vec<int, Alloc<int> >");
+  // The display name re-renders from the modeled arguments, dropping defaults.
+  EXPECT_EQ(Display(record), "Vec<int>");
+  // ...and keeps them when asked to.
+  EXPECT_EQ(BuildDisplayName(record, /*hide_default_args=*/false),
+            "Vec<int, Alloc<int> >");
+}
+
+// A variadic template specialized over an empty pack still prints an empty
+// argument list, which is why "is a template instantiation" is tracked
+// separately from "has arguments".
+TEST_F(TypeNameTest, EmptyTemplateArgumentList) {
+  ClassType *record = llvm::cast<ClassType>(context.CreateRecordType(
+      "Pack<>", /*byte_size=*/8, /*is_cpp_class=*/true, /*is_union=*/false,
+      /*is_class_keyword=*/false, nullptr, context.GetIdentifier("Pack")));
+  context.SetComplete(*record);
+  context.SetTemplateInstantiation(*record);
+
+  EXPECT_EQ(record->GetNumTemplateArguments(), 0u);
+  EXPECT_TRUE(record->IsTemplateInstantiation());
+  EXPECT_EQ(Display(record), "Pack<>");
 }
